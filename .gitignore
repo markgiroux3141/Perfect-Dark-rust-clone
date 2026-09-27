@@ -1,0 +1,19 @@
+target/
+*.log
+*.swp
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Third-party decomps (their own repos and licences) plus our notes that quote
+# them verbatim. Re-create with reference/README.md. The directory itself and
+# its README are tracked.
+reference/*
+!reference/README.md
+
+# Scratch output of the headless snapshot and probe tools.
+out/
+
+# Python bytecode from the asset tools.
+__pycache__/
+*.pyc

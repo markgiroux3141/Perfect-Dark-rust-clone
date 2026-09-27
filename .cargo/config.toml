@@ -1,0 +1,6 @@
+# Link with the LLVM linker bundled in the Rust toolchain (no install needed).
+# wgpu + kira + image make every build link-heavy; rust-lld cuts that a lot.
+# To fall back to MSVC link.exe, comment this block out.
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
+rustflags = ["-Clinker-flavor=lld-link"]

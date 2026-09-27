@@ -1,0 +1,79 @@
+# Perfect Dark — Combat Simulator, in Rust.
+# Architecture: docs/ARCHITECTURE.md. Milestones: docs/MILESTONES.md.
+#
+# Dependency direction (arrows point at what a crate may use; never the reverse):
+#
+#   pd_game ──► pd_render ──► engine
+#      │            │  └────► n64 (feature "gpu")
+#      │            ▼
+#      ├──────► pd_sim ──┐
+#      └──────► pd_menu ─┴──► pd_core ──► n64 (CPU only)
+#
+# `engine` knows nothing about the N64 or Perfect Dark. `n64` knows the hardware,
+# not the game. `pd_core`, `pd_sim` and `pd_menu` are headless: no wgpu, winit,
+# kira or egui, so everything that decides gameplay is testable without a window.
+[workspace]
+resolver = "2"
+members = [
+    "crates/engine",
+    "crates/n64",
+    "crates/pd_core",
+    "crates/pd_sim",
+    "crates/pd_menu",
+    "crates/pd_render",
+    "crates/pd_game",
+    "crates/pd_tools",
+]
+default-members = ["crates/pd_game"]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.92"
+version = "0.1.0"
+publish = false
+
+# Locked stack, pinned once here and consumed with `workspace = true`.
+# Same versions the spikes were verified on (Rust 1.92, late-2025 ecosystem).
+[workspace.dependencies]
+glam = "0.29"
+winit = "0.30"
+wgpu = "24"
+pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+kira = "0.12"
+gilrs = "0.11"
+egui = "0.31"
+egui-wgpu = "0.31"
+egui-winit = "0.31"
+log = "0.4"
+env_logger = "0.11"
+naga = { version = "24", features = ["wgsl-in"] }
+
+engine = { path = "crates/engine" }
+n64 = { path = "crates/n64" }
+pd_core = { path = "crates/pd_core" }
+pd_sim = { path = "crates/pd_sim" }
+pd_menu = { path = "crates/pd_menu" }
+pd_render = { path = "crates/pd_render" }
+
+# Day-to-day build: optimised but no fat LTO, so incremental relinks stay ~1-2 s.
+[profile.release]
+opt-level = 3
+lto = false
+codegen-units = 16
+incremental = true
+
+# True distributable only (slow to build).
+[profile.release-dist]
+inherits = "release"
+lto = true
+codegen-units = 1
+incremental = false
+
+# Debug: our crates unoptimised (fast rebuilds), dependencies optimised once and
+# cached so a debug run and the headless tests are not unusably slow.
+[profile.dev.package."*"]
+opt-level = 3

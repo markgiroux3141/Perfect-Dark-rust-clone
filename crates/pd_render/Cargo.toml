@@ -1,0 +1,20 @@
+[package]
+name = "pd_render"
+description = "Draws Perfect Dark on the GPU: stage BG, models, effects, HUD, x-ray and post, through the n64 combiner pipelines."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+engine = { workspace = true }
+n64 = { workspace = true, features = ["gpu"] }
+pd_core = { workspace = true }
+pd_sim = { workspace = true }
+glam = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+naga = { workspace = true }

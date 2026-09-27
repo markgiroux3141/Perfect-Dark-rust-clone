@@ -1,0 +1,10 @@
+# Text is normalised to LF in the repo. Generated assets must round-trip byte for
+# byte (the exporters are checked against their previous output), so binary
+# formats are never touched by line-ending conversion.
+* text=auto eol=lf
+
+*.bin binary
+*.png binary
+*.wav binary
+*.z64 binary
+*.seg binary

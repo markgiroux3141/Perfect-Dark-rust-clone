@@ -1,0 +1,16 @@
+[package]
+name = "pd_menu"
+description = "Perfect Dark's menu system and every Combat Simulator dialog, rendered by the CPU RDP into PD's framebuffer."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+
+# Headless. Renders into a CPU framebuffer; the game presents it.
+[dependencies]
+pd_core = { workspace = true }
+n64 = { workspace = true }
+glam = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }

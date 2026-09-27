@@ -1,0 +1,17 @@
+[package]
+name = "pd_sim"
+description = "The Combat Simulator world, headless and deterministic: stage, chrs, player movement, guns, simulants, props, match rules."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+
+# Headless. No wgpu, winit, kira or egui, ever. Given a MatchSetup, a seed and
+# per-tick inputs, a match is bit-for-bit reproducible.
+[dependencies]
+pd_core = { workspace = true }
+n64 = { workspace = true }
+glam = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }

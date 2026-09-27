@@ -1,0 +1,22 @@
+[package]
+name = "pd_tools"
+description = "Headless developer tools: offscreen snapshots, match probes, offline audio renders."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "pd_snapshot"
+path = "src/bin/pd_snapshot.rs"
+
+[dependencies]
+engine = { workspace = true }
+n64 = { workspace = true }
+pd_core = { workspace = true }
+pd_sim = { workspace = true }
+pd_menu = { workspace = true }
+pd_render = { workspace = true }
+image = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
