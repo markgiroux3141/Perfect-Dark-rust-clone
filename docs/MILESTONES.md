@@ -11,7 +11,7 @@ Each milestone is sized to fit one Claude context and ends in something checkabl
 | M0 | Architecture + skeleton | **done** (2026-09-27) |
 | M1 | Foundations: `pd_core` + `n64` CPU + asset pipeline | **done** (2026-09-27) |
 | M2 | Engine runner + the menus boot | goldens match (2026-09-27); **awaiting the user's playtest** |
-| M3 | Stages + walking Complex | tests and snapshots pass (2026-09-27); **awaiting the user's playtest** |
+| M3 | Stages + walking Complex | **done** (2026-09-27) |
 | M4 | Guns (hitscan, HUD, effects) | next |
 | M5 | Guns (projectiles, explosives, specials, N64 video, TV audio) | — |
 | M6 | Simulants: a Combat match on Complex | — |
@@ -110,7 +110,7 @@ Checked: `cargo test --workspace --release` green (n64 9, pd_core 35, engine 6, 
 
 ---
 
-## M3: Stages + walking Complex
+## M3: Stages + walking Complex (done)
 
 **Goal:** from the menus, "Start" on Complex drops the player into the textured level, walking with PD's movement. No guns yet.
 
@@ -130,7 +130,7 @@ Checked: `cargo test --workspace --release` green (n64 11, pd_core 35, engine 6,
 - **The player walks 398 of PD's 401 Complex waypoint links** with exactly the spike's three known failures (`0x01→0x03`, `0x0f→0x0e`, `0x88→0x8a`). Ledge drops fall, land and dip. The walk eases in (6 cm/tick after about 11 ticks, 8.2–8.6 at a run) and out (exponentially: below 1 cm/tick after 20–40 ticks). Crouching works and a ceiling refuses standing up. Metal footsteps come just under one per 150 cm. Four players spawn on four spawn spots facing along their pads. A seeded walk is reproducible bit for bit.
 - **Snapshots:** the 8 spawn-pad views at 960×540 against the old `pd_complex_snapshot` frames show the same geometry, framing, textures and baked shadows. The median per-pixel difference is 0–10/255 outside the gun and HUD. The worst (spawn 7) is a 3 px / 2 px shift (≈0.3° yaw, 0.2° pitch), inside PD's idle head roll (±0.01 rad, drawn from the RNG, which the spike seeded differently); aligned, its error is 6/255. Expected differences: the old frames have the gun and HUD (M4), a grey engine clear where we clear to Complex's sky (0x02,0,0), and translucent surfaces blended in linear light (the spike drew into an sRGB swapchain; we blend display values, as the RDP does).
 
-**Done when:** tests and snapshots pass (yes), and the user playtests walking Complex from the menus (pending).
+**Done when:** tests and snapshots pass (yes), and the user playtests walking Complex from the menus (yes, 2026-09-27).
 
 ### Notes for the next contexts
 
