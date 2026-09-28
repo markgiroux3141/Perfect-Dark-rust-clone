@@ -173,9 +173,10 @@ def check_fonts_lang(old: str) -> None:
 VERT = struct.Struct("<fffHffBBBBBx")
 
 
-def load_new(stem: str) -> dict:
-    head = json.load(open(out("models", stem + ".json"), encoding="utf-8"))
-    data = open(out("models", stem + ".bin"), "rb").read()
+def load_new(stem: str, dirpath: str | None = None) -> dict:
+    dirpath = dirpath or out("models")
+    head = json.load(open(os.path.join(dirpath, stem + ".json"), encoding="utf-8"))
+    data = open(os.path.join(dirpath, stem + ".bin"), "rb").read()
     off = 0
     batches = []
     for b in head["batches"]:
@@ -234,8 +235,8 @@ def node_equal(old: dict, new: dict, chrinfo: dict | None) -> bool:
     return n == old
 
 
-def compare_model(stem: str, old: dict, where: str) -> bool:
-    new = load_new(stem)
+def compare_model(stem: str, old: dict, where: str, dirpath: str | None = None) -> bool:
+    new = load_new(stem, dirpath)
     ok = True
 
     def bad(msg: str) -> None:
@@ -289,6 +290,20 @@ def check_models(old: str) -> None:
                  f"and index ({len(new)} models now)")
 
 
+def check_stages(old: str) -> None:
+    """The stage BGs against the Complex spike's `levels/pd_bg/<code>/bg.json`:
+    the same nodes (rooms, layers, BSP trees), materials, and every vertex and
+    index; textures now come from the pool (checked by `check_textures`)."""
+    n = same = 0
+    folder = os.path.join(old, "levels", "pd_bg")
+    for code in sorted(os.listdir(folder)):
+        path = os.path.join(folder, code, "bg.json")
+        if os.path.exists(path):
+            n += 1
+            same += compare_model("bg", load_old_json(path), f"stages/{code}", out("stages", code))
+    notes.append(f"stages: {same}/{n} old BG exports identical in nodes, materials and every vertex and index")
+
+
 def main() -> int:
     repo = os.environ.get("PD_OLD_REPO") or (sys.argv[1] if len(sys.argv) > 1 else OLD_DEFAULT)
     old = os.path.join(repo, "native", "assets")
@@ -300,6 +315,7 @@ def main() -> int:
     check_weapons(old)
     check_fonts_lang(old)
     check_models(old)
+    check_stages(old)
     for n in notes:
         print(n)
     for f in fails[:60]:

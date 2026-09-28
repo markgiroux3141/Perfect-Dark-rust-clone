@@ -640,6 +640,60 @@ pub const HITPART_HAT: i32 = 110;
 pub const HITPART_GENERAL: i32 = 200;
 pub const HITPART_GENERALHALF: i32 = 201;
 
+// Collision tile flags (`constants.h:1189`).
+pub const GEOFLAG_FLOOR1: u32 = 0x1;
+pub const GEOFLAG_FLOOR2: u32 = 0x2;
+pub const GEOFLAG_WALL: u32 = 0x4;
+pub const GEOFLAG_BLOCK_SIGHT: u32 = 0x8;
+pub const GEOFLAG_BLOCK_SHOOT: u32 = 0x10;
+pub const GEOFLAG_LIFTFLOOR: u32 = 0x20;
+pub const GEOFLAG_LADDER: u32 = 0x40;
+pub const GEOFLAG_RAMPWALL: u32 = 0x80;
+pub const GEOFLAG_SLOPE: u32 = 0x100;
+pub const GEOFLAG_UNDERWATER: u32 = 0x200;
+pub const GEOFLAG_0400: u32 = 0x400;
+pub const GEOFLAG_AIBOTCROUCH: u32 = 0x800;
+pub const GEOFLAG_AIBOTDUCK: u32 = 0x1000;
+pub const GEOFLAG_STEP: u32 = 0x2000;
+pub const GEOFLAG_DIE: u32 = 0x4000;
+pub const GEOFLAG_LADDER_PLAYERONLY: u32 = 0x8000;
+
+// Pad flags (`constants.h:3321`).
+pub const PADFLAG_INTPOS: u32 = 0x1;
+pub const PADFLAG_UPALIGNTOX: u32 = 0x2;
+pub const PADFLAG_UPALIGNTOY: u32 = 0x4;
+pub const PADFLAG_UPALIGNTOZ: u32 = 0x8;
+pub const PADFLAG_UPALIGNINVERT: u32 = 0x10;
+pub const PADFLAG_LOOKALIGNTOX: u32 = 0x20;
+pub const PADFLAG_LOOKALIGNTOY: u32 = 0x40;
+pub const PADFLAG_LOOKALIGNTOZ: u32 = 0x80;
+pub const PADFLAG_LOOKALIGNINVERT: u32 = 0x100;
+pub const PADFLAG_HASBBOXDATA: u32 = 0x200;
+pub const PADFLAG_AIWAITLIFT: u32 = 0x400;
+pub const PADFLAG_AIONLIFT: u32 = 0x800;
+pub const PADFLAG_AIWALKDIRECT: u32 = 0x1000;
+pub const PADFLAG_AIDROP: u32 = 0x2000;
+pub const PADFLAG_AICROUCH: u32 = 0x4000;
+pub const PADFLAG_AIIGNOREY: u32 = 0x8000;
+pub const PADFLAG_AIDUCK: u32 = 0x10000;
+pub const PADFLAG_AIBOTINUSE: u32 = 0x20000;
+
+// Floor materials, for footsteps (`constants.h:961`).
+pub const FLOORTYPE_DEFAULT: u8 = 0;
+pub const FLOORTYPE_WOOD: u8 = 1;
+pub const FLOORTYPE_STONE: u8 = 2;
+pub const FLOORTYPE_CARPET: u8 = 3;
+pub const FLOORTYPE_METAL: u8 = 4;
+pub const FLOORTYPE_MUD: u8 = 5;
+pub const FLOORTYPE_WATER: u8 = 6;
+pub const FLOORTYPE_DIRT: u8 = 7;
+pub const FLOORTYPE_SNOW: u8 = 8;
+
+// The player's crouch levels (`currentplayer->crouchpos`).
+pub const CROUCHPOS_SQUAT: i32 = 0;
+pub const CROUCHPOS_DUCK: i32 = 1;
+pub const CROUCHPOS_STAND: i32 = 2;
+
 /// Each `g_Stages` row's stage and code (its BG file, `stagetable.c`): the
 /// name of `assets/stages/<code>/`.
 pub const STAGE_CODES: &[(u8, &str)] = &[

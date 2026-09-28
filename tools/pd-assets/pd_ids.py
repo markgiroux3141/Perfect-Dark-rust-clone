@@ -4,7 +4,7 @@
 From `include/constants.h` (NTSC final): `WEAPON_*` (enum weaponnum and the
 defines beside it), `STAGE_*`, `BODY_*`, `HEAD_*`, `MPBODY_*`, `MPHEAD_*`,
 `MPSCENARIO_*`, `MPOPTION_*`, `MPFEATURE_*`, `BOTDIFF_*`, `BOTTYPE_*`,
-`HITPART_*`; and from `game/stagetable.c` each stage's code (its BG file,
+`HITPART_*`, `GEOFLAG_*`, `PADFLAG_*`, `FLOORTYPE_*`, `CROUCHPOS_*`; and from `game/stagetable.c` each stage's code (its BG file,
 `FILE_BG_REF_SEG` -> "ref"), which names `assets/stages/<code>/`.
 
 Sound ids (`sfx.h`) are keyed in `assets/sfx/manifest.json` and file numbers
@@ -42,6 +42,10 @@ GROUPS = [
     ("BOTDIFF_", "u8", False, "Simulant difficulties."),
     ("BOTTYPE_", "u8", False, "Simulant personalities."),
     ("HITPART_", "i32", False, "Body parts a shot can hit (`chr_damage`'s multipliers)."),
+    ("GEOFLAG_", "u32", True, "Collision tile flags (`constants.h:1189`)."),
+    ("PADFLAG_", "u32", True, "Pad flags (`constants.h:3321`)."),
+    ("FLOORTYPE_", "u8", False, "Floor materials, for footsteps (`constants.h:961`)."),
+    ("CROUCHPOS_", "i32", False, "The player's crouch levels (`currentplayer->crouchpos`)."),
 ]
 
 

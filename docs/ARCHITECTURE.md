@@ -30,7 +30,7 @@ Arrows point at what a crate may use. Nothing points back up.
 | Crate | Owns | Must not |
 |---|---|---|
 | **`engine`** | winit runner and `Game` trait (`init`/`tick`/`frame`/`render`/`debug_ui`), `FrameClock` (fixed tick + alpha + pacing), raw input snapshot (keys, mouse, gilrs pads), GPU context + offscreen targets + low-res present, kira voices + DSP tracks, run-time asset root, egui for dev panels; it re-exports `wgpu` and `egui` so the game uses its versions | know about the N64 or PD; depend on workspace crates; use compile-time asset paths |
-| **`n64`** | the console: N64 controller state, RDP (combiner, blender, texture formats, TLUTs, 3-point filter, TRILERP, fill rule, RGBA5551 + dither) as a **CPU reference rasteriser**, RSP semantics (lighting, texgen, matrices), the audio output + TV speaker DSP (pure), and behind `gpu`, the WGSL ports of the combiner and the VI/CRT chain | know about PD; depend on `engine` (the `gpu` half uses wgpu directly) |
+| **`n64`** | the console: N64 controller state, RDP (combiner, blender, texture formats, TLUTs, 3-point filter, TRILERP, fill rule, RGBA5551 + dither) as a **CPU reference rasteriser**, RSP semantics (lighting, texgen, matrices), the audio output + TV speaker DSP (pure), and behind `gpu`, the WGSL ports of the combiner and the VI/CRT chain. Both halves take the same `rdp::DrawState` + `rdp::MipTex` | know about PD; depend on `engine` (the `gpu` half uses wgpu directly) |
 | **`pd_core`** | PD maths (BADPI, pdmtx), `random()`, `Lv` timing, PD ids, the animation bank + `struct anim`, the model format + walker + hit test, `text.c` + fonts, language banks, the asset layout, `MatchSetup` (the menu → match handoff), and the one `Event` type the menus and the world publish | render on the GPU, do I/O beyond reading the asset files it is pointed at |
 | **`pd_sim`** | the world: stage collision (`TileLevel`), pads, nav (PD's routing + our generator), chrs, the player (`bondmove`/`bondwalk`), guns (`gset`, `bondgun`, shots), simulants (`bot`, `botcmd`), props (projectiles, mines, explosions, sentry, N-Bomb, pickups), effect state, match rules, events | draw, play sound, read devices |
 | **`pd_menu`** | `menu.c`, `menuitem.c`, every Combat Simulator dialog and handler, MP state (presets, locks, challenges, profile), menu graphics and 3D models via the CPU RDP. Output: a framebuffer, sound events, and outcomes such as `StartMatch(MatchSetup)` | depend on `pd_sim` |
@@ -107,15 +107,20 @@ assets/
   data/weapons.json          gset: weapons, funcdefs, gun scripts, aim/recoil/noise, gunviscmds
   data/bodies.json           g_HeadsAndBodies (scale, animscale, height, hands), g_MpBodies, g_MpHeads, male/female heads
   data/mpconfigs.bin         challenge and preset configs
-  stages/<code>/             M3: per arena (Complex = ref): bg.json/.bin (rooms, display lists),
-                             tiles.bin (collision, trimmed from the decomp JSON), pads.json,
-                             setup.json (spawns, weapon and ammo pads, objects)
+  stages/<code>/             per arena, by PD's stage code (Complex = ref), from pd_stage.py:
+                             bg.json + bg.bin   the textured BG in the one model format: a DL node per
+                                                room and layer, world cm, pool textures, the rooms and
+                                                the environment row (z range, sky)
+                             tiles.json         collision tiles: room, GEOFLAG bits, floor type, outline
+                             pads.json          pads (PADFLAG bits), waypoints, waygroups, cover
+                             setup.json         the MP setup's intro[] (spawns, ...) and props[]
+                                                (weapon and ammo pads, objects), by macro parameter
   music/                     later: sequences + soundbank
 ```
 
 Generated Rust sits beside the code that uses it: `crates/pd_core/src/ids.rs` (`pd_ids.py`: `WEAPON_*`, `STAGE_*` with stage codes, `BODY_*`/`HEAD_*`, `MP*`, `BOT*`, `HITPART_*`) and `crates/pd_menu/src/generated.rs` (`pd_menu_gen.py` `write_rust`: the menu dialogs and item arrays, the MP tables). `build_assets.py` regenerates both.
 
-Nothing reads the decomp or the ROM at run time. In the spikes, the Complex match read `tiles/ref.json`, `pads/ref.json` and `mp_setupref.c` from `reference/pd-decomp` on every launch; the stage exporter now owns that.
+Nothing reads the decomp or the ROM at run time. In the spikes, the Complex match read `tiles/ref.json`, `pads/ref.json` and `mp_setupref.c` from `reference/pd-decomp` on every launch; the stage exporter (`pd_stage.py`) owns that now.
 
 ### Pipeline
 

@@ -1,20 +1,28 @@
-//! Devices to N64 controllers: the keyboard (the menu spike's key table), USB N64
-//! pads by raw code (`n64::pad::USB_ADAPTER_RAW`) with the D-pad as buttons or a
-//! hat, and the stick through `n64::pad::stick_from_unit`. PD control styles
-//! (1.1-1.4, 2.1-2.4) are applied in the sim, as PD does; this module only builds
-//! controller state. Mouse aim arrives with the match (M3).
+//! Devices to N64 controllers and to the match's per-player controls.
 //!
-//! Keyboard (it drives controller [`Controls::kb_player`]): arrows / WASD D-pad ·
-//! Enter A · Esc B · Space START · Z Z · Q / E L / R · Backspace the name
+//! **Menus** ([`Controls::read`]): the keyboard (the menu spike's key table)
+//! and USB N64 pads by raw code (`n64::pad::USB_ADAPTER_RAW`), with the D-pad as
+//! buttons or a hat and the stick through `n64::pad::stick_from_unit`.
+//!
+//! **A match** ([`Controls::read_match`]): gamepad `k` drives player `k` with
+//! PD's control style 1.1 (applied in `pd_sim::player`, as PD does), and the
+//! keyboard and mouse drive player [`Controls::kb_player`] the PC port's way
+//! (the gun spike's key table):
+//! WASD move · mouse look · RMB (hold) aim · LMB fire · E / MMB use ·
+//! R reload · Q / wheel next gun · 1-0 pick a gun · Ctrl or C crouch down ·
+//! Space crouch up · ↑/↓ zoom · Esc frees the mouse (a click takes it back).
+//!
+//! Keyboard (menus; it drives controller [`Controls::kb_player`]): arrows / WASD
+//! D-pad · Enter A · Esc B · Space START · Z Z · Q / E L / R · Backspace the name
 //! keyboard's delete. F2-F4 press START on controllers 2-4, so a second player
 //! can join without a second pad.
 //!
-//! Gamepad `k` (in connection order) is controller `k`.
-//!
-//! Source: the old repo's `pd_menu/app.rs` `poll_input`.
+//! Source: the old repo's `pd_menu/app.rs` `poll_input` and `pd_guns/app.rs`
+//! `input` / `merge_pad`.
 
-use engine::input::{Input, KeyCode, PadAxis, PadButton};
+use engine::input::{Input, KeyCode, MouseButton, PadAxis, PadButton, PadView};
 use n64::pad::*;
+use pd_sim::player::PlayerInput;
 
 /// One controller as read this tick.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -37,20 +45,64 @@ const KEYS: [(&[KeyCode], u16); 10] = [
     (&[KeyCode::KeyE], R_TRIG),
 ];
 
+/// A USB N64 pad by raw code, plus a D-pad from buttons or a hat.
+fn pad_reading(p: &PadView) -> Reading {
+    let mut r = Reading { connected: true, stick: stick_from_unit(p.axis(PadAxis::LeftStickX), p.axis(PadAxis::LeftStickY)), buttons: 0 };
+    for (code, bit) in USB_ADAPTER_RAW {
+        if p.pressed_raw(code) {
+            r.buttons |= bit;
+        }
+    }
+    for (b, bit) in [(PadButton::DPadUp, U_JPAD), (PadButton::DPadDown, D_JPAD), (PadButton::DPadLeft, L_JPAD), (PadButton::DPadRight, R_JPAD)] {
+        if p.pressed(b) {
+            r.buttons |= bit;
+        }
+    }
+    let (dx, dy) = (p.axis(PadAxis::DPadX), p.axis(PadAxis::DPadY));
+    for (on, bit) in [(dy > 0.5, U_JPAD), (dy < -0.5, D_JPAD), (dx < -0.5, L_JPAD), (dx > 0.5, R_JPAD)] {
+        if on {
+            r.buttons |= bit;
+        }
+    }
+    r
+}
+
+/// An N64 pad as control style 1.1 reads it (`bondmove.c:1166`): the stick
+/// walks and turns, Z fires, R aims, B is use, A cycles, the C-buttons strafe
+/// and look.
+fn pad_input(inp: &mut PlayerInput, r: Reading) {
+    let b = |bit: u16| r.buttons & bit != 0;
+    inp.pad = true;
+    inp.aim |= b(R_TRIG);
+    inp.fire |= b(Z_TRIG);
+    inp.use_held |= b(B_BUTTON);
+    inp.a_held = b(A_BUTTON);
+    inp.look_x = r.stick.0 as i32;
+    inp.look_y = r.stick.1 as i32;
+    inp.c_up = b(U_CBUTTONS);
+    inp.c_down = b(D_CBUTTONS);
+    inp.c_left = b(L_CBUTTONS);
+    inp.c_right = b(R_CBUTTONS);
+}
+
 pub struct Controls {
     /// Which controller the keyboard drives (0-3).
     pub kb_player: usize,
     /// START taps waiting for the next tick (F2-F4, or the debug panel).
     pub start_taps: [bool; MAX_PADS],
+    /// The mouse is captured for mouse look.
+    pub captured: bool,
+    /// Last tick's pad buttons, for START's edge in a match.
+    prev_match_buttons: [u16; MAX_PADS],
 }
 
 impl Controls {
     pub fn new() -> Controls {
-        Controls { kb_player: 0, start_taps: [false; MAX_PADS] }
+        Controls { kb_player: 0, start_taps: [false; MAX_PADS], captured: false, prev_match_buttons: [0; MAX_PADS] }
     }
 
-    /// This tick's four controllers and the keyboard delete. `joined` marks
-    /// controllers whose player is in the game, which stay connected.
+    /// This tick's four controllers and the keyboard delete, for the menus.
+    /// `joined` marks controllers whose player is in the game, which stay connected.
     pub fn read(&mut self, input: &Input, joined: [bool; MAX_PADS]) -> ([Reading; MAX_PADS], [bool; MAX_PADS]) {
         for (key, pad) in [(KeyCode::F2, 1), (KeyCode::F3, 2), (KeyCode::F4, 3)] {
             if input.key_pressed(key) {
@@ -66,24 +118,7 @@ impl Controls {
         let mut out = [Reading::default(); MAX_PADS];
         for (i, r) in out.iter_mut().enumerate() {
             if let Some(p) = input.pads.as_ref().and_then(|p| p.pad(i)) {
-                r.connected = true;
-                r.stick = stick_from_unit(p.axis(PadAxis::LeftStickX), p.axis(PadAxis::LeftStickY));
-                for (code, bit) in USB_ADAPTER_RAW {
-                    if p.pressed_raw(code) {
-                        r.buttons |= bit;
-                    }
-                }
-                for (b, bit) in [(PadButton::DPadUp, U_JPAD), (PadButton::DPadDown, D_JPAD), (PadButton::DPadLeft, L_JPAD), (PadButton::DPadRight, R_JPAD)] {
-                    if p.pressed(b) {
-                        r.buttons |= bit;
-                    }
-                }
-                let (dx, dy) = (p.axis(PadAxis::DPadX), p.axis(PadAxis::DPadY));
-                for (on, bit) in [(dy > 0.5, U_JPAD), (dy < -0.5, D_JPAD), (dx < -0.5, L_JPAD), (dx > 0.5, R_JPAD)] {
-                    if on {
-                        r.buttons |= bit;
-                    }
-                }
+                *r = pad_reading(&p);
             }
             if i == self.kb_player {
                 r.buttons |= kb;
@@ -98,5 +133,51 @@ impl Controls {
         let mut back2 = [false; MAX_PADS];
         back2[self.kb_player] = input.key_pressed(KeyCode::Backspace);
         (out, back2)
+    }
+
+    /// This tick's controls for `n` players in a match, and whether anyone
+    /// pressed START (a pad's START, or Enter on the keyboard).
+    pub fn read_match(&mut self, input: &Input, n: usize) -> (Vec<PlayerInput>, bool) {
+        let mut out = vec![PlayerInput::default(); n];
+        let mut start = false;
+        for (i, inp) in out.iter_mut().enumerate() {
+            let kb = i == self.kb_player;
+            if let Some(p) = input.pads.as_ref().and_then(|p| p.pad(i)) {
+                let r = pad_reading(&p);
+                start |= r.buttons & !self.prev_match_buttons[i] & START_BUTTON != 0;
+                self.prev_match_buttons[i] = r.buttons;
+                // The keyboard's player plays the PC way until its pad is touched.
+                if !kb || r.buttons != 0 || r.stick != (0, 0) {
+                    pad_input(inp, r);
+                }
+            }
+            if kb {
+                self.keyboard_input(input, inp);
+            }
+        }
+        start |= input.key_pressed(KeyCode::Enter) || input.key_pressed(KeyCode::NumpadEnter);
+        (out, start)
+    }
+
+    /// The keyboard and mouse the PC port's way (`CONTROLMODE_PC`), merged into
+    /// what a pad on the same controller set.
+    fn keyboard_input(&self, input: &Input, inp: &mut PlayerInput) {
+        let k = |c: KeyCode| input.key_down(c);
+        inp.walk_y = (k(KeyCode::KeyW) as i32 - k(KeyCode::KeyS) as i32) * 127;
+        inp.walk_x = (k(KeyCode::KeyD) as i32 - k(KeyCode::KeyA) as i32) * 127;
+        if self.captured {
+            let (dx, dy) = input.mouse_delta();
+            inp.mouse_dx = dx as f32;
+            inp.mouse_dy = dy as f32;
+            inp.fire |= input.mouse_down(MouseButton::Left);
+            inp.aim |= input.mouse_down(MouseButton::Right);
+        }
+        inp.use_held |= k(KeyCode::KeyE) || input.mouse_down(MouseButton::Middle);
+        inp.reload = input.key_pressed(KeyCode::KeyR);
+        inp.cycle_next = input.key_pressed(KeyCode::KeyQ);
+        inp.crouch_down = input.key_pressed(KeyCode::ControlLeft) || input.key_pressed(KeyCode::ControlRight) || input.key_pressed(KeyCode::KeyC);
+        inp.crouch_up = input.key_pressed(KeyCode::Space);
+        inp.zoom_in = k(KeyCode::ArrowUp);
+        inp.zoom_out = k(KeyCode::ArrowDown);
     }
 }

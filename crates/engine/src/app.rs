@@ -59,6 +59,21 @@ impl Ctx<'_> {
     pub fn exit(&mut self) {
         *self.exit = true;
     }
+
+    /// Capture the mouse for relative motion (locked, else confined, and hidden)
+    /// or release it. Returns whether it is captured.
+    pub fn set_cursor_captured(&self, on: bool) -> bool {
+        use winit::window::CursorGrabMode;
+        if on {
+            let ok = self.window.set_cursor_grab(CursorGrabMode::Locked).or_else(|_| self.window.set_cursor_grab(CursorGrabMode::Confined)).is_ok();
+            self.window.set_cursor_visible(!ok);
+            ok
+        } else {
+            let _ = self.window.set_cursor_grab(CursorGrabMode::None);
+            self.window.set_cursor_visible(true);
+            false
+        }
+    }
 }
 
 pub trait Game: 'static {

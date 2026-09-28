@@ -11,7 +11,8 @@ cargo build --release                       # the game: target/release/perfect_d
 cargo test --workspace --release            # all tests (incl. the menu goldens, crates/pd_menu/tests/golden/)
 cargo test -p pd_sim --release -- --ignored --nocapture   # long probes
 cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # offscreen PNGs (e.g. `out model dark_combat --gun chrfalcon2`,
-                                            #   `out menu --combat w40 down down down a w50 shot:setup`; script format in pd_menu::script)
+                                            #   `out menu --combat w40 down down down a w50 shot:setup` (script format in pd_menu::script),
+                                            #   `out stage ref` (the 8 spawn-pad views, on the GPU))
 python tools/check_boundaries.py            # headless crates stay headless
 python tools/pd-assets/build_assets.py      # regenerate assets/ (and crates/pd_core/src/ids.rs) from the decomp
 python tools/pd-assets/check_against_spikes.py   # assets/ against the old repo's exports
@@ -38,5 +39,5 @@ python tools/pd-assets/check_against_spikes.py   # assets/ against the old repo'
 - `assets/`: generated, committed; layout in ARCHITECTURE.md § Assets.
 - `tools/pd-assets/`: Python exporters (stdlib only; `pd_bg_preview.py` needs numpy + Pillow).
 - `reference/`: gitignored. `pd-decomp` and `pd-pcport` are junctions to the old repo's clones, and `pd_bot_port_sheet.md` holds the verbatim C for the bot port. See [reference/README.md](reference/README.md).
-- Old repo (the migration source): `D:\Claude Code Projects\Hide and Seek Level Builder`, branch `spike/pd-combat-sim-menu`, code under `native/crates/game/src/pd_{menu,guns,spike,complex}/`. Read it; don't modify it.
+- Old repo (the migration source): `D:\Claude Code Projects\Hide and Seek Level Builder`, branch `main` (it has merged every spike: `spike/pd-combat-sim-menu` and the Complex fight), code under `native/crates/game/src/pd_{menu,guns,spike,complex}/`. Read it; don't modify it. To run one of its snapshot tools, build it with `CARGO_TARGET_DIR` in your scratchpad (see MILESTONES.md, M3 notes).
 - ROM (only for the decomp's one-time `tools/extract`): `D:\GoldenPerfectModding\Perfect Dark (U) (V1.1) USE THIS ONE\`. The `[!]` in the file name breaks PowerShell wildcards, so use `-LiteralPath`.

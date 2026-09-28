@@ -2257,6 +2257,7 @@ dependencies = [
  "naga",
  "pd_core",
  "pd_sim",
+ "serde",
  "wgpu",
 ]
 

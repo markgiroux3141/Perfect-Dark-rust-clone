@@ -181,8 +181,13 @@ impl RenderTarget {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
     pub fn new(gpu: &Gpu, width: u32, height: u32, format: wgpu::TextureFormat, with_depth: bool) -> RenderTarget {
+        Self::on_device(&gpu.device, width, height, format, with_depth)
+    }
+
+    /// A target on any device (a window's or a [`HeadlessGpu`]).
+    pub fn on_device(device: &wgpu::Device, width: u32, height: u32, format: wgpu::TextureFormat, with_depth: bool) -> RenderTarget {
         let size = wgpu::Extent3d { width, height, depth_or_array_layers: 1 };
-        let color = gpu.device.create_texture(&wgpu::TextureDescriptor {
+        let color = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("render-target"),
             size,
             mip_level_count: 1,
@@ -194,7 +199,7 @@ impl RenderTarget {
         });
         let view = color.create_view(&wgpu::TextureViewDescriptor::default());
         let depth = with_depth.then(|| {
-            let t = gpu.device.create_texture(&wgpu::TextureDescriptor {
+            let t = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("render-target-depth"),
                 size,
                 mip_level_count: 1,
@@ -219,6 +224,47 @@ impl RenderTarget {
             wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(self.width * 4), rows_per_image: Some(self.height) },
             wgpu::Extent3d { width: self.width, height: self.height, depth_or_array_layers: 1 },
         );
+    }
+}
+
+impl RenderTarget {
+    /// Read the colour texture back as tightly packed 4-byte pixels (blocking).
+    pub fn read_rgba8(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Vec<u8> {
+        let (w, h) = (self.width, self.height);
+        let row = (w * 4).div_ceil(256) * 256;
+        let buf = device.create_buffer(&wgpu::BufferDescriptor { label: Some("render-target-read"), size: (row * h) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("render-target-read") });
+        enc.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo { texture: &self.color, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+            wgpu::TexelCopyBufferInfo { buffer: &buf, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: Some(h) } },
+            wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        );
+        queue.submit(Some(enc.finish()));
+        let slice = buf.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        device.poll(wgpu::Maintain::Wait);
+        let data = slice.get_mapped_range();
+        let mut out = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h as usize {
+            out.extend_from_slice(&data[y * row as usize..y * row as usize + (w * 4) as usize]);
+        }
+        out
+    }
+}
+
+/// A device and queue without a window, for offscreen rendering (tools, tests).
+pub struct HeadlessGpu {
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+}
+
+impl HeadlessGpu {
+    pub fn new() -> Result<HeadlessGpu, String> {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor { backends: wgpu::Backends::PRIMARY, ..Default::default() });
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: None, force_fallback_adapter: false }))
+            .ok_or("no GPU adapter")?;
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor { label: Some("headless-device"), ..Default::default() }, None)).map_err(|e| format!("request device: {e}"))?;
+        Ok(HeadlessGpu { device, queue })
     }
 }
 

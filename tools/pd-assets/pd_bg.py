@@ -5,9 +5,9 @@ The BG file (`files/bgdata/bg_<stage>.seg`) is decoded exactly as the game loads
 it, and every room's display lists are replayed through `pd_fpgun.Interp` — the
 same GBI interpreter the first-person guns use — so the Rust side gets the
 per-batch N64 draw state (combiner, blender, z-mode, texture tile) rather than a
-guess. Output is the `ModelFile` JSON shape of `native/crates/game/src/pd_guns/
-data.rs` (one POSITION root, one DL node per room per layer), plus a `rooms`
-table and the textures as PNGs.
+guess. `build` returns a model dict (one POSITION root, one DL node per room per
+layer) plus a `rooms` table; `pd_stage.py` writes it as `stages/<code>/bg.json`
++ `.bg.bin` in the one model format, with its textures in the pool.
 
 What is ported, with its source (decomp = reference/pd-decomp/src):
 
@@ -55,7 +55,7 @@ What is ported, with its source (decomp = reference/pd-decomp/src):
   into the room's colour table) so that path can be replayed.
 
 Usage:
-    python tools/pd-assets/pd_bg.py ref [outdir]   # default native/assets/levels/pd_bg/ref
+    python tools/pd-assets/pd_bg.py ref     # interpret and print a summary (pd_stage.py writes it)
 """
 
 from __future__ import annotations
@@ -80,11 +80,7 @@ from pd_fpgun import (  # noqa: E402
     G_CYC_2CYCLE, MDSFT_TEXTFILT, MDSFT_TEXTLOD, RM_AA_ZB_OPA_SURF2, CC_TRILERP_MODULATEIA2,
 )
 
-from pd_paths import ASSETS, DECOMP, REPO, SRC, decomp_rel, out  # noqa: E402,F401
-
-# SUBST: M3 turns this into the stage exporter writing assets/stages/<code>/.
-# Until then it writes the spike's layout under assets/stages/ for inspection.
-DEFAULT_OUT_ROOT = out("stages")
+from pd_paths import ASSETS, DECOMP, REPO, SRC, decomp_rel  # noqa: E402,F401
 
 #: stage file stem -> (STAGE_* constant, bg file). stagetable.c:22 for ref.
 STAGES = {
@@ -125,16 +121,46 @@ def stage_constant(name: str) -> int:
     return int(m.group(1), 0)
 
 
-def env_flags(stage_name: str) -> tuple[bool, bool, str]:
-    """(g_FogEnabled, g_EnvHasTransparency, provenance) for a stage, per
+def _struct_fields(name: str) -> list[str]:
+    """The field names of `struct <name>` in include/types.h, in order."""
+    text = _strip_comments(_read("include", "types.h"))
+    body = re.search(rf"struct\s+{name}\s*\{{(.*?)\}};", text, re.S).group(1)
+    return [m.group(1) for m in re.finditer(r"(\w+)\s*(?:\[[^\]]*\])?\s*;", body)]
+
+
+def _env_row(row: str, fields: list[str]) -> dict:
+    """One `g_NoFogEnvironments` / `g_FogEnvironments` initialiser as a dict by
+    field name, with env.c's `RGB(col)` (three bytes), `NO_SUNS` (0, NULL) and
+    `SUNS(arr)` macros expanded (env.c:31-33)."""
+    vals: list = []
+    for tok in [t.strip() for t in re.split(r",(?![^(]*\))", row) if t.strip()]:
+        m = re.fullmatch(r"RGB\((0x[0-9a-fA-F]+)\)", tok)
+        if m:
+            c = int(m.group(1), 16)
+            vals += [c >> 16, (c >> 8) & 0xFF, c & 0xFF]
+        elif tok == "NO_SUNS":
+            vals += [0, None]
+        elif tok.startswith("SUNS("):
+            vals += [None, tok[5:-1]]
+        else:
+            try:
+                vals.append(float(tok.rstrip("f")) if "." in tok else int(tok, 0))
+            except ValueError:
+                vals.append(tok)
+    return dict(zip(fields, vals))
+
+
+def env_flags(stage_name: str) -> tuple[bool, bool, str, dict]:
+    """(g_FogEnabled, g_EnvHasTransparency, provenance, the row) for a stage, per
     `env_choose_and_apply` (env.c:302): the fog table wins (env.c:328-335);
-    otherwise the LAST matching no-fog row (env.c:339-343), else row 0 (:348)."""
+    otherwise the LAST matching no-fog row (env.c:339-343), else row 0 (:348).
+    The row is keyed by `struct nofogenvironment`'s fields (types.h:3224)."""
     text = _strip_comments(_read("game", "env.c"))
     fog = re.search(r"g_FogEnvironments\[\]\s*=\s*\{(.*?)\n\};", text, re.S).group(1)
     nofog = re.search(r"g_NoFogEnvironments\[\]\s*=\s*\{(.*?)\n\};", text, re.S).group(1)
     for row in re.findall(r"\{([^{}]*)\}", fog):
         if row.split(",")[0].strip() == stage_name:
-            return True, False, "g_FogEnvironments row"
+            return True, False, "g_FogEnvironments row", {}
     rows = re.findall(r"\{([^{}]*)\}", nofog)
     chosen = None
     for row in rows:
@@ -142,11 +168,9 @@ def env_flags(stage_name: str) -> tuple[bool, bool, str]:
             chosen = row
     if chosen is None:
         chosen = rows[0]
-    # The last field is `transparency` (struct nofogenvironment, types.h). Rows
-    # contain RGB(...) / SUNS(...) macros whose commas would shift a naive split,
-    # but the final field is unambiguous.
-    transparency = int(chosen.rstrip().rstrip(",").split(",")[-1].strip(), 0)
-    return False, bool(transparency), f"g_NoFogEnvironments row, transparency={transparency}"
+    env = _env_row(chosen, _struct_fields("nofogenvironment"))
+    transparency = env["transparency"]
+    return False, bool(transparency), f"g_NoFogEnvironments row, transparency={transparency}", env
 
 
 _CCMUX = {"COMBINED": 0, "TEXEL0": 1, "TEXEL1": 2, "PRIMITIVE": 3, "SHADE": 4, "ENVIRONMENT": 5,
@@ -614,33 +638,21 @@ def flatten(interp, node_room, batch_extra):
 # ---------------------------------------------------------------------------
 
 
-def used_textures(stem: str) -> list[int]:
-    """The global texture numbers stage `stem`'s BG draws, interpreted exactly as
-    `export` does. The texture pool (pd_models.py) takes these until M3's stage
-    exporter writes the stage itself."""
-    stage_name, fname = STAGES[stem]
-    bg = BgFile(os.path.join(ASSETS, "files", "bgdata", fname))
-    rooms = [bg.load_room(r) for r in range(1, bg.roomcount)]  # bg.c:2767
-    fog, transparency, _ = env_flags(stage_name)
-    if fog:
-        raise NotImplementedError(f"{stage_name} runs with fog (groups 1/5 not ported)")
-    if not transparency:  # bg.c:2974
-        g6, g7 = replace_group(6), replace_group(7)
-        for room in rooms:
-            gfx_replace(room, room.opa_leaves, g6)
-            gfx_replace(room, room.xlu_leaves, g7)
-    interp, *_ = interpret(bg, rooms)
-    return sorted({m["texture"]["id"] for m in interp.materials if m["texture"]})
+def build(stem: str) -> dict:
+    """Interpret stage `stem`'s BG exactly as `bg_reset` + `bg_load_room` load it.
 
-
-def export(stem: str, outdir: str) -> dict:
+    Returns the model dict (`nodes`, `materials`, `batches` with world-space
+    vertices, `rooms`, `env`, `section2_textures`, provenance) plus `used`, the
+    global texture numbers its materials sample, and `warnings`. Nothing is
+    written: `pd_stage.py` writes it in the one model format, its textures in
+    the pool."""
     stage_name, fname = STAGES[stem]
     path = os.path.join(ASSETS, "files", "bgdata", fname)
     bg = BgFile(path)
     warnings: list[str] = []
     rooms = [bg.load_room(r) for r in range(1, bg.roomcount)]  # bg.c:2767
 
-    fog, transparency, env_src = env_flags(stage_name)
+    fog, transparency, env_src, env_row = env_flags(stage_name)
     replaced = 0
     if fog:
         raise NotImplementedError(f"{stage_name} runs with fog (groups 1/5 not ported)")
@@ -660,7 +672,7 @@ def export(stem: str, outdir: str) -> dict:
     # Starting-state independence: re-run from a deliberately different state.
     # Only the state a batch can actually SEE is compared: prim when the
     # combiner reads PRIMITIVE / PRIM_LOD_FRAC, fog colour when the blender
-    # reads it (neither is true anywhere in Complex — reported below).
+    # reads it (neither is true anywhere in Complex).
     alt, *_ = interpret(bg, rooms, variant=1)
     diff = 0
     if len(alt.batches) != len(interp.batches):
@@ -671,39 +683,12 @@ def export(stem: str, outdir: str) -> dict:
             eb = effective(alt.materials[b["material"]])
             if ea != eb or [v["uv"] for v in a["verts"]] != [v["uv"] for v in b["verts"]]:
                 diff += 1
-    same = diff == 0
-    if not same:
-        warnings.append(f"export depends on the assumed starting RDP state ({diff} batches differ)")
-    prim_users = sum(1 for m in interp.materials if reads_prim(m))
-    fog_users = sum(1 for m in interp.materials if m["fog_tint"])
+    if diff:
+        raise SystemExit(f"bg_{stem}: the export depends on the assumed starting RDP state ({diff} batches differ)")
 
     batches = flatten(interp, node_room, batch_extra)
-
-    # Textures.
-    texdir = os.path.join(outdir, "textures")
-    os.makedirs(texdir, exist_ok=True)
     used = sorted({m["texture"]["id"] for m in interp.materials if m["texture"]})
-    textures: dict[str, dict] = {}
-    failed = []
-    for texnum in used:
-        fname_png = f"tex_{texnum:04x}.png"
-        try:
-            t = pd_tex.load(texnum)
-            w, h, rgba, src = t.width, t.height, t.rgba, "pd"
-            extra = {"format": t.format_name, "numlods": t.numlods, "hasloddata": bool(t.hasloddata)}
-        except (pd_tex.UnsupportedTexture, OSError, SystemExit) as e:
-            entry = pd_gltf.editor_textures().get(texnum)
-            if entry is None:
-                failed.append(texnum)
-                warnings.append(f"texture {texnum:#06x} undecodable: {e}")
-                continue
-            w, h, rgba = pd_gltf.read_bmp(entry["bmp"])
-            src, extra = "editor", {}
-        with open(os.path.join(texdir, fname_png), "wb") as fh:
-            fh.write(pd_gltf.png_bytes(w, h, rgba))
-        textures[str(texnum)] = {"file": fname_png, "w": w, "h": h, "source": src, **extra}
 
-    # Rooms.
     room_nodes = {}
     for i, n in enumerate(nodes):
         if n["type"] == "dl":
@@ -719,7 +704,7 @@ def export(stem: str, outdir: str) -> dict:
     out_rooms = []
     for room in rooms:
         g = room.data
-        # dlights.c:1665 reads vertices[i].flags for COLOUR index i — even past
+        # dlights.c:1665 reads vertices[i].flags for COLOUR index i, even past
         # the vertex array if there are more colours than vertices; mirrored.
         alpha_only = [i for i in range(room.numcolours)
                       if room.vertices + i * VTX_SIZE + 6 < len(g) and g[room.vertices + i * VTX_SIZE + 6] & 1]
@@ -732,62 +717,50 @@ def export(stem: str, outdir: str) -> dict:
             "colour_alpha_only": alpha_only, "bsp_parents": room.parents,
         })
 
-    model = {
+    ntri = sum(len(b["indices"]) // 3 for b in batches)
+    lo = [min(r["bbmin"][k] for r in out_rooms if r["bbmin"]) for k in range(3)]
+    hi = [max(r["bbmax"][k] for r in out_rooms if r["bbmax"]) for k in range(3)]
+    tlo, thi, _, _ = tiles_bbox(stem)
+    summary = [
+        f"bg_{stem}: rooms 1..{bg.roomcount - 1}, triangles {ntri}, batches {len(batches)}, "
+        f"materials {len(interp.materials)}, textures {len(used)}",
+        f"  env: fog={fog} transparency={transparency} ({env_src}); {replaced} commands rewritten",
+        f"  bbox BG {[round(x, 1) for x in lo]}..{[round(x, 1) for x in hi]}, tiles {tlo}..{thi}",
+    ]
+    return {
         "name": f"bg_{stem}",
         "source": decomp_rel(path),
-        "exporter": "tools/pd-assets/pd_bg.py",
         "stage": stage_name,
         "units": "cm (world; room pos added, stage scale 1)",
-        "env": {"fog": fog, "transparency": transparency, "provenance": env_src,
-                "replaced_commands": replaced},
+        "env": {"fog": fog, "transparency": transparency, "provenance": env_src, "replaced_commands": replaced,
+                "nofogenvironment": env_row},
         "nummatrices": 1,
         "nodes": nodes,
         "parts": {},
         "materials": interp.materials,
         "batches": batches,
-        "textures": textures,
         "rooms": out_rooms,
         "section2_textures": bg.section2_textures,
-        "vertex_layout": ["x", "y", "z", "mtx", "u", "v", "r", "g", "b", "a", "flags(1=lit,2=texgen)"],
+        "used": used,
+        "warnings": warnings,
+        "summary": summary,
     }
-    os.makedirs(outdir, exist_ok=True)
-    with open(os.path.join(outdir, "bg.json"), "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(model, fh, separators=(",", ":"))
 
-    # Summary.
-    ntri = sum(len(b["indices"]) // 3 for b in batches)
-    lo = [min(r["bbmin"][k] for r in out_rooms if r["bbmin"]) for k in range(3)]
-    hi = [max(r["bbmax"][k] for r in out_rooms if r["bbmax"]) for k in range(3)]
-    tlo, thi, tn, tne = tiles_bbox(stem)
-    nopa = sum(1 for n in nodes if n.get("layer") == "opa")
-    nxlu = sum(1 for n in nodes if n.get("layer") == "xlu")
-    print(f"bg_{stem}: roomcount {bg.roomcount} -> rooms 1..{bg.roomcount - 1} ({len(rooms)}); "
-          f"tiles file: {tn} room keys, {tne} non-empty")
-    print(f"  nodes: {nopa} opa + {nxlu} xlu; BSP parent blocks: {sum(r.parents for r in rooms)}")
-    print(f"  triangles {ntri}, batches {len(batches)}, materials {len(interp.materials)}, "
-          f"vertices {sum(len(b['verts']) for b in batches)}")
-    print(f"  textures: {len(used)} used, {len(textures)} written, {len(failed)} failed"
-          + (f" ({', '.join(f'{t:#06x}' for t in failed)})" if failed else "")
-          + f"; section-2 list has {len(bg.section2_textures)}")
-    print(f"  env: fog={fog} transparency={transparency} ({env_src}); {replaced} commands rewritten")
-    print(f"  bbox   BG  min {[round(x, 1) for x in lo]} max {[round(x, 1) for x in hi]}")
-    print(f"  bbox tiles min {tlo} max {thi}")
-    print(f"  delta      min {[round(a - b, 1) for a, b in zip(lo, tlo)]} "
-          f"max {[round(a - b, 1) for a, b in zip(hi, thi)]}")
-    print(f"  alpha-only colours (room_highlight flags&1): {sum(len(r['colour_alpha_only']) for r in out_rooms)}")
-    print(f"  starting-state independent: {same}; materials reading prim {prim_users}, fog colour {fog_users}")
-    for wmsg in warnings:
-        print(f"  WARN {wmsg}")
-    return model
+
+def used_textures(stem: str) -> list[int]:
+    """The global texture numbers stage `stem`'s BG draws."""
+    return build(stem)["used"]
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("stage", choices=sorted(STAGES))
-    ap.add_argument("outdir", nargs="?")
     args = ap.parse_args()
-    outdir = args.outdir or os.path.join(DEFAULT_OUT_ROOT, args.stage)
-    export(args.stage, outdir)
+    d = build(args.stage)
+    for line in d["summary"]:
+        print(line)
+    for w in d["warnings"]:
+        print(f"  WARN {w}")
     return 0
 
 

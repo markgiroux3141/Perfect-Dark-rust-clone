@@ -1,19 +1,60 @@
 //! Game states. **Menus**: the `pd_menu` framebuffer presented full screen.
-//! **Match**: for now a stand-in screen that shows the `MatchSetup` the menus
-//! handed over, until M3's world exists; later the `pd_sim` world and
-//! `pd_render` views with the pause menu composited over. **Results** (PD's
+//! **Match**: a `pd_sim` world on the chosen arena, drawn by `pd_render` (the
+//! pause menu composited over it arrives with M7). **Results** (PD's
 //! end-of-match dialogs, which are menus too) arrive with M7.
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use n64::rdp::Gfx;
+use pd_core::anim::AnimBank;
+use pd_core::assets::AssetDir;
 use pd_core::mp::MatchSetup;
 use pd_core::text::{FontId, Fonts, TextCtx, TextState};
+use pd_sim::stage::{Stage, TileLevel};
+use pd_sim::world::World;
 
 pub enum Screen {
     Menus,
-    /// SUBST: PD loads the arena and starts the match here / there is no match
-    /// until M3, so the game shows what would start and goes back to the menus
-    /// on START or A, as PD does after a match (menutick.c:217).
-    Match { setup: MatchSetup, lines: Vec<String> },
+    /// A match being played.
+    Match(Box<World>),
+    /// SUBST: PD loads any arena here / only the stages the exporter has
+    /// written can be played (Complex until M9), so for the others the game
+    /// shows what would start and goes back to the menus on START or A, as PD
+    /// does after a match (menutick.c:217).
+    StandIn { setup: MatchSetup, lines: Vec<String> },
+}
+
+/// Loaded stages and the animation bank, kept between matches.
+pub struct MatchAssets {
+    assets: AssetDir,
+    stages: HashMap<String, (Arc<Stage>, Arc<TileLevel>)>,
+    bank: Option<Arc<AnimBank>>,
+}
+
+impl MatchAssets {
+    pub fn new(assets: &AssetDir) -> MatchAssets {
+        MatchAssets { assets: assets.clone(), stages: HashMap::new(), bank: None }
+    }
+
+    /// Whether `stages/<code>/` has been exported.
+    pub fn has_stage(&self, code: &str) -> bool {
+        self.assets.stage(code).join("bg.json").exists()
+    }
+
+    /// A world for `setup`, on its stage.
+    pub fn start(&mut self, setup: MatchSetup, code: &str, seed: u64) -> Result<World, String> {
+        if !self.stages.contains_key(code) {
+            let stage = Stage::load(&self.assets, code)?;
+            let level = TileLevel::new(stage.geom.clone());
+            self.stages.insert(code.to_owned(), (Arc::new(stage), Arc::new(level)));
+        }
+        if self.bank.is_none() {
+            self.bank = Some(Arc::new(AnimBank::load(&self.assets)?));
+        }
+        let (stage, level) = self.stages[code].clone();
+        World::new(setup, stage, level, self.bank.clone().unwrap(), seed)
+    }
 }
 
 /// The match stand-in, drawn with PD's own text into a 320×220 frame.
@@ -28,5 +69,5 @@ pub fn draw_match_stand_in(gfx: &mut Gfx, fonts: &Fonts, lines: &[String]) {
     let (mut x, mut y) = (16, 40);
     ctx.render_v2(&mut x, &mut y, &(lines.join("\n") + "\n"), FontId::Xs, 0xc0e0ffff, w, h, 0, 0);
     let (mut x, mut y) = (16, h - 22);
-    ctx.render_v2(&mut x, &mut y, "No match yet (M3). START: back to the menus\n", FontId::Xs, 0x8090a0ff, w, h, 0, 0);
+    ctx.render_v2(&mut x, &mut y, "This arena is not exported yet (M9). START: back to the menus\n", FontId::Xs, 0x8090a0ff, w, h, 0, 0);
 }

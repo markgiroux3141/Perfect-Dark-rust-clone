@@ -1,9 +1,9 @@
 //! `perfect_dark`: the game.
 //!
 //! A small state machine over the engine runner: Menus -> Match -> (pause menu,
-//! end-of-match scores) -> Menus. It owns the glue and nothing else:
-//! - `controls`: keyboard and gamepads to N64 controllers (later the PC port's
-//!   mouse aim);
+//! end-of-match scores, M7) -> Menus. It owns the glue and nothing else:
+//! - `controls`: keyboard, mouse and gamepads to N64 controllers (menus) and to
+//!   each player's `PlayerInput` (a match);
 //! - `audio`: `pd_menu`/`pd_sim` sound events to engine voices, with PD's pitch;
 //! - `states`: the menu and match states.
 //!
@@ -18,18 +18,26 @@ use engine::app::{AppConfig, Ctx, Game};
 use engine::assets::AssetRoot;
 use engine::egui;
 use engine::gpu::{Filter, Frame, Presenter, RenderTarget};
-use engine::input::KeyCode;
+use engine::input::{KeyCode, MouseButton};
 use engine::wgpu;
 use n64::pad::{A_BUTTON, MAX_PADS, START_BUTTON};
 use n64::rdp::Gfx;
 use pd_core::assets::AssetDir;
+use pd_core::ids::stage_code;
 use pd_core::lv::Lv;
+use pd_core::mp::MatchSetup;
 use pd_menu::mpstate::Profile;
 use pd_menu::{MenuSystem, Outcome, FB_H, FB_W};
+use pd_render::view::{VIEW_H, VIEW_W};
+use pd_render::{Renderer, View};
+use pd_sim::world::World;
 
 use audio::SfxBank;
 use controls::Controls;
-use states::Screen;
+use states::{MatchAssets, Screen};
+
+/// The match view's format: not sRGB, the combiner writes display values.
+const MATCH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// PD's frame rate: how many 60 Hz frames one PD frame lasts (`diffframe60`).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -53,7 +61,7 @@ struct PdGame {
     assets: AssetDir,
     menu: MenuSystem,
     screen: Screen,
-    /// The frame timing the menus run on.
+    /// The frame timing the menus run on (a match has its world's own).
     lv: Lv,
     rate: Rate,
     controls: Controls,
@@ -66,6 +74,15 @@ struct PdGame {
     show_panel: bool,
     /// Quantise the framebuffer to RGBA5551, as the N64's is.
     n64_colour: bool,
+    match_assets: MatchAssets,
+    renderer: Option<Renderer>,
+    /// The stage the renderer has loaded.
+    loaded_stage: Option<String>,
+    /// The match view, `render_scale` × PD's 320 × 220, with depth.
+    match_target: Option<RenderTarget>,
+    render_scale: u32,
+    /// Seeds the next match's `random()`.
+    next_seed: u64,
 }
 
 impl PdGame {
@@ -77,7 +94,9 @@ impl PdGame {
             menu.open_main_menu();
         }
         let sfx = SfxBank::load(&assets).map_err(|e| log::warn!("sfx: {e}; running silent")).ok();
+        let next_seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
         Ok(PdGame {
+            match_assets: MatchAssets::new(&assets),
             assets,
             menu,
             screen: Screen::Menus,
@@ -91,6 +110,11 @@ impl PdGame {
             presenter: None,
             show_panel: true,
             n64_colour: true,
+            renderer: None,
+            loaded_stage: None,
+            match_target: None,
+            render_scale: 4,
+            next_seed,
         })
     }
 
@@ -109,17 +133,126 @@ impl PdGame {
     fn joined(&self) -> [bool; MAX_PADS] {
         std::array::from_fn(|i| self.menu.mp.setup.chrslots & (1 << i) != 0 || self.menu.vars.waitingtojoin[i])
     }
+
+    /// Leave a match (or its stand-in) for the menus, as PD does at the end.
+    fn end_match(&mut self, ctx: &mut Ctx) {
+        self.menu.return_from_match();
+        self.screen = Screen::Menus;
+        self.controls.captured = ctx.set_cursor_captured(false);
+    }
+
+    /// The menus handed over a match: play it if its arena is exported.
+    fn start_match(&mut self, ctx: &mut Ctx, setup: MatchSetup) {
+        let code = stage_code(setup.stagenum).unwrap_or("");
+        if !self.match_assets.has_stage(code) {
+            let lines = self.menu.describe_match(&setup);
+            self.screen = Screen::StandIn { setup, lines };
+            return;
+        }
+        let seed = self.next_seed;
+        self.next_seed = self.next_seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+        match self.load_match(ctx, &setup, code, seed) {
+            Ok(world) => {
+                log::info!("match: stage {code}, {} player(s), seed {seed:#x}", world.players.len());
+                self.screen = Screen::Match(Box::new(world));
+                self.controls.captured = ctx.set_cursor_captured(true);
+            }
+            Err(e) => {
+                log::error!("match: {e}");
+                let mut lines = self.menu.describe_match(&setup);
+                lines.push(format!("Could not start: {e}"));
+                self.screen = Screen::StandIn { setup, lines };
+            }
+        }
+    }
+
+    fn load_match(&mut self, ctx: &mut Ctx, setup: &MatchSetup, code: &str, seed: u64) -> Result<World, String> {
+        let renderer = self.renderer.as_mut().ok_or("no renderer")?;
+        if self.loaded_stage.as_deref() != Some(code) {
+            renderer.load_stage(&ctx.gpu.device, &ctx.gpu.queue, &self.assets, code)?;
+            self.loaded_stage = Some(code.to_owned());
+        }
+        self.match_assets.start(setup.clone(), code, seed)
+    }
+
+    /// One tick of a match. Returns false when the match ended.
+    fn tick_match(&mut self, ctx: &mut Ctx) -> bool {
+        let Screen::Match(world) = &mut self.screen else { return false };
+        if ctx.input.key_pressed(KeyCode::Escape) {
+            self.controls.captured = ctx.set_cursor_captured(false);
+        } else if !self.controls.captured && ctx.input.mouse_pressed(MouseButton::Left) {
+            self.controls.captured = ctx.set_cursor_captured(true);
+        }
+        let (inputs, start) = self.controls.read_match(ctx.input, world.players.len());
+        // SUBST: START opens PD's pause menu, whose End Game leaves the match /
+        // there is no pause menu until M7, so START ends the match.
+        if start {
+            return false;
+        }
+        world.step(4 * self.rate as i32, &inputs);
+        let events = world.take_events();
+        if let Some(sfx) = &self.sfx {
+            sfx.play(ctx.audio.as_deref_mut(), &events);
+        }
+        true
+    }
+
+    fn ensure_match_target(&mut self, ctx: &mut Ctx) {
+        let (w, h) = (VIEW_W * self.render_scale, VIEW_H * self.render_scale);
+        if self.match_target.as_ref().is_none_or(|t| t.width != w || t.height != h) {
+            self.match_target = Some(RenderTarget::new(ctx.gpu, w, h, MATCH_FORMAT, true));
+        }
+    }
+
+    fn match_panel(&mut self, ui: &mut egui::Ui) -> bool {
+        let Screen::Match(world) = &self.screen else { return false };
+        ui.separator();
+        ui.label(format!("MATCH on {} · {} player(s) · frame {}", world.stage.code, world.players.len(), world.lv.lvframenum));
+        for (i, p) in world.players.iter().enumerate() {
+            ui.label(format!("P{} feet ({:.0}, {:.0}, {:.0}) θ {:.1}° pitch {:.1}° room {:?}", i + 1, p.pos.x, p.manground, p.pos.z, p.theta, p.verta, p.floorroom));
+            let crouch = ["squat", "duck", "stand"].get(p.crouchpos as usize).copied().unwrap_or("?");
+            let state = if p.onladder {
+                " · ladder"
+            } else if p.isfalling {
+                " · falling"
+            } else {
+                ""
+            };
+            ui.label(format!("   speed fwd {:.2} side {:.2} · {crouch}{state}", p.speedforwards, p.speedsideways));
+        }
+        ui.label(
+            egui::RichText::new("WASD move · mouse look (click to capture, Esc frees it) · Ctrl/C crouch down · Space crouch up · Enter or pad START: back to the menus (no pause menu until M7)")
+                .weak(),
+        );
+        let mut scale = self.render_scale;
+        egui::ComboBox::from_label("resolution").selected_text(format!("{}×{}", VIEW_W * scale, VIEW_H * scale)).show_ui(ui, |ui| {
+            for s in [1, 2, 3, 4] {
+                ui.selectable_value(&mut scale, s, format!("{}×{}{}", VIEW_W * s, VIEW_H * s, if s == 1 { " (N64)" } else { "" }));
+            }
+        });
+        self.render_scale = scale;
+        ui.button("End the match").clicked()
+    }
 }
 
 impl Game for PdGame {
     fn init(&mut self, ctx: &mut Ctx) {
         self.target = Some(RenderTarget::new(ctx.gpu, FB_W as u32, FB_H as u32, wgpu::TextureFormat::Rgba8Unorm, false));
         self.presenter = Some(Presenter::new(ctx.gpu));
+        self.renderer = Some(Renderer::new(&ctx.gpu.device, &ctx.gpu.queue, MATCH_FORMAT));
     }
 
     fn tick(&mut self, ctx: &mut Ctx) {
         if ctx.input.key_pressed(KeyCode::F1) {
             self.show_panel = !self.show_panel;
+        }
+        let n = self.rate as i32;
+        self.lv.frametime_apply(n, 4 * n);
+        if matches!(self.screen, Screen::Match(_)) {
+            if !self.tick_match(ctx) {
+                self.end_match(ctx);
+            }
+            return;
         }
         let (readings, back2) = self.controls.read(ctx.input, self.joined());
         for (pad, r) in self.menu.pads.iter_mut().zip(readings) {
@@ -127,22 +260,19 @@ impl Game for PdGame {
             pad.connected = r.connected;
         }
         self.menu.back2 = back2;
-        let n = self.rate as i32;
-        self.lv.frametime_apply(n, 4 * n);
         match &self.screen {
             Screen::Menus => {
                 self.menu.frame(&self.lv);
                 if let Some(Outcome::StartMatch(setup)) = self.menu.take_outcome() {
-                    let lines = self.menu.describe_match(&setup);
-                    self.screen = Screen::Match { setup, lines };
+                    self.start_match(ctx, setup);
                 }
             }
-            Screen::Match { .. } => {
+            Screen::StandIn { .. } => {
                 if self.menu.pads.iter().any(|p| p.pressed(START_BUTTON | A_BUTTON) != 0) {
-                    self.menu.return_from_match();
-                    self.screen = Screen::Menus;
+                    self.end_match(ctx);
                 }
             }
+            Screen::Match(_) => {}
         }
         let events = self.menu.take_events();
         if let Some(sfx) = &self.sfx {
@@ -159,26 +289,28 @@ impl Game for PdGame {
         let dialog = self.menu.menus[0].curdialog.map(|d| self.menu.menus[0].dialogs[d].def().name).unwrap_or("-");
         let (mut rate, mut profile, mut kb) = (self.rate, self.profile, self.controls.kb_player);
         let mut restart = false;
+        let mut end = false;
         egui::SidePanel::left("pd").resizable(false).default_width(250.0).show(egui, |ui| {
             ui.heading("PERFECT DARK");
             ui.label(egui::RichText::new("Combat Simulator, from the decomp").weak());
             ui.label(format!("{fps:.0} fps · {pads} pad(s)"));
             ui.label(format!("root {} · {dialog}", self.menu.menudata.root));
-            if let Screen::Match { setup, .. } = &self.screen {
+            if let Screen::StandIn { setup, .. } = &self.screen {
                 ui.label(format!("match: stage {:#x}, {} player(s), {} sim(s)", setup.stagenum, setup.players.len(), setup.simulants.len()));
             }
             if let Some(e) = &self.menu.draw.error {
                 ui.colored_label(egui::Color32::YELLOW, e);
             }
+            end = self.match_panel(ui);
             ui.separator();
-            ui.label("Keyboard: arrows/WASD D-pad · Enter A · Esc B · Space START · Z Z · Q/E L/R · Backspace delete · F1 panel · F2-F4 START on 2-4");
+            ui.label("Menus: arrows/WASD D-pad · Enter A · Esc B · Space START · Z Z · Q/E L/R · Backspace delete · F1 panel · F2-F4 START on 2-4");
             ui.separator();
             egui::ComboBox::from_label("frame rate").selected_text(rate.label()).show_ui(ui, |ui| {
                 for r in [Rate::Hz60, Rate::Hz30, Rate::Hz20] {
                     ui.selectable_value(&mut rate, r, r.label());
                 }
             });
-            ui.checkbox(&mut self.n64_colour, "RGBA5551 framebuffer");
+            ui.checkbox(&mut self.n64_colour, "RGBA5551 framebuffer (menus)");
             ui.separator();
             ui.label("Save file (unlocks)");
             ui.radio_value(&mut profile, Profile::Complete, "Complete (everything unlocked)");
@@ -214,16 +346,31 @@ impl Game for PdGame {
         if restart {
             self.restart();
         }
+        if end {
+            self.end_match(ctx);
+        }
     }
 
     fn render(&mut self, ctx: &mut Ctx, frame: &mut Frame) {
+        if matches!(self.screen, Screen::Match(_)) {
+            self.ensure_match_target(ctx);
+            let (Screen::Match(world), Some(target), Some(presenter), Some(renderer)) = (&self.screen, &self.match_target, &self.presenter, &self.renderer) else { return };
+            let Some(p) = world.players.first() else { return };
+            let (znear, zfar) = renderer.z_range();
+            let view = View::for_player(p, znear, zfar);
+            let depth = &target.depth.as_ref().expect("the match target has depth").1;
+            renderer.render(&ctx.gpu.queue, &mut frame.encoder, &target.view, depth, &view);
+            // The VI shows PD's 220 lines inside a 240-line, 4:3 picture.
+            presenter.present(ctx.gpu, frame, target, (VIEW_W * self.render_scale, 240 * self.render_scale), Filter::Nearest);
+            return;
+        }
         let (Some(target), Some(presenter)) = (&self.target, &self.presenter) else { return };
         let gfx = match &self.screen {
-            Screen::Menus => &self.menu.draw.gfx,
-            Screen::Match { lines, .. } => {
+            Screen::StandIn { lines, .. } => {
                 states::draw_match_stand_in(&mut self.stand_in, &self.menu.draw.res.fonts, lines);
                 &self.stand_in
             }
+            _ => &self.menu.draw.gfx,
         };
         target.upload(ctx.gpu, &gfx.rgba8(self.n64_colour));
         // The VI shows PD's 220 lines inside a 240-line, 4:3 picture.
@@ -272,9 +419,29 @@ mod tests {
         states::draw_match_stand_in(&mut stand_in, &game.menu.draw.res.fonts, &["Arena: Skedar".into()]);
         assert!(stand_in.rgba8(false).chunks(4).any(|p| p[0] > 200 && p[1] > 200 && p[2] < 50), "the yellow title");
         if let Some(out) = std::env::var_os("PD_STAND_IN_PNG") {
-            let m = pd_core::mp::MatchSetup { players: vec![pd_core::mp::MatchPlayer { slot: 0, chr: pd_core::mp::MatchChr { name: "Player 1".into(), ..Default::default() }, handicap: 128, ..Default::default() }], ..Default::default() };
+            let m = MatchSetup { players: vec![pd_core::mp::MatchPlayer { slot: 0, chr: pd_core::mp::MatchChr { name: "Player 1".into(), ..Default::default() }, handicap: 128, ..Default::default() }], ..Default::default() };
             states::draw_match_stand_in(&mut stand_in, &game.menu.draw.res.fonts, &game.menu.describe_match(&m));
             image::save_buffer(out, &stand_in.rgba8(true), FB_W as u32, FB_H as u32, image::ColorType::Rgba8).unwrap();
         }
+    }
+
+    /// A match on Complex, as the menus would start it: the stage is exported,
+    /// the world starts, and a second of walking moves the player.
+    #[test]
+    fn a_complex_match_starts_and_the_player_walks() {
+        let root = AssetRoot::discover("PD_ASSETS", "assets", "MANIFEST.json").unwrap();
+        let assets = AssetDir::new(root.root());
+        let mut ma = MatchAssets::new(&assets);
+        let code = stage_code(pd_core::ids::STAGE_MP_COMPLEX).unwrap();
+        assert!(ma.has_stage(code));
+        assert!(!ma.has_stage(stage_code(pd_core::ids::STAGE_MP_SKEDAR).unwrap()), "only Complex until M9");
+        let setup = MatchSetup { stagenum: pd_core::ids::STAGE_MP_COMPLEX, players: vec![pd_core::mp::MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
+        let mut world = ma.start(setup, code, 3).unwrap();
+        let start = world.players[0].pos;
+        let fwd = pd_sim::player::PlayerInput { walk_y: 127, ..Default::default() };
+        for _ in 0..60 {
+            world.step(4, std::slice::from_ref(&fwd));
+        }
+        assert!(world.players[0].pos.distance(start) > 100.0, "walked from {start} to {}", world.players[0].pos);
     }
 }

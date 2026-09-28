@@ -19,6 +19,7 @@ Every path comes from `pd_paths.py`: the decomp is `PD_DECOMP_DIR` or `reference
 | `pd_weapons.py` | the MP weapon table with provenance (feeds `build_weapons`) |
 | `pd_model.py`, `pd_anim.py`, `pd_pose.py`, `pd_tex.py` | shared parsers and decoders (model `.bin`, animation bank, textures) |
 | `pd_gltf.py` | texconfig reading and inline-texture decoding used by `export_model`. Its GLB writer is retired: bodies are PD model files now |
-| `pd_bg.py` | a stage's textured BG (Complex). `used_textures` feeds the pool now; M3 grows it into the stage exporter |
-| `check_against_spikes.py` | the M1 regression check: every texture, animation, sound, font, model and the weapon table against the old repo, with the intended differences named |
-| `pd_preview.py`, `pd_triage.py`, `pd_animmap.py`, `pd_bg_preview.py` | analysis tools from the spikes. The first three work on the old repo's GLB exports and are kept only for reference |
+| `pd_stage.py` | a stage, `stages/<code>/`: the BG (`pd_bg.build`, written in the one model format, textures in the pool), `tiles.json` (collision, GEOFLAG bits), `pads.json` (pads, waypoints, waygroups, cover), `setup.json` (the MP setup's `intro[]` and `props[]`, by macro parameter name) |
+| `pd_bg.py` | the BG interpreter: `bg_reset`/`bg_load_room` over `bg_<code>.seg`, every room's display lists through the GBI interpreter, the environment row (`g_NoFogEnvironments`) |
+| `check_against_spikes.py` | the regression check: every texture, animation, sound, font, model, the weapon table and the stage BGs against the old repo, with the intended differences named |
+| `pd_preview.py`, `pd_triage.py`, `pd_animmap.py`, `pd_bg_preview.py` | analysis tools from the spikes, kept only for reference: the first three work on the old repo's GLB exports, `pd_bg_preview.py` on the spike's inline-vertex `bg.json` (the old repo's `levels/pd_bg/`) |

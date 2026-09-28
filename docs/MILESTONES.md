@@ -2,7 +2,7 @@
 
 Each milestone is sized to fit one Claude context and ends in something checkable: tests, snapshots or a playtest. Start a new context by reading [../CLAUDE.md](../CLAUDE.md), [ARCHITECTURE.md](ARCHITECTURE.md), then this file's **Status** and the milestone's own section. End a context by updating **Status**, ticking what was done, and noting anything the next context must know under the milestone.
 
-"Old repo" = `D:\Claude Code Projects\Hide and Seek Level Builder`, branch `spike/pd-combat-sim-menu` (its working tree also holds the untracked `pd_complex` spike). Old code paths are under `native/crates/game/src/`.
+"Old repo" = `D:\Claude Code Projects\Hide and Seek Level Builder`, branch `main`, which has merged every spike (the menus and the Complex fight). Old code paths are under `native/crates/game/src/`.
 
 ## Status
 
@@ -11,8 +11,8 @@ Each milestone is sized to fit one Claude context and ends in something checkabl
 | M0 | Architecture + skeleton | **done** (2026-09-27) |
 | M1 | Foundations: `pd_core` + `n64` CPU + asset pipeline | **done** (2026-09-27) |
 | M2 | Engine runner + the menus boot | goldens match (2026-09-27); **awaiting the user's playtest** |
-| M3 | Stages + walking Complex | next |
-| M4 | Guns (hitscan, HUD, effects) | — |
+| M3 | Stages + walking Complex | tests and snapshots pass (2026-09-27); **awaiting the user's playtest** |
+| M4 | Guns (hitscan, HUD, effects) | next |
 | M5 | Guns (projectiles, explosives, specials, N64 video, TV audio) | — |
 | M6 | Simulants: a Combat match on Complex | — |
 | M7 | Match flow: limits, pause, results, teams, options | — |
@@ -114,12 +114,32 @@ Checked: `cargo test --workspace --release` green (n64 9, pd_core 35, engine 6, 
 
 **Goal:** from the menus, "Start" on Complex drops the player into the textured level, walking with PD's movement. No guns yet.
 
-- Stage exporter: `pd_bg.py` + a new tiles/pads/setup exporter → `assets/stages/ref/`. Trim the tiles JSON to what `LevelGeom` needs; parse `mp_setupref.c` spawns and weapon pads into `setup.json`.
-- `pd_sim::stage`: `level_geom`, `tile_level`, and the stage loader (was `pd_tiles`); the arena and range fixtures.
-- `pd_sim::player`: `bondmove`/`bondwalk`/`bondhead` from `pd_guns/player.rs`, with `PlayerInput` per player and control style 1.1.
-- `n64::gpu` combiner pipeline + `pd_render::{bg, view}`; the Match state in `pd_game`.
-- `pd_sim::world` skeleton: one `Lv`, one `Rng`, players, the event queue, PD frame order.
-- Tests: the player walks 398/401 of PD's Complex waypoint links (the spike's pinned result, same 3 known bad links). Snapshots: 8 spawn-pad views, checked against the old `pd_complex_snapshot` frames.
+- [x] **Stage exporter** `tools/pd-assets/pd_stage.py` → `assets/stages/ref/`: `bg.json + bg.bin` (`pd_bg.build`, now a library, written in the one model format with its textures in the pool, plus the rooms and the whole `g_NoFogEnvironments` row), `tiles.json` (GEOFLAG bits, floor type, rooms ascending), `pads.json` (PADFLAG bits, PD-encoded waypoint/waygroup segments, cover), `setup.json` (`intro[]` and `props[]` by the macros' own parameter names). `build_assets.py` owns `stages/`; two runs are byte-identical. `check_against_spikes.py` also checks the BG: identical to the spike's export in every node, material, vertex and index.
+- [x] `pd_core::ids` gains `GEOFLAG_*`, `PADFLAG_*`, `FLOORTYPE_*`, `CROUCHPOS_*` (generated); `pd_core::math::badrtod4`; `ModelDef::load_file` (any json/bin pair) and `ModelDef::from_nodes` (code-defined modeldefs: `g_PlayerModeldef`).
+- [x] `pd_sim::stage`: `geom` (`LevelGeom`/`GeomPoly`), `collision` (`TileLevel`, the `collision.c` primitives), `fixtures` (the arena and the firing range as polygons), `Stage::load` (tiles, pads, waypoints, spawns, props) and `Stage::waypoint_links`.
+- [x] `pd_sim::player`: `bondmove`/`bondwalk`/`bondhead` from `pd_guns/player.rs` with the `bgun` coupling cut (every gun call is a `// M4:` marker at its call site); `crouchpos`, `bondbreathing`, `insightaimmode`, `guncloseroffset` live on the player, as in PD. `PlayerInput` per player: control style 1.1 for a pad, the PC port's mouse aim for the keyboard. Footsteps (`bondmove.c:1933`), `player_choose_spawn_location` + `player_start_new_life` (PD's own placement, not the spike's harness drop), and in `pd_sim::chr` `chr_adjust_pos_for_spawn` and `footstep_choose_sound`.
+- [x] `pd_sim::world`: one `Lv`, one `Rng`, the stage, the players, the event queue; `World::step(diffframe240, inputs)` runs `lv_tick`, then each player's `bmove_tick`.
+- [x] `n64::gpu`: the combiner (`combiner.wgsl`, the spike's `pdgun.wgsl` without its sRGB step) over the same `rdp::DrawState` + `rdp::MipTex` the CPU rasteriser takes; pipelines by blend/z/cull key; `Cull::Both` draws nothing.
+- [x] `pd_render::{view, bg}` + `Renderer`: PD's view (fovy 60, aspect 320/220, the stage's z range 15..10000), the BG in node order (every opaque room, then every translucent one), cleared to the environment's sky colour.
+- [x] `engine`: `HeadlessGpu`, `RenderTarget::on_device` + `read_rgba8`, `Ctx::set_cursor_captured`.
+- [x] `pd_game`: a real Match state on Complex (other arenas keep the stand-in until M9); `Controls::read_match` (pad k → player k in style 1.1; keyboard + mouse → the keyboard's player, and an idle pad on that slot leaves the keyboard in charge); render scale 1-4× in the F1 panel; START, Enter or "End the match" goes back to the menus.
+- [x] `pd_snapshot <out> stage <code> [--size WxH] [--spawns n] [--frames n]`.
+
+Checked: `cargo test --workspace --release` green (n64 11, pd_core 35, engine 6, pd_menu 8 + the 25 goldens, pd_sim 18 + 1 ignored probe, pd_render 2, pd_game 3), clippy clean on the workspace, `check_boundaries.py` ok, `check_against_spikes.py` OK (the stage BG included).
+
+- **The player walks 398 of PD's 401 Complex waypoint links** with exactly the spike's three known failures (`0x01→0x03`, `0x0f→0x0e`, `0x88→0x8a`). Ledge drops fall, land and dip. The walk eases in (6 cm/tick after about 11 ticks, 8.2–8.6 at a run) and out (exponentially: below 1 cm/tick after 20–40 ticks). Crouching works and a ceiling refuses standing up. Metal footsteps come just under one per 150 cm. Four players spawn on four spawn spots facing along their pads. A seeded walk is reproducible bit for bit.
+- **Snapshots:** the 8 spawn-pad views at 960×540 against the old `pd_complex_snapshot` frames show the same geometry, framing, textures and baked shadows. The median per-pixel difference is 0–10/255 outside the gun and HUD. The worst (spawn 7) is a 3 px / 2 px shift (≈0.3° yaw, 0.2° pitch), inside PD's idle head roll (±0.01 rad, drawn from the RNG, which the spike seeded differently); aligned, its error is 6/255. Expected differences: the old frames have the gun and HUD (M4), a grey engine clear where we clear to Complex's sky (0x02,0,0), and translucent surfaces blended in linear light (the spike drew into an sRGB swapchain; we blend display values, as the RDP does).
+
+**Done when:** tests and snapshots pass (yes), and the user playtests walking Complex from the menus (pending).
+
+### Notes for the next contexts
+
+- **Playtest brief:** `cargo build --release`, run `target/release/perfect_dark.exe --combat`, choose **Complex** as the arena, Start Game. Look at: the spawn and the first view; WASD and mouse look (click to capture, Esc frees); the ease-in and ease-out, the head bob, strafing and turning; stairs, ramps, ledge drops and the landing dip; the ladder near (−700, −1890); crouching into the crawl space (Ctrl/C down, Space up); the metal footsteps; an N64 pad (style 1.1: the stick walks and turns, C-buttons strafe and look, R + C-down crouches); 30 and 20 Hz in the F1 panel; the render scale; START or Enter back to the menus, then a second match. Other arenas still show the stand-in.
+- **The gun hooks.** `pd_sim/src/player/bondmove.rs` and `bondwalk.rs` carry `// M4:` at every place PD calls `bondgun.c`: the use/B timers (`bgun_consider_toggle_gun_function`, `bgun_reload_if_possible`, `bgun_release_use`), A-cycling (`bgun_cycle`), the trigger and manual zoom (`bgun_tick_gameplay`, `gset_zoom_*`), the zoom fov (`gset_get_gun_zoom_fov`), the crosshair swivel (`bgun_swivel_with_damp` / `_without_damp`), and the sway (`bgun_update_sway`, `bgun_set_adjust_pos`, fed by the already-ported `bhead_get_breathing_value`). The spike's versions are in `pd_guns/player.rs`. What the spike kept in `bgun.p` is the player's now: read `crouchpos`, `bondbreathing`, `insightaimmode`, `guncloseroffset` and `aspect` from `Player`.
+- **Rendering for M4:** `n64::gpu::Combiner` is the one material path. A gun is a `FrameSlot` with its matrices (`joints`), `FrameUniform` lights (the spike's `var80070090` and the room brightness), `Extras { env_from_frame, fog_tint }` for `gunshadecol`, and its own depth pass (clear z, near 1.5, far 1000). Call `Material::key(cull)` + `Combiner::prepare` before the pass; the caller skips `Cull::Both`. `pd_core::model::draw::draw_state` maps a model `Material` to the `DrawState` both paths take.
+- **The old snapshot tools** build into the session's scratchpad: in the old repo's `native/`, `CARGO_TARGET_DIR=<scratch>/oldtarget cargo build --release --locked -p game --bin pd_complex_snapshot` (a few minutes cold), then run it with an output dir in the scratchpad. `pd_gun_snapshot` (M4) builds the same way.
+- **Still spike-shaped (M6/M9):** rooms come from the tiles (a pad's room is its floor's; neighbours by shared edges); every polygon is a collision candidate; no portals, room brightness, sky/clouds (Complex has a cloud layer, 0x82aac8) or dyntex. `bg.json` does not carry the per-vertex colour index `room_highlight` needs, nor the dyntex s/t (`pd_bg.interpret` computes them; the writer drops them). Complex's five `MODEL_A51_CRATE2` objects are in `setup.json` but not in the world (props, M8/M9), so the player walks through where they stand. A 4-second fall respawns at once (`// SUBST:` in `world.rs`; deaths are M6-M7).
+- `pd_sim::player::tests::probe_spawn_floors` (ignored) prints each spawn pad's ground by PD's placement and by the spike's harness drop: they agree on Complex.
 
 ---
 

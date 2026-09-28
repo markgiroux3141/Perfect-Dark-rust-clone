@@ -40,6 +40,7 @@
 //! 0.1`, `body.c:170`).
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use glam::Vec3;
@@ -297,12 +298,17 @@ fn parse_cull(s: &str) -> Option<Cull> {
 impl ModelDef {
     /// Load `models/<stem>.json` + `.bin`.
     pub fn load(assets: &AssetDir, stem: &str) -> Result<ModelDef, String> {
-        let head: Header = assets.read_json(&assets.model_json(stem))?;
+        Self::load_file(assets, &assets.model_json(stem), &assets.model_bin(stem))
+    }
+
+    /// Load any file in the model format, e.g. a stage's `stages/<code>/bg.json`
+    /// + `bg.bin`.
+    pub fn load_file(assets: &AssetDir, json_path: &Path, bin_path: &Path) -> Result<ModelDef, String> {
+        let head: Header = assets.read_json(json_path)?;
         if head.format != "pd-model/1" {
-            return Err(format!("{stem}: format {:?}, expected pd-model/1", head.format));
+            return Err(format!("{}: format {:?}, expected pd-model/1", json_path.display(), head.format));
         }
-        let bin_path = assets.model_bin(stem);
-        let data = assets.read(&bin_path)?;
+        let data = assets.read(bin_path)?;
         let err = |what: &str| format!("{}: {what}", bin_path.display());
         let mut off = 0usize;
         let f32_at = |o: usize| f32::from_le_bytes([data[o], data[o + 1], data[o + 2], data[o + 3]]);
@@ -332,6 +338,44 @@ impl ModelDef {
             return Err(err("trailing bytes"));
         }
         Ok(Self::from_parts(head, batches))
+    }
+
+    /// A model defined in code rather than in a file (`g_PlayerModeldef`,
+    /// `modeldata/player.c:13`): `(kind, parent, partnum)` per node in preorder,
+    /// no display lists.
+    pub fn from_nodes(name: &str, skel: i32, nummatrices: usize, nodes: Vec<(NodeKind, Option<usize>, Option<i32>)>) -> ModelDef {
+        let n = nodes.len();
+        let mut nodes: Vec<Node> = nodes
+            .into_iter()
+            .map(|(kind, parent, partnum)| Node { kind, parent, partnum, cull_exit: None, batches: Vec::new(), subtree_end: n })
+            .collect();
+        Self::set_subtree_ends(&mut nodes);
+        let parts = nodes.iter().enumerate().filter_map(|(i, nd)| nd.partnum.map(|p| (p, i))).collect();
+        ModelDef {
+            name: name.to_owned(),
+            stem: name.to_owned(),
+            filenum: 0,
+            skel,
+            nummatrices: nummatrices.max(1),
+            nodes,
+            parts,
+            materials: Vec::new(),
+            textures: HashMap::new(),
+            batches: Vec::new(),
+            bbox: None,
+        }
+    }
+
+    /// Preorder: a subtree ends at the first later node that is not below it.
+    fn set_subtree_ends(nodes: &mut [Node]) {
+        let n = nodes.len();
+        for i in 0..n {
+            let mut end = i + 1;
+            while end < n && Self::is_below(nodes, end, i) {
+                end += 1;
+            }
+            nodes[i].subtree_end = end;
+        }
     }
 
     fn from_parts(head: Header, batches: Vec<Batch>) -> ModelDef {
@@ -375,14 +419,7 @@ impl ModelDef {
                 node.batches.push(bi);
             }
         }
-        // Preorder: a subtree ends at the first later node that is not below it.
-        for i in 0..n {
-            let mut end = i + 1;
-            while end < n && Self::is_below(&nodes, end, i) {
-                end += 1;
-            }
-            nodes[i].subtree_end = end;
-        }
+        Self::set_subtree_ends(&mut nodes);
         let bbox = nodes.iter().find_map(|n| match n.kind {
             NodeKind::BBox { bbox, .. } => Some(bbox),
             _ => None,

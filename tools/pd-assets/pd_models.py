@@ -40,7 +40,7 @@ indices into that batch's vertices.
 
 `textures/<num>.png` (RGBA8, level 0, in N64 display space: no gamma) for every
 pool texture a model references, plus the ones the menus, the gun effects and the
-Complex BG sample directly. `textures/index.json`: {"<num>": {w, h, format, codec,
+stage BGs sample (added by `pd_stage.py`). `textures/index.json`: {"<num>": {w, h, format, codec,
 numcolours, numlods, hasloddata}}. PD rebuilds mip levels at load
 (`tex_shrink_*`) unless `hasloddata`; per-use texconfig levels are in each model's
 `textures` entry. Textures stored inside a model file (a51guard, dd_shock, elvis,
@@ -61,7 +61,6 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-import pd_bg  # noqa: E402
 import pd_fpgun  # noqa: E402
 import pd_gltf  # noqa: E402
 import pd_menu_gen as gen  # noqa: E402
@@ -95,10 +94,6 @@ FX_TEXTURES = [
     0x0038, 0x0039, 0x003A, 0x003B, 0x063B, 0x0854, 0x0855, 0x0856, 0x0859, 0x085A,
     0x08F0, 0x0B53, 0x0C27, 0x0C28, 0x0C32, 0x0C97, 0x0DA5,
 ]
-
-#: Stages whose BG textures join the pool now (M3 exports the stage itself).
-BG_STAGES = ["ref"]
-
 
 # ---------------------------------------------------------------------------
 # FILE_* numbers
@@ -259,8 +254,11 @@ class TexturePool:
 # ---------------------------------------------------------------------------
 
 
-def write_model(d: dict, stem: str, filenum: int, filename: str) -> tuple[int, int]:
-    """Split the exporter's dict into `<stem>.json` + `<stem>.bin`; (bytes, tris)."""
+def write_model(d: dict, stem: str, filenum: int, filename: str, dirpath: str | None = None,
+                exporter: str = "tools/pd-assets/pd_models.py", extra: dict | None = None) -> tuple[int, int]:
+    """Split the exporter's dict into `<stem>.json` + `<stem>.bin` in `dirpath`
+    (default `models/`), with `extra` keys added to the header; (bytes, tris)."""
+    dirpath = dirpath or out("models")
     blob = bytearray()
     heads = []
     for b in d["batches"]:
@@ -278,7 +276,7 @@ def write_model(d: dict, stem: str, filenum: int, filename: str) -> tuple[int, i
         "filenum": filenum,
         "file": filename,
         "source": d["source"],
-        "exporter": "tools/pd-assets/pd_models.py",
+        "exporter": exporter,
         "skel": d["skel"],
         "nummatrices": d["nummatrices"],
         "nodes": d["nodes"],
@@ -287,11 +285,13 @@ def write_model(d: dict, stem: str, filenum: int, filename: str) -> tuple[int, i
         "textures": d["textures"],
         "batches": heads,
         "vertex": VERTEX_LAYOUT,
+        **(extra or {}),
     }
-    with open(out("models", stem + ".json"), "w", encoding="utf-8", newline="\n") as fh:
+    os.makedirs(dirpath, exist_ok=True)
+    with open(os.path.join(dirpath, stem + ".json"), "w", encoding="utf-8", newline="\n") as fh:
         json.dump(head, fh, separators=(",", ":"))
         fh.write("\n")
-    with open(out("models", stem + ".bin"), "wb") as fh:
+    with open(os.path.join(dirpath, stem + ".bin"), "wb") as fh:
         fh.write(bytes(blob))
     return len(blob), sum(len(b["indices"]) // 3 for b in d["batches"])
 
@@ -333,8 +333,10 @@ def export_bodies(c: gen.Consts, table: dict[str, tuple[int, str]]) -> int:
     return len(rows)
 
 
-def export_all(weapons: dict) -> dict:
-    """Export the models and the pool. Returns counts for MANIFEST.json."""
+def export_all(weapons: dict) -> tuple[dict, "TexturePool"]:
+    """Export the models and start the pool. Returns counts for MANIFEST.json and
+    the pool, which the stage exporter adds its BG textures to before the caller
+    writes `textures/index.json` (`TexturePool.write_index`)."""
     c = consts()
     table = file_table()
     pool = TexturePool()
@@ -356,10 +358,6 @@ def export_all(weapons: dict) -> dict:
             print(f"  {stem}: {w}", file=sys.stderr)
     for n in MENU_TEXTURES + FX_TEXTURES:
         pool.pool(n)
-    for stage in BG_STAGES:
-        for n in pd_bg.used_textures(stage):
-            pool.pool(n)
-    pool.write_index()
     nbodies = export_bodies(c, table)
     with open(out("models", "index.json"), "w", encoding="utf-8", newline="\n") as fh:
         json.dump({k: index[k] for k in sorted(index)}, fh, indent=1)
@@ -367,13 +365,16 @@ def export_all(weapons: dict) -> dict:
     nlocal = len(os.listdir(out("models", "tex")))
     print(f"pd_models: {len(index)} models ({total / 1e6:.1f} MB), {len(pool.entries)} pool textures, "
           f"{nlocal} model-local textures, {warned} warnings")
-    return {"models": len(index), "pool_textures": len(pool.entries), "model_textures": nlocal,
-            "headsandbodies": nbodies}
+    return {"models": len(index), "model_textures": nlocal, "headsandbodies": nbodies}, pool
 
 
 def main() -> int:
+    import pd_stage  # noqa: PLC0415 (the stage exporter imports this module)
+
     weapons, _ = pd_fpgun.build_weapons()
-    export_all(weapons)
+    _, pool = export_all(weapons)
+    pd_stage.export_all(pool)
+    pool.write_index()
     return 0
 
 

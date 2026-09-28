@@ -7,7 +7,9 @@
 //! * `menu [--scale <n>] [--fresh] [--combat] <steps...>`: the menus under a
 //!   scripted N64 controller, one PNG per `shot:<name>` (M2; the format is in
 //!   `pd_menu::script`);
-//! * `guns`, `stage`, `match`: later milestones.
+//! * `stage <code> [--size WxH] [--spawns n] [--frames n]`: a player's view from
+//!   the stage's spawn pads, on the GPU (M3);
+//! * `guns`, `match`: later milestones.
 
 use std::path::Path;
 
@@ -15,7 +17,7 @@ fn main() {
     env_logger::init();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (Some(outdir), Some(what)) = (args.first(), args.get(1)) else {
-        eprintln!("usage: pd_snapshot <outdir> <what> [args...]   (what: model, menu)");
+        eprintln!("usage: pd_snapshot <outdir> <what> [args...]   (what: model, menu, stage)");
         std::process::exit(2);
     };
     let outdir = Path::new(outdir);
@@ -23,7 +25,8 @@ fn main() {
     let result = match what.as_str() {
         "model" => pd_tools::snapshot::model::run(outdir, rest).map(|p| vec![p]),
         "menu" => pd_tools::snapshot::menu::run(outdir, rest),
-        other => Err(format!("unknown target {other:?} (M2 has: model, menu)")),
+        "stage" => pd_tools::snapshot::stage::run(outdir, rest),
+        other => Err(format!("unknown target {other:?} (M3 has: model, menu, stage)")),
     };
     match result {
         Ok(paths) => {
