@@ -10,7 +10,7 @@ Each milestone is sized to fit one Claude context and ends in something checkabl
 |---|---|---|
 | M0 | Architecture + skeleton | **done** (2026-09-27) |
 | M1 | Foundations: `pd_core` + `n64` CPU + asset pipeline | **done** (2026-09-27) |
-| M2 | Engine runner + the menus boot | goldens match (2026-09-27); **awaiting the user's playtest** |
+| M2 | Engine runner + the menus boot | **done** (2026-09-28) |
 | M3 | Stages + walking Complex | **done** (2026-09-27) |
 | M4 | Guns (hitscan, HUD, effects) | **done** (2026-09-27) |
 | M5 | Guns (projectiles, explosives, specials, N64 video, TV audio) | **done** (2026-09-28) |
@@ -78,7 +78,7 @@ Checked: `cargo test --workspace --release` green (n64 9, pd_core 35), `check_bo
 
 ---
 
-## M2: Engine runner + the menus boot
+## M2: Engine runner + the menus boot (done)
 
 **Goal:** `cargo run --release` opens a window on PD's Perfect Menu, with the Combat Simulator dialogs, sound and N64 pad, and "Start" hands back a real `MatchSetup`.
 
@@ -91,7 +91,7 @@ Checked: `cargo test --workspace --release` green (n64 9, pd_core 35), `check_bo
 
 Checked: `cargo test --workspace --release` green (n64 9, pd_core 35, engine 6, pd_menu 8 + the golden test, pd_game 2), clippy clean on the workspace, `check_boundaries.py` ok (it now also fails if `engine`'s source names the game or the console).
 
-**Done when:** goldens match (yes), and the user playtests the menus in the window (pending).
+**Done when:** goldens match (yes), and the user playtests the menus in the window (yes, 2026-09-28: used through every playtest from M3 to M8; "that all works").
 
 ### Notes for the next contexts
 
@@ -232,7 +232,7 @@ Checked: `cargo test --workspace --release` green (engine 6, n64 27, pd_core 34,
 - **Left for later:** `lastshooter`/`timeshooter` (a fall is a suicide; M7 scoring), shields and pickups (M8), simulant cloaks (M8/M11), splats and bruises (M12), the other humans' third-person bodies (M12), the kill feed and scores (M7). `Event::Kill` carries every death.
 - **Harness gotchas:** `harness::place` takes the floor point and hands PD's spawn code a pad-height point (50 cm up); the chrs spawn on the first `step`, so place after it; `World::bot_brains = false` stops the thinking but not the physics (the shots still shove).
 
-## M7: Match flow
+## M7: Match flow (done)
 
 Time and score limits, the pause menu over the game, end of match with PD's results and stats dialogs, back to the menus; teams and team scores; MP options (one-hit kills, slow motion, fast movement, no radar yet, and so on). `pd_sim::mp`.
 
