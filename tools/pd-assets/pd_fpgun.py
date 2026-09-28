@@ -61,10 +61,12 @@ import pd_tex  # noqa: E402
 import pd_weapons  # noqa: E402
 from pd_model import seg_off, seg_ok  # noqa: E402
 
-REPO = os.path.dirname(os.path.dirname(HERE))
-ASSETS = os.path.join(REPO, "reference", "pd-decomp", "src", "assets", "ntsc-final")
+from pd_paths import ASSETS, REPO, decomp_rel, src  # noqa: E402,F401
+
 GUNS_DIR = os.path.join(ASSETS, "files", "guns")
-DEFAULT_OUT = os.path.join(REPO, "native", "assets", "weapons", "pd_fp")
+#: Scratch output for the standalone `all`/`props` commands; build_assets.py
+#: writes the real layout through pd_models.py.
+DEFAULT_OUT = os.path.join(REPO, "out", "pd_fpgun")
 
 # ---------------------------------------------------------------------------
 # GBI constants (include/PR/gbi.h, include/gbiex.h, fast3d's gfx_run_dl)
@@ -170,6 +172,7 @@ NODE_POSITION, NODE_GUNDL, NODE_DISTANCE, NODE_REORDER = 0x02, 0x04, 0x08, 0x09
 NODE_TYPE11, NODE_TOGGLE, NODE_POSITIONHELD, NODE_STARGUNFIRE, NODE_DL = 0x11, 0x12, 0x15, 0x16, 0x18
 NODE_BBOX = 0x0A
 NODE_CHRGUNFIRE = 0x0C
+NODE_CHRINFO = 0x01
 
 VTX_SIZE = 12
 
@@ -628,8 +631,12 @@ def model_parts(m: pd_model.ModelDef) -> dict[int, int]:
     return pd_gltf.model_parts(m)
 
 
-def export_model(path: str, texdir: str, texprefix: str = "tex_") -> tuple[dict, list[str]]:
-    """One gun/hand model → the spike's JSON dict, textures written to `texdir`."""
+def export_model(path: str, texdir: str | None, texprefix: str = "tex_", tex_sink=None) -> tuple[dict, list[str]]:
+    """One model file → the exporter's dict (nodes, parts, materials, batches, textures).
+
+    Textures go to `tex_sink(model, texconfig, texid, stem) -> entry` when given
+    (pd_models.py's global pool), else they are written into `texdir` as before.
+    The sink raises `pd_tex.UnsupportedTexture` for a texture it cannot decode."""
     m = pd_model.load(path)
     cfgs = pd_gltf.read_texconfigs(m)
     nodes, index = walk_with_parents(m)
@@ -658,7 +665,12 @@ def export_model(path: str, texdir: str, texprefix: str = "tex_") -> tuple[dict,
         if n.offset in part_of_node:
             rec["partnum"] = part_of_node[n.offset]
         ro = seg_off(n.rodata) if seg_ok(n.rodata) else None
-        if t == NODE_POSITION and ro is not None:
+        if t == NODE_CHRINFO and ro is not None:
+            # struct modelrodata_chrinfo (types.h): the chr root that
+            # model_update_chr_node_mtx (model.c:726) positions.
+            animpart, mtxindex = struct.unpack_from(">Hh", m.data, ro)
+            rec.update(animpart=animpart, mtx=[mtxindex, -1, -1])
+        elif t == NODE_POSITION and ro is not None:
             x, y, z, part, i0, i1, i2 = struct.unpack_from(">fffHhhh", m.data, ro)
             rec.update(pos=[x, y, z], animpart=part, mtx=[i0, i1, i2], flags=n.type & 0xFF00)
         elif t == NODE_POSITIONHELD and ro is not None:
@@ -739,6 +751,12 @@ def export_model(path: str, texdir: str, texprefix: str = "tex_") -> tuple[dict,
         # Embedded textures are numbered per file, so their PNGs carry the model's
         # name (two casings both have an embedded texture 0).
         stem = os.path.splitext(os.path.basename(path))[0]
+        if tex_sink is not None:
+            try:
+                textures[str(texid)] = tex_sink(m, cfg, texid, stem)
+            except pd_tex.UnsupportedTexture as e:
+                interp.warnings.append(f"texture {texid:#x} undecodable: {e}")
+            continue
         fname = f"{texprefix}{stem}_{texid & 0xFFFF:03x}.png" if texid >= 0x10000 else f"{texprefix}{texid:04x}.png"
         try:
             w, h, rgba, src = pd_gltf.resolve_texture(m, cfg, cfg.texnum if cfg.texnum is not None else -1)
@@ -763,7 +781,7 @@ def export_model(path: str, texdir: str, texprefix: str = "tex_") -> tuple[dict,
 
     return {
         "name": m.name,
-        "source": os.path.relpath(path, REPO).replace("\\", "/"),
+        "source": decomp_rel(path),
         "nummatrices": m.nummatrices,
         "skel": m.skel,
         "nodes": out_nodes,
@@ -798,7 +816,7 @@ def load_anim_table() -> tuple[list[dict], dict[str, int]]:
 def scrape_sfx() -> dict[str, int]:
     """`enum sfxnum` + `enum sfxmap` (include/sfx.h:27, :1580 — the mapped ids
     start at an explicit 0x8000)."""
-    p = os.path.join(REPO, "reference", "pd-decomp", "src", "include", "sfx.h")
+    p = src("include", "sfx.h")
     return pd_weapons.scrape_enums(p, ("sfxnum", "sfxmap"))
 
 

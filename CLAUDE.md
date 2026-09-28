@@ -10,9 +10,10 @@ A faithful recreation of Perfect Dark's Combat Simulator (NTSC final): the menus
 cargo build --release                       # the game: target/release/perfect_dark.exe
 cargo test --workspace --release            # all tests
 cargo test -p pd_sim --release -- --ignored --nocapture   # long probes
-cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # offscreen PNGs
+cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # offscreen PNGs (e.g. `out model dark_combat --gun chrfalcon2`)
 python tools/check_boundaries.py            # headless crates stay headless
-python tools/pd-assets/build_assets.py      # regenerate assets/ from the decomp (M1+)
+python tools/pd-assets/build_assets.py      # regenerate assets/ (and crates/pd_core/src/ids.rs) from the decomp
+python tools/pd-assets/check_against_spikes.py   # assets/ against the old repo's exports
 ```
 
 - The first build is slow (~2.5 min). Incremental builds are seconds. The linker is `rust-lld` (`.cargo/config.toml`).

@@ -80,11 +80,11 @@ from pd_fpgun import (  # noqa: E402
     G_CYC_2CYCLE, MDSFT_TEXTFILT, MDSFT_TEXTLOD, RM_AA_ZB_OPA_SURF2, CC_TRILERP_MODULATEIA2,
 )
 
-REPO = os.path.dirname(os.path.dirname(HERE))
-DECOMP = os.path.join(REPO, "reference", "pd-decomp")
-SRC = os.path.join(DECOMP, "src")
-ASSETS = os.path.join(SRC, "assets", "ntsc-final")
-DEFAULT_OUT_ROOT = os.path.join(REPO, "native", "assets", "levels", "pd_bg")
+from pd_paths import ASSETS, DECOMP, REPO, SRC, decomp_rel, out  # noqa: E402,F401
+
+# SUBST: M3 turns this into the stage exporter writing assets/stages/<code>/.
+# Until then it writes the spike's layout under assets/stages/ for inspection.
+DEFAULT_OUT_ROOT = out("stages")
 
 #: stage file stem -> (STAGE_* constant, bg file). stagetable.c:22 for ref.
 STAGES = {
@@ -614,6 +614,25 @@ def flatten(interp, node_room, batch_extra):
 # ---------------------------------------------------------------------------
 
 
+def used_textures(stem: str) -> list[int]:
+    """The global texture numbers stage `stem`'s BG draws, interpreted exactly as
+    `export` does. The texture pool (pd_models.py) takes these until M3's stage
+    exporter writes the stage itself."""
+    stage_name, fname = STAGES[stem]
+    bg = BgFile(os.path.join(ASSETS, "files", "bgdata", fname))
+    rooms = [bg.load_room(r) for r in range(1, bg.roomcount)]  # bg.c:2767
+    fog, transparency, _ = env_flags(stage_name)
+    if fog:
+        raise NotImplementedError(f"{stage_name} runs with fog (groups 1/5 not ported)")
+    if not transparency:  # bg.c:2974
+        g6, g7 = replace_group(6), replace_group(7)
+        for room in rooms:
+            gfx_replace(room, room.opa_leaves, g6)
+            gfx_replace(room, room.xlu_leaves, g7)
+    interp, *_ = interpret(bg, rooms)
+    return sorted({m["texture"]["id"] for m in interp.materials if m["texture"]})
+
+
 def export(stem: str, outdir: str) -> dict:
     stage_name, fname = STAGES[stem]
     path = os.path.join(ASSETS, "files", "bgdata", fname)
@@ -715,7 +734,7 @@ def export(stem: str, outdir: str) -> dict:
 
     model = {
         "name": f"bg_{stem}",
-        "source": os.path.relpath(path, REPO).replace("\\", "/"),
+        "source": decomp_rel(path),
         "exporter": "tools/pd-assets/pd_bg.py",
         "stage": stage_name,
         "units": "cm (world; room pos added, stage scale 1)",

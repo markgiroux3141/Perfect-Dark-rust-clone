@@ -11,10 +11,11 @@ Rather than hand-copy ~5000 lines of initialisers, this script parses them out
 of the decomp (NTSC-final: VERSION = VERSION_NTSC_FINAL, PAL = 0) and writes
 Rust statics with the same shape, so every flag, text id and parameter is PD's.
 
-It also exports the runtime assets the spike needs into native/assets/pd_menu/:
-the four Handel Gothic fonts, the language banks the menus use (English), the
-ROM's mpconfigs + mpstringsE (presets and challenges live there as data), and
-the general textures the menus sample (TEX_GENERAL_*) as PNG via pd_tex.
+`export_assets` writes the runtime assets under the asset root (pd_paths.OUT):
+fonts/ (Handel Gothic xs/sm/md/lg, numeric), lang/en.json (every bank, keyed by
+LANGBANK_*), lang/mpstringsE.bin and data/mpconfigs.bin (presets and challenges
+live there as data). build_assets.py calls it. The menu textures are in the
+texture pool (pd_models.py).
 
 Usage:
     python tools/pd-assets/pd_menu_gen.py            # writes both
@@ -30,11 +31,13 @@ import struct
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
-DECOMP = os.path.join(ROOT, "reference", "pd-decomp")
-SRC = os.path.join(DECOMP, "src")
-OUT_RS = os.path.join(ROOT, "native", "crates", "game", "src", "pd_menu", "generated.rs")
-OUT_ASSETS = os.path.join(ROOT, "native", "assets", "pd_menu")
+sys.path.insert(0, HERE)
+from pd_paths import DECOMP, EXTRACTED, REPO as ROOT, SRC, out  # noqa: E402
+
+# The menu tables, generated into the crate that owns them (M2 migrates pd_menu).
+OUT_RS = os.path.join(ROOT, "crates", "pd_menu", "src", "generated.rs")
+#: fonts/, lang/ and data/ go straight under the asset root.
+OUT_ASSETS = out()
 
 VERSION = 2  # VERSION_NTSC_FINAL
 VERSIONS = {
@@ -629,14 +632,29 @@ def file_names() -> dict[int, str]:
 # Assets
 # --------------------------------------------------------------------------
 
-def export_assets():
+#: The ROM fonts the Combat Simulator draws with (`text.c`): the four Handel
+#: Gothic sizes (menus, HUD) and the numeric font (the ammo counter).
+FONTS = ("handelgothicxs.bin", "handelgothicsm.bin", "handelgothicmd.bin", "handelgothiclg.bin", "numeric.bin")
+
+
+def langbanks() -> dict[str, int]:
+    """`LANGBANK_*` (include/lang.h): bank name -> number. A text id is
+    `(bank << 9) | index`."""
+    text = read(os.path.join(SRC, "include", "lang.h"))
+    return {m.group(1).lower(): int(m.group(2), 16)
+            for m in re.finditer(r"#define\s+LANGBANK_(\w+)\s+(0x[0-9a-fA-F]+)", text)}
+
+
+def export_assets() -> dict:
+    """fonts/, lang/en.json + lang/mpstringsE.bin, data/mpconfigs.bin."""
     os.makedirs(os.path.join(OUT_ASSETS, "fonts"), exist_ok=True)
     fonts = os.path.join(SRC, "assets", "ntsc-final", "fonts")
-    for f in ("handelgothicxs.bin", "handelgothicsm.bin", "handelgothicmd.bin", "handelgothiclg.bin"):
+    for f in FONTS:
         shutil.copyfile(os.path.join(fonts, f), os.path.join(OUT_ASSETS, "fonts", f))
 
-    lang = {}
-    for bank in sorted(BANKS | {"mpmenu", "mpweapons", "options", "misc", "gun"}):
+    # Every bank, in English: the stage banks carry MP arena strings too.
+    banks = {}
+    for bank, num in sorted(langbanks().items(), key=lambda kv: kv[1]):
         path = os.path.join(SRC, "assets", "ntsc-final", "lang", bank + ".json")
         rows = json.load(open(path, encoding="utf-8"))
         arr = []
@@ -646,13 +664,17 @@ def export_assets():
             while len(arr) <= idx:
                 arr.append("")
             arr[idx] = r.get("en") or ""
-        lang[bank] = arr
-    with open(os.path.join(OUT_ASSETS, "lang_en.json"), "w", encoding="utf-8", newline="\n") as f:
-        json.dump(lang, f, ensure_ascii=False, indent=0)
+        banks[bank] = {"langbank": num, "strings": arr}
+    os.makedirs(os.path.join(OUT_ASSETS, "lang"), exist_ok=True)
+    with open(os.path.join(OUT_ASSETS, "lang", "en.json"), "w", encoding="utf-8", newline="\n") as f:
+        json.dump({"source": "pd-decomp/src/assets/ntsc-final/lang/*.json (en); bank numbers from include/lang.h",
+                   "banks": banks}, f, ensure_ascii=False, indent=0)
+        f.write("\n")
 
-    ext = os.path.join(DECOMP, "extracted", "ntsc-final")
-    shutil.copyfile(os.path.join(ext, "mpconfigs.bin"), os.path.join(OUT_ASSETS, "mpconfigs.bin"))
-    shutil.copyfile(os.path.join(ext, "mpstringsE.bin"), os.path.join(OUT_ASSETS, "mpstringsE.bin"))
+    os.makedirs(os.path.join(OUT_ASSETS, "data"), exist_ok=True)
+    shutil.copyfile(os.path.join(EXTRACTED, "mpconfigs.bin"), os.path.join(OUT_ASSETS, "data", "mpconfigs.bin"))
+    shutil.copyfile(os.path.join(EXTRACTED, "mpstringsE.bin"), os.path.join(OUT_ASSETS, "lang", "mpstringsE.bin"))
+    return {"fonts": len(FONTS), "langbanks": len(banks)}
 
 
 def main() -> int:
@@ -693,11 +715,12 @@ def main() -> int:
         "use super::types::*;",
         "use super::lang::{tx, Tx};",
         "",
-        "// Language banks (`L_<BANK>_nnn`), indexes into `lang_en.json`.",
+        "// Language banks (`L_<BANK>_nnn`): PD's LANGBANK_* numbers (include/lang.h),",
+        "// as pd_core::lang indexes them.",
     ]
-    for i, b in enumerate(banks):
-        head.append(f"pub const B_{b.upper()}: u8 = {i};")
-    head.append("pub static BANK_NAMES: &[&str] = &[" + ", ".join(f'"{b}"' for b in banks) + "];")
+    lb = langbanks()
+    for b in banks:
+        head.append(f"pub const B_{b.upper()}: u8 = {lb[b]:#04x};")
     head.append("")
 
     os.makedirs(os.path.dirname(OUT_RS), exist_ok=True)

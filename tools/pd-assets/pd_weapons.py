@@ -49,10 +49,8 @@ import sys
 # ---------------------------------------------------------------------------
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(HERE))
-DECOMP = os.path.join(REPO, "reference", "pd-decomp")
-SRC = os.path.join(DECOMP, "src")
-ASSETS = os.path.join(SRC, "assets", "ntsc-final")
+sys.path.insert(0, HERE)
+from pd_paths import ASSETS, DECOMP, REPO, SRC  # noqa: E402
 
 
 def src(*parts: str) -> str:
@@ -1006,7 +1004,7 @@ def build() -> dict:
 
     return {
         "_provenance": {
-            "decomp": os.path.relpath(DECOMP, REPO).replace(os.sep, "/"),
+            "decomp": "pd-decomp",
             "version": "ntsc-final",
             "sources": [
                 "src/game/invitems.c (weapondef / funcdef_* / ammodef)",

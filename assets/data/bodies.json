@@ -1,0 +1,2949 @@
+{
+ "source": "pd-decomp/src/game/modeldata/robot.c g_HeadsAndBodies; game/mplayer/mplayer.c g_MpBodies, g_MpHeads",
+ "rows": [
+  {
+   "num": 0,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 167,
+   "filenum": 71,
+   "file": "FILE_CDJBOND",
+   "stem": "djbond",
+   "scale": 1.0,
+   "animscale": 1.0446009635925,
+   "handfilenum": 1336,
+   "hand": "hand_ddsecurity"
+  },
+  {
+   "num": 1,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 167,
+   "filenum": 409,
+   "file": "FILE_CCONNERY",
+   "stem": "connery",
+   "scale": 1.0,
+   "animscale": 1.0300469398499,
+   "handfilenum": 1330,
+   "hand": "hand_mrblonde"
+  },
+  {
+   "num": 2,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 165,
+   "filenum": 411,
+   "file": "FILE_CDALTON",
+   "stem": "dalton",
+   "scale": 1.0,
+   "animscale": 1.0572769641876,
+   "handfilenum": 1336,
+   "hand": "hand_ddsecurity"
+  },
+  {
+   "num": 3,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 167,
+   "filenum": 410,
+   "file": "FILE_CMOORE",
+   "stem": "moore",
+   "scale": 1.0,
+   "animscale": 1.0399061441422,
+   "handfilenum": 1336,
+   "hand": "hand_ddsecurity"
+  },
+  {
+   "num": 4,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 13,
+   "filenum": 412,
+   "file": "FILE_CHEADDARK_COMBAT",
+   "stem": "headdark_combat",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 5,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 3,
+   "height": 27,
+   "filenum": 413,
+   "file": "FILE_CHEADELVIS",
+   "stem": "headelvis",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 6,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 414,
+   "file": "FILE_CHEADROSS",
+   "stem": "headross",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 7,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 415,
+   "file": "FILE_CHEADCARRINGTON",
+   "stem": "headcarrington",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 8,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 5,
+   "height": 13,
+   "filenum": 416,
+   "file": "FILE_CHEADMRBLONDE",
+   "stem": "headmrblonde",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 9,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 417,
+   "file": "FILE_CHEADTRENT",
+   "stem": "headtrent",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 10,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 418,
+   "file": "FILE_CHEADDDSHOCK",
+   "stem": "headddshock",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 11,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 419,
+   "file": "FILE_CHEADGRAHAM",
+   "stem": "headgraham",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 12,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 13,
+   "filenum": 420,
+   "file": "FILE_CHEADDARK_FROCK",
+   "stem": "headdark_frock",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 13,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 13,
+   "filenum": 421,
+   "file": "FILE_CHEADSECRETARY",
+   "stem": "headsecretary",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 14,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 4,
+   "height": 13,
+   "filenum": 422,
+   "file": "FILE_CHEADCASSANDRA",
+   "stem": "headcassandra",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 15,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 3,
+   "height": 27,
+   "filenum": 423,
+   "file": "FILE_CHEADTHEKING",
+   "stem": "headtheking",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 16,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 424,
+   "file": "FILE_CHEADFEM_GUARD",
+   "stem": "headfem_guard",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 17,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 425,
+   "file": "FILE_CHEADJON",
+   "stem": "headjon",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 18,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 434,
+   "file": "FILE_CHEADMARK2",
+   "stem": "headmark2",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 19,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 435,
+   "file": "FILE_CHEADCHRIST",
+   "stem": "headchrist",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 20,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 444,
+   "file": "FILE_CHEADRUSS",
+   "stem": "headruss",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 21,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 3,
+   "height": 13,
+   "filenum": 445,
+   "file": "FILE_CHEADGREY",
+   "stem": "headgrey",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 22,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 446,
+   "file": "FILE_CHEADDARLING",
+   "stem": "headdarling",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 23,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 448,
+   "file": "FILE_CHEADROBERT",
+   "stem": "headrobert",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 24,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 450,
+   "file": "FILE_CHEADBEAU",
+   "stem": "headbeau",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 25,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 453,
+   "file": "FILE_CHEADFEM_GUARD2",
+   "stem": "headfem_guard2",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 26,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 461,
+   "file": "FILE_CHEADBRIAN",
+   "stem": "headbrian",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 27,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 462,
+   "file": "FILE_CHEADJAMIE",
+   "stem": "headjamie",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 28,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 463,
+   "file": "FILE_CHEADDUNCAN2",
+   "stem": "headduncan2",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 29,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 464,
+   "file": "FILE_CHEADBIOTECH",
+   "stem": "headbiotech",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 30,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 562,
+   "file": "FILE_CHEADNEIL2",
+   "stem": "headneil2",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 31,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 568,
+   "file": "FILE_CHEADEDMCG",
+   "stem": "headedmcg",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 32,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 13,
+   "filenum": 570,
+   "file": "FILE_CHEADANKA",
+   "stem": "headanka",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 33,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 13,
+   "filenum": 573,
+   "file": "FILE_CHEADLESLIE_S",
+   "stem": "headleslie_s",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 34,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 579,
+   "file": "FILE_CHEADMATT_C",
+   "stem": "headmatt_c",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 35,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 581,
+   "file": "FILE_CHEADPEER_S",
+   "stem": "headpeer_s",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 36,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 13,
+   "filenum": 583,
+   "file": "FILE_CHEADEILEEN_T",
+   "stem": "headeileen_t",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 37,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 610,
+   "file": "FILE_CHEADANDY_R",
+   "stem": "headandy_r",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 38,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 615,
+   "file": "FILE_CHEADBEN_R",
+   "stem": "headben_r",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 39,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 616,
+   "file": "FILE_CHEADSTEVE_K",
+   "stem": "headsteve_k",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 40,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 826,
+   "file": "FILE_CHEADJONATHAN",
+   "stem": "headjonathan",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 41,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 3,
+   "height": 27,
+   "filenum": 827,
+   "file": "FILE_CHEADMAIAN_S",
+   "stem": "headmaian_s",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 42,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 837,
+   "file": "FILE_CHEADSHAUN",
+   "stem": "headshaun",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 43,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 450,
+   "file": "FILE_CHEADBEAU",
+   "stem": "headbeau",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 44,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 13,
+   "filenum": 1191,
+   "file": "FILE_CHEADEILEEN_H",
+   "stem": "headeileen_h",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 45,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1192,
+   "file": "FILE_CHEADSCOTT_H",
+   "stem": "headscott_h",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 46,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1196,
+   "file": "FILE_CHEADSANCHEZ",
+   "stem": "headsanchez",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 47,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 13,
+   "filenum": 1197,
+   "file": "FILE_CHEADDARKAQUA",
+   "stem": "headdarkaqua",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 48,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1198,
+   "file": "FILE_CHEADDDSNIPER",
+   "stem": "headddsniper",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 49,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 450,
+   "file": "FILE_CHEADBEAU",
+   "stem": "headbeau",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 50,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 450,
+   "file": "FILE_CHEADBEAU",
+   "stem": "headbeau",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 51,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 450,
+   "file": "FILE_CHEADBEAU",
+   "stem": "headbeau",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 52,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 450,
+   "file": "FILE_CHEADBEAU",
+   "stem": "headbeau",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 53,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1293,
+   "file": "FILE_CHEADGRIFFEY",
+   "stem": "headgriffey",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 54,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1294,
+   "file": "FILE_CHEADMOTO",
+   "stem": "headmoto",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 55,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1295,
+   "file": "FILE_CHEADKEITH",
+   "stem": "headkeith",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 56,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 13,
+   "filenum": 1296,
+   "file": "FILE_CHEADWINNER",
+   "stem": "headwinner",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 57,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1297,
+   "file": "FILE_CA51FACEPLATE",
+   "stem": "a51faceplate",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 58,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 3,
+   "height": 27,
+   "filenum": 1363,
+   "file": "FILE_CHEADELVIS_GOGS",
+   "stem": "headelvis_gogs",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 59,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1364,
+   "file": "FILE_CHEADSTEVEM",
+   "stem": "headstevem",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 60,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 13,
+   "filenum": 1370,
+   "file": "FILE_CHEADDARK_SNOW",
+   "stem": "headdark_snow",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 61,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1371,
+   "file": "FILE_CHEADPRESIDENT",
+   "stem": "headpresident",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 62,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 13,
+   "filenum": 1377,
+   "file": "FILE_CHEAD_VD",
+   "stem": "head_vd",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 63,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1989,
+   "file": "FILE_CHEADKEN",
+   "stem": "headken",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 64,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1990,
+   "file": "FILE_CHEADJOEL",
+   "stem": "headjoel",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 65,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1981,
+   "file": "FILE_CHEADTIM",
+   "stem": "headtim",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 66,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1982,
+   "file": "FILE_CHEADGRANT",
+   "stem": "headgrant",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 67,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1983,
+   "file": "FILE_CHEADPENNY",
+   "stem": "headpenny",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 68,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1984,
+   "file": "FILE_CHEADROBIN",
+   "stem": "headrobin",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 69,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 2,
+   "height": 13,
+   "filenum": 1985,
+   "file": "FILE_CHEADALEX",
+   "stem": "headalex",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 70,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 2,
+   "height": 13,
+   "filenum": 1986,
+   "file": "FILE_CHEADJULIANNE",
+   "stem": "headjulianne",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 71,
+   "ismale": false,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 2,
+   "height": 13,
+   "filenum": 1987,
+   "file": "FILE_CHEADLAURA",
+   "stem": "headlaura",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 72,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1988,
+   "file": "FILE_CHEADDAVEC",
+   "stem": "headdavec",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 73,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1997,
+   "file": "FILE_CHEADCOOK",
+   "stem": "headcook",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 74,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1998,
+   "file": "FILE_CHEADPRYCE",
+   "stem": "headpryce",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 75,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 1999,
+   "file": "FILE_CHEADSILKE",
+   "stem": "headsilke",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 76,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 2000,
+   "file": "FILE_CHEADSMITH",
+   "stem": "headsmith",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 77,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 2001,
+   "file": "FILE_CHEADGARETH",
+   "stem": "headgareth",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 78,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 2002,
+   "file": "FILE_CHEADMURCHIE",
+   "stem": "headmurchie",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 79,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 2003,
+   "file": "FILE_CHEADWONG",
+   "stem": "headwong",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 80,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 2004,
+   "file": "FILE_CHEADCARTER",
+   "stem": "headcarter",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 81,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 2005,
+   "file": "FILE_CHEADTINTIN",
+   "stem": "headtintin",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 82,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 2006,
+   "file": "FILE_CHEADMUNTON",
+   "stem": "headmunton",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 83,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 2007,
+   "file": "FILE_CHEADSTAMPER",
+   "stem": "headstamper",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 84,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 2008,
+   "file": "FILE_CHEADJONES",
+   "stem": "headjones",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 85,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 13,
+   "filenum": 2009,
+   "file": "FILE_CHEADPHELPS",
+   "stem": "headphelps",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 86,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 159,
+   "filenum": 66,
+   "file": "FILE_CDARK_COMBAT",
+   "stem": "dark_combat",
+   "scale": 1.0,
+   "animscale": 0.95305162668228,
+   "handfilenum": 1253,
+   "hand": "combathandslod"
+  },
+  {
+   "num": 87,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 3,
+   "height": 106,
+   "filenum": 74,
+   "file": "FILE_CELVIS1",
+   "stem": "elvis1",
+   "scale": 1.0,
+   "animscale": 0.57276993989944,
+   "handfilenum": 1892,
+   "hand": "hand_elvis"
+  },
+  {
+   "num": 88,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 157,
+   "filenum": 63,
+   "file": "FILE_CAREA51GUARD",
+   "stem": "area51guard",
+   "scale": 1.0,
+   "animscale": 0.92769956588745,
+   "handfilenum": 1894,
+   "hand": "hand_a51guard"
+  },
+  {
+   "num": 89,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 81,
+   "file": "FILE_COVERALL",
+   "stem": "overall",
+   "scale": 1.0,
+   "animscale": 0.92769956588745,
+   "handfilenum": 1894,
+   "hand": "hand_a51guard"
+  },
+  {
+   "num": 90,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 154,
+   "filenum": 64,
+   "file": "FILE_CCARRINGTON",
+   "stem": "carrington",
+   "scale": 1.0,
+   "animscale": 0.85915493965149,
+   "handfilenum": 1329,
+   "hand": "hand_carrington"
+  },
+  {
+   "num": 91,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 5,
+   "height": 169,
+   "filenum": 78,
+   "file": "FILE_CMRBLONDE",
+   "stem": "mrblonde",
+   "scale": 1.0,
+   "animscale": 1.1032863855362,
+   "handfilenum": 1330,
+   "hand": "hand_mrblonde"
+  },
+  {
+   "num": 92,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 159,
+   "filenum": 83,
+   "file": "FILE_CSKEDAR",
+   "stem": "skedar",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 93,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 161,
+   "filenum": 87,
+   "file": "FILE_CTRENT",
+   "stem": "trent",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1322,
+   "hand": "hand_trent"
+  },
+  {
+   "num": 94,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 157,
+   "filenum": 69,
+   "file": "FILE_CDDSHOCK",
+   "stem": "ddshock",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1897,
+   "hand": "hand_ddfodder"
+  },
+  {
+   "num": 95,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 157,
+   "filenum": 77,
+   "file": "FILE_CLABTECH",
+   "stem": "labtech",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1330,
+   "hand": "hand_mrblonde"
+  },
+  {
+   "num": 96,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 158,
+   "filenum": 84,
+   "file": "FILE_CSTRIPES",
+   "stem": "stripes",
+   "scale": 1.0,
+   "animscale": 0.92769956588745,
+   "handfilenum": 1896,
+   "hand": "hand_blackguard"
+  },
+  {
+   "num": 97,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 159,
+   "filenum": 67,
+   "file": "FILE_CDARK_FROCK",
+   "stem": "dark_frock",
+   "scale": 1.0,
+   "animscale": 0.95305162668228,
+   "handfilenum": 1323,
+   "hand": "hand_jofrock"
+  },
+  {
+   "num": 98,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 159,
+   "filenum": 68,
+   "file": "FILE_CDARK_TRENCH",
+   "stem": "dark_trench",
+   "scale": 1.0,
+   "animscale": 0.95305162668228,
+   "handfilenum": 1324,
+   "hand": "hand_jotrench"
+  },
+  {
+   "num": 99,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 157,
+   "filenum": 79,
+   "file": "FILE_COFFICEWORKER",
+   "stem": "officeworker",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1323,
+   "hand": "hand_jofrock"
+  },
+  {
+   "num": 100,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 157,
+   "filenum": 80,
+   "file": "FILE_COFFICEWORKER2",
+   "stem": "officeworker2",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1323,
+   "hand": "hand_jofrock"
+  },
+  {
+   "num": 101,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 140,
+   "filenum": 82,
+   "file": "FILE_CSECRETARY",
+   "stem": "secretary",
+   "scale": 1.0,
+   "animscale": 0.87323945760727,
+   "handfilenum": 1323,
+   "hand": "hand_jofrock"
+  },
+  {
+   "num": 102,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 4,
+   "height": 167,
+   "filenum": 65,
+   "file": "FILE_CCASSANDRA",
+   "stem": "cassandra",
+   "scale": 1.0,
+   "animscale": 0.98591554164886,
+   "handfilenum": 1335,
+   "hand": "hand_vries"
+  },
+  {
+   "num": 103,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 3,
+   "height": 106,
+   "filenum": 86,
+   "file": "FILE_CTHEKING",
+   "stem": "theking",
+   "scale": 1.0,
+   "animscale": 0.57276993989944,
+   "handfilenum": 1892,
+   "hand": "hand_elvis"
+  },
+  {
+   "num": 104,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 2,
+   "height": 160,
+   "filenum": 76,
+   "file": "FILE_CFEM_GUARD",
+   "stem": "fem_guard",
+   "scale": 1.0,
+   "animscale": 0.96713620424271,
+   "handfilenum": 1324,
+   "hand": "hand_jotrench"
+  },
+  {
+   "num": 105,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 157,
+   "filenum": 404,
+   "file": "FILE_CDD_LABTECH",
+   "stem": "dd_labtech",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1339,
+   "hand": "hand_ddlabtech"
+  },
+  {
+   "num": 106,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 160,
+   "filenum": 70,
+   "file": "FILE_CDD_SECGUARD",
+   "stem": "dd_secguard",
+   "scale": 1.0,
+   "animscale": 0.93427228927612,
+   "handfilenum": 1336,
+   "hand": "hand_ddsecurity"
+  },
+  {
+   "num": 107,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 72,
+   "file": "FILE_CDRCARROLL",
+   "stem": "drcarroll",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 108,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 75,
+   "file": "FILE_CEYESPY",
+   "stem": "eyespy",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 109,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 159,
+   "filenum": 433,
+   "file": "FILE_CDARK_RIPPED",
+   "stem": "dark_ripped",
+   "scale": 1.0,
+   "animscale": 0.95305162668228,
+   "handfilenum": 1323,
+   "hand": "hand_jofrock"
+  },
+  {
+   "num": 110,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 160,
+   "filenum": 447,
+   "file": "FILE_CDD_GUARD",
+   "stem": "dd_guard",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1336,
+   "hand": "hand_ddsecurity"
+  },
+  {
+   "num": 111,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 157,
+   "filenum": 452,
+   "file": "FILE_CDD_SHOCK_INF",
+   "stem": "dd_shock_inf",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1895,
+   "hand": "hand_ddshock"
+  },
+  {
+   "num": 112,
+   "ismale": true,
+   "unk00_01": true,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 85,
+   "file": "FILE_CTESTCHR",
+   "stem": "testchr",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 113,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 155,
+   "filenum": 456,
+   "file": "FILE_CBIOTECH",
+   "stem": "biotech",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1898,
+   "hand": "hand_ddbio"
+  },
+  {
+   "num": 114,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 159,
+   "filenum": 457,
+   "file": "FILE_CFBIGUY",
+   "stem": "fbiguy",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1333,
+   "hand": "hand_fbiarm"
+  },
+  {
+   "num": 115,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 159,
+   "filenum": 459,
+   "file": "FILE_CCIAGUY",
+   "stem": "ciaguy",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1331,
+   "hand": "hand_cia"
+  },
+  {
+   "num": 116,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 159,
+   "filenum": 460,
+   "file": "FILE_CA51TROOPER",
+   "stem": "a51trooper",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1323,
+   "hand": "hand_jofrock"
+  },
+  {
+   "num": 117,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 157,
+   "filenum": 561,
+   "file": "FILE_CA51AIRMAN",
+   "stem": "a51airman",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1899,
+   "hand": "hand_a51airman"
+  },
+  {
+   "num": 118,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 566,
+   "file": "FILE_CCHICROB",
+   "stem": "chicrob",
+   "scale": 1.0,
+   "animscale": 1.0,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 119,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 153,
+   "filenum": 567,
+   "file": "FILE_CSTEWARD",
+   "stem": "steward",
+   "scale": 1.0,
+   "animscale": 0.89201879501343,
+   "handfilenum": 1323,
+   "hand": "hand_jofrock"
+  },
+  {
+   "num": 120,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 143,
+   "filenum": 569,
+   "file": "FILE_CSTEWARDESS",
+   "stem": "stewardess",
+   "scale": 1.0,
+   "animscale": 0.85446006059647,
+   "handfilenum": 1323,
+   "hand": "hand_jofrock"
+  },
+  {
+   "num": 121,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 571,
+   "file": "FILE_CPRESIDENT",
+   "stem": "president",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1326,
+   "hand": "hand_president"
+  },
+  {
+   "num": 122,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 143,
+   "filenum": 572,
+   "file": "FILE_CSTEWARDESS_COAT",
+   "stem": "stewardess_coat",
+   "scale": 1.0,
+   "animscale": 0.85446006059647,
+   "handfilenum": 1338,
+   "hand": "hand_stewardess_coat"
+  },
+  {
+   "num": 123,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 576,
+   "file": "FILE_CMINISKEDAR",
+   "stem": "miniskedar",
+   "scale": 0.75,
+   "animscale": 0.5,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 124,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 578,
+   "file": "FILE_CNSA_LACKEY",
+   "stem": "nsa_lackey",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1329,
+   "hand": "hand_carrington"
+  },
+  {
+   "num": 125,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 580,
+   "file": "FILE_CPRES_SECURITY",
+   "stem": "pres_security",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1329,
+   "hand": "hand_carrington"
+  },
+  {
+   "num": 126,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 142,
+   "filenum": 582,
+   "file": "FILE_CNEGOTIATOR",
+   "stem": "negotiator",
+   "scale": 1.0,
+   "animscale": 0.85446006059647,
+   "handfilenum": 1323,
+   "hand": "hand_jofrock"
+  },
+  {
+   "num": 127,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 609,
+   "file": "FILE_CG5_GUARD",
+   "stem": "g5_guard",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1900,
+   "hand": "hand_g5guard"
+  },
+  {
+   "num": 128,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 159,
+   "filenum": 611,
+   "file": "FILE_CPELAGIC_GUARD",
+   "stem": "pelagic_guard",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1337,
+   "hand": "hand_tragic_pelagic"
+  },
+  {
+   "num": 129,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 158,
+   "filenum": 612,
+   "file": "FILE_CG5_SWAT_GUARD",
+   "stem": "g5_swat_guard",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1900,
+   "hand": "hand_g5guard"
+  },
+  {
+   "num": 130,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 158,
+   "filenum": 613,
+   "file": "FILE_CALASKAN_GUARD",
+   "stem": "alaskan_guard",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1334,
+   "hand": "hand_josnow"
+  },
+  {
+   "num": 131,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 3,
+   "height": 106,
+   "filenum": 614,
+   "file": "FILE_CMAIAN_SOLDIER",
+   "stem": "maian_soldier",
+   "scale": 1.0,
+   "animscale": 0.57276993989944,
+   "handfilenum": 1892,
+   "hand": "hand_elvis"
+  },
+  {
+   "num": 132,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 825,
+   "file": "FILE_CPRESIDENT_CLONE",
+   "stem": "president_clone",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1253,
+   "hand": "combathandslod"
+  },
+  {
+   "num": 133,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 825,
+   "file": "FILE_CPRESIDENT_CLONE",
+   "stem": "president_clone",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1326,
+   "hand": "hand_president"
+  },
+  {
+   "num": 134,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 159,
+   "filenum": 828,
+   "file": "FILE_CDARK_AF1",
+   "stem": "dark_af1",
+   "scale": 1.0,
+   "animscale": 0.95305162668228,
+   "handfilenum": 1328,
+   "hand": "hand_jopilot"
+  },
+  {
+   "num": 135,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 159,
+   "filenum": 1182,
+   "file": "FILE_CDARKWET",
+   "stem": "darkwet",
+   "scale": 1.0,
+   "animscale": 0.95305162668228,
+   "handfilenum": 1321,
+   "hand": "hand_jowetsuit"
+  },
+  {
+   "num": 136,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 159,
+   "filenum": 1183,
+   "file": "FILE_CDARKAQUALUNG",
+   "stem": "darkaqualung",
+   "scale": 1.0,
+   "animscale": 0.95305162668228,
+   "handfilenum": 1321,
+   "hand": "hand_jowetsuit"
+  },
+  {
+   "num": 137,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 159,
+   "filenum": 1184,
+   "file": "FILE_CDARKSNOW",
+   "stem": "darksnow",
+   "scale": 1.0,
+   "animscale": 0.95305162668228,
+   "handfilenum": 1334,
+   "hand": "hand_josnow"
+  },
+  {
+   "num": 138,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 159,
+   "filenum": 1185,
+   "file": "FILE_CDARKLAB",
+   "stem": "darklab",
+   "scale": 1.0,
+   "animscale": 0.95305162668228,
+   "handfilenum": 1330,
+   "hand": "hand_mrblonde"
+  },
+  {
+   "num": 139,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 1,
+   "height": 159,
+   "filenum": 1186,
+   "file": "FILE_CFEMLABTECH",
+   "stem": "femlabtech",
+   "scale": 1.0,
+   "animscale": 0.87323945760727,
+   "handfilenum": 1330,
+   "hand": "hand_mrblonde"
+  },
+  {
+   "num": 140,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 159,
+   "filenum": 1187,
+   "file": "FILE_CDDSNIPER",
+   "stem": "ddsniper",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1325,
+   "hand": "hand_ddsniper"
+  },
+  {
+   "num": 141,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 1188,
+   "file": "FILE_CPILOTAF1",
+   "stem": "pilotaf1",
+   "scale": 1.0,
+   "animscale": 0.88262909650803,
+   "handfilenum": 1328,
+   "hand": "hand_jopilot"
+  },
+  {
+   "num": 142,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 159,
+   "filenum": 1189,
+   "file": "FILE_CCILABTECH",
+   "stem": "cilabtech",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1332,
+   "hand": "hand_cifemtech"
+  },
+  {
+   "num": 143,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 1,
+   "height": 159,
+   "filenum": 1190,
+   "file": "FILE_CCIFEMTECH",
+   "stem": "cifemtech",
+   "scale": 1.0,
+   "animscale": 0.86854463815689,
+   "handfilenum": 1332,
+   "hand": "hand_cifemtech"
+  },
+  {
+   "num": 144,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 1193,
+   "file": "FILE_CCARREVENINGSUIT",
+   "stem": "carreveningsuit",
+   "scale": 1.0,
+   "animscale": 0.85915493965149,
+   "handfilenum": 1330,
+   "hand": "hand_mrblonde"
+  },
+  {
+   "num": 145,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 1194,
+   "file": "FILE_CJONATHON",
+   "stem": "jonathon",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1894,
+   "hand": "hand_a51guard"
+  },
+  {
+   "num": 146,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": true,
+   "type": 0,
+   "height": 159,
+   "filenum": 1195,
+   "file": "FILE_CCISOLDIER",
+   "stem": "cisoldier",
+   "scale": 1.0,
+   "animscale": 0.93896716833115,
+   "handfilenum": 1901,
+   "hand": "hand_cisoldier"
+  },
+  {
+   "num": 147,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 159,
+   "filenum": 1291,
+   "file": "FILE_CSKEDARKING",
+   "stem": "skedarking",
+   "scale": 1.0,
+   "animscale": 1.25,
+   "handfilenum": 0,
+   "hand": null
+  },
+  {
+   "num": 148,
+   "ismale": true,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 3,
+   "height": 106,
+   "filenum": 1292,
+   "file": "FILE_CELVISWAISTCOAT",
+   "stem": "elviswaistcoat",
+   "scale": 1.0,
+   "animscale": 0.57276993989944,
+   "handfilenum": 1892,
+   "hand": "hand_elvis"
+  },
+  {
+   "num": 149,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 159,
+   "filenum": 1369,
+   "file": "FILE_CDARK_LEATHER",
+   "stem": "dark_leather",
+   "scale": 1.0,
+   "animscale": 0.95305162668228,
+   "handfilenum": 1323,
+   "hand": "hand_jofrock"
+  },
+  {
+   "num": 150,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 1,
+   "height": 159,
+   "filenum": 1942,
+   "file": "FILE_CDARK_NEGOTIATOR",
+   "stem": "dark_negotiator",
+   "scale": 1.0,
+   "animscale": 0.95305162668228,
+   "handfilenum": 1327,
+   "hand": "hand_joaf1"
+  },
+  {
+   "num": 151,
+   "ismale": false,
+   "unk00_01": false,
+   "canvaryheight": false,
+   "type": 0,
+   "height": 0,
+   "filenum": 0,
+   "file": "FILE_?",
+   "stem": null,
+   "scale": 1.0,
+   "animscale": 0.0,
+   "handfilenum": 1253,
+   "hand": "combathandslod"
+  }
+ ],
+ "mpbodies": [
+  {
+   "bodynum": 86,
+   "headnum": 4,
+   "requirefeature": 0
+  },
+  {
+   "bodynum": 98,
+   "headnum": 4,
+   "requirefeature": 70
+  },
+  {
+   "bodynum": 97,
+   "headnum": 12,
+   "requirefeature": 65
+  },
+  {
+   "bodynum": 109,
+   "headnum": 12,
+   "requirefeature": 65
+  },
+  {
+   "bodynum": 134,
+   "headnum": 4,
+   "requirefeature": 63
+  },
+  {
+   "bodynum": 149,
+   "headnum": 4,
+   "requirefeature": 55
+  },
+  {
+   "bodynum": 150,
+   "headnum": 4,
+   "requirefeature": 52
+  },
+  {
+   "bodynum": 135,
+   "headnum": 47,
+   "requirefeature": 69
+  },
+  {
+   "bodynum": 136,
+   "headnum": 47,
+   "requirefeature": 69
+  },
+  {
+   "bodynum": 137,
+   "headnum": 60,
+   "requirefeature": 74
+  },
+  {
+   "bodynum": 138,
+   "headnum": 4,
+   "requirefeature": 58
+  },
+  {
+   "bodynum": 103,
+   "headnum": 5,
+   "requirefeature": 61
+  },
+  {
+   "bodynum": 87,
+   "headnum": 5,
+   "requirefeature": 61
+  },
+  {
+   "bodynum": 148,
+   "headnum": 5,
+   "requirefeature": 61
+  },
+  {
+   "bodynum": 90,
+   "headnum": 7,
+   "requirefeature": 0
+  },
+  {
+   "bodynum": 144,
+   "headnum": 7,
+   "requirefeature": 65
+  },
+  {
+   "bodynum": 91,
+   "headnum": 8,
+   "requirefeature": 56
+  },
+  {
+   "bodynum": 102,
+   "headnum": 14,
+   "requirefeature": 0
+  },
+  {
+   "bodynum": 93,
+   "headnum": 9,
+   "requirefeature": 53
+  },
+  {
+   "bodynum": 145,
+   "headnum": 40,
+   "requirefeature": 76
+  },
+  {
+   "bodynum": 142,
+   "headnum": 1000,
+   "requirefeature": 0
+  },
+  {
+   "bodynum": 143,
+   "headnum": 1000,
+   "requirefeature": 0
+  },
+  {
+   "bodynum": 146,
+   "headnum": 1000,
+   "requirefeature": 0
+  },
+  {
+   "bodynum": 94,
+   "headnum": 10,
+   "requirefeature": 0
+  },
+  {
+   "bodynum": 104,
+   "headnum": 1000,
+   "requirefeature": 50
+  },
+  {
+   "bodynum": 106,
+   "headnum": 1000,
+   "requirefeature": 0
+  },
+  {
+   "bodynum": 110,
+   "headnum": 1000,
+   "requirefeature": 0
+  },
+  {
+   "bodynum": 111,
+   "headnum": 1000,
+   "requirefeature": 0
+  },
+  {
+   "bodynum": 101,
+   "headnum": 1000,
+   "requirefeature": 0
+  },
+  {
+   "bodynum": 99,
+   "headnum": 1000,
+   "requirefeature": 51
+  },
+  {
+   "bodynum": 100,
+   "headnum": 1000,
+   "requirefeature": 51
+  },
+  {
+   "bodynum": 126,
+   "headnum": 1000,
+   "requirefeature": 52
+  },
+  {
+   "bodynum": 140,
+   "headnum": 48,
+   "requirefeature": 52
+  },
+  {
+   "bodynum": 127,
+   "headnum": 1000,
+   "requirefeature": 55
+  },
+  {
+   "bodynum": 129,
+   "headnum": 1000,
+   "requirefeature": 55
+  },
+  {
+   "bodynum": 115,
+   "headnum": 1000,
+   "requirefeature": 57
+  },
+  {
+   "bodynum": 114,
+   "headnum": 1000,
+   "requirefeature": 57
+  },
+  {
+   "bodynum": 88,
+   "headnum": 1000,
+   "requirefeature": 58
+  },
+  {
+   "bodynum": 116,
+   "headnum": 1000,
+   "requirefeature": 58
+  },
+  {
+   "bodynum": 117,
+   "headnum": 1000,
+   "requirefeature": 58
+  },
+  {
+   "bodynum": 89,
+   "headnum": 1000,
+   "requirefeature": 58
+  },
+  {
+   "bodynum": 96,
+   "headnum": 1000,
+   "requirefeature": 68
+  },
+  {
+   "bodynum": 95,
+   "headnum": 1000,
+   "requirefeature": 59
+  },
+  {
+   "bodynum": 139,
+   "headnum": 1000,
+   "requirefeature": 59
+  },
+  {
+   "bodynum": 105,
+   "headnum": 1000,
+   "requirefeature": 59
+  },
+  {
+   "bodynum": 113,
+   "headnum": 29,
+   "requirefeature": 60
+  },
+  {
+   "bodynum": 130,
+   "headnum": 1000,
+   "requirefeature": 62
+  },
+  {
+   "bodynum": 141,
+   "headnum": 1000,
+   "requirefeature": 63
+  },
+  {
+   "bodynum": 119,
+   "headnum": 1000,
+   "requirefeature": 63
+  },
+  {
+   "bodynum": 120,
+   "headnum": 1000,
+   "requirefeature": 63
+  },
+  {
+   "bodynum": 122,
+   "headnum": 1000,
+   "requirefeature": 63
+  },
+  {
+   "bodynum": 121,
+   "headnum": 61,
+   "requirefeature": 65
+  },
+  {
+   "bodynum": 124,
+   "headnum": 1000,
+   "requirefeature": 54
+  },
+  {
+   "bodynum": 125,
+   "headnum": 1000,
+   "requirefeature": 67
+  },
+  {
+   "bodynum": 133,
+   "headnum": 61,
+   "requirefeature": 66
+  },
+  {
+   "bodynum": 128,
+   "headnum": 1000,
+   "requirefeature": 69
+  },
+  {
+   "bodynum": 131,
+   "headnum": 41,
+   "requirefeature": 61
+  },
+  {
+   "bodynum": 1,
+   "headnum": 1000,
+   "requirefeature": 64
+  },
+  {
+   "bodynum": 3,
+   "headnum": 1000,
+   "requirefeature": 64
+  },
+  {
+   "bodynum": 2,
+   "headnum": 1000,
+   "requirefeature": 64
+  },
+  {
+   "bodynum": 0,
+   "headnum": 1000,
+   "requirefeature": 64
+  }
+ ],
+ "mpheads": [
+  {
+   "headnum": 4,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 12,
+   "requirefeature": 65
+  },
+  {
+   "headnum": 47,
+   "requirefeature": 69
+  },
+  {
+   "headnum": 60,
+   "requirefeature": 74
+  },
+  {
+   "headnum": 5,
+   "requirefeature": 61
+  },
+  {
+   "headnum": 58,
+   "requirefeature": 61
+  },
+  {
+   "headnum": 7,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 8,
+   "requirefeature": 56
+  },
+  {
+   "headnum": 14,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 9,
+   "requirefeature": 53
+  },
+  {
+   "headnum": 40,
+   "requirefeature": 58
+  },
+  {
+   "headnum": 62,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 61,
+   "requirefeature": 65
+  },
+  {
+   "headnum": 10,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 29,
+   "requirefeature": 60
+  },
+  {
+   "headnum": 48,
+   "requirefeature": 52
+  },
+  {
+   "headnum": 57,
+   "requirefeature": 58
+  },
+  {
+   "headnum": 13,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 16,
+   "requirefeature": 50
+  },
+  {
+   "headnum": 25,
+   "requirefeature": 50
+  },
+  {
+   "headnum": 41,
+   "requirefeature": 61
+  },
+  {
+   "headnum": 17,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 24,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 6,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 18,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 19,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 20,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 22,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 26,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 27,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 28,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 55,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 59,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 66,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 67,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 72,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 84,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 11,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 23,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 30,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 42,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 68,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 73,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 74,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 75,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 76,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 77,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 78,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 79,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 80,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 81,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 82,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 83,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 85,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 69,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 70,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 71,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 31,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 32,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 33,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 34,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 35,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 36,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 37,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 38,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 39,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 46,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 65,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 63,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 44,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 45,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 64,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 53,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 54,
+   "requirefeature": 0
+  },
+  {
+   "headnum": 56,
+   "requirefeature": 0
+  }
+ ],
+ "maleheads": [
+  17,
+  24,
+  6,
+  18,
+  19,
+  20,
+  22,
+  26,
+  27,
+  28,
+  55,
+  59,
+  66,
+  67,
+  72,
+  84,
+  11,
+  30,
+  42,
+  68,
+  73,
+  74,
+  75,
+  76,
+  77,
+  78,
+  79,
+  80,
+  81,
+  82,
+  83,
+  85,
+  31,
+  34,
+  35,
+  37,
+  38,
+  39,
+  46,
+  65,
+  63,
+  45,
+  64,
+  54
+ ],
+ "femaleheads": [
+  69,
+  70,
+  71,
+  32,
+  33,
+  36,
+  44
+ ]
+}

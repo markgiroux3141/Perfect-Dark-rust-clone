@@ -2016,10 +2016,9 @@ def export_batch(manifest_path: str, outdir: str, scale: float, blend_joints: bo
 
 
 def assets_root() -> str:
-    return os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "..", "..", "reference", "pd-decomp", "src", "assets", "ntsc-final",
-    )
+    from pd_paths import ASSETS
+
+    return ASSETS
 
 
 # ---------------------------------------------------------------------------

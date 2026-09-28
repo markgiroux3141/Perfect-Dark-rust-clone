@@ -9,8 +9,8 @@ Each milestone is sized to fit one Claude context and ends in something checkabl
 | # | Milestone | State |
 |---|---|---|
 | M0 | Architecture + skeleton | **done** (2026-09-27) |
-| M1 | Foundations: `pd_core` + `n64` CPU + asset pipeline | next |
-| M2 | Engine runner + the menus boot | — |
+| M1 | Foundations: `pd_core` + `n64` CPU + asset pipeline | **done** (2026-09-27) |
+| M2 | Engine runner + the menus boot | next |
 | M3 | Stages + walking Complex | — |
 | M4 | Guns (hitscan, HUD, effects) | — |
 | M5 | Guns (projectiles, explosives, specials, N64 video, TV audio) | — |
@@ -38,33 +38,43 @@ The first playable path is M2 → M3 → M4 → M6: menus, walking, shooting, th
 
 ---
 
-## M1: Foundations
+## M1: Foundations (done)
 
 **Goal:** everything that is shared lands once, with its tests, and `assets/` is generated in the new layout.
 
 **Asset pipeline**
-1. `tools/pd-assets/pd_paths.py`: one module for the decomp root (`PD_DECOMP_DIR`, else `reference/pd-decomp`) and the output root (`assets/`). Repoint every exporter at it.
-2. **Texture pool:** export every texture the game uses to `assets/textures/<num>.png` + `index.json`, replacing the per-feature copies (`pd_menu/textures`, `pd_menu/models/tex`, `weapons/pd_fp/textures`, `weapons/pd_fp/fx`, `levels/pd_bg/ref/textures`). Keep mip metadata.
-3. **One model format.** Read both writers (`pd_fpgun.py` `export_model` → JSON; `pd_menu_models.py` → `.pdm`) and both readers (`pd_guns/data.rs` + `model.rs`; `pd_menu/pdmodel.rs`). Define a single `models/<file>.json + .bin` that carries the node tree (every node type, including `0x0100`/`0x0200` helpers and BBOX part boxes, so `pd_hitbox.py` merges in), draws with N64 draw state, and materials by texture number. Export guns (G*), held guns and props (P*), the six+ chr bodies and heads, and the hudpiece. Record the format in `pd_core::model` docs.
-4. **Animation bank:** `assets/anims/<num>.bin` + `index.json` for every animation the game references (gun scripts, menu `ANIM_01FC`/`040D`, the bot rows including squat/duck `0280`-`0287`, deaths, hits). Bots no longer need the `bot_anims/*.glb` clips.
-5. Fonts (one copy), `lang/`, `data/weapons.json`, `data/mpconfigs.bin`, and `sfx/` (merge `sfx` and `menu_sfx`, keyed by sfx id; include the 56 WAVs untracked in the old repo).
-6. `build_assets.py` runs all of the above and writes `MANIFEST.json`. Diff the new textures, animations and sfx against the old repo's files (the same bytes, moved) as the regression check.
+- [x] 1. `tools/pd-assets/pd_paths.py`: the decomp root (`PD_DECOMP_DIR`, else `reference/pd-decomp`) and the output root (`PD_ASSETS_OUT`, else `assets/`). Every exporter imports it.
+- [x] 2. **Texture pool** `textures/<num>.png` + `index.json` (w, h, format, codec, numcolours, numlods, hasloddata): 1382 textures, the union of what the models reference plus the menu, fx and Complex BG sets. Textures stored inside a model file go to `models/tex/<stem>_<index>.png`.
+- [x] 3. **One model format**, `models/<stem>.json + .bin`, written by `pd_models.py` over `pd_fpgun.export_model`, documented in `pd_core::model`. 225 models: guns, hands, casings, every weapon's held `P*` model, the projectile props, every MP body and head, the hudpiece. `pd_menu_models.py` and `pd_hitbox.py` are gone (BBOX nodes carry the part boxes).
+- [x] 4. **Animation bank**: the whole bank (1207 entries, 8 MB) raw, `anims/<num>.bin` + `index.json`, rather than a reference closure that could miss a chraction row.
+- [x] 5. `fonts/` (xs/sm/md/lg + numeric), `lang/en.json` (all 68 banks, keyed by `LANGBANK_*`), `lang/mpstringsE.bin`, `data/weapons.json`, `data/mpconfigs.bin`, `data/bodies.json` (`g_HeadsAndBodies`, `g_MpBodies`, `g_MpHeads`, male/female heads), and one `sfx/` pool (223 WAVs + `manifest.json`).
+- [x] 6. `build_assets.py` (≈25 s) clears what it owns, runs everything, writes `MANIFEST.json` with per-directory digests: two runs are identical. `check_against_spikes.py` is the regression check against the old repo.
 
 **Code**
-7. `pd_core::math` + `rng` (from `pd_spike/pdmath.rs`, `pd_guns/pdmtx.rs`, `pd_atan2f`); `lv` (merge the three timing structs: remainder carry from `pd_spike`, slow-motion cap from `pd_guns`, `diffframe60` from `pd_menu`).
-8. `pd_core::anim` from `pd_guns/anim.rs` + `animdata.rs`, with their tests.
-9. `pd_core::model`: the loader for the new format and the walker from `pd_menu/pdmodel.rs` (helper joints, head-on-body matrix segment), plus `model_test_for_hit` from `pd_guns/range.rs` `test_part_boxes`. Tests: posing is identical to the old walkers on guns (no helpers) and bodies (helpers). Port the spike's "feet on the floor within ±4 cm" check onto the new path.
-10. `n64::rdp`: merge `pd_menu/gfx.rs` + `pdmodel.rs` `raster`/`combine`. `n64::pad`: `Joy` + raw codes. `pd_core::text` from `pd_menu/text.rs` (the fonts through `n64::rdp`).
-11. `pd_core::ids`, `lang`, `assets` (the layout builder), `mp::MatchSetup`.
-12. `pd_snapshot model <name>`: a CPU turntable of any model (body + head + held gun) to PNG, for checking the format by eye.
+- [x] 7. `pd_core::math` (angles, `mtx.c`, `atan2f`, `quaternion.c` under PD's names), `rng`, `lv` (`frametime_apply` + `lv_tick`'s timing half).
+- [x] 8. `pd_core::anim` (bank + `struct anim`), including the `ABSOLUTETRANSLATION` paths the spike stubbed.
+- [x] 9. `pd_core::model`: format, store, `g_HeadsAndBodies`, the merged walker, `model_test_for_hit`, a CPU draw. Oracle tests against frozen copies of both spike walkers; the feet check on PD's own model files.
+- [x] 10. `n64::rdp` (2D + 3D front ends), `n64::rsp` (vertex stage), `n64::pad` (`Pad` + the USB adapter's raw codes). `pd_core::text` with the numeric font.
+- [x] 11. `pd_core::ids` (generated by `pd_ids.py`: 610 constants + stage codes), `lang`, `assets` (`AssetDir`), `mp::MatchSetup`.
+- [x] 12. `pd_snapshot <out> model <stem> [--head s|none] [--gun s] [--anim n] [--frame f] [--views n] [--pitch deg]`.
 
-**Done when:** `cargo test --workspace` is green with the ported anim/model/text tests; `build_assets.py` regenerates `assets/` reproducibly; `pd_snapshot model` renders Joanna, a simulant body with head, and a Falcon correctly.
+Checked: `cargo test --workspace --release` green (n64 9, pd_core 35), `check_boundaries.py` ok, clippy clean on n64/pd_core/pd_tools. Snapshots read by eye: `dark_combat` (Joanna, with her MP head, holding `chrfalcon2`), `cisoldier` + head, `ddshock` + `chrcmp150`, `falcon2` mid-reload, `chrfalcon2` from above.
 
-**Watch out for** (from the spike notes):
-- a head has no matrices of its own; it loads matrix 0 from the body's segment;
-- every chr body uses the elbow/knee helpers, and the gun walker skipped them;
-- the menu model context turns fog off, so ignore the exporter's `fog_tint` there;
-- colour maths is gamma-free: textures are raw `Rgba8Unorm` in N64 display space.
+### Notes for the next contexts
+
+**Where the merged walker departs from the spike walkers**, all towards `model.c`/`quaternion.c`: the `0x0200` helper folds with `BADDTOR(360)` (spike: 2π); merges use PD's `quaternion_slerp` + `quaternion_to_mtx` (spike: glam); the half-rotation is not normalised; an `ABSOLUTETRANSLATION` root scales by `bg_get_stage_translation_thing()` (100 on every MP arena; spike: 1); with 2+ players an animation faster than 0.5 poses on whole frames (`model.c:1576`, new). Measured on every chr body: main joints bit for bit, helpers ≤ 7.5e-9, merged poses ≤ 6.1e-5 model units, and guns/props bit for bit. **If an M2 golden differs by a pixel on a menu model, look here first.** `model/oracle.rs` (test only) holds the frozen spike walkers; delete it once M2's goldens and M4's gun snapshots pass.
+
+**Sound:** the spikes exported some sounds raw (menu set, grunts, footstep impacts) and the gun set with the playback envelope baked. The pool bakes it into every non-looping sound (PD's sound player applies it to every voice), so 55 WAVs differ from the old files; `manifest.json`'s `envelope_baked` says which. Request lists are `pd_sfx.py` `POOL_*`.
+
+**For M2 (menus):**
+- Text ids are PD's: `pd_core::lang::Tx` is `(LANGBANK, index)`. `pd_menu_gen.py` now emits `B_*` as `LANGBANK_*` numbers and no `BANK_NAMES`; its `main` writes `crates/pd_menu/src/generated.rs`, whose `use super::lang::{tx, Tx}` must point at `pd_core::lang`.
+- The menu's textures (menuray `01e5`, envstar `084e`, ...) are in the pool: `AssetDir::texture(num)` + `AssetDir::read_png` → `n64::rdp::Texture::from_rgba8`. `n64` does no I/O.
+- Menu models: `pd_core::model::{ModelStore, Model::with_head, draw::draw_model}`; the hudpiece's scrolling liquid is `DrawOpts::hud_s`; the menu's lights and view are the caller's (`pd_tools/src/snapshot/model.rs` has `var80071468`). `ModelDef::with_head_offset` is `body_calculate_head_offset`'s vertex pass.
+- The menu's `Joy` becomes `n64::pad::Pad` (+ the menu keeps its own `back2`); the menus run on `Lv::diffframe60`.
+- `Gfx::rgba8` returns opaque pixels; the pause menu over the game (M7) needs a premultiplied-alpha readout of `Gfx::fb`.
+- An MP body's head 1000 means a random head from `g_MpMaleHeads`/`g_MpFemaleHeads` (`Bodies::default_head(body, pick)`).
+
+**Later:** `anim->flip` in the decoder (chrs, M6). The first-person gun's part visibility and hands (`gunviscmds`, `bondgun.c`), the STARGUNFIRE jitter and the gun spike's HUD `Canvas` → `n64::rdp::Gfx` are M4; `pd_snapshot model` applies only a gun's static `sethidden` list. A held gun's `rendermtx` is the chr's `MODELPART_CHR_RIGHTHAND` matrix (checked by eye). A new stage's BG textures join the pool via `pd_models.py` `BG_STAGES` until M3's stage exporter owns them. `check_against_spikes.py` stays until the old repo is retired.
 
 ---
 

@@ -1,0 +1,1577 @@
+{
+ "a51airman": {
+  "filenum": 561,
+  "file": "FILE_CA51AIRMAN",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/a51airman.bin",
+  "tris": 709
+ },
+ "a51faceplate": {
+  "filenum": 1297,
+  "file": "FILE_CA51FACEPLATE",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/a51faceplate.bin",
+  "tris": 137
+ },
+ "a51trooper": {
+  "filenum": 460,
+  "file": "FILE_CA51TROOPER",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/a51trooper.bin",
+  "tris": 641
+ },
+ "alaskan_guard": {
+  "filenum": 613,
+  "file": "FILE_CALASKAN_GUARD",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/alaskan_guard.bin",
+  "tris": 675
+ },
+ "ar34": {
+  "filenum": 894,
+  "file": "FILE_GAR34",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/ar34.bin",
+  "tris": 328
+ },
+ "area51guard": {
+  "filenum": 63,
+  "file": "FILE_CAREA51GUARD",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/area51guard.bin",
+  "tris": 673
+ },
+ "biotech": {
+  "filenum": 456,
+  "file": "FILE_CBIOTECH",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/biotech.bin",
+  "tris": 700
+ },
+ "carreveningsuit": {
+  "filenum": 1193,
+  "file": "FILE_CCARREVENINGSUIT",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/carreveningsuit.bin",
+  "tris": 609
+ },
+ "carrington": {
+  "filenum": 64,
+  "file": "FILE_CCARRINGTON",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/carrington.bin",
+  "tris": 813
+ },
+ "cartblue": {
+  "filenum": 88,
+  "file": "FILE_GCARTBLUE",
+  "kind": "casing",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/cartblue.bin",
+  "tris": 50
+ },
+ "cartridge": {
+  "filenum": 89,
+  "file": "FILE_GCARTRIDGE",
+  "kind": "casing",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/cartridge.bin",
+  "tris": 18
+ },
+ "cartrifle": {
+  "filenum": 90,
+  "file": "FILE_GCARTRIFLE",
+  "kind": "casing",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/cartrifle.bin",
+  "tris": 26
+ },
+ "cartshell": {
+  "filenum": 91,
+  "file": "FILE_GCARTSHELL",
+  "kind": "casing",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/cartshell.bin",
+  "tris": 34
+ },
+ "cassandra": {
+  "filenum": 65,
+  "file": "FILE_CCASSANDRA",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/cassandra.bin",
+  "tris": 965
+ },
+ "chrar34": {
+  "filenum": 849,
+  "file": "FILE_PCHRAR34",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrar34.bin",
+  "tris": 102
+ },
+ "chrautogun": {
+  "filenum": 1298,
+  "file": "FILE_PCHRAUTOGUN",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrautogun.bin",
+  "tris": 72
+ },
+ "chravenger": {
+  "filenum": 852,
+  "file": "FILE_PCHRAVENGER",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chravenger.bin",
+  "tris": 67
+ },
+ "chrcloaker": {
+  "filenum": 1231,
+  "file": "FILE_PCHRCLOAKER",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrcloaker.bin",
+  "tris": 196
+ },
+ "chrcmp150": {
+  "filenum": 848,
+  "file": "FILE_PCHRCMP150",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrcmp150.bin",
+  "tris": 53
+ },
+ "chrcrossbolt": {
+  "filenum": 884,
+  "file": "FILE_PCHRCROSSBOLT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrcrossbolt.bin",
+  "tris": 52
+ },
+ "chrcrossbow": {
+  "filenum": 864,
+  "file": "FILE_PCHRCROSSBOW",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrcrossbow.bin",
+  "tris": 56
+ },
+ "chrcyclone": {
+  "filenum": 853,
+  "file": "FILE_PCHRCYCLONE",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrcyclone.bin",
+  "tris": 67
+ },
+ "chrdevastator": {
+  "filenum": 860,
+  "file": "FILE_PCHRDEVASTATOR",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdevastator.bin",
+  "tris": 51
+ },
+ "chrdevgrenade": {
+  "filenum": 885,
+  "file": "FILE_PCHRDEVGRENADE",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdevgrenade.bin",
+  "tris": 56
+ },
+ "chrdraggrenade": {
+  "filenum": 886,
+  "file": "FILE_PCHRDRAGGRENADE",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdraggrenade.bin",
+  "tris": 56
+ },
+ "chrdragon": {
+  "filenum": 850,
+  "file": "FILE_PCHRDRAGON",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdragon.bin",
+  "tris": 61
+ },
+ "chrdruggun": {
+  "filenum": 865,
+  "file": "FILE_PCHRDRUGGUN",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdruggun.bin",
+  "tris": 52
+ },
+ "chrdy357": {
+  "filenum": 843,
+  "file": "FILE_PCHRDY357",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdy357.bin",
+  "tris": 50
+ },
+ "chrdy357trent": {
+  "filenum": 844,
+  "file": "FILE_PCHRDY357TRENT",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdy357trent.bin",
+  "tris": 50
+ },
+ "chrdyrocket": {
+  "filenum": 859,
+  "file": "FILE_PCHRDYROCKET",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdyrocket.bin",
+  "tris": 60
+ },
+ "chrdyrocketmis": {
+  "filenum": 882,
+  "file": "FILE_PCHRDYROCKETMIS",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdyrocketmis.bin",
+  "tris": 99
+ },
+ "chrfalcon2": {
+  "filenum": 840,
+  "file": "FILE_PCHRFALCON2",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrfalcon2.bin",
+  "tris": 45
+ },
+ "chrfalcon2scope": {
+  "filenum": 847,
+  "file": "FILE_PCHRFALCON2SCOPE",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrfalcon2scope.bin",
+  "tris": 61
+ },
+ "chrfalcon2sil": {
+  "filenum": 846,
+  "file": "FILE_PCHRFALCON2SIL",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrfalcon2sil.bin",
+  "tris": 57
+ },
+ "chrgrenade": {
+  "filenum": 869,
+  "file": "FILE_PCHRGRENADE",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrgrenade.bin",
+  "tris": 36
+ },
+ "chrknife": {
+  "filenum": 866,
+  "file": "FILE_PCHRKNIFE",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrknife.bin",
+  "tris": 172
+ },
+ "chrlaser": {
+  "filenum": 1883,
+  "file": "FILE_PCHRLASER",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrlaser.bin",
+  "tris": 50
+ },
+ "chrleegun1": {
+  "filenum": 841,
+  "file": "FILE_PCHRLEEGUN1",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrleegun1.bin",
+  "tris": 42
+ },
+ "chrmaianpistol": {
+  "filenum": 845,
+  "file": "FILE_PCHRMAIANPISTOL",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrmaianpistol.bin",
+  "tris": 50
+ },
+ "chrmaiansmg": {
+  "filenum": 854,
+  "file": "FILE_PCHRMAIANSMG",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrmaiansmg.bin",
+  "tris": 47
+ },
+ "chrmauler": {
+  "filenum": 842,
+  "file": "FILE_PCHRMAULER",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrmauler.bin",
+  "tris": 52
+ },
+ "chrnbomb": {
+  "filenum": 867,
+  "file": "FILE_PCHRNBOMB",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrnbomb.bin",
+  "tris": 36
+ },
+ "chrnightsight": {
+  "filenum": 838,
+  "file": "FILE_PCHRNIGHTSIGHT",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrnightsight.bin",
+  "tris": 24
+ },
+ "chrpcgun": {
+  "filenum": 856,
+  "file": "FILE_PCHRPCGUN",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrpcgun.bin",
+  "tris": 54
+ },
+ "chrproximitymine": {
+  "filenum": 871,
+  "file": "FILE_PCHRPROXIMITYMINE",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrproximitymine.bin",
+  "tris": 70
+ },
+ "chrrcp120": {
+  "filenum": 855,
+  "file": "FILE_PCHRRCP120",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrrcp120.bin",
+  "tris": 56
+ },
+ "chrremotemine": {
+  "filenum": 872,
+  "file": "FILE_PCHRREMOTEMINE",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrremotemine.bin",
+  "tris": 70
+ },
+ "chrshield": {
+  "filenum": 839,
+  "file": "FILE_PCHRSHIELD",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrshield.bin",
+  "tris": 68
+ },
+ "chrshotgun": {
+  "filenum": 857,
+  "file": "FILE_PCHRSHOTGUN",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrshotgun.bin",
+  "tris": 56
+ },
+ "chrskminigun": {
+  "filenum": 858,
+  "file": "FILE_PCHRSKMINIGUN",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrskminigun.bin",
+  "tris": 75
+ },
+ "chrskrocket": {
+  "filenum": 861,
+  "file": "FILE_PCHRSKROCKET",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrskrocket.bin",
+  "tris": 58
+ },
+ "chrskrocketmis": {
+  "filenum": 883,
+  "file": "FILE_PCHRSKROCKETMIS",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrskrocketmis.bin",
+  "tris": 18
+ },
+ "chrsniperrifle": {
+  "filenum": 863,
+  "file": "FILE_PCHRSNIPERRIFLE",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrsniperrifle.bin",
+  "tris": 55
+ },
+ "chrspeedpill": {
+  "filenum": 1232,
+  "file": "FILE_PCHRSPEEDPILL",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrspeedpill.bin",
+  "tris": 236
+ },
+ "chrsuperdragon": {
+  "filenum": 851,
+  "file": "FILE_PCHRSUPERDRAGON",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrsuperdragon.bin",
+  "tris": 75
+ },
+ "chrtimedmine": {
+  "filenum": 870,
+  "file": "FILE_PCHRTIMEDMINE",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrtimedmine.bin",
+  "tris": 70
+ },
+ "chrz2020": {
+  "filenum": 862,
+  "file": "FILE_PCHRZ2020",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrz2020.bin",
+  "tris": 65
+ },
+ "ciaguy": {
+  "filenum": 459,
+  "file": "FILE_CCIAGUY",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/ciaguy.bin",
+  "tris": 711
+ },
+ "cifemtech": {
+  "filenum": 1190,
+  "file": "FILE_CCIFEMTECH",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/cifemtech.bin",
+  "tris": 813
+ },
+ "cilabtech": {
+  "filenum": 1189,
+  "file": "FILE_CCILABTECH",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/cilabtech.bin",
+  "tris": 725
+ },
+ "cisoldier": {
+  "filenum": 1195,
+  "file": "FILE_CCISOLDIER",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/cisoldier.bin",
+  "tris": 505
+ },
+ "cmp150": {
+  "filenum": 893,
+  "file": "FILE_GCMP150",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/cmp150.bin",
+  "tris": 279
+ },
+ "combathandslod": {
+  "filenum": 1253,
+  "file": "FILE_GCOMBATHANDSLOD",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/combathandslod.bin",
+  "tris": 478
+ },
+ "connery": {
+  "filenum": 409,
+  "file": "FILE_CCONNERY",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/connery.bin",
+  "tris": 611
+ },
+ "crossbow": {
+  "filenum": 909,
+  "file": "FILE_GCROSSBOW",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/crossbow.bin",
+  "tris": 343
+ },
+ "cyclone": {
+  "filenum": 898,
+  "file": "FILE_GCYCLONE",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/cyclone.bin",
+  "tris": 346
+ },
+ "dalton": {
+  "filenum": 411,
+  "file": "FILE_CDALTON",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dalton.bin",
+  "tris": 611
+ },
+ "dark_af1": {
+  "filenum": 828,
+  "file": "FILE_CDARK_AF1",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dark_af1.bin",
+  "tris": 830
+ },
+ "dark_combat": {
+  "filenum": 66,
+  "file": "FILE_CDARK_COMBAT",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dark_combat.bin",
+  "tris": 601
+ },
+ "dark_frock": {
+  "filenum": 67,
+  "file": "FILE_CDARK_FROCK",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dark_frock.bin",
+  "tris": 634
+ },
+ "dark_leather": {
+  "filenum": 1369,
+  "file": "FILE_CDARK_LEATHER",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dark_leather.bin",
+  "tris": 626
+ },
+ "dark_negotiator": {
+  "filenum": 1942,
+  "file": "FILE_CDARK_NEGOTIATOR",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dark_negotiator.bin",
+  "tris": 885
+ },
+ "dark_ripped": {
+  "filenum": 433,
+  "file": "FILE_CDARK_RIPPED",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dark_ripped.bin",
+  "tris": 936
+ },
+ "dark_trench": {
+  "filenum": 68,
+  "file": "FILE_CDARK_TRENCH",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dark_trench.bin",
+  "tris": 1004
+ },
+ "darkaqualung": {
+  "filenum": 1183,
+  "file": "FILE_CDARKAQUALUNG",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/darkaqualung.bin",
+  "tris": 799
+ },
+ "darklab": {
+  "filenum": 1185,
+  "file": "FILE_CDARKLAB",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/darklab.bin",
+  "tris": 618
+ },
+ "darksnow": {
+  "filenum": 1184,
+  "file": "FILE_CDARKSNOW",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/darksnow.bin",
+  "tris": 623
+ },
+ "darkwet": {
+  "filenum": 1182,
+  "file": "FILE_CDARKWET",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/darkwet.bin",
+  "tris": 600
+ },
+ "dd_guard": {
+  "filenum": 447,
+  "file": "FILE_CDD_GUARD",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dd_guard.bin",
+  "tris": 697
+ },
+ "dd_labtech": {
+  "filenum": 404,
+  "file": "FILE_CDD_LABTECH",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dd_labtech.bin",
+  "tris": 693
+ },
+ "dd_secguard": {
+  "filenum": 70,
+  "file": "FILE_CDD_SECGUARD",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dd_secguard.bin",
+  "tris": 680
+ },
+ "dd_shock_inf": {
+  "filenum": 452,
+  "file": "FILE_CDD_SHOCK_INF",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dd_shock_inf.bin",
+  "tris": 768
+ },
+ "ddshock": {
+  "filenum": 69,
+  "file": "FILE_CDDSHOCK",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/ddshock.bin",
+  "tris": 689
+ },
+ "ddsniper": {
+  "filenum": 1187,
+  "file": "FILE_CDDSNIPER",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/ddsniper.bin",
+  "tris": 831
+ },
+ "djbond": {
+  "filenum": 71,
+  "file": "FILE_CDJBOND",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/djbond.bin",
+  "tris": 619
+ },
+ "druggun": {
+  "filenum": 910,
+  "file": "FILE_GDRUGGUN",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/druggun.bin",
+  "tris": 409
+ },
+ "dy357": {
+  "filenum": 890,
+  "file": "FILE_GDY357",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/dy357.bin",
+  "tris": 463
+ },
+ "dy357trent": {
+  "filenum": 891,
+  "file": "FILE_GDY357TRENT",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/dy357trent.bin",
+  "tris": 459
+ },
+ "dydevastator": {
+  "filenum": 905,
+  "file": "FILE_GDYDEVASTATOR",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/dydevastator.bin",
+  "tris": 408
+ },
+ "dydragon": {
+  "filenum": 895,
+  "file": "FILE_GDYDRAGON",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/dydragon.bin",
+  "tris": 476
+ },
+ "dyrocket": {
+  "filenum": 904,
+  "file": "FILE_GDYROCKET",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/dyrocket.bin",
+  "tris": 584
+ },
+ "dysuperdragon": {
+  "filenum": 896,
+  "file": "FILE_GDYSUPERDRAGON",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/dysuperdragon.bin",
+  "tris": 574
+ },
+ "elvis1": {
+  "filenum": 74,
+  "file": "FILE_CELVIS1",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/elvis1.bin",
+  "tris": 659
+ },
+ "elviswaistcoat": {
+  "filenum": 1292,
+  "file": "FILE_CELVISWAISTCOAT",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/elviswaistcoat.bin",
+  "tris": 688
+ },
+ "falcon2": {
+  "filenum": 887,
+  "file": "FILE_GFALCON2",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/falcon2.bin",
+  "tris": 565
+ },
+ "fbiguy": {
+  "filenum": 457,
+  "file": "FILE_CFBIGUY",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/fbiguy.bin",
+  "tris": 684
+ },
+ "fem_guard": {
+  "filenum": 76,
+  "file": "FILE_CFEM_GUARD",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/fem_guard.bin",
+  "tris": 720
+ },
+ "femlabtech": {
+  "filenum": 1186,
+  "file": "FILE_CFEMLABTECH",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/femlabtech.bin",
+  "tris": 835
+ },
+ "g5_guard": {
+  "filenum": 609,
+  "file": "FILE_CG5_GUARD",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/g5_guard.bin",
+  "tris": 708
+ },
+ "g5_swat_guard": {
+  "filenum": 612,
+  "file": "FILE_CG5_SWAT_GUARD",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/g5_swat_guard.bin",
+  "tris": 720
+ },
+ "grenade": {
+  "filenum": 912,
+  "file": "FILE_GGRENADE",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/grenade.bin",
+  "tris": 324
+ },
+ "hand_carrington": {
+  "filenum": 1329,
+  "file": "FILE_GHAND_CARRINGTON",
+  "kind": "hand",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/hand_carrington.bin",
+  "tris": 450
+ },
+ "hand_joaf1": {
+  "filenum": 1327,
+  "file": "FILE_GHAND_JOAF1",
+  "kind": "hand",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/hand_joaf1.bin",
+  "tris": 450
+ },
+ "hand_jofrock": {
+  "filenum": 1323,
+  "file": "FILE_GHAND_JOFROCK",
+  "kind": "hand",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/hand_jofrock.bin",
+  "tris": 480
+ },
+ "hand_jopilot": {
+  "filenum": 1328,
+  "file": "FILE_GHAND_JOPILOT",
+  "kind": "hand",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/hand_jopilot.bin",
+  "tris": 439
+ },
+ "hand_josnow": {
+  "filenum": 1334,
+  "file": "FILE_GHAND_JOSNOW",
+  "kind": "hand",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/hand_josnow.bin",
+  "tris": 448
+ },
+ "hand_jotrench": {
+  "filenum": 1324,
+  "file": "FILE_GHAND_JOTRENCH",
+  "kind": "hand",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/hand_jotrench.bin",
+  "tris": 466
+ },
+ "hand_jowetsuit": {
+  "filenum": 1321,
+  "file": "FILE_GHAND_JOWETSUIT",
+  "kind": "hand",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/hand_jowetsuit.bin",
+  "tris": 466
+ },
+ "hand_mrblonde": {
+  "filenum": 1330,
+  "file": "FILE_GHAND_MRBLONDE",
+  "kind": "hand",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/hand_mrblonde.bin",
+  "tris": 450
+ },
+ "head_vd": {
+  "filenum": 1377,
+  "file": "FILE_CHEAD_VD",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/head_vd.bin",
+  "tris": 348
+ },
+ "headalex": {
+  "filenum": 1985,
+  "file": "FILE_CHEADALEX",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headalex.bin",
+  "tris": 189
+ },
+ "headandy_r": {
+  "filenum": 610,
+  "file": "FILE_CHEADANDY_R",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headandy_r.bin",
+  "tris": 175
+ },
+ "headanka": {
+  "filenum": 570,
+  "file": "FILE_CHEADANKA",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headanka.bin",
+  "tris": 182
+ },
+ "headbeau": {
+  "filenum": 450,
+  "file": "FILE_CHEADBEAU",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headbeau.bin",
+  "tris": 222
+ },
+ "headben_r": {
+  "filenum": 615,
+  "file": "FILE_CHEADBEN_R",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headben_r.bin",
+  "tris": 177
+ },
+ "headbiotech": {
+  "filenum": 464,
+  "file": "FILE_CHEADBIOTECH",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headbiotech.bin",
+  "tris": 203
+ },
+ "headbrian": {
+  "filenum": 461,
+  "file": "FILE_CHEADBRIAN",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headbrian.bin",
+  "tris": 201
+ },
+ "headcarrington": {
+  "filenum": 415,
+  "file": "FILE_CHEADCARRINGTON",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headcarrington.bin",
+  "tris": 249
+ },
+ "headcarter": {
+  "filenum": 2004,
+  "file": "FILE_CHEADCARTER",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headcarter.bin",
+  "tris": 249
+ },
+ "headcassandra": {
+  "filenum": 422,
+  "file": "FILE_CHEADCASSANDRA",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headcassandra.bin",
+  "tris": 364
+ },
+ "headchrist": {
+  "filenum": 435,
+  "file": "FILE_CHEADCHRIST",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headchrist.bin",
+  "tris": 201
+ },
+ "headcook": {
+  "filenum": 1997,
+  "file": "FILE_CHEADCOOK",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headcook.bin",
+  "tris": 238
+ },
+ "headdark_combat": {
+  "filenum": 412,
+  "file": "FILE_CHEADDARK_COMBAT",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headdark_combat.bin",
+  "tris": 322
+ },
+ "headdark_frock": {
+  "filenum": 420,
+  "file": "FILE_CHEADDARK_FROCK",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headdark_frock.bin",
+  "tris": 360
+ },
+ "headdark_snow": {
+  "filenum": 1370,
+  "file": "FILE_CHEADDARK_SNOW",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headdark_snow.bin",
+  "tris": 270
+ },
+ "headdarkaqua": {
+  "filenum": 1197,
+  "file": "FILE_CHEADDARKAQUA",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headdarkaqua.bin",
+  "tris": 340
+ },
+ "headdarling": {
+  "filenum": 446,
+  "file": "FILE_CHEADDARLING",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headdarling.bin",
+  "tris": 201
+ },
+ "headdavec": {
+  "filenum": 1988,
+  "file": "FILE_CHEADDAVEC",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headdavec.bin",
+  "tris": 238
+ },
+ "headddshock": {
+  "filenum": 418,
+  "file": "FILE_CHEADDDSHOCK",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headddshock.bin",
+  "tris": 177
+ },
+ "headddsniper": {
+  "filenum": 1198,
+  "file": "FILE_CHEADDDSNIPER",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headddsniper.bin",
+  "tris": 276
+ },
+ "headduncan2": {
+  "filenum": 463,
+  "file": "FILE_CHEADDUNCAN2",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headduncan2.bin",
+  "tris": 177
+ },
+ "headedmcg": {
+  "filenum": 568,
+  "file": "FILE_CHEADEDMCG",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headedmcg.bin",
+  "tris": 177
+ },
+ "headeileen_h": {
+  "filenum": 1191,
+  "file": "FILE_CHEADEILEEN_H",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headeileen_h.bin",
+  "tris": 266
+ },
+ "headeileen_t": {
+  "filenum": 583,
+  "file": "FILE_CHEADEILEEN_T",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headeileen_t.bin",
+  "tris": 192
+ },
+ "headelvis": {
+  "filenum": 413,
+  "file": "FILE_CHEADELVIS",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headelvis.bin",
+  "tris": 271
+ },
+ "headelvis_gogs": {
+  "filenum": 1363,
+  "file": "FILE_CHEADELVIS_GOGS",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headelvis_gogs.bin",
+  "tris": 353
+ },
+ "headfem_guard": {
+  "filenum": 424,
+  "file": "FILE_CHEADFEM_GUARD",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headfem_guard.bin",
+  "tris": 252
+ },
+ "headfem_guard2": {
+  "filenum": 453,
+  "file": "FILE_CHEADFEM_GUARD2",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headfem_guard2.bin",
+  "tris": 235
+ },
+ "headgareth": {
+  "filenum": 2001,
+  "file": "FILE_CHEADGARETH",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headgareth.bin",
+  "tris": 200
+ },
+ "headgraham": {
+  "filenum": 419,
+  "file": "FILE_CHEADGRAHAM",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headgraham.bin",
+  "tris": 165
+ },
+ "headgrant": {
+  "filenum": 1982,
+  "file": "FILE_CHEADGRANT",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headgrant.bin",
+  "tris": 209
+ },
+ "headgriffey": {
+  "filenum": 1293,
+  "file": "FILE_CHEADGRIFFEY",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headgriffey.bin",
+  "tris": 217
+ },
+ "headjamie": {
+  "filenum": 462,
+  "file": "FILE_CHEADJAMIE",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headjamie.bin",
+  "tris": 175
+ },
+ "headjoel": {
+  "filenum": 1990,
+  "file": "FILE_CHEADJOEL",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headjoel.bin",
+  "tris": 185
+ },
+ "headjon": {
+  "filenum": 425,
+  "file": "FILE_CHEADJON",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headjon.bin",
+  "tris": 165
+ },
+ "headjonathan": {
+  "filenum": 826,
+  "file": "FILE_CHEADJONATHAN",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headjonathan.bin",
+  "tris": 277
+ },
+ "headjones": {
+  "filenum": 2008,
+  "file": "FILE_CHEADJONES",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headjones.bin",
+  "tris": 189
+ },
+ "headjulianne": {
+  "filenum": 1986,
+  "file": "FILE_CHEADJULIANNE",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headjulianne.bin",
+  "tris": 215
+ },
+ "headkeith": {
+  "filenum": 1295,
+  "file": "FILE_CHEADKEITH",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headkeith.bin",
+  "tris": 201
+ },
+ "headken": {
+  "filenum": 1989,
+  "file": "FILE_CHEADKEN",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headken.bin",
+  "tris": 155
+ },
+ "headlaura": {
+  "filenum": 1987,
+  "file": "FILE_CHEADLAURA",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headlaura.bin",
+  "tris": 217
+ },
+ "headleslie_s": {
+  "filenum": 573,
+  "file": "FILE_CHEADLESLIE_S",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headleslie_s.bin",
+  "tris": 190
+ },
+ "headmaian_s": {
+  "filenum": 827,
+  "file": "FILE_CHEADMAIAN_S",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headmaian_s.bin",
+  "tris": 271
+ },
+ "headmark2": {
+  "filenum": 434,
+  "file": "FILE_CHEADMARK2",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headmark2.bin",
+  "tris": 201
+ },
+ "headmatt_c": {
+  "filenum": 579,
+  "file": "FILE_CHEADMATT_C",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headmatt_c.bin",
+  "tris": 179
+ },
+ "headmoto": {
+  "filenum": 1294,
+  "file": "FILE_CHEADMOTO",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headmoto.bin",
+  "tris": 219
+ },
+ "headmrblonde": {
+  "filenum": 416,
+  "file": "FILE_CHEADMRBLONDE",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headmrblonde.bin",
+  "tris": 260
+ },
+ "headmunton": {
+  "filenum": 2006,
+  "file": "FILE_CHEADMUNTON",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headmunton.bin",
+  "tris": 213
+ },
+ "headmurchie": {
+  "filenum": 2002,
+  "file": "FILE_CHEADMURCHIE",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headmurchie.bin",
+  "tris": 185
+ },
+ "headneil2": {
+  "filenum": 562,
+  "file": "FILE_CHEADNEIL2",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headneil2.bin",
+  "tris": 185
+ },
+ "headpeer_s": {
+  "filenum": 581,
+  "file": "FILE_CHEADPEER_S",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headpeer_s.bin",
+  "tris": 141
+ },
+ "headpenny": {
+  "filenum": 1983,
+  "file": "FILE_CHEADPENNY",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headpenny.bin",
+  "tris": 213
+ },
+ "headphelps": {
+  "filenum": 2009,
+  "file": "FILE_CHEADPHELPS",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headphelps.bin",
+  "tris": 191
+ },
+ "headpresident": {
+  "filenum": 1371,
+  "file": "FILE_CHEADPRESIDENT",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headpresident.bin",
+  "tris": 255
+ },
+ "headpryce": {
+  "filenum": 1998,
+  "file": "FILE_CHEADPRYCE",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headpryce.bin",
+  "tris": 187
+ },
+ "headrobert": {
+  "filenum": 448,
+  "file": "FILE_CHEADROBERT",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headrobert.bin",
+  "tris": 171
+ },
+ "headrobin": {
+  "filenum": 1984,
+  "file": "FILE_CHEADROBIN",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headrobin.bin",
+  "tris": 183
+ },
+ "headross": {
+  "filenum": 414,
+  "file": "FILE_CHEADROSS",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headross.bin",
+  "tris": 173
+ },
+ "headruss": {
+  "filenum": 444,
+  "file": "FILE_CHEADRUSS",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headruss.bin",
+  "tris": 201
+ },
+ "headsanchez": {
+  "filenum": 1196,
+  "file": "FILE_CHEADSANCHEZ",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headsanchez.bin",
+  "tris": 165
+ },
+ "headscott_h": {
+  "filenum": 1192,
+  "file": "FILE_CHEADSCOTT_H",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headscott_h.bin",
+  "tris": 177
+ },
+ "headsecretary": {
+  "filenum": 421,
+  "file": "FILE_CHEADSECRETARY",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headsecretary.bin",
+  "tris": 232
+ },
+ "headshaun": {
+  "filenum": 837,
+  "file": "FILE_CHEADSHAUN",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headshaun.bin",
+  "tris": 169
+ },
+ "headsilke": {
+  "filenum": 1999,
+  "file": "FILE_CHEADSILKE",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headsilke.bin",
+  "tris": 208
+ },
+ "headsmith": {
+  "filenum": 2000,
+  "file": "FILE_CHEADSMITH",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headsmith.bin",
+  "tris": 189
+ },
+ "headstamper": {
+  "filenum": 2007,
+  "file": "FILE_CHEADSTAMPER",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headstamper.bin",
+  "tris": 189
+ },
+ "headsteve_k": {
+  "filenum": 616,
+  "file": "FILE_CHEADSTEVE_K",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headsteve_k.bin",
+  "tris": 183
+ },
+ "headstevem": {
+  "filenum": 1364,
+  "file": "FILE_CHEADSTEVEM",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headstevem.bin",
+  "tris": 208
+ },
+ "headtim": {
+  "filenum": 1981,
+  "file": "FILE_CHEADTIM",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headtim.bin",
+  "tris": 179
+ },
+ "headtintin": {
+  "filenum": 2005,
+  "file": "FILE_CHEADTINTIN",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headtintin.bin",
+  "tris": 213
+ },
+ "headtrent": {
+  "filenum": 417,
+  "file": "FILE_CHEADTRENT",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headtrent.bin",
+  "tris": 236
+ },
+ "headwinner": {
+  "filenum": 1296,
+  "file": "FILE_CHEADWINNER",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headwinner.bin",
+  "tris": 258
+ },
+ "headwong": {
+  "filenum": 2003,
+  "file": "FILE_CHEADWONG",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headwong.bin",
+  "tris": 191
+ },
+ "hudpiece": {
+  "filenum": 601,
+  "file": "FILE_GHUDPIECE",
+  "kind": "hud",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/hudpiece.bin",
+  "tris": 230
+ },
+ "jonathon": {
+  "filenum": 1194,
+  "file": "FILE_CJONATHON",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/jonathon.bin",
+  "tris": 453
+ },
+ "k7avenger": {
+  "filenum": 897,
+  "file": "FILE_GK7AVENGER",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/k7avenger.bin",
+  "tris": 390
+ },
+ "knife": {
+  "filenum": 911,
+  "file": "FILE_GKNIFE",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/knife.bin",
+  "tris": 172
+ },
+ "labtech": {
+  "filenum": 77,
+  "file": "FILE_CLABTECH",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/labtech.bin",
+  "tris": 728
+ },
+ "laser": {
+  "filenum": 1247,
+  "file": "FILE_GLASER",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/laser.bin",
+  "tris": 284
+ },
+ "leegun1": {
+  "filenum": 888,
+  "file": "FILE_GLEEGUN1",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/leegun1.bin",
+  "tris": 306
+ },
+ "maian_soldier": {
+  "filenum": 614,
+  "file": "FILE_CMAIAN_SOLDIER",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/maian_soldier.bin",
+  "tris": 491
+ },
+ "maianpistol": {
+  "filenum": 892,
+  "file": "FILE_GMAIANPISTOL",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/maianpistol.bin",
+  "tris": 318
+ },
+ "maiansmg": {
+  "filenum": 899,
+  "file": "FILE_GMAIANSMG",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/maiansmg.bin",
+  "tris": 312
+ },
+ "moore": {
+  "filenum": 410,
+  "file": "FILE_CMOORE",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/moore.bin",
+  "tris": 611
+ },
+ "mrblonde": {
+  "filenum": 78,
+  "file": "FILE_CMRBLONDE",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/mrblonde.bin",
+  "tris": 1039
+ },
+ "nbomb": {
+  "filenum": 1276,
+  "file": "FILE_GNBOMB",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/nbomb.bin",
+  "tris": 324
+ },
+ "negotiator": {
+  "filenum": 582,
+  "file": "FILE_CNEGOTIATOR",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/negotiator.bin",
+  "tris": 655
+ },
+ "nsa_lackey": {
+  "filenum": 578,
+  "file": "FILE_CNSA_LACKEY",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/nsa_lackey.bin",
+  "tris": 669
+ },
+ "officeworker": {
+  "filenum": 79,
+  "file": "FILE_COFFICEWORKER",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/officeworker.bin",
+  "tris": 687
+ },
+ "officeworker2": {
+  "filenum": 80,
+  "file": "FILE_COFFICEWORKER2",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/officeworker2.bin",
+  "tris": 685
+ },
+ "overall": {
+  "filenum": 81,
+  "file": "FILE_COVERALL",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/overall.bin",
+  "tris": 688
+ },
+ "pcgun": {
+  "filenum": 901,
+  "file": "FILE_GPCGUN",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/pcgun.bin",
+  "tris": 452
+ },
+ "pelagic_guard": {
+  "filenum": 611,
+  "file": "FILE_CPELAGIC_GUARD",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/pelagic_guard.bin",
+  "tris": 692
+ },
+ "pilotaf1": {
+  "filenum": 1188,
+  "file": "FILE_CPILOTAF1",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/pilotaf1.bin",
+  "tris": 492
+ },
+ "pres_security": {
+  "filenum": 580,
+  "file": "FILE_CPRES_SECURITY",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/pres_security.bin",
+  "tris": 668
+ },
+ "president": {
+  "filenum": 571,
+  "file": "FILE_CPRESIDENT",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/president.bin",
+  "tris": 904
+ },
+ "president_clone": {
+  "filenum": 825,
+  "file": "FILE_CPRESIDENT_CLONE",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/president_clone.bin",
+  "tris": 573
+ },
+ "proximitymine": {
+  "filenum": 914,
+  "file": "FILE_GPROXIMITYMINE",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/proximitymine.bin",
+  "tris": 70
+ },
+ "rcp120": {
+  "filenum": 900,
+  "file": "FILE_GRCP120",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/rcp120.bin",
+  "tris": 389
+ },
+ "remotemine": {
+  "filenum": 915,
+  "file": "FILE_GREMOTEMINE",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/remotemine.bin",
+  "tris": 125
+ },
+ "secretary": {
+  "filenum": 82,
+  "file": "FILE_CSECRETARY",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/secretary.bin",
+  "tris": 675
+ },
+ "shotgun": {
+  "filenum": 902,
+  "file": "FILE_GSHOTGUN",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/shotgun.bin",
+  "tris": 522
+ },
+ "skminigun": {
+  "filenum": 903,
+  "file": "FILE_GSKMINIGUN",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/skminigun.bin",
+  "tris": 514
+ },
+ "skpistol": {
+  "filenum": 889,
+  "file": "FILE_GSKPISTOL",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/skpistol.bin",
+  "tris": 269
+ },
+ "skrocket": {
+  "filenum": 906,
+  "file": "FILE_GSKROCKET",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/skrocket.bin",
+  "tris": 428
+ },
+ "sniperrifle": {
+  "filenum": 908,
+  "file": "FILE_GSNIPERRIFLE",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/sniperrifle.bin",
+  "tris": 431
+ },
+ "steward": {
+  "filenum": 567,
+  "file": "FILE_CSTEWARD",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/steward.bin",
+  "tris": 699
+ },
+ "stewardess": {
+  "filenum": 569,
+  "file": "FILE_CSTEWARDESS",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/stewardess.bin",
+  "tris": 655
+ },
+ "stewardess_coat": {
+  "filenum": 572,
+  "file": "FILE_CSTEWARDESS_COAT",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/stewardess_coat.bin",
+  "tris": 655
+ },
+ "stripes": {
+  "filenum": 84,
+  "file": "FILE_CSTRIPES",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/stripes.bin",
+  "tris": 754
+ },
+ "theking": {
+  "filenum": 86,
+  "file": "FILE_CTHEKING",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/theking.bin",
+  "tris": 659
+ },
+ "timedmine": {
+  "filenum": 913,
+  "file": "FILE_GTIMEDMINE",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/timedmine.bin",
+  "tris": 70
+ },
+ "trent": {
+  "filenum": 87,
+  "file": "FILE_CTRENT",
+  "kind": "chr",
+  "source": "pd-decomp/src/assets/ntsc-final/files/chrs/trent.bin",
+  "tris": 939
+ },
+ "xrayspecs": {
+  "filenum": 1904,
+  "file": "FILE_PXRAYSPECS",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/xrayspecs.bin",
+  "tris": 24
+ },
+ "z2020": {
+  "filenum": 907,
+  "file": "FILE_GZ2020",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/z2020.bin",
+  "tris": 585
+ }
+}

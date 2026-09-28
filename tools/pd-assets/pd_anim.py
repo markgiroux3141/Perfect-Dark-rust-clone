@@ -62,16 +62,8 @@ F_S32_TRANSLATE = 0x20
 F_CAMERA = 0x40
 F_F32_SCALE = 0x80
 
-ASSETS = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..",
-    "..",
-    "reference",
-    "pd-decomp",
-    "src",
-    "assets",
-    "ntsc-final",
-)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pd_paths import ASSETS  # noqa: E402
 
 
 def read_bits(data: bytes, numbits: int, bitoffset: int) -> int:

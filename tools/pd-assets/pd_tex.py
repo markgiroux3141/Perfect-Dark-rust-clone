@@ -822,10 +822,9 @@ def decode(data: bytes, _info: list | None = None, _all_images: bool = False) ->
 
 
 def assets_root() -> str:
-    return os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "..", "..", "reference", "pd-decomp", "src", "assets", "ntsc-final",
-    )
+    from pd_paths import ASSETS
+
+    return ASSETS
 
 
 def load(texturenum: int) -> PoolTexture:

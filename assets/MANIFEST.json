@@ -1,0 +1,74 @@
+{
+ "generated_by": "tools/pd-assets/build_assets.py",
+ "decomp": {
+  "repo": "https://github.com/n64decomp/perfect_dark",
+  "commit": "169ed48bdcbfb3b568b028bd5bebb27680073514",
+  "version": "ntsc-final",
+  "assets": "src/assets/ntsc-final"
+ },
+ "rom_md5": "e03b088b6ac9e0080440efed07c1e40f",
+ "exporters": {
+  "build_assets.py": "7ff95c5fb7c3ec14eabf1af5695c487f9438c0012e6018c834837531b7ffd193",
+  "check_against_spikes.py": "5ca208797cc81f491ec4e100cbaaf61bab4a0dc9e32f76fbb609915036d32cd7",
+  "pd_anim.py": "85e2ec9a1b2d0fdcdee787909647e654364437652f0339fa9e34571135ba1785",
+  "pd_animmap.py": "804be1a12ad6e530eab690de10f3fa3954858a87958f1af5249d9b570ae1f6ff",
+  "pd_bg.py": "67ed740d4bbec999c8047b5ec8b51fc9d9865596377261df905e21dcb8bc284e",
+  "pd_bg_preview.py": "73172f4ba61b94f948b1bd140d31e1b6f2c113c453c3df7208641d2b91998155",
+  "pd_fpgun.py": "6a1050082b23e09334bbdc6b1adc65d83c1b0840232c9a6ed9931d46629e7037",
+  "pd_gltf.py": "ae6da6c7b14e283701973d65e80615fb1200667aabe777e875dff02848d410ce",
+  "pd_ids.py": "b7b2e239ddaccb4ee6d74c8d9bcdde94596a60af07d5f973c7bbdf9b6f26283e",
+  "pd_menu_gen.py": "fab3532b81ecc9265a61d4ec46ed31f09d3a85aa39c7a9b3b0b2c53606abd92b",
+  "pd_model.py": "296358e46218e3c3df08e3809db18614ccdd998f28b681859162de9684a3983c",
+  "pd_models.py": "07656f41c0ba317b27747b5c70f9f9b3963b5a337c158b53f3bacbf06e59ea99",
+  "pd_paths.py": "bce54ee9800c28d0d6c5b152ef53d909fd33622459d0152c046efdcf5e31430a",
+  "pd_pose.py": "38400087d82a55f27975064e5a477800f95273cfab526efdb823b3e9301b66de",
+  "pd_preview.py": "1ac546d8fe6dc1df13f2db5f947f35f8d8cd50d7a432852ff9c8de9787e76dfe",
+  "pd_sfx.py": "04e87ea1fdaa099fb47aa3e62a7ca1313981ab696032a6b161aa5102d8e9c8ca",
+  "pd_tex.py": "547674a91e44c255fa656e13bfcccacc7c6a289800744ccfc495758a0e5ef65f",
+  "pd_triage.py": "66077a025a4191827bc7996f21d559e1d0818c9465d30d9a48ccfad25e7777d9",
+  "pd_weapons.py": "ce7b6f17334f0e5a46bcff86d2c57f331f6d84e20bfcbfe4a133a37513d9a7aa"
+ },
+ "counts": {
+  "weapons": 37,
+  "gun_scripts": 95,
+  "models": 225,
+  "pool_textures": 1382,
+  "model_textures": 9,
+  "headsandbodies": 152,
+  "anims": 1207,
+  "fonts": 5,
+  "langbanks": 68,
+  "sounds": 223,
+  "keys": 547
+ },
+ "dirs": {
+  "models": {
+   "files": 460,
+   "sha256": "a09925a964b8a047d71d0e55ca0f81d0d123a48dd12b8e8fe0c223e2ac6702fc"
+  },
+  "textures": {
+   "files": 1383,
+   "sha256": "9073bce943a1e7838a19eaa2ee4b26818b55db71ce1f6bdf5ca20842a3de5d95"
+  },
+  "anims": {
+   "files": 1208,
+   "sha256": "84c521286dc73f93f2b6fb07f079e431e1e8f98764a4c2556d7d7fd0903fa9ab"
+  },
+  "fonts": {
+   "files": 5,
+   "sha256": "da950a6da0d3922b43d852d5a4f777c222e5c8fc39f8a48061baf9fa104b79b1"
+  },
+  "lang": {
+   "files": 2,
+   "sha256": "847faaede5fa40ca24dc4dc487edfff801c5d9f507d7e35fb89b479c6621be1e"
+  },
+  "data": {
+   "files": 3,
+   "sha256": "ef92e2937ee3fc1c3acd363f849eb5cdbc01616f6ba7106aea0f4df3629ce720"
+  },
+  "sfx": {
+   "files": 224,
+   "sha256": "0200c8e5214c441f7bc83f37eff03736a239ddd9494c867c73f951ead6e0c4cb"
+  }
+ }
+}

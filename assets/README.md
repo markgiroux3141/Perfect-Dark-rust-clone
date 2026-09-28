@@ -4,4 +4,4 @@ Generated from the Perfect Dark decomp by `tools/pd-assets/` and committed. Do n
 
 The game finds this directory at run time through `PD_ASSETS`, or by walking up from the executable.
 
-Empty until M1.
+Regenerate with `python tools/pd-assets/build_assets.py` (about 25 s; two runs are byte-identical, and `MANIFEST.json` carries a digest per directory). `python tools/pd-assets/check_against_spikes.py` compares it with the old repo's exports.

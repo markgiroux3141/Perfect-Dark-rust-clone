@@ -6,6 +6,9 @@
 //! the same combiner, blender and filtering to WGSL for the 3D game view, and tests
 //! pin the two against each other.
 
+// The rasteriser keeps the reference implementation's shape (per-channel index loops).
+#![allow(clippy::needless_range_loop, clippy::too_many_arguments)]
+
 pub mod audio;
 #[cfg(feature = "gpu")]
 pub mod gpu;

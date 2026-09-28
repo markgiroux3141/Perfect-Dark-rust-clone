@@ -33,8 +33,7 @@ try:
 except ImportError:  # pragma: no cover
     Image = None
 
-REPO = os.path.dirname(os.path.dirname(HERE))
-ASSETS = os.path.join(REPO, "reference", "pd-decomp", "src", "assets", "ntsc-final")
+from pd_paths import ASSETS, REPO  # noqa: E402,F401
 
 
 def load_png(path: str) -> np.ndarray:

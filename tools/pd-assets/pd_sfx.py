@@ -153,8 +153,8 @@ import sys
 import wave
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DECOMP = os.path.normpath(os.path.join(HERE, "..", "..", "reference", "pd-decomp"))
-ASSETS = os.path.join(DECOMP, "src", "assets", "ntsc-final")
+sys.path.insert(0, HERE)
+from pd_paths import ASSETS, DECOMP  # noqa: E402,F401
 SFX_CTL = os.path.join(ASSETS, "sfx.ctl")
 SFX_TBL = os.path.join(ASSETS, "sfx.tbl")
 
@@ -604,6 +604,61 @@ def _function_body(pre: list[tuple[int, str]], signature: str) -> list[tuple[int
     return body
 
 
+#: The asset pool (`assets/sfx/`, written by `export_pool`): the derived weapon
+#: set plus what the spikes start by id. These lists are the union of the gun
+#: spike's and the menu spike's exports, reduced to the requests that reach them.
+#:
+#: World sounds started by SFXMAP id, whose config (pitch, volume%) applies:
+#: reload/empty clicks, thuds, explosions, throws, the Mauler charge and the
+#: footstep sets (`g_FootstepSounds`, footstep.c).
+POOL_SFXMAP = [
+    "SFXMAP_804F_RELOAD_DEFAULT", "SFXMAP_8052_FIREEMPTY", "SFXMAP_805E", "SFXMAP_8060", "SFXMAP_8061",
+    "SFXMAP_8065_MAULER_CHARGE", "SFXMAP_8074", "SFXMAP_808B", "SFXMAP_808F_THUD", "SFXMAP_8094_THUD",
+    "SFXMAP_8099", "SFXMAP_809A_EXPLOSION", "SFXMAP_809C", "SFXMAP_809E", "SFXMAP_809F", "SFXMAP_80A0",
+    "SFXMAP_80A4", "SFXMAP_80A9_THROW", "SFXMAP_80AB_DETONATE",
+    "SFXMAP_80C4_FOOTSTEP", "SFXMAP_80C5_FOOTSTEP", "SFXMAP_80C6_FOOTSTEP", "SFXMAP_80C7_FOOTSTEP",
+    "SFXMAP_80C8_FOOTSTEP", "SFXMAP_80C9_FOOTSTEP", "SFXMAP_80CA_FOOTSTEP", "SFXMAP_80CB_FOOTSTEP",
+    "SFXMAP_80D4_FOOTSTEP", "SFXMAP_80D5_FOOTSTEP", "SFXMAP_80D6_FOOTSTEP", "SFXMAP_80D7_FOOTSTEP",
+    "SFXMAP_80D8_FOOTSTEP", "SFXMAP_80D9_FOOTSTEP", "SFXMAP_80DA_FOOTSTEP", "SFXMAP_80DB_FOOTSTEP",
+    "SFXMAP_810C_SHIP_HUM",
+]
+#: Sounds started by SFXNUM: the chr grunts (male, female, Jo, Maian ARGH sets
+#: of chraction.c), the pickup chimes, the Slayer beep and the Combat Boost
+#: heartbeat and activation.
+POOL_SFXNUM = [
+    0x0007, 0x0008, 0x0009, 0x000D, 0x000E, 0x000F, 0x0069,
+    0x0086, 0x0087, 0x0088, 0x0089, 0x008A, 0x008B, 0x008C, 0x008D, 0x008E, 0x008F, 0x0090,
+    0x0091, 0x0092, 0x0093, 0x0094, 0x0095, 0x0096, 0x0097, 0x0098, 0x0099, 0x009A, 0x009B,
+    0x009C, 0x009D, 0x009E, 0x00E8, 0x00E9, 0x00EB, 0x00F2, 0x0199, 0x019A, 0x01C8,
+    0x02AA, 0x02AB, 0x02AC, 0x02AD, 0x02AE, 0x02AF, 0x02B0, 0x02B1, 0x02B2, 0x02B3,
+    0x05C8, 0x05C9, 0x05DF, 0x05E0, 0x05E1,
+    # Reached through the weapon set already; requested so their SFXNUM names
+    # are manifest keys too.
+    0x0005, 0x0006, 0x00AF, 0x00B0, 0x018B, 0x018C, 0x018D, 0x018E, 0x018F,
+]
+#: The menus' sounds (menu.c, menuitem.c; the explosions are the MP intro).
+POOL_MENU = [
+    "SFXMAP_8040_MENU_ERROR", "SFXMAP_8098_EXPLOSION", "SFXMAP_809A_EXPLOSION", "SFXNUM_002B_MENU_CANCEL",
+    "SFXNUM_006E", "SFXNUM_00B4", "SFXNUM_00B6", "SFXNUM_00EA_PICKUP_AMMO", "SFXNUM_043E_MENU_SUBFOCUS",
+    "SFXNUM_0441_MENU_FOCUS", "SFXNUM_05BB_MENU_SWIPE", "SFXNUM_05BC_MENU_OPENDIALOG", "SFXNUM_05DD_MENU_SELECT",
+]
+
+
+def export_pool(outdir: str) -> dict:
+    """Write the asset pool: `<outdir>/<num>.wav` + `<outdir>/manifest.json`.
+
+    Every non-looping sound has PD's playback envelope baked in (`--envelope`):
+    the sound player applies it to every voice (n_sndplayer.c), menus included.
+    """
+    args = argparse.Namespace(
+        outdir=outdir, ids=POOL_SFXMAP + ["0x%04x" % n for n in POOL_SFXNUM] + POOL_MENU,
+        weapon_set=True, envelope=True, no_chain=False, output_rate=None, manifest="manifest.json")
+    cmd_export(args)
+    with open(os.path.join(outdir, "manifest.json"), encoding="utf-8") as fh:
+        m = json.load(fh)
+    return {"sounds": sum(1 for k in m if re.fullmatch(r"[0-9a-f]{4}", k)), "keys": len(m)}
+
+
 def weapon_set(sym: Symbols, decomp: str = DECOMP) -> list[tuple[str, str]]:
     """[(sound symbol, usage string)] from invitems.c, bondgun.c, tex.c, casingtick.c."""
     uses: list[tuple[str, str]] = []
@@ -891,7 +946,7 @@ def cmd_export(args) -> int:
         if uses:
             e["used_by"] = sorted(set(uses))
         manifest[key] = e
-    mpath = os.path.join(args.outdir, "sfx_manifest.json")
+    mpath = os.path.join(args.outdir, getattr(args, "manifest", "sfx_manifest.json"))
     with open(mpath, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(manifest, fh, indent=1, sort_keys=True)
         fh.write("\n")
