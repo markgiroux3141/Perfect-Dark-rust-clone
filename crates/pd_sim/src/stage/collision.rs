@@ -242,6 +242,19 @@ impl TileLevel {
         }
     }
 
+    /// `cd_test_volume_simple` with `CDTYPE_ALL & ~CDTYPE_BG`: the other chrs'
+    /// perimeters only (`chr_adjust_pos_for_spawn` with `force`).
+    pub fn cd_test_volume_props(&self, pos: Vec3, radius: f32, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PerimCyl]) -> CdResult {
+        for c in cyls {
+            let vertical = !checkvertical || (pos.y + ymax >= c.ymin && pos.y + ymin <= c.ymax);
+            let (sx, sz, w) = (pos.x - c.x, pos.z - c.z, c.radius + radius);
+            if vertical && sx * sx + sz * sz <= w * w {
+                return CdResult::Collision;
+            }
+        }
+        CdResult::NoCollision
+    }
+
     /// `cd_test_volume_closestedge` (`collision.c:2459`): the volume test at `topos`,
     /// returning the edge that was hit (a tile's `vertexindex → next`, or for a
     /// cylinder the tangent edge facing `frompos`).
@@ -811,6 +824,16 @@ impl TileLevel {
             return None;
         }
         self.first_hit(&self.floors, origin, origin + dir * max_dist)
+    }
+
+    /// The first `GEOFLAG_WALL` polygon along `origin + dir·t`, t ≤ `max_dist`
+    /// (`cd_test_los_oobok_findclosest(..., GEOFLAG_WALL)`, `chr_run_from_pos`).
+    pub fn raycast_walls(&self, origin: Vec3, dir: Vec3, max_dist: f32) -> Option<RayHit> {
+        let dir = dir.normalize_or_zero();
+        if dir == Vec3::ZERO {
+            return None;
+        }
+        self.first_hit(&self.walls, origin, origin + dir * max_dist)
     }
 
     /// The first `GEOFLAG_BLOCK_SHOOT` polygon along `origin + dir·t`, t ≤ `max_dist`.

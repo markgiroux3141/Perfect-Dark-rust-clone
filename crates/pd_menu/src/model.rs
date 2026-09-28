@@ -78,42 +78,9 @@ fn cam_project(p: Vec3) -> (f32, f32) {
     (CAM_W / 2.0 - p.x * v / scalex, p.y * v / scaley + CAM_H / 2.0)
 }
 
-const HEADBODYTYPE_DEFAULT: i32 = 0;
-const HEADBODYTYPE_FEMALE: i32 = 1;
-const HEADBODYTYPE_FEMALEGUARD: i32 = 2;
-const HEADBODYTYPE_MAIAN: i32 = 3;
-const HEADBODYTYPE_CASS: i32 = 4;
-const HEADBODYTYPE_MRBLONDE: i32 = 5;
-
-/// `body_calculate_head_offset` (body.c, the NTSC-final path).
+/// `body_calculate_head_offset` by `g_HeadsAndBodies` row.
 fn head_offset(headnum: usize, bodynum: usize) -> f32 {
-    let (h, b) = (gd::HEADS_AND_BODIES[headnum].ty, gd::HEADS_AND_BODIES[bodynum].ty);
-    if h == b {
-        return 0.0;
-    }
-    let mut offset = match h {
-        HEADBODYTYPE_DEFAULT => -35,
-        HEADBODYTYPE_CASS => -20,
-        HEADBODYTYPE_FEMALEGUARD => -40,
-        _ => 0,
-    };
-    match b {
-        HEADBODYTYPE_MAIAN => offset -= 30,
-        HEADBODYTYPE_DEFAULT => offset += 35,
-        HEADBODYTYPE_CASS => offset += 20,
-        HEADBODYTYPE_FEMALEGUARD => offset += 40,
-        _ => {}
-    }
-    if b == HEADBODYTYPE_FEMALE {
-        if h == HEADBODYTYPE_DEFAULT || h == HEADBODYTYPE_MRBLONDE {
-            offset -= 10;
-        } else if h == HEADBODYTYPE_CASS || h == HEADBODYTYPE_FEMALEGUARD {
-            offset -= 5;
-        }
-    } else if b == HEADBODYTYPE_CASS && (h == HEADBODYTYPE_DEFAULT || h == HEADBODYTYPE_MRBLONDE) {
-        offset -= 5;
-    }
-    offset as f32
+    pd_core::model::body_calculate_head_offset(gd::HEADS_AND_BODIES[headnum].ty, gd::HEADS_AND_BODIES[bodynum].ty)
 }
 
 const MODELPART_HEAD_SUNGLASSES: i32 = 0x0000;

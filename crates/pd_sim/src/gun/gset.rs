@@ -193,6 +193,28 @@ impl Default for AimDef {
     }
 }
 
+/// `struct aibotweaponpreference` (`types.h`): one `g_AibotWeaponPreferences`
+/// row (`botinv.c:22`), how a simulant rates and handles the weapon.
+#[derive(Deserialize, Debug, Clone, Copy, Default)]
+pub struct BotWeaponPref {
+    pub score1: i32,
+    pub score2: i32,
+    pub dualscore1: i32,
+    pub dualscore2: i32,
+    pub haspriammogoal: i32,
+    pub hassecammogoal: i32,
+    /// `BOTDISTCFG_*` for each function.
+    pub pridistconfig: usize,
+    pub secdistconfig: usize,
+    pub targetammopri: i32,
+    pub targetammosec: i32,
+    pub criticalammopri: i32,
+    pub criticalammosec: i32,
+    /// Seconds (`bot_schedule_reload`).
+    pub reloaddelay: i32,
+    pub allowpartialreloaddelay: i32,
+}
+
 /// `struct weapondef` (`types.h:3023`).
 #[derive(Clone, Debug)]
 pub struct WeaponDef {
@@ -201,6 +223,11 @@ pub struct WeaponDef {
     pub short_name: String,
     /// The first-person model's stem under `models/` (`hi_model`).
     pub model: Option<String>,
+    /// The held (third-person) model's stem, a `P*` file (`lo_model`, what
+    /// `chr_give_weapon` puts in a chr's hand).
+    pub tp_model: Option<String>,
+    /// `g_AibotWeaponPreferences`' row, for the weapons a simulant can use.
+    pub bot: Option<BotWeaponPref>,
     pub equip_animation: Option<ScriptId>,
     pub unequip_animation: Option<ScriptId>,
     pub pritosec_animation: Option<ScriptId>,
@@ -259,6 +286,7 @@ struct RawWeapon {
     weapon_flags: u32,
     assets: Option<RawAssets>,
     mp: Option<RawMp>,
+    bot: Option<BotWeaponPref>,
     #[serde(default)]
     functions: Vec<Option<Value>>,
     #[serde(default)]
@@ -274,6 +302,7 @@ struct RawWeapon {
 #[derive(Deserialize)]
 struct RawAssets {
     fp_model: Option<String>,
+    tp_model: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -427,16 +456,20 @@ impl Gset {
             }
             let gunviscmds = rw.gunviscmds_symbol.as_ref().and_then(|n| w.gunviscmds.get(n)).map(|cmds| cmds.iter().map(decode_gunvis).collect()).unwrap_or_default();
             // "guns/falcon2.bin" -> "falcon2".
-            let model = rw.assets.as_ref().and_then(|a| a.fp_model.as_ref()).map(|p| {
+            let stem = |p: &String| {
                 let file = p.rsplit('/').next().unwrap_or(p);
                 file.strip_suffix(".bin").unwrap_or(file).to_owned()
-            });
+            };
+            let model = rw.assets.as_ref().and_then(|a| a.fp_model.as_ref()).map(stem);
+            let tp_model = rw.assets.as_ref().and_then(|a| a.tp_model.as_ref()).map(stem);
             let mp_ammo = rw.mp.as_ref().map_or([(0, 0); 2], |m| [(m.pri_ammo_type, m.pri_ammo_qty), (m.sec_ammo_type, m.sec_ammo_qty)]);
             let def = WeaponDef {
                 weaponnum: rw.weaponnum,
                 name: rw.name_text.clone().unwrap_or_else(|| rw.weapon.clone()),
                 short_name: rw.short_text.clone().unwrap_or_else(|| rw.weapon.clone()),
                 model,
+                tp_model,
+                bot: rw.bot,
                 equip_animation: script(&rw.equip_animation),
                 unequip_animation: script(&rw.unequip_animation),
                 pritosec_animation: script(&rw.pritosec_animation),

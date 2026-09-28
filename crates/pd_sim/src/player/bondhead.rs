@@ -25,7 +25,7 @@ pub(super) struct HeadAnim {
 const HEAD_SCALE: f32 = 0.100_000_01;
 
 fn ctx<'a>(bank: &'a AnimBank, ci: &'a mut ChrInfo, merging: bool) -> AnimCtx<'a> {
-    AnimCtx { bank, scale: HEAD_SCALE, chrinfo: Some((ci, 0)), merging_enabled: merging }
+    AnimCtx { bank, skel: 0x0b, scale: HEAD_SCALE, chrinfo: Some((ci, 0)), merging_enabled: merging }
 }
 
 impl Player {
@@ -74,6 +74,29 @@ impl Player {
         self.head_anim.set_end_frame(&bank, ha.endframe);
         self.head_anim.flipfunc = true;
         self.bhead_update_idle_roll(rng);
+    }
+
+    /// `bhead_start_death_animation` (`bondhead.c:297`).
+    pub(super) fn bhead_start_death_animation(&mut self, animnum: u16, flip: bool, fstarttime: f32, speed: f32) {
+        let bank = self.bank.clone();
+        let mut ci = std::mem::take(&mut self.head.chrinfo);
+        {
+            let mut c = ctx(&bank, &mut ci, true);
+            self.head_anim.set_animation(&mut c, animnum, flip, fstarttime, speed * 0.5, 12.0);
+        }
+        self.head.chrinfo = ci;
+        self.headanim = -1;
+    }
+
+    /// `bhead_set_speed` (`bondhead.c:303`).
+    pub(super) fn bhead_set_speed(&mut self, speed: f32) {
+        self.head_anim.set_speed(speed * 0.5, 0.0);
+    }
+
+    /// The head model's frame and end frame (`player_render_hud`'s death test).
+    pub(super) fn head_anim_done(&self) -> bool {
+        let end = if self.head_anim.endframe >= 0.0 { self.head_anim.endframe } else { (self.head_anim.num_frames(&self.bank) - 1) as f32 };
+        self.head_anim.cur_frame() >= end
     }
 
     /// `bhead_update_idle_roll` (`bondhead.c:24`).

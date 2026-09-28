@@ -1217,4 +1217,27 @@ impl GunCtx<'_> {
             -x
         }
     }
+
+    /// `bgun_handle_player_dead` (`bondgun.c:6079`): the held guns are thrown
+    /// out of the view and the hands go to nothing.
+    pub fn bgun_handle_player_dead(&mut self) {
+        if self.b.ctrl.weaponnum != WEAPON_NONE && self.b.ctrl.switchtoweaponnum != Some(WEAPON_NONE) {
+            for h in [HAND_LEFT, HAND_RIGHT] {
+                if self.b.hands[h].inuse {
+                    self.b.hands[h].ejectstate = EJECTSTATE_INIT;
+                    self.b.hands[h].ejecttype = EJECTTYPE_GUN;
+                }
+            }
+            for h in 0..2 {
+                let hand = &mut self.b.hands[h];
+                hand.matmot1 = 0.0;
+                hand.matmot2 = 0.0;
+                hand.matmot3 = 0.0;
+                self.bgun_set_state(h, HANDSTATE_IDLE);
+            }
+            // bgun_equip_weapon2(HAND_LEFT, WEAPON_NONE), then (HAND_RIGHT, WEAPON_NONE).
+            self.b.ctrl.dualwielding = false;
+            self.b.bgun_equip_weapon(WEAPON_NONE);
+        }
+    }
 }

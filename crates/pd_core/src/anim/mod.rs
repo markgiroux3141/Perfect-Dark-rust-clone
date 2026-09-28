@@ -12,9 +12,10 @@
 //! never merging), the head-bob model (`g_PlayerModeldef`, whose root motion is
 //! PD's walk displacement and head bob) and every chr body.
 //!
-//! Not yet ported: `anim->flip` in the decoder (the mirrored read of
-//! `anim_get_rot_translate_scale`, through the skeleton's flip table). Guns and
-//! the head model never flip; chrs do (M6).
+//! `anim->flip` is read as the decoder reads it (`anim.c:436`, `:636`): the
+//! part through the skeleton's mirror table, mirrored rotations, and for root
+//! motion a negated x and turn. Only the head-bob model flips in the Combat
+//! Simulator ([`flip_part`]).
 //!
 //! Target build: **NTSC final** (`VERSION_NTSC_FINAL` = 2 < `VERSION_PAL_BETA`), so
 //! every `#if VERSION >= VERSION_PAL_BETA` block is the `#else` branch here.
@@ -29,7 +30,7 @@ mod bank;
 #[cfg(test)]
 pub(crate) mod tests;
 
-pub use bank::{AnimBank, AnimData, AnimMeta, ANIMFLAG_ABSOLUTETRANSLATION, ANIMFLAG_HASREPEATFRAMES, ANIMFLAG_LOOP};
+pub use bank::{flip_part, AnimBank, AnimData, AnimMeta, ANIMFLAG_ABSOLUTETRANSLATION, ANIMFLAG_HASREPEATFRAMES, ANIMFLAG_LOOP};
 
 /// `bg_get_stage_translation_thing()` (`bg.c:2058`): `unk1c / unk14` of the
 /// stage's `g_Stages` row, which scales an `ANIMFLAG_ABSOLUTETRANSLATION`
@@ -154,6 +155,9 @@ pub struct ChrInfo {
 /// What a model contributes to animation bookkeeping.
 pub struct AnimCtx<'a> {
     pub bank: &'a AnimBank,
+    /// `model->definition->skel`, which a flipped animation reads its parts
+    /// through ([`flip_part`]).
+    pub skel: i32,
     /// `model->scale`.
     pub scale: f32,
     /// The CHRINFO root, if the model's root node is one, with its anim part.
@@ -285,18 +289,19 @@ impl Anim {
             if ad.flags & ANIMFLAG_ABSOLUTETRANSLATION != 0 {
                 // model.c:1828
                 let sp64 = STAGE_TRANSLATION;
-                ci.unk34 = ad.rot_translate_scale(*animpart, self.framea).1 * sp64;
+                let flip = self.flip.then_some(ctx.skel);
+                ci.unk34 = ad.rot_translate_scale_flip(*animpart, self.framea, flip).1 * sp64;
                 ci.unk30 = ci.yrot;
                 if self.frac == 0.0 {
                     ci.unk01 = false;
                 } else {
-                    ci.unk24 = ad.rot_translate_scale(*animpart, self.frameb).1 * sp64;
+                    ci.unk24 = ad.rot_translate_scale_flip(*animpart, self.frameb, flip).1 * sp64;
                     ci.unk20 = ci.yrot;
                     ci.unk01 = true;
                 }
                 return;
             }
-            let (mut translate, sp84) = ad.translate_angle(*animpart, self.frameb);
+            let (mut translate, sp84) = ad.translate_angle_flip(*animpart, self.frameb, self.flip.then_some(ctx.skel));
             let scale = ctx.scale * self.animscale;
             if scale != 1.0 {
                 translate *= scale;
@@ -549,6 +554,7 @@ impl Anim {
         let bank = ctx.bank;
         let merging_enabled = ctx.merging_enabled;
         let scale_model = ctx.scale;
+        let skel = ctx.skel;
         let Some((ci, animpart)) = ctx.chrinfo.as_mut() else {
             self.set_frame2(bank, endframe, endframe2);
             return;
@@ -586,13 +592,13 @@ impl Anim {
                 if spc8 && floorend == self.frameb {
                     spe0 = spd0;
                 } else {
-                    spe0 = ad.rot_translate_scale(animpart, s0frame).1 * f20;
+                    spe0 = ad.rot_translate_scale_flip(animpart, s0frame, self.flip.then_some(skel)).1 * f20;
                 }
                 floorcur = if forwards { floorend + 1 } else { floorend - 1 };
                 let s0frame = constrain_or_wrap(bank, floorcur, self.animnum, self.endframe);
                 self.frameb = s0frame;
                 spc8 = true;
-                spd0 = ad.rot_translate_scale(animpart, s0frame).1 * f20;
+                spd0 = ad.rot_translate_scale_flip(animpart, s0frame, self.flip.then_some(skel)).1 * f20;
             }
         }
         // The relative path (model.c:2289): every whole frame crossed.
@@ -615,7 +621,7 @@ impl Anim {
                     f30 = spcc;
                 }
             } else {
-                let (mut translate, mut f22) = ad.translate_angle(animpart, s0frame);
+                let (mut translate, mut f22) = ad.translate_angle_flip(animpart, s0frame, self.flip.then_some(skel));
                 if scale != 1.0 {
                     translate *= scale;
                 }
@@ -649,7 +655,7 @@ impl Anim {
             let s0frame = constrain_or_wrap(bank, floorcur, self.animnum, self.endframe);
             self.frameb = s0frame;
             if self.frameb != self.framea {
-                let (mut translate, mut f22) = ad.translate_angle(animpart, s0frame);
+                let (mut translate, mut f22) = ad.translate_angle_flip(animpart, s0frame, self.flip.then_some(skel));
                 spc8 = true;
                 if scale != 1.0 {
                     translate *= scale;
@@ -743,7 +749,7 @@ impl Anim {
                 self.frame2a = constrain_or_wrap(bank, floorend2, self.animnum2, self.endframe2);
                 let s0frame = constrain_or_wrap(bank, floorend2 + 1, self.animnum2, self.endframe2);
                 self.frame2b = s0frame;
-                let mut ty = bank.get(self.animnum2).map_or(0.0, |a| a.translate_angle(animpart, s0frame).0.y);
+                let mut ty = bank.get(self.animnum2).map_or(0.0, |a| a.translate_angle_flip(animpart, s0frame, self.flip2.then_some(skel)).0.y);
                 if scale != 1.0 {
                     ty *= scale;
                 }
@@ -766,13 +772,29 @@ impl Anim {
     }
 }
 
-/// `model_update_chr_info` (`model.c:629`): where the CHRINFO root sits this frame.
+/// `model_update_chr_info` (`model.c:629`): where the CHRINFO root sits this
+/// frame, for a model with no `anim->unk70` position callback.
 pub fn update_chr_info(anim: &Anim, ci: &mut ChrInfo) {
+    update_chr_info_with(anim, ci, None);
+}
+
+/// `anim->unk70`: the chr's position update (`chr_update_position`,
+/// `model_set_anim70`, `chr.c:1321`). It is handed the root's current position
+/// (`arg1`, `rwdata->chrinfo.pos`), the animation's proposed position with `y`
+/// relative to the ground (`arg2`), and the ground (`rwdata->chrinfo.ground`,
+/// which it sets to the chr's `manground`); it may move `arg2`. On true the
+/// root goes there, and the root-motion bookkeeping is shifted by the
+/// correction so the next frame's motion starts from where the chr is.
+pub type ChrUpdateFn<'a> = &'a mut dyn FnMut(Vec3, &mut Vec3, &mut f32) -> bool;
+
+/// [`update_chr_info`] with the `unk70` callback, when the model has one.
+pub fn update_chr_info_with(anim: &Anim, ci: &mut ChrInfo, unk70: Option<ChrUpdateFn>) {
     if ci.unk00 {
         return;
     }
     let mut sp34 = ci.unk34;
     ci.yrot = ci.unk30;
+    // g_Vars.in_cutscene snaps frac to whole frames; never in a match.
     let frac = anim.frac;
     if frac != 0.0 && ci.unk01 {
         sp34 += (ci.unk24 - sp34) * frac;
@@ -785,5 +807,62 @@ pub fn update_chr_info(anim: &Anim, ci: &mut ChrInfo) {
         }
         sp34.y += (y - sp34.y) * anim.fracmerge;
     }
-    ci.pos = Vec3::new(sp34.x, ci.ground + sp34.y, sp34.z);
+    match unk70 {
+        None => ci.pos = Vec3::new(sp34.x, ci.ground + sp34.y, sp34.z),
+        Some(f) => {
+            let mut sp28 = sp34;
+            let mut ground = ci.ground;
+            let ok = f(ci.pos, &mut sp28, &mut ground);
+            ci.ground = ground;
+            if ok {
+                ci.pos = Vec3::new(sp28.x, ci.ground + sp28.y, sp28.z);
+                let dx = sp28.x - sp34.x;
+                let dz = sp28.z - sp34.z;
+                ci.unk34.x += dx;
+                ci.unk34.z += dz;
+                if ci.unk01 {
+                    ci.unk24.x += dx;
+                    ci.unk24.z += dz;
+                }
+                if ci.unk02 {
+                    ci.unk4c.x += dx;
+                    ci.unk4c.z += dz;
+                    ci.unk40.x += dx;
+                    ci.unk40.z += dz;
+                }
+            }
+        }
+    }
+}
+
+impl ChrInfo {
+    /// `model_set_chr_rot_y` (`model.c:547`): turn the root to `angle`, carrying
+    /// the root motion's own headings round with it.
+    pub fn set_chr_rot_y(&mut self, angle: f32) {
+        let mut diff = angle - self.yrot;
+        if diff < 0.0 {
+            diff += baddtor(360.0);
+        }
+        self.unk30 += diff;
+        if self.unk30 >= baddtor(360.0) {
+            self.unk30 -= baddtor(360.0);
+        }
+        self.unk20 += diff;
+        if self.unk20 >= baddtor(360.0) {
+            self.unk20 -= baddtor(360.0);
+        }
+        self.yrot = angle;
+    }
+
+    /// `model_node_set_position` on a CHRINFO root (`model.c:464`): move it,
+    /// and the root motion's positions with it.
+    pub fn set_root_position(&mut self, pos: Vec3) {
+        let dx = pos.x - self.pos.x;
+        let dz = pos.z - self.pos.z;
+        self.pos = pos;
+        for v in [&mut self.unk24, &mut self.unk34, &mut self.unk40, &mut self.unk4c] {
+            v.x += dx;
+            v.z += dz;
+        }
+    }
 }

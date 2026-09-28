@@ -8,10 +8,14 @@
 //! the props in front of it; the first `penetration` props that slow it take
 //! the hit, and the BG takes it if nothing stopped the round.
 //!
-//! What a shot can hit: the BG, the firing range's boards, and the objects the
+//! What a shot can hit: the BG, the firing range's boards, the objects the
 //! guns put in the world (`obj_test_hit`: a shot mine or grenade goes off, a
-//! shot sentry breaks). `// M6:` chrs (the players' and simulants' bodies, by
-//! part box through `chr_test_hit`), `// M8:` weapons on pads.
+//! shot sentry breaks) and the simulants, by part box (`chr_test_hit`,
+//! `chr_hit`). `// M8:` weapons on pads.
+//!
+//! `// SUBST:` PD's shots and punches also test another human's body / a
+//! player's chr isn't posed (M6 draws no third-person player body), so only
+//! the perimeter tests (sentries, explosions, simulants' rounds) reach it.
 //!
 //! Source: the shot half of the old repo's `pd_guns/sim.rs`.
 
@@ -32,11 +36,20 @@ pub fn hand_sound_handle(player: usize, hand: usize) -> u32 {
 }
 
 /// What a round met besides the BG.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 enum ShotTarget {
     Board(usize),
     /// One of the guns' objects, by id.
     Obj(u32),
+    /// A chr, by index, and where on it.
+    Chr(usize, crate::chr::body::ChrHit),
+}
+
+/// `player->lookingatprop.prop`: what the crosshair is on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AimedAt {
+    Board(usize),
+    Chr(usize),
 }
 
 /// A shot's round meeting a prop, `t` along the ray.
@@ -153,26 +166,90 @@ impl World {
         }
     }
 
-    /// `hand_inflict_melee_damage` (`prop.c:1130`): the chrs on screen within
-    /// reach of the crosshair take the blow. `// M6:` there are no chrs to
-    /// punch yet, so a melee attack always misses them and (unless `arg2`, the
-    /// no-uncloak attacks) tries the BG on the next tick.
+    /// `hand_inflict_melee_damage` (`prop.c:1130`): every chr on screen
+    /// nearer than 5 m, near to far, whose part boxes overlap a 73 x 55 cm
+    /// window around the crosshair's line and reach within the weapon's range
+    /// (`obj_is_any_node_in_range`), with a clear line from the eye, takes the
+    /// blow in the torso (ducking: general; squatting: half). If none did (and
+    /// not `arg2`, the no-uncloak attacks), the BG is tried on the next tick.
+    /// `// M8:` glass. `arg2`'s `CHRCFLAG_AVOIDING` has no reader in a match.
     fn hand_inflict_melee_damage(&mut self, pi: usize, h: usize, arg2: bool) {
-        let skipthething = false;
+        let mut skipthething = false;
+        let (gsetnum, gsetfunc) = (self.players[pi].gun.hands[h].weaponnum, self.players[pi].gun.hands[h].weaponfunc);
+        let func = self.res.gset.func(gsetnum, gsetfunc).cloned();
+        let rangelimit = func.as_ref().filter(|f| f.kind() == INVENTORYFUNCTYPE_MELEE).map_or(60.0, |f| f.range);
+        let w2s = self.players[pi].cam.world_to_screen;
+        let ppos = self.players[pi].pos;
+        // bgun_get_cross_pos, over the screen: -1..1.
+        let cam = &self.players[pi].cam;
+        let cross = self.players[pi].gun.p.crosspos;
+        let spfc = [(cross[0] - cam.c_screenleft) / (cam.c_screenwidth * 0.5) - 1.0, (cross[1] - cam.c_screentop) / (cam.c_screenheight * 0.5) - 1.0];
+        let spf4 = [cam.c_screenheight * 0.166_666_67, cam.c_screenheight * 0.125];
+        let mut order: Vec<(f32, usize)> = (0..self.chrs.len())
+            .filter(|&j| self.chrs[j].player.is_none())
+            .filter(|&j| crate::chr::body::pos_is_onscreen(&self.players[pi].cam, self.chrs[j].pos, self.chrs[j].effective_scale()))
+            .map(|j| (-w2s.transform_point3(self.chrs[j].pos).z, j))
+            .filter(|&(z, _)| z < 500.0)
+            .collect();
+        order.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (_, j) in order {
+            let Some((distance, sp110)) = crate::chr::body::obj_is_any_node_in_range(&self.chrs[j].model, &w2s, spfc, spf4) else { continue };
+            if !(sp110 <= 0.0 && distance >= -rangelimit) {
+                continue;
+            }
+            if !self.level.los_autoflags(ppos, self.chrs[j].pos) {
+                continue;
+            }
+            if arg2 {
+                continue;
+            }
+            let (_, gundir2d) = self.spread(pi, h, true);
+            skipthething = true;
+            let gundir = self.players[pi].cam.projection.transform_vector3(gundir2d);
+            let cpos = self.chrs[j].pos;
+            self.bgun_play_prop_hit_sound_chr(gsetnum, gsetfunc, cpos);
+            let hitpart = match self.players[pi].crouchpos {
+                CROUCHPOS_DUCK => crate::chr::HITPART_GENERAL,
+                CROUCHPOS_SQUAT => HITPART_GENERALHALF,
+                _ => HITPART_TORSO,
+            };
+            let damage = self.player_gset_damage(pi, h);
+            self.chr_damage_by_impact(j, damage, gundir, crate::chr::DamageFrom::new(Some(pi), gsetnum, gsetfunc), hitpart);
+        }
         if !skipthething && !arg2 {
             self.players[pi].gun.hands[h].unk0d0f_02 = true;
         }
     }
 
+    /// `gset_get_damage` for player `pi`'s hand `h`: the chrs' one, with the
+    /// Mauler's charge (`mm_maulercharge`).
+    fn player_gset_damage(&self, pi: usize, h: usize) -> f32 {
+        let hand = &self.players[pi].gun.hands[h];
+        self.chr_gset_damage(hand.weaponnum, hand.weaponfunc, hand.matmot1)
+    }
+
+    /// `chr_hit` (`chr.c:4602`): the hit position, the prop hit sound, the
+    /// blood and `chr_damage_by_impact` with the shooter's gun.
+    /// `// M12:` the splats and bruises (`splats_create_for_chr_hit`, `chr_bruise`).
+    fn chr_hit(&mut self, pi: usize, h: usize, j: usize, hit: &crate::chr::body::ChrHit, gundir3d: Vec3) {
+        let (weaponnum, func) = (self.players[pi].gun.hands[h].weaponnum, self.players[pi].gun.hands[h].weaponfunc);
+        self.players[pi].gun.bgun_set_hit_pos(hit.pos);
+        self.bgun_play_prop_hit_sound_chr(weaponnum, func, hit.pos);
+        self.chr_emit_sparks(j, hit.hitpart, hit.pos, gundir3d);
+        let damage = self.player_gset_damage(pi, h);
+        self.chr_damage_by_impact(j, damage, gundir3d, crate::chr::DamageFrom::new(Some(pi), weaponnum, func), hit.hitpart);
+    }
+
     /// `prop_find_aiming_at` (`prop.c:979`): a shot, or with `isshooting`
     /// false a query for the nearest prop under the crosshair.
-    pub(crate) fn prop_find_aiming_at(&mut self, pi: usize, h: usize, isshooting: bool, shootcontext: bool) -> Option<usize> {
+    pub(crate) fn prop_find_aiming_at(&mut self, pi: usize, h: usize, isshooting: bool, shootcontext: bool) -> Option<AimedAt> {
         let (gunpos2d, dir2d) = self.spread(pi, h, shootcontext);
         let mut gunpos2d = gunpos2d;
         if shootcontext && self.players[pi].gun.bgun_get_weapon_num(HAND_RIGHT) == WEAPON_REAPER {
             gunpos2d.y -= 15.0 * self.rng.randomfrac();
         }
-        self.shot_calculate_hits(pi, h, isshooting, gunpos2d, dir2d)
+        let cheap = self.players.len() >= 2;
+        self.shot_calculate_hits(pi, h, isshooting, gunpos2d, dir2d, cheap)
     }
 
     /// `bgun_calculate_player_shot_spread`: the camera-space origin (the eye)
@@ -188,13 +265,14 @@ impl World {
     fn shot_create(&mut self, pi: usize, h: usize, isshooting: bool, dorandom: bool, numshots: i32) {
         let (gunpos2d, dir2d) = self.spread(pi, h, dorandom);
         if numshots > 0 {
-            self.shot_calculate_hits(pi, h, isshooting, gunpos2d, dir2d);
+            // cheap = g_Vars.mplayerisrunning.
+            self.shot_calculate_hits(pi, h, isshooting, gunpos2d, dir2d, true);
         }
     }
 
     /// `shot_calculate_hits` (`prop.c:570`). A query (`isshooting` false, not
     /// melee) returns the nearest board hit.
-    fn shot_calculate_hits(&mut self, pi: usize, h: usize, isshooting: bool, gunpos2d: Vec3, gundir2d: Vec3) -> Option<usize> {
+    fn shot_calculate_hits(&mut self, pi: usize, h: usize, isshooting: bool, gunpos2d: Vec3, gundir2d: Vec3, cheap: bool) -> Option<AimedAt> {
         let proj = self.players[pi].cam.projection;
         let w2s = self.players[pi].cam.world_to_screen;
         // bgun0f0a9494(FINDPROPCONTEXT_QUERY): the dot is found again.
@@ -261,6 +339,23 @@ impl World {
                 }
             }
         }
+        // chr_test_hit on the chrs this player sees (not a melee attack's).
+        if !ismelee {
+            for (j, c) in self.chrs.iter().enumerate() {
+                if c.player.is_some() || !crate::chr::body::pos_is_onscreen(&self.players[pi].cam, c.pos, c.effective_scale()) {
+                    continue;
+                }
+                if -w2s.transform_point3(c.pos).z - c.chr_get_hit_radius() >= distance {
+                    continue;
+                }
+                if let Some(ch) = c.chr_test_hit(gunpos3d, dirn, cheap) {
+                    if -w2s.transform_point3(ch.pos).z < distance {
+                        let t = (ch.pos - gunpos3d).dot(dirn).max(0.0);
+                        hits.push(PropHit { target: ShotTarget::Chr(j, ch), t, pos: ch.pos, normal: ch.normal });
+                    }
+                }
+            }
+        }
         let lodscale = self.players[pi].cam.c_lodscalez;
         let dir2n = gundir2d.normalize_or_zero();
         for o in self.props.objs.iter().filter(|o| !o.is_deleting() && o.flags & OBJFLAG_HELDROCKET == 0) {
@@ -295,6 +390,7 @@ impl World {
                 match hit.target {
                     ShotTarget::Board(b) => self.board_hit(pi, b, hit, gunpos3d),
                     ShotTarget::Obj(id) => self.obj_hit(pi, id, hit, &func),
+                    ShotTarget::Chr(j, ch) => self.chr_hit(pi, h, j, &ch, gundir3d),
                 }
                 // A board slows the bullet.
                 s1 += 1;
@@ -332,7 +428,8 @@ impl World {
             // Only the boards stand for objects the sight reacts to
             // (OBJFLAG3_REACTTOSIGHT, MODEL_TARGET); the guns' objects don't.
             return hits.first().filter(|x| !(laserstream && x.t > 300.0)).and_then(|x| match x.target {
-                ShotTarget::Board(b) => Some(b),
+                ShotTarget::Board(b) => Some(AimedAt::Board(b)),
+                ShotTarget::Chr(j, _) => Some(AimedAt::Chr(j)),
                 ShotTarget::Obj(_) => None,
             });
         }
@@ -502,8 +599,14 @@ impl World {
         self.sound_at(id, speed, pos, DEFAULT_DISTS);
     }
 
-    /// `weapon_play_melee_miss_sound` (`prop.c:453`).
+    /// `weapon_play_melee_miss_sound` (`prop.c:453`) at player `pi`.
     fn weapon_play_melee_miss_sound(&mut self, pi: usize, weaponnum: u8) {
+        let pos = self.players[pi].pos;
+        self.weapon_play_melee_miss_sound_at(weaponnum, pos);
+    }
+
+    /// `weapon_play_melee_miss_sound` at a prop's position.
+    pub(crate) fn weapon_play_melee_miss_sound_at(&mut self, weaponnum: u8, pos: Vec3) {
         let (id, speed) = match weaponnum {
             WEAPON_TRANQUILIZER => (0x04fb, 2.78),
             WEAPON_REAPER => return,
@@ -513,7 +616,6 @@ impl World {
             }
             _ => (0x0069, 1.0 - self.rng.randomfrac() * 0.2),
         };
-        let pos = self.players[pi].pos;
         self.sound_at(id, speed, pos, DEFAULT_DISTS);
     }
 

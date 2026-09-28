@@ -47,6 +47,9 @@ pub struct ViewFx {
     pub zoom_blurs: Vec<(u32, f32, f32)>,
     /// `player_draw_fade(r, g, b, frac)`: the boost's white.
     pub fade: Option<([u8; 3], f32)>,
+    /// `bview_set_motion_blur(bluramount)`: the dizziness' smear, 0 for none,
+    /// else 100..230.
+    pub motion_blur: i32,
 }
 
 impl World {
@@ -88,8 +91,26 @@ impl World {
     /// Slayer's interlace and its static (out of bounds, or once when the signal
     /// is lost), the x-ray's zoom blur, and the boost's wipe, which only the
     /// first player's pass advances.
-    pub(crate) fn lv_render_fx(&mut self, pi: usize) {
-        let mut fx = ViewFx::default();
+    /// `lv_render`'s blur (`lv.c:1110`), at the start of each player's pass:
+    /// the player chr's `blurdrugamount` sets the motion blur and wears off.
+    pub(crate) fn lv_render_blur(&mut self, pi: usize) -> i32 {
+        let lv60 = self.lv.lvupdate60;
+        let c = &mut self.chrs[pi];
+        let mut bluramount = 0;
+        if c.blurdrugamount > 0 {
+            bluramount = (c.blurdrugamount * 130 / 5000 + 100).min(230);
+            c.blurdrugamount = c.blurdrugamount.min(5000);
+            c.blurdrugamount -= lv60 * (c.blurnumtimesdied + 1);
+            if c.blurdrugamount < 1 {
+                c.blurdrugamount = 0;
+                c.blurnumtimesdied = 0;
+            }
+        }
+        bluramount
+    }
+
+    pub(crate) fn lv_render_fx(&mut self, pi: usize, motion_blur: i32) {
+        let mut fx = ViewFx { motion_blur, ..ViewFx::default() };
         {
             let p = &mut self.players[pi];
             if p.visionmode == VISIONMODE_SLAYERROCKET {

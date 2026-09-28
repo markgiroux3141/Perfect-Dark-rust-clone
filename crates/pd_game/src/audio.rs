@@ -107,6 +107,7 @@ impl SfxBank {
                         audio.set_voice(v, base * volume, pitch as f64);
                     }
                 }
+                Event::Kill { .. } => {}
             }
         }
     }

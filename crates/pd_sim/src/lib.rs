@@ -10,13 +10,14 @@
 // PD's constants are kept digit for digit (the head-bob damping, gravity), and
 // ported functions keep the C's shape (`!(a > b)` where NaN matters to PD,
 // index loops, argument lists).
-#![allow(clippy::excessive_precision, clippy::neg_cmp_op_on_partial_ord, clippy::type_complexity, clippy::too_many_arguments, clippy::needless_range_loop)]
+#![allow(clippy::excessive_precision, clippy::neg_cmp_op_on_partial_ord, clippy::type_complexity, clippy::too_many_arguments, clippy::needless_range_loop, clippy::if_same_then_else)]
 
 pub mod bot;
 pub mod chr;
 pub mod events;
 pub mod fx;
 pub mod gun;
+pub mod harness;
 pub mod mp;
 pub mod nav;
 pub mod player;

@@ -28,6 +28,7 @@
 mod bondhead;
 mod bondmove;
 mod bondwalk;
+pub mod health;
 pub mod camera;
 pub mod cloak;
 pub mod slayer;
@@ -124,6 +125,8 @@ pub struct PlayerInput {
     pub c_right: bool,
     /// A held (`invbuttons`): tap = next gun, A+Z = previous gun.
     pub a_held: bool,
+    /// START held (the pause menu is M10's; a dead player presses it to respawn).
+    pub start: bool,
 }
 
 const HEADANIM_RESTING: i32 = 0;
@@ -187,6 +190,27 @@ pub struct Player {
     pub prevpos: Vec3,
     /// `player_die(true)` was asked for this frame: fell for 4 s, or out of the world.
     pub die_request: bool,
+    /// `bondhealth`: 1 full, dead at 0 or below.
+    pub bondhealth: f32,
+    /// `isdead` (PD's 1 on the frame of death, 2 once `player_render_hud` has seen it).
+    pub isdead: bool,
+    isdead2: bool,
+    /// The death sequence (`player_render_hud`, `player.c:4546`): the red
+    /// fade has had its frame, the head's death animation has ended, the
+    /// player may press to respawn.
+    pub redbloodfinished: bool,
+    pub deathanimfinished: bool,
+    pub startnewbonddie: bool,
+    pub dostartnewlife: bool,
+    /// The health bar, the damage flash and the screen's fades.
+    pub health: health::Health,
+    /// `bondfade*` (`player_start_chr_fade`): the player's chr's alpha as
+    /// others see it, 0..1.
+    bondfadetime60: f32,
+    bondfadetimemax60: f32,
+    bondfadefracold: f32,
+    bondfadefracnew: f32,
+    pub chrfadefrac: f32,
     /// The fall speed of a landing this frame.
     pub landed: Option<f32>,
     cd: CdGlobals,
@@ -344,6 +368,19 @@ impl Player {
             shotspeed: Vec3::ZERO,
             prevpos: feet,
             die_request: false,
+            bondhealth: 1.0,
+            isdead: false,
+            isdead2: false,
+            redbloodfinished: false,
+            deathanimfinished: false,
+            startnewbonddie: true,
+            dostartnewlife: false,
+            health: health::Health::default(),
+            bondfadetime60: 0.0,
+            bondfadetimemax60: -1.0,
+            bondfadefracold: 1.0,
+            bondfadefracnew: 1.0,
+            chrfadefrac: 1.0,
             landed: None,
             cd: CdGlobals::default(),
             speedtheta: 0.0,
@@ -498,6 +535,12 @@ impl Player {
         self.landed = None;
         self.cam.vi_set_fov_aspect_and_size(PLAYER_DEFAULT_FOV, self.aspect, self.viewwidth, self.viewheight);
         self.cam.cam_set_screen_position(0.0, 0.0);
+        self.health.player_update_colour_screen_properties(lv.lvupdate60freal);
+        self.player_tick_chr_fade(lv.lvupdate60freal);
+        self.health.player_tick_damage_and_health(self.bondhealth, self.isdead, lv.lvupdate60freal, lv.diffframe60freal);
+        // bmove_process_input reads no controls while dead (`bondmove.c:717`).
+        let idle = PlayerInput::default();
+        let input = if self.isdead { &idle } else { input };
         self.bmove_process_input(input, lv, res, rng);
         // bwalk_update_prev_pos
         self.prevpos = self.pos;
@@ -516,7 +559,7 @@ impl Player {
             bondbreathing: self.bondbreathing,
             guncloseroffset: self.guncloseroffset,
             insightaimmode: self.insightaimmode,
-            isdead: false,
+            isdead: self.isdead,
             playercount: self.playercount,
         }
     }

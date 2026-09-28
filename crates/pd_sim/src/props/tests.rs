@@ -68,8 +68,8 @@ fn grenade_is_thrown_bounces_settles_and_explodes_on_its_fuse() {
 }
 
 /// Holding the trigger past the 4 s fuse: the grenade leaves the hand at 0
-/// (`HANDSTATEMINOR_ATTACK_THROW_GRENADEWAIT`) and blows up on the player; the
-/// hand comes back.
+/// (`HANDSTATEMINOR_ATTACK_THROW_GRENADEWAIT`) and blows up on the player,
+/// who dies; after the fades, A starts a new life with the hand back.
 #[test]
 fn cooked_grenade_blows_up_in_the_hand() {
     let mut w = settled(WEAPON_GRENADE);
@@ -80,7 +80,17 @@ fn cooked_grenade_blows_up_in_the_hand() {
         saw_wait |= w.players[0].gun.hands[HAND_RIGHT].stateminor == HANDSTATEMINOR_ATTACK_THROW_GRENADEWAIT;
     }
     assert!(saw_wait, "never entered GRENADEWAIT");
-    assert!(w.player_damage[0] > 1.0, "the blast should hit the player: {}", w.player_damage[0]);
+    assert!(w.players[0].isdead, "the blast should kill the player: {}", w.players[0].bondhealth);
+    let press = PlayerInput { a_held: true, ..Default::default() };
+    let mut respawned = false;
+    for _ in 0..600 {
+        run(&mut w, &press, 1);
+        if !w.players[0].isdead {
+            respawned = true;
+            break;
+        }
+    }
+    assert!(respawned, "A never started a new life");
     let mut idle_at = None;
     for f in 0..600 {
         idle(&mut w, 1);
@@ -166,7 +176,7 @@ fn proximity_mine_arms_then_takes_the_player_who_walks_up() {
     w.players[0].pos.z = at.z - 150.0;
     idle(&mut w, 3);
     assert!(objs(&w, WEAPON_PROXIMITYMINE).is_empty(), "it should go off");
-    assert!(w.player_damage[0] > 0.0);
+    assert!(w.players[0].bondhealth < 1.0);
 }
 
 /// The throwing knife (secondary) flies true and sticks in the first board,
@@ -211,7 +221,7 @@ fn nbomb_storm_grows_darkens_hums_and_fades() {
     idle(&mut w, 300);
     assert!(!w.props.nbombs.any(), "gone after 370 ticks");
     assert!(w.take_events().iter().any(|e| matches!(e, Event::StopSound { handle } if *handle == super::nbomb::NBOMB_HUM_HANDLE)), "the hum stops");
-    assert!(w.player_dizzy[0] > 0.0, "standing inside, the player was made dizzy");
+    assert!(w.players[0].bondhealth < 1.0, "standing inside, the player was hurt");
 }
 
 /// The launcher shows its rocket (`bgun_create_held_rocket`, at the muzzle);
@@ -480,13 +490,15 @@ fn laptop_deploys_as_a_sentry_and_shoots_the_other_player() {
     let sentry = w.props.objs.iter().find(|o| o.ty == OBJTYPE_AUTOGUN).expect("no sentry");
     assert_eq!(sentry.owner(), 0);
     assert!(sentry.projectile.is_none(), "it landed");
-    assert!(w.player_damage[1] > 0.0, "it shot player 1: {}", w.player_damage[1]);
-    assert_eq!(w.player_damage[0], 0.0, "never its owner");
+    assert!(w.players[1].bondhealth < 1.0, "it shot player 1: {}", w.players[1].bondhealth);
+    assert_eq!(w.players[0].bondhealth, 1.0, "never its owner");
     for _ in 0..600 {
         setup(&mut w, PlayerInput::default());
     }
+    // A dead chr is no target: it stops with rounds left.
+    assert!(w.players[1].isdead, "player 1 died");
     let a = w.props.objs.iter().find(|o| o.ty == OBJTYPE_AUTOGUN).unwrap().autogun.as_ref().unwrap();
-    assert_eq!(a.ammoquantity, 0, "every round spent");
+    assert!(a.ammoquantity > 0, "it stopped once its target died");
     // A second deploy (M8: the pickup; here the loadout again).
     w.give_loadout(0);
     setup(&mut w, PlayerInput { select: Some((WEAPON_LAPTOPGUN, false)), ..Default::default() });

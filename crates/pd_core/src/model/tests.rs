@@ -33,7 +33,7 @@ fn stems(kinds: &[&str]) -> Vec<String> {
 
 fn anim_at(num: u16, frame: f32, speed: f32) -> Anim {
     let mut a = Anim::default();
-    let mut ctx = AnimCtx { bank: bank(), scale: 1.0, chrinfo: None, merging_enabled: true };
+    let mut ctx = AnimCtx { bank: bank(), skel: 0, scale: 1.0, chrinfo: None, merging_enabled: true };
     a.set_animation(&mut ctx, num, false, frame, speed, 0.0);
     a
 }
@@ -123,7 +123,7 @@ fn falcon_reload_moves_the_left_hand_in_and_back() {
     let mut m = Model::new(store().get("falcon2").unwrap());
     let reload = bank.by_name("ANIM_GUN_FALCON2_RELOAD").unwrap();
     let mut anim = Anim::default();
-    let mut ctx = AnimCtx { bank, scale: 1.0, chrinfo: None, merging_enabled: true };
+    let mut ctx = AnimCtx { bank, skel: 0, scale: 1.0, chrinfo: None, merging_enabled: true };
     anim.set_animation(&mut ctx, reload, false, 0.0, 1.0, 0.0);
 
     let wrist = |m: &Model| m.matrices[18].w_axis.truncate(); // left wrist

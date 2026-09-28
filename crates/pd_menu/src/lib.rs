@@ -419,6 +419,18 @@ impl MenuSystem {
         pd_core::ids::STAGE_MP_SKEDAR as i32
     }
 
+    /// The match's weapon set as `WEAPON_*` (`g_MpWeapons[slot].weaponnum` of
+    /// each of the six slots; nothing and the shield, which isn't a gun, left out).
+    pub fn weapon_set_weaponnums(weapons: &[u8; 6]) -> Vec<u8> {
+        weapons
+            .iter()
+            .filter_map(|&w| generated::MP_WEAPONS.get(w as usize))
+            .map(|w| w.weaponnum)
+            .filter(|&n| n > 0 && n != pd_core::ids::WEAPON_MPSHIELD as i32)
+            .map(|n| n as u8)
+            .collect()
+    }
+
     /// `g_MpSetup` and the chrs in its slots, as a [`MatchSetup`].
     pub fn match_setup(&self, stagenum: u8) -> MatchSetup {
         let s = &self.mp.setup;

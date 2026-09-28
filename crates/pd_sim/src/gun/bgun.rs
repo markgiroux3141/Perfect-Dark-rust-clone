@@ -109,7 +109,7 @@ impl GunCtx<'_> {
             }
             let animload = self.b.hands[h].animload as u16;
             let bank = self.bank;
-            let mut ctx = AnimCtx { bank, scale: 1.0, chrinfo: None, merging_enabled: true };
+            let mut ctx = AnimCtx { bank, skel: 0, scale: 1.0, chrinfo: None, merging_enabled: true };
             let hand = &mut self.b.hands[h];
             hand.anim.set_animation(&mut ctx, animload, false, 0.0, animspeedmult * animspeed, 0.0);
             if hand.animcmd.is_some() && animspeed < 0.0 {
@@ -182,7 +182,7 @@ impl GunCtx<'_> {
 
         // model_tick_anim(&hand->gunmodel, hand->animframeinc, true)
         {
-            let mut ctx = AnimCtx { bank: self.bank, scale: 1.0, chrinfo: None, merging_enabled: true };
+            let mut ctx = AnimCtx { bank: self.bank, skel: 0, scale: 1.0, chrinfo: None, merging_enabled: true };
             let inc = self.b.hands[h].animframeinc;
             self.b.hands[h].anim.tick(&mut ctx, inc, true);
         }

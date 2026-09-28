@@ -1,8 +1,8 @@
 //! The framebuffer effects `lv_render` draws over a player's finished view,
 //! HUD included (`lv.c:1439`-`:1520`, after `player_render_hud` at `:1317`):
-//! the Slayer rocket's interlace and static, the x-ray's zoom blur, and the
-//! Combat Boost's wipe (a zoom blur and a white fade), as `pd_sim` lists them
-//! in [`ViewFx`]. `post.wgsl` draws them.
+//! the Slayer rocket's interlace and static, the x-ray's zoom blur, the
+//! Combat Boost's wipe (a zoom blur and a white fade), and the dizziness'
+//! motion blur, as `pd_sim` lists them in [`ViewFx`]. `post.wgsl` draws them.
 //!
 //! The interlace reads this frame (PD's back buffer) and the zoom blur the last
 //! one (the front buffer), so the target's colour texture is copied first and
@@ -136,16 +136,27 @@ impl PostRenderer {
             let alpha = (fx.static_alpha & 0xff) as f32 / 255.0;
             passes.push((u(1.0, (self.seed % 997) as f32, alpha, [1.0; 2], [0.0; 3]), true, Src::None));
         }
+        // bview_set_motion_blur (`bondview.c:2526`): the dizziness adds 2/3 of
+        // its blur to the first zoom blur drawn (`:274`, capped at 230).
+        let mut extra = (fx.motion_blur.max(0) as u32 * 2) / 3;
         for &(alpha, sx, sy) in &fx.zoom_blurs {
             if budget == 0 {
                 break;
             }
             budget -= 1;
+            let alpha = ((alpha & 0xff) + extra).min(230);
+            extra = 0;
             // SUBST: PD's first frame blurs whatever the front buffer held / we
             // have no last frame then, and skip it.
             if last_ok {
-                passes.push((u(2.0, 0.0, (alpha & 0xff) as f32 / 255.0, [sx, sy], [0.0; 3]), true, Src::Last));
+                passes.push((u(2.0, 0.0, alpha as f32 / 255.0, [sx, sy], [0.0; 3]), true, Src::Last));
             }
+        }
+        // bview_draw_motion_blur(0xffffffff, bluramount) (`lv.c:1522`): the last
+        // frame over this one 1:1, unless a zoom blur already drew.
+        if fx.motion_blur > 0 && budget > 0 && last_ok {
+            let alpha = (fx.motion_blur as u32).min(230);
+            passes.push((u(2.0, 0.0, alpha as f32 / 255.0, [1.0, 1.0], [0.0; 3]), true, Src::Last));
         }
         if let Some((rgb, frac)) = fx.fade.filter(|f| f.1 > 0.0) {
             // gDPSetPrimColor(.., (s32)(frac * 255))

@@ -7,6 +7,7 @@ use std::path::Path;
 
 use pd_core::assets::AssetDir;
 
+pub mod lab;
 pub mod snapshot;
 
 /// The asset root: `PD_ASSETS` if set, else the repo's `assets/`.

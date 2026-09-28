@@ -184,7 +184,7 @@ impl World {
     /// `nbomb_inflict_damage` (`nbomb.c:431`): every room the dome's box touches
     /// darkens (`room_flash_lighting(room, -38, -180)`), and every chr inside the
     /// dome takes `chr_damage_by_dizziness(0.01 × lvupdate60freal)` and
-    /// uncloaks. `// M6:` the dizziness itself (`chr->blurdrugamount`).
+    /// uncloaks.
     fn nbomb_inflict_damage(&mut self, i: usize) {
         let n = self.props.nbombs.bombs[i];
         if self.lv.lvupdate240 <= 0 || n.age240 > 350 {
@@ -202,10 +202,11 @@ impl World {
             }
         }
         let damage = 0.01 * self.lv.lvupdate60freal;
-        for p in 0..self.players.len() {
-            if (self.players[p].pos - n.pos).length() < n.radius {
-                self.player_dizzy[p] += damage;
-                self.chr_uncloak(p, true);
+        for c in 0..self.chrs.len() {
+            if (self.chrs[c].pos - n.pos).length() < n.radius {
+                // chr_damage_by_dizziness(chr, damage, {0, 0, 0}, WEAPON_NBOMB, ownerprop).
+                self.chr_damage(c, damage, Vec3::ZERO, crate::chr::DamageFrom::new(n.owner, pd_core::ids::WEAPON_NBOMB, pd_core::ids::FUNC_PRIMARY), crate::chr::HITPART_GENERAL, false, false);
+                self.chr_uncloak_chr(c, true);
             }
         }
     }

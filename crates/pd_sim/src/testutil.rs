@@ -21,6 +21,24 @@ pub fn res() -> Arc<WorldRes> {
     RES.get_or_init(|| Arc::new(WorldRes::load(&assets()).expect("assets/"))).clone()
 }
 
+/// Complex and its collision, loaded once for every test.
+pub fn complex_arc() -> (Arc<Stage>, Arc<TileLevel>) {
+    static C: OnceLock<(Arc<Stage>, Arc<TileLevel>)> = OnceLock::new();
+    C.get_or_init(|| {
+        let stage = Stage::load(&assets(), "ref").expect("assets/stages/ref");
+        let level = TileLevel::new(stage.geom.clone());
+        (Arc::new(stage), Arc::new(level))
+    })
+    .clone()
+}
+
+/// [`complex_arc`] borrowed for the life of the test run.
+pub fn complex() -> (&'static Stage, &'static TileLevel) {
+    static C: OnceLock<(Arc<Stage>, Arc<TileLevel>)> = OnceLock::new();
+    let (s, l) = C.get_or_init(complex_arc);
+    (s, l)
+}
+
 /// One player in the firing range, with its boards, as the spike's `Sim::new`.
 pub fn range() -> World {
     range_with(fixtures::firing_range())

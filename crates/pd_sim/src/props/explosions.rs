@@ -153,8 +153,8 @@ pub struct Victim {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VictimId {
-    /// A player, by index.
-    Player(usize),
+    /// A chr (a player's or a simulant's), by index in the world's list.
+    Chr(usize),
     /// A firing-range target board, by index.
     Board(usize),
     Prop(u32),

@@ -784,11 +784,31 @@ pub fn world_fx(world: &pd_sim::world::World, cam: &FxCam, xray: Option<&Eraser>
     for (_, bs) in xlu {
         out.extend(bs);
     }
-    // props_render_beams (`propobj.c:11450`): the sentries' tracers. SUBST:
-    // other players' tracers are their chrs' fireslot beams / M6 draws the chrs.
+    // props_render_beams (`propobj.c:11450`): the simulants' tracers
+    // (`chr->fireslots[]`) and the sentries'. SUBST: another human's tracers
+    // are their chr's fireslot beams in PD / theirs are drawn only in their
+    // own gun pass until M6 poses a player's body.
+    for c in world.chrs.iter().filter(|c| c.player.is_none()) {
+        for slot in &c.fireslots {
+            out.extend(beam_geometry(&slot.beam, cam.pos));
+        }
+    }
     for o in &world.props.objs {
         if let Some(a) = &o.autogun {
             out.extend(beam_geometry(&a.beam, cam.pos));
+        }
+    }
+    // A simulant's muzzle flash: its held gun's CHRGUNFIRE node
+    // (`model_render_node_chr_gunfire`), while `weapon_set_gunfire_visible`.
+    if xray.is_none() {
+        for (k, c) in world.chrs.iter().enumerate().filter(|(_, c)| c.player.is_none() && c.onanyscreen) {
+            for (h, held) in c.held.iter().enumerate() {
+                let Some(held) = held.as_ref().filter(|g| g.gunfire) else { continue };
+                if let Some(node) = held.model.def.get_part(pd_core::ids::MODELPART_0000) {
+                    let seed = (world.lv.lvframenum as u32) ^ (k as u32).wrapping_mul(7919) ^ h as u32;
+                    out.extend(gunfire_geometry(&held.model.def, &held.model.matrices, node, cam.pos, seed));
+                }
+            }
         }
     }
     // A firing sentry's flash, part of its model (not in x-ray, where the model

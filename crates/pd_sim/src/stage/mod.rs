@@ -290,28 +290,33 @@ impl Stage {
         self.pads[self.waypoints[w].padnum].pos
     }
 
-    /// Every directed link of the waypoint graph a chr may walk: `a → b` is out
-    /// if `a`'s entry for `b` is `WPSEGFLAG_INWARDSONLY` ("only arrive at `a` this
-    /// way"), or if `b`'s entry for `a` is `WPSEGFLAG_OUTWARDSONLY`. Returns
-    /// `(a, b, one_way)`.
+    /// Every directed link of the waypoint graph a chr may walk
+    /// ([`directed_links`]). Returns `(a, b, one_way)`.
     pub fn waypoint_links(&self) -> Vec<(usize, usize, bool)> {
-        let wps = &self.waypoints;
-        let seg = |a: usize, b: usize| wps[a].neighbours.iter().copied().find(|&s| wpseg_get_id(s) == b);
-        let mut out = Vec::new();
-        for (a, w) in wps.iter().enumerate() {
-            for &s in &w.neighbours {
-                let b = wpseg_get_id(s);
-                let back = seg(b, a);
-                let forward_ok = s & WPSEGFLAG_INWARDSONLY == 0;
-                let back_ok = back.is_none_or(|t| t & WPSEGFLAG_OUTWARDSONLY == 0);
-                if forward_ok && back_ok {
-                    let one_way = s & WPSEGFLAG_OUTWARDSONLY != 0 || back.is_none_or(|t| t & WPSEGFLAG_INWARDSONLY != 0);
-                    out.push((a, b, one_way));
-                }
+        directed_links(self.waypoints.len(), |w| &self.waypoints[w].neighbours)
+    }
+}
+
+/// The directed links of a waypoint graph in PD's encoding that a chr may
+/// walk: `a → b` is out if `a`'s entry for `b` is `WPSEGFLAG_INWARDSONLY` ("only
+/// arrive at `a` this way"), or if `b`'s entry for `a` is
+/// `WPSEGFLAG_OUTWARDSONLY`. Returns `(a, b, one_way)`.
+pub fn directed_links<'a>(n: usize, neighbours: impl Fn(usize) -> &'a [i32]) -> Vec<(usize, usize, bool)> {
+    let seg = |a: usize, b: usize| neighbours(a).iter().copied().find(|&s| wpseg_get_id(s) == b);
+    let mut out = Vec::new();
+    for a in 0..n {
+        for &s in neighbours(a) {
+            let b = wpseg_get_id(s);
+            let back = seg(b, a);
+            let forward_ok = s & WPSEGFLAG_INWARDSONLY == 0;
+            let back_ok = back.is_none_or(|t| t & WPSEGFLAG_OUTWARDSONLY == 0);
+            if forward_ok && back_ok {
+                let one_way = s & WPSEGFLAG_OUTWARDSONLY != 0 || back.is_none_or(|t| t & WPSEGFLAG_INWARDSONLY != 0);
+                out.push((a, b, one_way));
             }
         }
-        out
     }
+    out
 }
 
 #[cfg(test)]

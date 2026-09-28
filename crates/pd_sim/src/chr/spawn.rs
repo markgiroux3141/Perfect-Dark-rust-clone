@@ -1,14 +1,5 @@
-//! Chrs, player and simulant alike: the `chrdata` subset, movement
-//! (`chr_calculate_push_pos`, the ground half of `chr_update_position`, falls,
-//! ladders, duck/squat), go-to (`chr_go_to_room_pos`, `chr_tick_gopos`), damage and
-//! hit parts (`chr_damage`), death, spawn (`player_choose_spawn_location`,
-//! `chr_adjust_pos_for_spawn`), footsteps, and the body pose, computed here with
-//! `pd_core::model` so gun positions come from the sim, not from the renderer.
-//!
-//! M3 has what the player needs: [`chr_adjust_pos_for_spawn`] and
-//! [`footstep_choose_sound`]. The simulants' half arrives with M6.
-//!
-//! Sources: `pd_spike/chr.rs`, `chraction.rs`, `thirdperson.rs`, `gunpos.rs`.
+//! Where a chr stands when it enters the match (`chr_adjust_pos_for_spawn`) and
+//! what its feet sound like (`footstep.c`).
 
 use glam::Vec3;
 use pd_core::ids::FLOORTYPE_SNOW;
@@ -18,15 +9,16 @@ use pd_core::rng::Rng;
 use crate::stage::{CdResult, PerimCyl, TileLevel};
 
 /// `chr_adjust_pos_for_spawn(chrradius, pos, rooms, angle, allowonscreen = true,
-/// force = false, onlysurrounding = false)` (`chraction.c:15018`): `pos` if a
-/// cylinder there, reaching 200 cm up and down to the ground, touches nothing;
-/// else the first of 8 points 60 cm around it (from `angle`, 45° apart) the pad
-/// can see and that is clear the same way. `pos` is the pad's own position, not
-/// the ground; the caller finds the floor under the result.
+/// force, onlysurrounding = false)` (`chraction.c:15018`): `pos` if a
+/// cylinder there, reaching 200 cm up and down to the ground, touches nothing
+/// (with `force`, nothing but other chrs); else the first of 8 points 60 cm
+/// around it (from `angle`, 45° apart) the pad can see and that is clear.
+/// `pos` is the pad's own position, not the ground; the caller finds the floor
+/// under the result.
 ///
-/// Every caller in the Combat Simulator passes `allowonscreen = true`, so
-/// `chr_is_pos_offscreen` is never asked.
-pub fn chr_adjust_pos_for_spawn(level: &TileLevel, chrradius: f32, pos: Vec3, angle: f32, cyls: &[PerimCyl]) -> Option<Vec3> {
+/// Every caller in the Combat Simulator passes `allowonscreen = true` (or
+/// `force`, which sets it), so `chr_is_pos_offscreen` is never asked.
+pub fn chr_adjust_pos_for_spawn(level: &TileLevel, chrradius: f32, pos: Vec3, angle: f32, force: bool, cyls: &[PerimCyl]) -> Option<Vec3> {
     let ymax = 200.0;
     let ymin_at = |p: Vec3| {
         let ground = level.cd_find_ground_at_cyl(p, chrradius).0;
@@ -36,7 +28,8 @@ pub fn chr_adjust_pos_for_spawn(level: &TileLevel, chrradius: f32, pos: Vec3, an
             -200.0
         }
     };
-    if level.cd_test_volume_simple(pos, chrradius, true, ymax, ymin_at(pos), cyls) != CdResult::Collision {
+    let first = if force { level.cd_test_volume_props(pos, chrradius, true, ymax, ymin_at(pos), cyls) } else { level.cd_test_volume_simple(pos, chrradius, true, ymax, ymin_at(pos), cyls) };
+    if first != CdResult::Collision {
         return Some(pos);
     }
     let mut curangle = angle;
@@ -103,6 +96,50 @@ pub fn footstep_choose_sound(rng: &mut Rng, floortype: u8, lastfootsample: &mut 
     FOOTSTEP_SOUNDS[index as usize]
 }
 
+impl crate::world::World {
+    /// `scenario_choose_spawn_location` → `player_choose_general_spawn_location`
+    /// → `player_choose_spawn_location` (`player.c:225`) for chr `i`, judged
+    /// against every other chr (dead ones too, as PD does).
+    pub(crate) fn chr_choose_spawn_location(&mut self, i: usize) -> (Vec3, f32) {
+        let others: Vec<crate::player::SpawnOther> =
+            self.chrs.iter().enumerate().filter(|&(j, _)| j != i).map(|(_, c)| crate::player::SpawnOther { pos: c.pos, rooms: c.rooms.clone() }).collect();
+        let cyls = self.chr_perims_except(i);
+        let radius = self.chrs[i].radius;
+        crate::player::player_choose_spawn_location(&self.level, &self.stage, radius, &others, &cyls, &mut self.rng)
+    }
+
+    /// `chr_move_to_pos(chr, pos, rooms, angle, force = true)` (`chraction.c`):
+    /// the spot adjusted again (only other chrs count, with `force`), the chr's
+    /// ground found under it, the model's root put there with
+    /// `CHRCFLAG_FORCETOGROUND` (the next position update stands it on the
+    /// floor), and `chr_set_theta`.
+    pub(crate) fn chr_move_to_pos(&mut self, i: usize, pos: Vec3, angle: f32) {
+        let cyls = self.chr_perims_except(i);
+        let radius = self.chrs[i].radius;
+        let Some(pos2) = chr_adjust_pos_for_spawn(&self.level, radius, pos, angle, true, &cyls) else { return };
+        let (ground, floorpoly) = self.level.cd_find_ground_at_cyl(pos2, radius);
+        let c = &mut self.chrs[i];
+        if let Some(p) = floorpoly {
+            c.floortype = self.level.geom.polys[p].floortype;
+            c.floorroom = self.level.geom.polys[p].room;
+        }
+        c.ground = ground;
+        c.manground = ground;
+        c.sumground = ground * 9.999_998;
+        c.pos = pos2;
+        c.prevpos = pos2;
+        c.rooms = c.floorroom.into_iter().collect();
+        c.model.chrinfo.set_root_position(pos2);
+        c.model.chrinfo.ground = ground;
+        c.forcetoground = true;
+        c.fallspeed = Vec3::ZERO;
+        match c.aibot.as_mut() {
+            Some(a) => a.lookangle = angle,
+            None => c.model.chrinfo.set_chr_rot_y(angle),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,10 +151,10 @@ mod tests {
         let c = fixtures::ARENA_PILLARS[0];
         // Clear floor: the pad itself.
         let open = Vec3::new(0.0, 60.0, 0.0);
-        assert_eq!(chr_adjust_pos_for_spawn(&l, 30.0, open, 0.0, &[]), Some(open));
+        assert_eq!(chr_adjust_pos_for_spawn(&l, 30.0, open, 0.0, false, &[]), Some(open));
         // Touching the pillar's west face: moved 60 cm, away from it.
         let near = Vec3::new(c.x - fixtures::ARENA_PILLAR_HALF - 20.0, 60.0, c.y);
-        let got = chr_adjust_pos_for_spawn(&l, 30.0, near, 0.0, &[]).unwrap();
+        let got = chr_adjust_pos_for_spawn(&l, 30.0, near, 0.0, false, &[]).unwrap();
         assert!((got.distance(near) - 60.0).abs() < 1e-3, "{got}");
         assert_eq!(l.cd_test_volume_simple(got, 30.0, true, 200.0, -60.0, &[]), CdResult::NoCollision);
     }

@@ -11,7 +11,10 @@
 //!   the stage's spawn pads, on the GPU (M3);
 //! * `guns [--all | <weapon>...] [--size WxH] [--frames n]`: the guns, their
 //!   effects and the HUD in the firing range, on the GPU (M4);
-//! * `match`: later milestones.
+//! * `match [<code>] [--bots n] [--diff d] [--seed s] [--at s,s,...] [--duel]`:
+//!   a Combat match with simulants, the player's whole frame (M6);
+//! * `lab [<code>] [--bots n] [--diff d] [--seed s] [--at s] [--ours]`: `pd_lab`'s
+//!   top-down map of a simulants-only match (M6).
 
 use std::path::Path;
 
@@ -19,7 +22,7 @@ fn main() {
     env_logger::init();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (Some(outdir), Some(what)) = (args.first(), args.get(1)) else {
-        eprintln!("usage: pd_snapshot <outdir> <what> [args...]   (what: model, menu, stage, guns)");
+        eprintln!("usage: pd_snapshot <outdir> <what> [args...]   (what: model, menu, stage, guns, match)");
         std::process::exit(2);
     };
     let outdir = Path::new(outdir);
@@ -29,7 +32,9 @@ fn main() {
         "menu" => pd_tools::snapshot::menu::run(outdir, rest),
         "stage" => pd_tools::snapshot::stage::run(outdir, rest),
         "guns" => pd_tools::snapshot::guns::run(outdir, rest),
-        other => Err(format!("unknown target {other:?} (M4 has: model, menu, stage, guns)")),
+        "match" => pd_tools::snapshot::matchsnap::run(outdir, rest),
+        "lab" => pd_tools::snapshot::matchsnap::run_lab(outdir, rest),
+        other => Err(format!("unknown target {other:?} (model, menu, stage, guns, match, lab)")),
     };
     match result {
         Ok(paths) => {

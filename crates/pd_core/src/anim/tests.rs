@@ -43,7 +43,7 @@ fn a_non_looping_animation_stops_on_its_last_frame() {
     let bank = bank();
     let reload = bank.by_name("ANIM_GUN_FALCON2_RELOAD").unwrap();
     let mut a = Anim::default();
-    let mut ctx = AnimCtx { bank, scale: 1.0, chrinfo: None, merging_enabled: true };
+    let mut ctx = AnimCtx { bank, skel: 0, scale: 1.0, chrinfo: None, merging_enabled: true };
     a.set_animation(&mut ctx, reload, false, 0.0, 1.0, 0.0);
     for _ in 0..200 {
         a.tick(&mut ctx, 1, true);
@@ -56,7 +56,7 @@ fn a_non_looping_animation_stops_on_its_last_frame() {
 fn quarter_ticks_advance_a_quarter_of_a_frame_each() {
     let bank = bank();
     let mut a = Anim::default();
-    let mut ctx = AnimCtx { bank, scale: 1.0, chrinfo: None, merging_enabled: true };
+    let mut ctx = AnimCtx { bank, skel: 0, scale: 1.0, chrinfo: None, merging_enabled: true };
     a.set_animation(&mut ctx, 1, false, 0.0, 1.0, 0.0);
     a.tick_quarter(&mut ctx, 6, false);
     assert_eq!((a.framea, a.frameb), (1, 2));
@@ -67,7 +67,7 @@ fn quarter_ticks_advance_a_quarter_of_a_frame_each() {
 fn a_merge_blends_from_the_old_animation_over_its_time() {
     let bank = bank();
     let mut a = Anim::default();
-    let mut ctx = AnimCtx { bank, scale: 1.0, chrinfo: None, merging_enabled: true };
+    let mut ctx = AnimCtx { bank, skel: 0, scale: 1.0, chrinfo: None, merging_enabled: true };
     a.set_animation(&mut ctx, 1, false, 10.0, 1.0, 0.0);
     a.set_animation(&mut ctx, 0x29, false, 0.0, 1.0, 16.0);
     assert_eq!((a.animnum2, a.fracmerge), (1, 1.0));
@@ -84,7 +84,7 @@ fn a_chrinfo_root_walks_with_the_clips_root_motion() {
     // motion is the walk displacement.
     let mut a = Anim::default();
     let mut ci = ChrInfo::default();
-    let mut ctx = AnimCtx { bank, scale: 1.0, chrinfo: Some((&mut ci, 0)), merging_enabled: true };
+    let mut ctx = AnimCtx { bank, skel: 0, scale: 1.0, chrinfo: Some((&mut ci, 0)), merging_enabled: true };
     a.set_animation(&mut ctx, 0x29, false, 0.0, 1.0, 0.0);
     a.set_looping(0.0, 0.0);
     let start = {
@@ -109,7 +109,7 @@ fn an_absolute_translation_clip_places_the_root_at_stage_scale() {
     assert_ne!(ad.flags & ANIMFLAG_ABSOLUTETRANSLATION, 0);
     let mut a = Anim::default();
     let mut ci = ChrInfo::default();
-    let mut ctx = AnimCtx { bank, scale: 1.0, chrinfo: Some((&mut ci, 0)), merging_enabled: true };
+    let mut ctx = AnimCtx { bank, skel: 0, scale: 1.0, chrinfo: Some((&mut ci, 0)), merging_enabled: true };
     a.set_animation(&mut ctx, roll, false, 5.0, 1.0, 0.0);
     let want = ad.rot_translate_scale(0, 5).1 * STAGE_TRANSLATION;
     let (c, _) = ctx.chrinfo.as_mut().unwrap();

@@ -119,7 +119,7 @@ impl Model {
             Some(NodeKind::ChrInfo { animpart, .. }) => Some((&mut self.chrinfo, *animpart as usize)),
             _ => None,
         };
-        AnimCtx { bank, scale: self.scale, chrinfo, merging_enabled: true }
+        AnimCtx { bank, skel: self.def.skel, scale: self.scale, chrinfo, merging_enabled: true }
     }
 
     // ── toggles ──────────────────────────────────────────────────────────────
@@ -279,18 +279,20 @@ impl Model {
         }
     }
 
-    fn rts(bank: &AnimBank, animnum: u16, part: usize, frame: i32) -> (Vec3, Vec3, Vec3) {
+    /// `anim_get_rot_translate_scale`, flipped (`Some(skel)`) or not.
+    fn rts(bank: &AnimBank, animnum: u16, part: usize, frame: i32, flip: Option<i32>) -> (Vec3, Vec3, Vec3) {
         match bank.get(animnum) {
-            Some(ad) => ad.rot_translate_scale(part, frame),
+            Some(ad) => ad.rot_translate_scale_flip(part, frame, flip),
             None => (Vec3::ZERO, Vec3::ZERO, Vec3::ONE),
         }
     }
 
     /// The merge's source rotation: the old animation's, tweened by `frac2`.
-    fn rot3(bank: &AnimBank, a: &Anim, part: usize) -> Vec3 {
-        let mut rot3 = Self::rts(bank, a.animnum2, part, a.frame2a).0;
+    fn rot3(bank: &AnimBank, a: &Anim, part: usize, skel: i32) -> Vec3 {
+        let flip2 = a.flip2.then_some(skel);
+        let mut rot3 = Self::rts(bank, a.animnum2, part, a.frame2a, flip2).0;
         if a.frac2 != 0.0 {
-            let rot4 = Self::rts(bank, a.animnum2, part, a.frame2b).0;
+            let rot4 = Self::rts(bank, a.animnum2, part, a.frame2b, flip2).0;
             rot3 = math::tween_rot(rot3, rot4, a.frac2);
         }
         rot3
@@ -303,14 +305,15 @@ impl Model {
         }
         let bank = p.bank;
         let parent = self.parent_mtx(def, node, p);
-        let mut rot1 = Self::rts(bank, a.animnum, animpart, a.framea).0;
+        let flip = a.flip.then_some(def.skel);
+        let mut rot1 = Self::rts(bank, a.animnum, animpart, a.framea, flip).0;
         if a.frac != 0.0 {
-            let rot2 = Self::rts(bank, a.animnum, animpart, a.frameb).0;
+            let rot2 = Self::rts(bank, a.animnum, animpart, a.frameb, flip).0;
             rot1 = math::tween_rot(rot1, rot2, a.frac);
         }
         let abs = bank.flags(a.animnum) & ANIMFLAG_ABSOLUTETRANSLATION != 0;
         let sp1d8 = if a.fracmerge != 0.0 {
-            let rot3 = Self::rot3(bank, a, animpart);
+            let rot3 = Self::rot3(bank, a, animpart, def.skel);
             let mut spec = if abs && bank.flags(a.animnum2) & ANIMFLAG_ABSOLUTETRANSLATION == 0 {
                 let sp38 = math::mul(&math::load_y_rotation(self.chrinfo.yrot), &math::load_rotation(rot3));
                 quaternion0f097044(&sp38)
@@ -371,9 +374,10 @@ impl Model {
         let mut sp128 = false;
         if a.animnum != 0 {
             sp128 = bank.flags(a.animnum) & ANIMFLAG_ABSOLUTETRANSLATION != 0 && is_root;
-            (rot1, translate1, scale1) = Self::rts(bank, a.animnum, animpart, a.framea);
+            let flip = a.flip.then_some(def.skel);
+            (rot1, translate1, scale1) = Self::rts(bank, a.animnum, animpart, a.framea, flip);
             if a.frac != 0.0 {
-                let (rot2, translate2, _) = Self::rts(bank, a.animnum, animpart, a.frameb);
+                let (rot2, translate2, _) = Self::rts(bank, a.animnum, animpart, a.frameb, flip);
                 rot1 = math::tween_rot(rot1, rot2, a.frac);
                 if sp128 {
                     translate1 += (translate2 - translate1) * a.frac;
@@ -382,7 +386,7 @@ impl Model {
         }
         let rel = |t: Vec3| if is_root { t } else { t + rodata_pos };
         if a.fracmerge != 0.0 {
-            let rot3 = Self::rot3(bank, a, animpart);
+            let rot3 = Self::rot3(bank, a, animpart, def.skel);
             let sp88 = quaternion0f096ca0(rot1);
             let mut sp78 = quaternion0f096ca0(rot3);
             quaternion0f0976c0(sp88, &mut sp78);

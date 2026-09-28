@@ -1,6 +1,6 @@
 [package]
 name = "pd_tools"
-description = "Headless developer tools: offscreen snapshots, match probes, offline audio renders."
+description = "Developer tools: offscreen snapshots, match probes, offline audio renders, and the pd_lab viewer."
 edition.workspace = true
 rust-version.workspace = true
 version.workspace = true
@@ -9,6 +9,11 @@ publish.workspace = true
 [[bin]]
 name = "pd_snapshot"
 path = "src/bin/pd_snapshot.rs"
+
+# The simulant and route debug viewer (a window: the one tool that isn't headless).
+[[bin]]
+name = "pd_lab"
+path = "src/bin/pd_lab.rs"
 
 [dependencies]
 engine = { workspace = true }

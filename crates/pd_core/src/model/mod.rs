@@ -11,7 +11,7 @@
 //!
 //! `assets/models/<stem>.json` holds the `modeldef`: `name`, `stem`, PD's
 //! `filenum`/`file` (FILE_*), `source` (the decomp file), `skel`,
-//! `nummatrices`, and
+//! `nummatrices`, `scale` (the radius the on-screen test uses), and
 //!
 //! * `nodes[]`: the node tree in PD's depth-first order (a parent before its
 //!   children, a subtree contiguous), each `{type, parent, partnum?, ...}`:
@@ -69,6 +69,47 @@ pub const MODELNODETYPE_0200: u32 = 0x0200;
 
 /// `MODELPART_CHR_HEADSPOT`.
 pub const MODELPART_CHR_HEADSPOT: i32 = 4;
+/// A head's `MODELPART_HEAD_SUNGLASSES` and `MODELPART_HEAD_HUDPIECE` toggles.
+pub const MODELPART_HEAD_SUNGLASSES: i32 = 0;
+pub const MODELPART_HEAD_HUDPIECE: i32 = 4;
+
+/// `body_calculate_head_offset` (`body.c`, the NTSC-final path): how far a
+/// head of `HEADBODYTYPE_*` `headty` moves up on a body of type `bodyty`.
+pub fn body_calculate_head_offset(headty: i32, bodyty: i32) -> f32 {
+    const DEFAULT: i32 = 0;
+    const FEMALE: i32 = 1;
+    const FEMALEGUARD: i32 = 2;
+    const MAIAN: i32 = 3;
+    const CASS: i32 = 4;
+    const MRBLONDE: i32 = 5;
+    let (h, b) = (headty, bodyty);
+    if h == b {
+        return 0.0;
+    }
+    let mut offset = match h {
+        DEFAULT => -35,
+        CASS => -20,
+        FEMALEGUARD => -40,
+        _ => 0,
+    };
+    match b {
+        MAIAN => offset -= 30,
+        DEFAULT => offset += 35,
+        CASS => offset += 20,
+        FEMALEGUARD => offset += 40,
+        _ => {}
+    }
+    if b == FEMALE {
+        if h == DEFAULT || h == MRBLONDE {
+            offset -= 10;
+        } else if h == CASS || h == FEMALEGUARD {
+            offset -= 5;
+        }
+    } else if b == CASS && (h == DEFAULT || h == MRBLONDE) {
+        offset -= 5;
+    }
+    offset as f32
+}
 
 // ─── the JSON header ─────────────────────────────────────────────────────────
 
@@ -81,11 +122,17 @@ struct Header {
     #[serde(default)]
     skel: Option<i64>,
     nummatrices: usize,
+    #[serde(default = "one")]
+    scale: f32,
     nodes: Vec<RawNode>,
     parts: HashMap<String, usize>,
     materials: Vec<Material>,
     textures: HashMap<String, TexInfo>,
     batches: Vec<BatchHead>,
+}
+
+fn one() -> f32 {
+    1.0
 }
 
 #[derive(Deserialize)]
@@ -274,6 +321,9 @@ pub struct ModelDef {
     pub filenum: u32,
     pub skel: i32,
     pub nummatrices: usize,
+    /// `modeldef.scale`: the model's radius in its own units
+    /// (`model_get_effective_scale` multiplies it by `model->scale`).
+    pub scale: f32,
     pub nodes: Vec<Node>,
     pub parts: HashMap<i32, usize>,
     pub materials: Vec<Material>,
@@ -355,6 +405,7 @@ impl ModelDef {
             filenum: 0,
             skel,
             nummatrices: nummatrices.max(1),
+            scale: 1.0,
             nodes,
             parts,
             materials: Vec::new(),
@@ -428,6 +479,7 @@ impl ModelDef {
             filenum: head.filenum,
             skel: head.skel.unwrap_or(0) as i32,
             nummatrices: head.nummatrices.max(1),
+            scale: head.scale,
             parts: head.parts.iter().filter_map(|(k, v)| k.parse::<i32>().ok().map(|p| (p, *v))).collect(),
             materials: head.materials,
             textures: head.textures.iter().filter_map(|(k, v)| k.parse::<u32>().ok().map(|id| (id, v.clone()))).collect(),

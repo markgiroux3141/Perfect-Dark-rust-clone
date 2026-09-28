@@ -213,6 +213,15 @@ pub struct Hand {
     pub primetimer60: i32,
     pub ejectstate: i32,
     pub ejecttype: i32,
+    /// `bgun_tick_eject`'s thrown part: `unk0d14..1c` its position (camera
+    /// space), `unk0d10` where it stops (PD sets it from x, not y), `unk0d20`
+    /// its velocity, `unk0d2c` its orientation and `unk0d50` the spin applied
+    /// each quarter tick.
+    pub eject_pos: Vec3,
+    pub eject_end: f32,
+    pub eject_vel: Vec3,
+    pub eject_rot: glam::Mat3,
+    pub eject_spin: glam::Mat3,
     pub unk0d0e_07: bool,
     pub createsmoke: bool,
     pub forcecreatesmoke: bool,
@@ -353,6 +362,11 @@ impl Hand {
             primetimer60: 0,
             ejectstate: EJECTSTATE_INACTIVE,
             ejecttype: EJECTTYPE_GUN,
+            eject_pos: Vec3::ZERO,
+            eject_end: 0.0,
+            eject_vel: Vec3::ZERO,
+            eject_rot: glam::Mat3::IDENTITY,
+            eject_spin: glam::Mat3::IDENTITY,
             unk0d0e_07: false,
             createsmoke: false,
             forcecreatesmoke: false,

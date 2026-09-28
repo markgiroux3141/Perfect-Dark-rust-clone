@@ -744,6 +744,35 @@ impl GunCtx<'_> {
                 self.bgun_update_reaper(h);
             }
 
+            // bondgun.c:7563: a thrown grenade's pin, a tranquilizer's case.
+            if self.b.hands[h].ejectcount > 0 {
+                match weaponnum {
+                    WEAPON_GRENADE | WEAPON_NBOMB => {
+                        self.b.hands[h].ejectstate = EJECTSTATE_INIT;
+                        self.b.hands[h].ejecttype = EJECTTYPE_GRENADEPIN;
+                    }
+                    WEAPON_TRANQUILIZER => {
+                        self.b.hands[h].ejectstate = EJECTSTATE_INIT;
+                        self.b.hands[h].ejecttype = EJECTTYPE_TRANQCASE;
+                    }
+                    _ => {}
+                }
+            }
+            // bgun0f0a45d0 (`:7008`): the part the eject moves.
+            let eject_slot = if self.b.hands[h].ejectstate > EJECTSTATE_INACTIVE {
+                let isdetonator = h == HAND_LEFT && weaponnum == WEAPON_REMOTEMINE;
+                let part = match self.b.hands[h].ejecttype {
+                    EJECTTYPE_GUN if isdetonator => 0x2a,
+                    EJECTTYPE_GUN => 0x37,
+                    _ => 0x2b,
+                };
+                self.part_mtx(h, part)
+            } else {
+                None
+            };
+            let (ejectstate, ejectpos, ejectrot) = (self.b.hands[h].ejectstate, self.b.hands[h].eject_pos, self.b.hands[h].eject_rot);
+            let mut captured: Option<Mat4> = None;
+
             // model_set_matrices_with_anim(&renderdata, &hand->gunmodel)
             let reaper = weaponnum == WEAPON_REAPER;
             let (spin_slot, cyl_slots) = if reaper {
@@ -756,8 +785,16 @@ impl GunCtx<'_> {
             let hand = &mut self.b.hands[h];
             let anim = hand.anim.clone();
             if let Some(model) = hand.gunmodel.as_mut() {
-                // bgun0f0a256c: the Reaper's spinning barrels.
+                // bgun0f0a256c: the ejected part, and the Reaper's spinning barrels.
                 let mut cb = |slot: usize, m: &mut Mat4| {
+                    if Some(slot) == eject_slot {
+                        if ejectstate == EJECTSTATE_INIT {
+                            captured = Some(*m);
+                        } else if ejectstate >= EJECTSTATE_AIRBORNE {
+                            let r = ejectrot;
+                            *m = Mat4::from_cols(r.x_axis.extend(0.0), r.y_axis.extend(0.0), r.z_axis.extend(0.0), ejectpos.extend(1.0));
+                        }
+                    }
                     if Some(slot) == spin_slot {
                         *m *= math::load_rotation(Vec3::new(0.0, 0.0, rot));
                     }
@@ -765,8 +802,13 @@ impl GunCtx<'_> {
                         *m *= math::load_rotation(Vec3::new(0.0, 0.0, 2.0 * -rot));
                     }
                 };
-                let jf: Option<pd_core::model::JointFn> = if reaper { Some(&mut cb) } else { None };
+                let jf: Option<pd_core::model::JointFn> = if reaper || eject_slot.is_some() { Some(&mut cb) } else { None };
                 model.set_matrices_with_anim(&params, Some(&anim), jf);
+            }
+            if let Some(m) = captured {
+                let hand = &mut self.b.hands[h];
+                hand.eject_pos = m.w_axis.truncate();
+                hand.eject_rot = glam::Mat3::from_mat4(m);
             }
 
             // The slide (MODELPART_GUN_SLIDE) runs back along its own -z.
@@ -833,7 +875,83 @@ impl GunCtx<'_> {
         if lv240 != 0 {
             self.bgun_update_smoke(h, weaponnum);
         }
+        if self.b.hands[h].ejectstate > EJECTSTATE_INACTIVE {
+            self.bgun_tick_eject(h);
+        }
         self.b.hands[h].animframeinc = 0;
+    }
+
+    /// `bgun_tick_eject` (`bondgun.c:7036`): a part flung out of the view, in
+    /// camera space: the whole gun when the player dies, a grenade's pin, a
+    /// tranquilizer's case. It falls at 0.278 cm/tick² (at most 1.5 ticks a
+    /// frame while dead), spinning, until it is 2 m below where it started
+    /// (by PD's arithmetic, its x less 2 m).
+    fn bgun_tick_eject(&mut self, h: usize) {
+        let lv = self.lv.clone();
+        let isdead = self.pl.isdead;
+        match self.b.hands[h].ejectstate {
+            EJECTSTATE_INIT => {
+                let t = baddtor(360.0);
+                let (vel, spd0) = match self.b.hands[h].ejecttype {
+                    EJECTTYPE_GUN => {
+                        let v = Vec3::new((self.rng.randomfrac() - 0.5) * 0.533_333_3 * (1.0 / 16.0) + 0.533_333_3, self.rng.randomfrac() * 2.5 * (1.0 / 16.0) + 2.5, 0.0);
+                        let a = self.rng.randomfrac() * 2.0 * t / 184.0 - 0.034_142_31;
+                        let b = self.rng.randomfrac() * 2.0 * t / 184.0 - 0.034_142_31;
+                        let c = self.rng.randomfrac() * 2.0 * t / 184.0 - 0.034_142_31;
+                        (v, Vec3::new(a, b, c))
+                    }
+                    EJECTTYPE_GRENADEPIN => {
+                        let x = -((self.rng.randomfrac() - 0.5) * 0.533_333_3 * (1.0 / 16.0) + 3.0 * 0.533_333_3);
+                        let y = self.rng.randomfrac() * 2.5 * (1.0 / 8.0) + 2.5;
+                        let z = -(self.rng.randomfrac() + 1.0);
+                        let a = (self.rng.randomfrac() + 3.0) * t / 208.0;
+                        let b = self.rng.randomfrac() * 2.0 * t / 544.0 - 0.011_548_134_5;
+                        let c = self.rng.randomfrac() * 2.0 * t / 544.0 - 0.011_548_134_5;
+                        (Vec3::new(x, y, z), Vec3::new(a, b, c))
+                    }
+                    _ => {
+                        let y = self.rng.randomfrac() * 2.5 * (1.0 / 8.0) + 2.5;
+                        let z = (self.rng.randomfrac() + 1.0) * 0.25;
+                        let a = (self.rng.randomfrac() + 3.0) * t / 368.0;
+                        let b = self.rng.randomfrac() * 2.0 * t / 944.0 - 0.006_654_857;
+                        let c = self.rng.randomfrac() * 2.0 * t / 944.0 - 0.006_654_857;
+                        (Vec3::new(0.0, y, z), Vec3::new(a, b, c))
+                    }
+                };
+                let hand = &mut self.b.hands[h];
+                hand.eject_vel = vel;
+                hand.eject_end = hand.eject_pos.x - 200.0;
+                hand.eject_spin = glam::Mat3::from_mat4(math::load_rotation(spd0));
+                if lv.lvupdate240 > 0 && hand.ejecttype != EJECTTYPE_GUN {
+                    // The hand's own motion, in the hand's frame, carries it.
+                    let mut v = (hand.posmtx.w_axis - hand.prevmtx.w_axis).truncate() / lv.lvupdate60freal;
+                    // mtx00017588: the full inverse, then its rotation.
+                    v = hand.posmtx.inverse().transform_vector3(v);
+                    hand.eject_vel += v * 0.3;
+                }
+                hand.ejectstate = EJECTSTATE_AIRBORNE;
+            }
+            EJECTSTATE_AIRBORNE => {
+                let mut lvupdate = lv.lvupdate60freal;
+                if isdead && lvupdate > 1.5 {
+                    lvupdate = 1.5;
+                }
+                let hand = &mut self.b.hands[h];
+                let newval = hand.eject_vel.y - lvupdate * 0.277_777_8;
+                if hand.eject_pos.y < hand.eject_end {
+                    hand.ejectstate = EJECTSTATE_FINISHED;
+                    return;
+                }
+                hand.eject_pos.y += lvupdate * 0.5 * (hand.eject_vel.y + newval);
+                hand.eject_pos.x += lvupdate * hand.eject_vel.x;
+                hand.eject_pos.z += lvupdate * hand.eject_vel.z;
+                hand.eject_vel.y = newval;
+                for _ in 0..lv.lvupdate240 {
+                    hand.eject_rot = hand.eject_spin * hand.eject_rot;
+                }
+            }
+            _ => {}
+        }
     }
 
     /// `bgun_update_sniper_rifle` (`:6842`): the scope telescopes with the zoom.

@@ -6277,7 +6277,7 @@
     "hassecammogoal": 0,
     "pridistconfig": 2,
     "secdistconfig": 2,
-    "targetammopri": "TICKS(1200)",
+    "targetammopri": 1200,
     "targetammosec": 0,
     "criticalammopri": 0,
     "criticalammosec": 0,

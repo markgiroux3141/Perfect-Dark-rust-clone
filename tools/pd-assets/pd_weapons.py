@@ -503,6 +503,10 @@ def resolve_expr(tok: str, consts: Consts) -> object:
         return False
     if tok.startswith("{") and tok.endswith("}"):
         return [resolve_expr(p, consts) for p in split_top_level(tok[1:-1])]
+    # `TICKS(v)` (constants.h): `v` on NTSC; PAL scales it to 50 Hz.
+    m = re.fullmatch(r"TICKS\((.*)\)", tok)
+    if m:
+        return resolve_expr(m.group(1), consts)
 
     # Float or int literal (incl. the decomp's long decimal expansions).
     if re.fullmatch(r"-?\d+\.\d+(?:[eE][-+]?\d+)?f?", tok):

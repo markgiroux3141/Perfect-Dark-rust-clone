@@ -22,6 +22,7 @@
 
 pub mod bg;
 pub mod fx;
+pub mod health;
 pub mod hud;
 pub mod models;
 pub mod post;
@@ -225,6 +226,44 @@ impl Renderer {
             objdraws.push((o.def.clone(), Vec::new(), joints, frame, None, xlu));
         }
 
+        // The simulants (`chr_render`, `chr.c:3378`): the body, its head and the
+        // held guns, posed by the sim in world space. A dying chr's corpse fades
+        // (`fadealpha`), a new life fades in over 2 s (`aibot->fadeintimer60`),
+        // both drawn see-through.
+        // SUBST: PD lights a chr by its room (`chr_render`'s shade colour) /
+        // lit as the objects are, from the chr's floor room's brightness.
+        // Another human's body is not posed in M6 (see `pd_sim::gun::shot`).
+        for c in world.chrs.iter().filter(|c| c.player.is_none() && c.onanyscreen) {
+            let mut alpha = if c.fadealpha < 0.0 { 255.0 } else { c.fadealpha };
+            if let Some(a) = c.aibot.as_ref().filter(|a| a.fadeintimer60 > 0) {
+                alpha = alpha * (120 - a.fadeintimer60) as f32 * (1.0 / 120.0);
+            }
+            if alpha <= 0.0 {
+                continue;
+            }
+            let lights = gun_lights(world.lights.brightness(c.floorroom), false);
+            let mut frame = lit_frame(world_proj, p.look, p.up, lights, env);
+            let mut xlu = alpha < 255.0;
+            if xlu {
+                frame.misc[0] = alpha / 255.0;
+            }
+            if let Some(e) = xray {
+                let Some(col) = xray::obj_colour(e, c.pos) else { continue };
+                frame.flat = [col[0], col[1], col[2], 1.0];
+                frame.misc[0] = col[3];
+                xlu = true;
+            }
+            let joints: Vec<Mat4> = c.model.matrices.iter().map(|m| w2e * *m).collect();
+            objdraws.push((c.model.def.clone(), c.model.vis.clone(), joints, frame, None, xlu));
+            if let (Some(head), Some(hm)) = (c.model.head.clone(), c.model.head_matrix()) {
+                objdraws.push((head, c.model.head_vis.clone(), vec![w2e * hm], frame, None, xlu));
+            }
+            for held in c.held.iter().flatten() {
+                let joints = held.model.matrices.iter().map(|m| w2e * *m).collect();
+                objdraws.push((held.model.def.clone(), held.model.vis.clone(), joints, frame, None, xlu));
+            }
+        }
+
         // The guns, the hands, the loaded rockets and the casings (`bgun_render`,
         // `casings_render`).
         let mut defs: Vec<Draw> = Vec::new();
@@ -300,12 +339,15 @@ impl Renderer {
                 gset: &res.gset,
                 view: [p.cam.c_screenleft as i32, p.cam.c_screentop as i32, p.cam.c_screenwidth as i32, p.cam.c_screenheight as i32],
                 playercount: world.players.len(),
-                isdead: false,
-                sighton: p.insightaimmode,
+                isdead: p.isdead,
+                sighton: p.insightaimmode && !p.health.sightoff_damage,
                 hasprop: world.lookingatprop.get(pi).copied().flatten().is_some(),
                 speedpilltime: world.speedpill.time,
                 options: world.setup.players.get(pi).map_or(pd_core::mp::MatchPlayer::DEFAULT_OPTIONS, |m| m.options),
                 zoominfovy: p.zoominfovy,
+                health: p.health.player_is_health_visible().then(|| (p.health.apparenthealth, p.health.player_get_health_bar_height_frac())),
+                fovy: view.fovy,
+                fade: (p.health.colourscreen, p.health.colourscreenfrac),
             };
             let mut t = TextCtx { gfx: &mut self.hud_gfx, ts: &mut self.text, fonts, frac20: world.frac20 };
             hud::draw(&mut t, &hin);

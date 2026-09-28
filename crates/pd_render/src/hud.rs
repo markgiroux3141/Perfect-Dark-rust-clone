@@ -37,7 +37,8 @@ pub struct HudIn<'a> {
     pub view: [i32; 4],
     pub playercount: usize,
     pub isdead: bool,
-    /// `gunsightoff == 0`: aiming with R. M6: `GUNSIGHTREASON_DAMAGE`.
+    /// `gunsightoff == 0`: aiming with R, and no damage flash
+    /// (`GUNSIGHTREASON_DAMAGE`).
     pub sighton: bool,
     /// `lookingatprop.prop != NULL`.
     pub hasprop: bool,
@@ -47,6 +48,12 @@ pub struct HudIn<'a> {
     pub options: u16,
     /// `player->zoominfovy`.
     pub zoominfovy: f32,
+    /// The health bar: `apparenthealth` and its height (`player_is_health_visible`).
+    pub health: Option<(f32, f32)>,
+    /// The perspective's field of view the bar is seen through (degrees).
+    pub fovy: f32,
+    /// `colourscreen*`: the fade over the view.
+    pub fade: ([i32; 3], f32),
 }
 
 impl HudIn<'_> {
@@ -548,11 +555,17 @@ pub fn bgun_draw_hud(t: &mut TextCtx, h: &HudIn) {
 
 /// The whole 2D layer for one player: `bgun_draw_sight`, then `bgun_draw_hud`
 /// if "ammo on screen" is on (`player.c:4731`), into a transparent `gfx`.
+/// `player_render_hud`'s 2D part (`player.c:4536`): the health bar, the
+/// sight, the ammo, then the stored fade over it all.
 pub fn draw(t: &mut TextCtx, h: &HudIn) {
+    if let Some((apparent, heightfrac)) = h.health {
+        crate::health::draw_health_bar(t.gfx, h.view, apparent, heightfrac, h.fovy);
+    }
     sight_draw(t.gfx, h);
     if h.option(OPTION_AMMOONSCREEN) {
         bgun_draw_hud(t, h);
     }
+    crate::health::draw_fade(t.gfx, h.view, h.fade.0, h.fade.1);
 }
 
 // ── the GPU overlay ─────────────────────────────────────────────────────────

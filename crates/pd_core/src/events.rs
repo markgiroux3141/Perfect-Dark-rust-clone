@@ -29,4 +29,7 @@ pub enum Event {
     /// `sndp_post_event(handle, AL_SNDP_PITCH_EVT / AL_SNDP_VOL_EVT)`: retune a
     /// sound on `handle` that still plays (`volume` linear, 1 is its own).
     SoundParams { handle: u32, pitch: f32, volume: f32 },
+    /// `mpstats_record_death`: chr `victim` died, killed by `killer` (both
+    /// indexes into the world's chr list; `None`, or the victim, a suicide).
+    Kill { killer: Option<u8>, victim: u8 },
 }

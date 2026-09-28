@@ -7,7 +7,7 @@
 //! one MP chr a tick, round-robin, its owner and (with teams) its owner's team
 //! skipped; it swivels at most ±12.56 rad, wakes for a target within 70° of its
 //! aim and 50 m, fires every other tick at half the RC-P45's damage, and draws a
-//! tracer every fourth round. Until M6 the MP chrs are the human players.
+//! tracer every fourth round. Its targets are the world's chrs.
 //!
 //! Source: the old repo's `pd_guns/autogun.rs`, whose targets were the firing
 //! range's boards (`fr_choose_autogun_target`, the training branch, which the
@@ -323,7 +323,7 @@ impl World {
     /// The MP chrs a sentry can target, as `g_MpAllChrPtrs`: the players. M6:
     /// the simulants after them.
     fn mp_num_chrs(&self) -> usize {
-        self.players.len()
+        self.chrs.len()
     }
 
     /// `autogun_tick` (`propobj.c:8557`), the regular behaviour (not the
@@ -334,9 +334,11 @@ impl World {
         let gunpos = o.pos;
         let numchrs = self.mp_num_chrs();
         let teams = self.setup.options & MPOPTION_TEAMSENABLED != 0;
-        let chr_team: Vec<u8> = (0..numchrs).map(|i| self.setup.players.get(i).map_or(0, |p| 1u8 << (p.chr.team & 7))).collect();
-        let cloaked: Vec<bool> = self.players.iter().map(|p| p.cloak.cloaked).collect();
-        let positions: Vec<Vec3> = self.players.iter().map(|p| p.pos).collect();
+        let chr_team: Vec<u8> = self.chrs.iter().map(|c| c.team).collect();
+        // CHRCFLAG_HIDDEN, cloaked, dead: not a target, not tracked.
+        let untargetable: Vec<bool> = (0..numchrs).map(|i| self.chrs[i].cloaked || self.chr_is_dead(i)).collect();
+        let isplayer: Vec<bool> = self.chrs.iter().map(|c| c.player.is_some()).collect();
+        let positions: Vec<Vec3> = self.chrs.iter().map(|c| c.pos).collect();
         let level = self.level.clone();
         let flags = o.flags;
         let Some(a) = o.autogun.as_mut() else { return };
@@ -364,8 +366,7 @@ impl World {
                 if teams && chr_team[i] & a.targetteam == 0 {
                     continue;
                 }
-                // CHRCFLAG_HIDDEN, cloaked, dead. M7: the dead.
-                if !cloaked[i] {
+                if !untargetable[i] {
                     target = Some(i);
                     break;
                 }
@@ -377,7 +378,9 @@ impl World {
             let tp = positions[t];
             let (xdist, mut ydist, zdist) = (tp.x - gunpos.x, tp.y - gunpos.y, tp.z - gunpos.z);
             // PROPTYPE_PLAYER: aim 20 cm below the eye.
-            ydist -= 20.0;
+            if isplayer[t] {
+                ydist -= 20.0;
+            }
             let mut sqdist = xdist * xdist + zdist * zdist;
             let mut dist = sqdist.sqrt();
             let horizdist = dist;
@@ -404,8 +407,8 @@ impl World {
                     } else if relangleh >= dtor(180.0) {
                         relangleh -= baddtor(360.0);
                     }
-                    // A player: tracked unless dead, hidden or cloaked (M7: dead).
-                    let track = !cloaked[t];
+                    // Tracked unless dead, hidden or cloaked.
+                    let track = !untargetable[t];
                     // cd_test_los_oobfail(..., CDTYPE_ALL, GEOFLAG_BLOCK_SIGHT),
                     // both perimeters off. SUBST: the other chrs' perimeters don't
                     // block the look.
@@ -545,8 +548,9 @@ impl World {
             // cd_test_los_oobok_findclosest(..., CDTYPE_ALL, GEOFLAG_BLOCK_SHOOT).
             let bg = level.raycast_shoot(gunpos, dir, 65536.0).map(|h| h.dist);
             let mut hitchr: Option<(usize, f32)> = None;
-            for (i, p) in self.players.iter().enumerate() {
-                if let Some(t) = segment_cyl(gunpos, hitpos, &p.perim()) {
+            for (i, c) in self.chrs.iter().enumerate() {
+                let Some(perim) = c.perim() else { continue };
+                if let Some(t) = segment_cyl(gunpos, hitpos, &perim) {
                     let d = t * 65536.0;
                     if bg.is_none_or(|b| d < b) && hitchr.is_none_or(|(_, bd)| d < bd) {
                         hitchr = Some((i, d));
@@ -578,16 +582,12 @@ impl World {
                 a.beam.create(&mut self.rng, WEAPON_RCP45 as i32, gunpos, hitpos);
             }
             if let Some((i, pos)) = struck {
-                // bgun_play_prop_hit_sound (a chr's), chr_emit_sparks and
-                // chr_damage_by_impact at 1.8 × 0.5 (M6: the damage).
-                self.sound_at(0x8076, 1.0, pos, DEFAULT_DISTS);
-                if self.rng.random() & 4 == 0 {
-                    self.fx.sparks.create(&mut self.rng, pos + dir * 42.0, dir, Vec3::ZERO, SPARKTYPE_FLESH_LARGE);
-                }
-                self.fx.sparks.create(&mut self.rng, pos, dir, Vec3::ZERO, SPARKTYPE_BLOOD);
-                self.fx.sparks.create(&mut self.rng, pos, dir, Vec3::ZERO, SPARKTYPE_FLESH);
+                // bgun_play_prop_hit_sound, chr_emit_sparks and
+                // chr_damage_by_impact at the RC-P45's damage × 0.5.
+                self.bgun_play_prop_hit_sound_chr(WEAPON_RCP45, FUNC_PRIMARY, pos);
+                self.chr_emit_sparks(i, crate::chr::HITPART_GENERAL, pos, dir);
                 let damage = self.res.gset.func(WEAPON_RCP45, FUNC_PRIMARY).and_then(|f| f.shoot.as_ref()).map_or(1.8, |s| s.damage) * 0.5;
-                self.player_damage[i] += damage;
+                self.chr_damage_by_impact(i, damage, dir, crate::chr::DamageFrom::new(Some(owner), WEAPON_RCP45, FUNC_PRIMARY), crate::chr::HITPART_GENERAL);
             }
             if missed {
                 self.fx.sparks.create(&mut self.rng, hitpos, Vec3::ZERO, Vec3::ZERO, SPARKTYPE_DEFAULT);

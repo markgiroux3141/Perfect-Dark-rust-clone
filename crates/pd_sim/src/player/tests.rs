@@ -128,7 +128,7 @@ struct PlayerWalk {
 fn walk_player(w: &mut Walker, level: &TileLevel, from: Vec3, to: Vec3, to_floor: Option<f32>, crouch: bool) -> PlayerWalk {
     // Placed as PD spawns a player: a clear 30 cm cylinder at or around the pad
     // (`chr_adjust_pos_for_spawn`), stood on its floor.
-    let spot = chr_adjust_pos_for_spawn(level, 30.0, from, 0.0, &[]).unwrap_or(from);
+    let spot = chr_adjust_pos_for_spawn(level, 30.0, from, 0.0, false, &[]).unwrap_or(from);
     let start = level.drop_to_ground(spot);
     w.p.place(start, theta_towards(start, to));
     w.p.crouchpos = if crouch { CROUCHPOS_SQUAT } else { CROUCHPOS_STAND };
@@ -223,7 +223,7 @@ fn walking_off_a_ledge_falls_and_lands_on_the_floor_below() {
         }
         let (pa, pb) = (stage.waypoint_pos(a), stage.waypoint_pos(b));
         // Where the walk really starts and ends (pad heights lie for some pads).
-        let fa = level.drop_to_ground(chr_adjust_pos_for_spawn(&level, 30.0, pa, 0.0, &[]).unwrap_or(pa)).y;
+        let fa = level.drop_to_ground(chr_adjust_pos_for_spawn(&level, 30.0, pa, 0.0, false, &[]).unwrap_or(pa)).y;
         let fb = pd_pad_floor(&level, pb).unwrap_or_else(|| level.drop_to_ground(pb).y);
         if fa - fb < 100.0 {
             continue;

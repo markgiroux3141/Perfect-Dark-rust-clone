@@ -423,8 +423,20 @@ impl Player {
         let spe0 = (self.speedsideways * spc0 + shotsideways) * mult;
         // bmove_update_head (bondmove.c:2071)
         let fwd = self.speedforwards * spc0 + shotforwards;
-        self.bhead_adjust_animation(heartrate);
-        let newspeedforwards = if heartrate != 0.0 { fwd / heartrate } else { 0.0 };
+        let (newspeedforwards, spe0) = if !self.isdead {
+            self.bhead_adjust_animation(heartrate);
+            (if heartrate != 0.0 { fwd / heartrate } else { 0.0 }, spe0)
+        } else {
+            if self.startnewbonddie {
+                // g_DeathAnimations[random() % g_NumDeathAnimations], random() % 2.
+                let pick = rng.random() as usize % crate::chr::thirdperson::DEATH_ANIMS.len();
+                let flip = !rng.random().is_multiple_of(2);
+                self.bhead_start_death_animation(crate::chr::thirdperson::DEATH_ANIMS[pick], flip, 0.0, 1.0);
+                self.startnewbonddie = false;
+            }
+            self.bhead_set_speed(0.5);
+            (0.0, 0.0)
+        };
         self.bhead_update(newspeedforwards, spe0, lv, rng);
         self.update_camera_basis();
 

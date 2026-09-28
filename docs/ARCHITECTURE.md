@@ -157,8 +157,8 @@ Where each spike file goes. Paths on the left are under `native/crates/game/src/
 | `pd_spike/weapons.rs` | deleted; bots use `pd_sim::gun` gset |
 | `pd_spike/sim.rs` | `pd_sim::world` |
 | `pd_spike/arena.rs`, `waypoints.rs` | `pd_sim::stage` test fixture |
-| `pd_spike/walk.rs`, `abtest.rs`, `tests.rs` | `pd_sim` tests and `pd_tools` probes |
-| `pd_spike/viewer.rs`, `camera.rs`, `view.rs`, `debug_draw.rs`, `greybox.rs` | `pd_tools` debug viewer (`pd_lab`) |
+| `pd_spike/walk.rs`, `abtest.rs`, `tests.rs` | `pd_sim::harness` (headless matches, the A/B metrics, not PD) + `pd_sim` tests and probes (`bot::tests`) |
+| `pd_spike/viewer.rs`, `camera.rs`, `view.rs`, `debug_draw.rs`, `greybox.rs` | `pd_tools` debug viewer (`pd_lab`: a top-down egui map, `pd_tools::lab`; `pd_snapshot lab` renders the same map) |
 | `pd_guns/anim.rs`, `animdata.rs` | `pd_core::anim` |
 | `pd_guns/model.rs`, `data.rs` | `pd_core::model`, `pd_core::assets` |
 | `pd_guns/pdmtx.rs` | `pd_core::math` |
@@ -184,7 +184,7 @@ Where each spike file goes. Paths on the left are under `native/crates/game/src/
 | `pd_menu/mod.rs` (`Pd`) | split across `pd_menu` (menu, MP and render state) |
 | `pd_menu/app.rs`, `snapshot.rs` | `pd_game` (states, controls, audio); `pd_menu::script` (the scripted controller) + `pd_tools` `pd_snapshot menu` |
 | `pd_complex/fight.rs` | `pd_sim::world` |
-| `pd_complex/health.rs` | `pd_sim::player` (state) + `pd_render::hud` (drawing) |
+| `pd_complex/health.rs` | `pd_sim::player::health` (the timers, fades, death sequence) + `pd_render::health` (the bar, the fade) |
 | `pd_complex/bg.rs` | `pd_render::bg` |
 | `pd_complex/app.rs`, `snapshot.rs`, `tests.rs` | `pd_game` match state, `pd_tools`, `pd_sim` tests |
 | `pdsim/` | **not carried over** (the hide-and-seek hunter's model, superseded by `pd_spike`) |

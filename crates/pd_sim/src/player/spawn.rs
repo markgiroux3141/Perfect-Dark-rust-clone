@@ -58,7 +58,7 @@ pub fn player_choose_spawn_location(level: &TileLevel, stage: &Stage, chrradius:
         }
     }
     let mut shortlist: Vec<(usize, Vec3)> = Vec::new();
-    let adjust = |p: usize| chr_adjust_pos_for_spawn(level, chrradius, pads[p], angles[p], cyls);
+    let adjust = |p: usize| chr_adjust_pos_for_spawn(level, chrradius, pads[p], angles[p], false, cyls);
     // Passes 1 and 2: circular from a random pad, over 10 m, not bad / not very bad.
     for pass in 0..2 {
         let start = (rng.random() as usize) % numpads;
@@ -108,6 +108,7 @@ impl Player {
     /// `BADDTOR(360) − angle`, stand on the ground a 30 cm cylinder finds
     /// under `pos` (`cd_find_ground_at_cyl_ctfril`), eye above it.
     pub fn start_new_life(&mut self, level: &TileLevel, pos: Vec3, angle: f32) {
+        self.reset_life();
         let angle = baddtor(360.0) - angle;
         let (groundy, floorpoly) = level.cd_find_ground_at_cyl(pos, 30.0);
         self.place(Vec3::new(pos.x, groundy, pos.z), badrtod4(angle));

@@ -783,6 +783,7 @@ def export_model(path: str, texdir: str | None, texprefix: str = "tex_", tex_sin
         "name": m.name,
         "source": decomp_rel(path),
         "nummatrices": m.nummatrices,
+        "scale": m.scale,
         "skel": m.skel,
         "nodes": out_nodes,
         "parts": {str(p): index[off] for p, off in parts.items() if off in index},

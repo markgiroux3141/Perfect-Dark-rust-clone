@@ -20,6 +20,8 @@ POSITIONHELD, TOGGLE, DISTANCE, HEADSPOT, BBOX part boxes (`hitpart` + box, whic
     source        the decomp file it came from
     skel          modeldef.skel (0x09 chr body, 0x0d head, 0x2a hudpiece, ...)
     nummatrices   modeldef.nummatrices
+    scale         modeldef.scale: the model's radius in its own units, what
+                  `pos_is_onscreen` and the LOD code multiply by `model->scale`
     nodes[]       {type, parent, partnum?, ...type fields}; parent is an index
     parts         {MODELPART_* number: node index}
     materials[]   interpreted draw states; `texture.id` is a pool number, or
@@ -297,6 +299,8 @@ def write_model(d: dict, stem: str, filenum: int, filename: str, dirpath: str | 
         "exporter": exporter,
         "skel": d["skel"],
         "nummatrices": d["nummatrices"],
+        # The stage BG has no modeldef: 1.
+        "scale": d.get("scale", 1.0),
         "nodes": d["nodes"],
         "parts": d["parts"],
         "materials": d["materials"],

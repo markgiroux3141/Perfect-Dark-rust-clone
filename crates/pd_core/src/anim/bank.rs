@@ -210,11 +210,19 @@ impl AnimData {
         }
     }
 
-    /// `anim_get_rot_translate_scale` (anim.c:424) without flip (the first-person
-    /// gun and the head model never flip). Rotations are PD euler angles in
-    /// `[0, BADDTOR(360))`, applied as `Rz · Ry · Rx` by `mtx4_load_rotation`.
+    /// `anim_get_rot_translate_scale` (anim.c:424) unflipped. Rotations are PD
+    /// euler angles in `[0, BADDTOR(360))`, applied as `Rz · Ry · Rx` by
+    /// `mtx4_load_rotation`.
     pub fn rot_translate_scale(&self, part: usize, framenum: i32) -> (Vec3, Vec3, Vec3) {
+        self.rot_translate_scale_flip(part, framenum, None)
+    }
+
+    /// `anim_get_rot_translate_scale` (anim.c:424). With `flip` (the model's
+    /// skeleton, [`flip_part`]) the part is read through the skeleton's mirror
+    /// table and its y and z rotations are mirrored; the translation is not.
+    pub fn rot_translate_scale_flip(&self, part: usize, framenum: i32, flip: Option<i32>) -> (Vec3, Vec3, Vec3) {
         let zero = (Vec3::ZERO, Vec3::ZERO, Vec3::ONE);
+        let part = flip.map_or(part, |skel| flip_part(skel, part));
         let Some((mut bitoffset, mut p)) = self.seek_part(part) else {
             return zero;
         };
@@ -262,7 +270,11 @@ impl AnimData {
                 let bits = at(q + 2);
                 let mut introt = (read_bits(fb, bits, bitoffset) as u16).wrapping_add(((at(q) << 8) + at(q + 1)) as u16);
                 introt = introt.wrapping_shl(shift);
-                *rk = introt as f32 * baddtor(360.0) / 65536.0;
+                if flip.is_some() && k > 0 {
+                    *rk = if introt != 0 { (0x10000 - introt as u32) as f32 * baddtor(360.0) / 65536.0 } else { 0.0 };
+                } else {
+                    *rk = introt as f32 * baddtor(360.0) / 65536.0;
+                }
                 bitoffset += bits;
             }
             rot = Vec3::from(r);
@@ -271,6 +283,13 @@ impl AnimData {
             for rk in r.iter_mut() {
                 *rk = f32::from_bits(read_bits(fb, 32, bitoffset));
                 bitoffset += 32;
+            }
+            if flip.is_some() {
+                for rk in &mut r[1..] {
+                    if *rk != 0.0 {
+                        *rk = baddtor(360.0) - *rk;
+                    }
+                }
             }
             rot = Vec3::from(r);
         }
@@ -287,9 +306,16 @@ impl AnimData {
         (rot, translate, scale)
     }
 
-    /// `anim_get_pos_angle_as_int` (anim.c:615), `use_cache = false`, no flip: the
-    /// `ANIMFIELD_08` root-motion channels as raw ints plus a 16-bit turn.
+    /// `anim_get_pos_angle_as_int` (anim.c:615), `use_cache = false`, unflipped:
+    /// the `ANIMFIELD_08` root-motion channels as raw ints plus a 16-bit turn.
     pub fn pos_angle_as_int(&self, part: usize, framenum: i32) -> ([i16; 3], u16) {
+        self.pos_angle_as_int_flip(part, framenum, None)
+    }
+
+    /// [`Self::pos_angle_as_int`]; with `flip` (the skeleton) the part is read
+    /// through its mirror table, and x and the turn are negated.
+    pub fn pos_angle_as_int_flip(&self, part: usize, framenum: i32, flip: Option<i32>) -> ([i16; 3], u16) {
+        let part = flip.map_or(part, |skel| flip_part(skel, part));
         let Some((mut bitoffset, p)) = self.seek_part(part) else {
             return ([0; 3], 0);
         };
@@ -305,17 +331,44 @@ impl AnimData {
             bitoffset += bits;
         }
         let bits = at(p + 12);
-        let angle = (read_signed_short(fb, bits, bitoffset) as u32).wrapping_add(at(p + 10) * 256 + at(p + 11)) as u16;
+        let mut angle = (read_signed_short(fb, bits, bitoffset) as u32).wrapping_add(at(p + 10) * 256 + at(p + 11)) as u16;
+        if flip.is_some() {
+            out[0] = out[0].wrapping_neg();
+            if angle != 0 {
+                angle = angle.wrapping_neg();
+            }
+        }
         (out, angle)
     }
 
-    /// `anim_get_translate_angle` (anim.c:702).
+    /// `anim_get_translate_angle` (anim.c:702), unflipped.
     pub fn translate_angle(&self, part: usize, framenum: i32) -> (Vec3, f32) {
-        let (t, a) = self.pos_angle_as_int(part, framenum);
+        self.translate_angle_flip(part, framenum, None)
+    }
+
+    /// `anim_get_translate_angle` (anim.c:702).
+    pub fn translate_angle_flip(&self, part: usize, framenum: i32, flip: Option<i32>) -> (Vec3, f32) {
+        let (t, a) = self.pos_angle_as_int_flip(part, framenum, flip);
         (
             Vec3::new(t[0] as f32, t[1] as f32, t[2] as f32),
             a as f32 * baddtor(360.0) / 65536.0,
         )
+    }
+}
+
+/// `g_Skel0BJoints` (`modeldata/skel0b.c:6`): the head-bob model's
+/// (`g_PlayerModeldef`) mirror table, `things[part][1]`.
+const SKEL0B_FLIP: [u8; 15] = [0, 1, 2, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13];
+
+/// `skel->things[part][1]` (`anim.c:437`): the part a flipped animation reads
+/// for `part`. The only model that flips in the Combat Simulator is the
+/// head-bob model (`g_Skel0B`: `bhead_flip_animation` and the first-person
+/// death, `bondmove.c:2090`); chrs and guns set `flip = false` on every
+/// animation, so other skeletons read their own parts.
+pub fn flip_part(skel: i32, part: usize) -> usize {
+    match skel {
+        0x0b => SKEL0B_FLIP.get(part).map_or(part, |&p| p as usize),
+        _ => part,
     }
 }
 

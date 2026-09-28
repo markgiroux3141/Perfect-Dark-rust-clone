@@ -187,7 +187,9 @@ impl PdGame {
             renderer.load_stage(&ctx.gpu.device, &ctx.gpu.queue, &self.assets, code)?;
             self.loaded_stage = Some(code.to_owned());
         }
-        self.match_assets.start(setup.clone(), code, seed)
+        let mut world = self.match_assets.start(setup.clone(), code, seed)?;
+        world.set_weapon_set(&pd_menu::MenuSystem::weapon_set_weaponnums(&setup.weapons));
+        Ok(world)
     }
 
     /// One tick of a match. Returns false when the match ended.
@@ -210,6 +212,16 @@ impl PdGame {
         }
         world.step(4 * self.rate as i32, &inputs);
         let events = world.take_events();
+        for e in &events {
+            // M7: the kill feed and the scores.
+            if let pd_core::events::Event::Kill { killer, victim } = *e {
+                let name = |i: u8| world.chrs.get(i as usize).map_or("?".to_string(), |c| c.name.clone());
+                match killer {
+                    Some(k) if k != victim => log::info!("{} killed {}", name(k), name(victim)),
+                    _ => log::info!("{} died", name(victim)),
+                }
+            }
+        }
         if let Some(sfx) = &mut self.sfx {
             sfx.play(ctx.audio.as_deref_mut(), &events);
         }
@@ -239,6 +251,26 @@ impl PdGame {
                 ""
             };
             ui.label(format!("   speed fwd {:.2} side {:.2} · {crouch}{state}", p.speedforwards, p.speedsideways));
+            ui.label(format!("   health {:.2}{}", p.bondhealth, if p.isdead { " · dead (fire/A to respawn once black)" } else { "" }));
+        }
+        for c in &world.chrs {
+            let Some(a) = c.aibot.as_ref() else {
+                ui.label(format!("{}: K{} D{}", c.name, c.kills, c.deaths));
+                continue;
+            };
+            let weapon = world.res.gset.weapon(a.weaponnum).map_or("unarmed".to_string(), |w| w.name.clone());
+            ui.label(format!(
+                "{}: K{} D{} · {:?} · dmg {:.1}/{:.0} · {} · target {:?} {}",
+                c.name,
+                c.kills,
+                c.deaths,
+                c.actiontype,
+                c.damage,
+                c.maxdamage,
+                weapon,
+                c.target,
+                a.distmode.map_or("", |d| d.label())
+            ));
         }
         ui.label(
             egui::RichText::new("WASD move · mouse look (click to capture, Esc frees it) · LMB fire · RMB aim · E/MMB use (hold: gun function) · R reload · Q next gun · 1-0 pick a gun · ↑/↓ zoom · Ctrl/C crouch down · Space crouch up · Enter or pad START: back to the menus (no pause menu until M7)")

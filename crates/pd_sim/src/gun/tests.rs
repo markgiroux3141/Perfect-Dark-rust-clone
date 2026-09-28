@@ -50,7 +50,7 @@ fn falcon_reload_moves_the_left_hand_in_and_back() {
     let mut m = Model::new(r.models.get("falcon2").unwrap());
     let reload = r.bank.by_name("ANIM_GUN_FALCON2_RELOAD").unwrap();
     let mut anim = Anim::default();
-    let mut ctx = AnimCtx { bank: &r.bank, scale: 1.0, chrinfo: None, merging_enabled: true };
+    let mut ctx = AnimCtx { bank: &r.bank, skel: 0, scale: 1.0, chrinfo: None, merging_enabled: true };
     anim.set_animation(&mut ctx, reload, false, 0.0, 1.0, 0.0);
     let wrist = |m: &Model| m.matrices[18].w_axis.truncate();
     let gunpos = |m: &Model| m.matrices[33].w_axis.truncate();

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import struct
 import sys
 
@@ -30,6 +31,8 @@ KNOWN = {
     "sfx envelope": "the spikes exported some sounds raw (the menu set, grunts, footstep impacts) and "
                     "the gun set with the envelope; the pool bakes PD's playback envelope into every "
                     "non-looping sound (n_sndplayer.c applies it to all voices)",
+    "ticks": "the weapon exporter resolves `TICKS(n)` to n (NTSC; M6), where the spikes kept the "
+             "string (the cloaking device's simulant ammo goal)",
     "bbox rodata": "the gun spike's chrcloaker/chrspeedpill/xrayspecs were exported before export_model "
                    "read BBOX rodata; their BBOX nodes now carry hitpart + box",
 }
@@ -129,6 +132,19 @@ def check_sfx(old: str) -> None:
                  f"(known: {KNOWN['sfx envelope']})")
 
 
+def untick(v):
+    """`"TICKS(n)"` strings as the number n, anywhere in `v` (KNOWN["ticks"])."""
+    if isinstance(v, dict):
+        return {k: untick(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [untick(x) for x in v]
+    if isinstance(v, str):
+        m = re.fullmatch(r"TICKS\((-?\d+)\)", v)
+        if m:
+            return int(m.group(1))
+    return v
+
+
 def check_weapons(old: str) -> None:
     a = json.load(open(os.path.join(old, "weapons/pd_fp/weapons.json"), encoding="utf-8"))
     b = json.load(open(out("data", "weapons.json"), encoding="utf-8"))
@@ -150,6 +166,7 @@ def check_weapons(old: str) -> None:
                     {k: v for k, v in f.items() if k not in ("projectile_model", "projectile_model_scale")} if isinstance(f, dict) else f
                     for f in y.get("functions", [])
                 ]
+                x = untick(x)  # KNOWN["ticks"]
                 if x != y:
                     fails.append(f"weapons.json {x['symbol']} differs")
             if len(a[k]) != len(b_weapons):
