@@ -20,4 +20,8 @@ pd_menu = { workspace = true }
 pd_render = { workspace = true }
 glam = { workspace = true }
 log = { workspace = true }
+serde_json = { workspace = true }
 env_logger = { workspace = true }
+
+[dev-dependencies]
+image = { workspace = true }

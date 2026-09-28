@@ -29,9 +29,9 @@ Arrows point at what a crate may use. Nothing points back up.
 
 | Crate | Owns | Must not |
 |---|---|---|
-| **`engine`** | winit runner and `Game` trait (`init`/`tick`/`frame`/`render`/`debug_ui`), `FrameClock` (fixed tick + alpha + pacing), raw input snapshot (keys, mouse, gilrs pads), GPU context + offscreen targets + low-res present, kira voices + DSP tracks, run-time asset root, egui for dev panels | know about the N64 or PD; depend on workspace crates; use compile-time asset paths |
+| **`engine`** | winit runner and `Game` trait (`init`/`tick`/`frame`/`render`/`debug_ui`), `FrameClock` (fixed tick + alpha + pacing), raw input snapshot (keys, mouse, gilrs pads), GPU context + offscreen targets + low-res present, kira voices + DSP tracks, run-time asset root, egui for dev panels; it re-exports `wgpu` and `egui` so the game uses its versions | know about the N64 or PD; depend on workspace crates; use compile-time asset paths |
 | **`n64`** | the console: N64 controller state, RDP (combiner, blender, texture formats, TLUTs, 3-point filter, TRILERP, fill rule, RGBA5551 + dither) as a **CPU reference rasteriser**, RSP semantics (lighting, texgen, matrices), the audio output + TV speaker DSP (pure), and behind `gpu`, the WGSL ports of the combiner and the VI/CRT chain | know about PD; depend on `engine` (the `gpu` half uses wgpu directly) |
-| **`pd_core`** | PD maths (BADPI, pdmtx), `random()`, `Lv` timing, PD ids, the animation bank + `struct anim`, the model format + walker + hit test, `text.c` + fonts, language banks, the asset layout, and `MatchSetup` (the menu → match handoff) | render on the GPU, do I/O beyond reading the asset files it is pointed at |
+| **`pd_core`** | PD maths (BADPI, pdmtx), `random()`, `Lv` timing, PD ids, the animation bank + `struct anim`, the model format + walker + hit test, `text.c` + fonts, language banks, the asset layout, `MatchSetup` (the menu → match handoff), and the one `Event` type the menus and the world publish | render on the GPU, do I/O beyond reading the asset files it is pointed at |
 | **`pd_sim`** | the world: stage collision (`TileLevel`), pads, nav (PD's routing + our generator), chrs, the player (`bondmove`/`bondwalk`), guns (`gset`, `bondgun`, shots), simulants (`bot`, `botcmd`), props (projectiles, mines, explosions, sentry, N-Bomb, pickups), effect state, match rules, events | draw, play sound, read devices |
 | **`pd_menu`** | `menu.c`, `menuitem.c`, every Combat Simulator dialog and handler, MP state (presets, locks, challenges, profile), menu graphics and 3D models via the CPU RDP. Output: a framebuffer, sound events, and outcomes such as `StartMatch(MatchSetup)` | depend on `pd_sim` |
 | **`pd_render`** | PD on the GPU: BG, every model through the one combiner path, effects, HUD canvas, x-ray, framebuffer post, per-player `View` (split-screen ready) | write to the world |
@@ -52,7 +52,7 @@ The engine ticks at the PD frame rate chosen in the settings: 60, 30 or 20 Hz. T
 ```
 engine tick ─► pd_game::controls: devices ─► n64::pad state (+ mouse aim) per player
             ─► state.tick():
-                 Menus: pd_menu.tick(pads) ─► framebuffer, sound events, outcome
+                 Menus: pd_menu.frame(lv) with its pads ─► framebuffer, sound events, outcome
                  Match: world.step(inputs)  ─► one Lv (lvupdate240), PD frame order:
                         players: input + bgun_tick_gameplay ─► camera ─► world ticks
                         ─► hands_tick_attack (hitpos) ─► bgun_tick_gameplay2 ─► chrs/bots
@@ -79,7 +79,7 @@ What the spikes carry today, and where each piece ends up.
 | Software raster | `pd_menu::gfx`, `pd_menu::pdmodel::raster`, `pd_guns::font::Canvas`, `app::shade_tri` | `n64::rdp` |
 | Weapon table | `pd_guns::gset` (JSON), `pd_spike::weapons` (8 hand-copied), `combat::pd_weapons`, `pd_menu` `MP_WEAPONS` | `pd_sim::gun` gset, from `assets/data/weapons.json`. The menus keep only the setup slot table, keyed by `WEAPON_*` |
 | Difficulty / bot type | `pd_spike::bot::Difficulty`, `pdsim` (seconds/radians), menu ints | `pd_core::ids` + `pd_sim::bot` (tick-exact); `pdsim` is dropped |
-| Events | `pd_guns::SoundReq`, `pd_spike` footsteps/grunts, `pd_menu` tuples | `pd_sim::events::Event`, also used by `pd_menu` |
+| Events | `pd_guns::SoundReq`, `pd_spike` footsteps/grunts, `pd_menu` tuples | `pd_core::events::Event`, queued by `pd_menu` and re-exported by `pd_sim::events` (in `pd_core` because `pd_menu` may not depend on `pd_sim`) |
 | N64 pad raw codes, SFX manifest loader | copied in `pd_guns/app.rs` and `pd_menu/app.rs` | `pd_game::controls`, `pd_game::audio` |
 | Event loops | four `ApplicationHandler`s | `engine::app` |
 | Stand-in worlds | `pd_guns::range` boxes, `pd_spike::arena` box room | test fixtures in `pd_sim::stage` (both were already converted to PD polygons) |
@@ -113,7 +113,7 @@ assets/
   music/                     later: sequences + soundbank
 ```
 
-Generated Rust sits beside the code that uses it: `crates/pd_core/src/ids.rs` (`pd_ids.py`: `WEAPON_*`, `STAGE_*` with stage codes, `BODY_*`/`HEAD_*`, `MP*`, `BOT*`, `HITPART_*`) and, from M2, `crates/pd_menu/src/generated.rs` (`pd_menu_gen.py`).
+Generated Rust sits beside the code that uses it: `crates/pd_core/src/ids.rs` (`pd_ids.py`: `WEAPON_*`, `STAGE_*` with stage codes, `BODY_*`/`HEAD_*`, `MP*`, `BOT*`, `HITPART_*`) and `crates/pd_menu/src/generated.rs` (`pd_menu_gen.py` `write_rust`: the menu dialogs and item arrays, the MP tables). `build_assets.py` regenerates both.
 
 Nothing reads the decomp or the ROM at run time. In the spikes, the Complex match read `tiles/ref.json`, `pads/ref.json` and `mp_setupref.c` from `reference/pd-decomp` on every launch; the stage exporter now owns that.
 
@@ -171,13 +171,13 @@ Where each spike file goes. Paths on the left are under `native/crates/game/src/
 | `pd_guns/range.rs` | `pd_sim::stage` fixture (the firing range) |
 | `pd_guns/app.rs` | `engine::app` + `pd_game::controls`/`audio` + `pd_render::hud` sights |
 | `pd_guns/snapshot.rs` | `pd_tools` |
-| `pd_menu/menu.rs`, `types.rs`, `menuitem.rs`, `handlers.rs`, `generated.rs`, `defs.rs`, `menugfx.rs`, `model.rs` | `pd_menu` |
+| `pd_menu/menu.rs`, `types.rs`, `handlers.rs`, `generated.rs`, `model.rs` | `pd_menu` (same names); `menuitem.rs` → `pd_menu::item`, `menugfx.rs` → `pd_menu::gfx`, `defs.rs` → `pd_menu::stubs` |
 | `pd_menu/mp.rs` | `pd_menu::mpstate` + `pd_core::mp` |
 | `pd_menu/text.rs`, `lang.rs` | `pd_core::text`, `pd_core::lang` |
 | `pd_menu/gfx.rs` | `n64::rdp` |
 | `pd_menu/pdmodel.rs` | `pd_core::model` (walker, format) + `n64::rdp` (raster, combine) |
 | `pd_menu/mod.rs` (`Pd`) | split across `pd_menu` (menu, MP and render state) |
-| `pd_menu/app.rs`, `snapshot.rs` | `pd_game` states, `pd_tools` |
+| `pd_menu/app.rs`, `snapshot.rs` | `pd_game` (states, controls, audio); `pd_menu::script` (the scripted controller) + `pd_tools` `pd_snapshot menu` |
 | `pd_complex/fight.rs` | `pd_sim::world` |
 | `pd_complex/health.rs` | `pd_sim::player` (state) + `pd_render::hud` (drawing) |
 | `pd_complex/bg.rs` | `pd_render::bg` |

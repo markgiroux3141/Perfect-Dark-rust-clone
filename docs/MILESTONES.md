@@ -10,8 +10,8 @@ Each milestone is sized to fit one Claude context and ends in something checkabl
 |---|---|---|
 | M0 | Architecture + skeleton | **done** (2026-09-27) |
 | M1 | Foundations: `pd_core` + `n64` CPU + asset pipeline | **done** (2026-09-27) |
-| M2 | Engine runner + the menus boot | next |
-| M3 | Stages + walking Complex | — |
+| M2 | Engine runner + the menus boot | goldens match (2026-09-27); **awaiting the user's playtest** |
+| M3 | Stages + walking Complex | next |
 | M4 | Guns (hitscan, HUD, effects) | — |
 | M5 | Guns (projectiles, explosives, specials, N64 video, TV audio) | — |
 | M6 | Simulants: a Combat match on Complex | — |
@@ -82,13 +82,31 @@ Checked: `cargo test --workspace --release` green (n64 9, pd_core 35), `check_bo
 
 **Goal:** `cargo run --release` opens a window on PD's Perfect Menu, with the Combat Simulator dialogs, sound and N64 pad, and "Start" hands back a real `MatchSetup`.
 
-- `engine`: `app` runner + `Game` trait, `clock` (with alpha), `input`, `gpu` (context, offscreen target, present with letterbox), `audio` (voices, DSP tracks), `assets` (run-time root), `debug_ui`. Sources: the old engine's `FrameClock`, `Gamepads`, `AudioManager`, and the `Renderer` setup code only.
-- `pd_menu`: migrate `pd_menu/` (split `Pd`), pointed at the new assets and `pd_core`/`n64`. `start_match` returns `StartMatch(MatchSetup)`.
-- `pd_game`: the Menus state, controls (keyboard per the spike's key table, N64 pad raw codes), audio routing.
-- `pd_snapshot menu <script>`: the old `pd_combat_sim_snapshot` script format.
-- **Golden images:** before migrating, run the old repo's `pd_combat_sim_snapshot` over a fixed set of scripts (main menu, combat sim, char select, arena list, weapons, simulants, name keyboard) into `crates/pd_menu/tests/golden/`. The new snapshot must match pixel for pixel. Any intentional difference gets a written reason.
+- [x] `engine`: `app` (winit runner, `Game` trait, `Ctx`), `clock` (`FrameClock`: fixed tick, settable rate, alpha, pacing), `input` (keys, mouse, every gilrs pad with raw codes), `gpu` (`Gpu`, `RenderTarget` with CPU upload, `Frame`, `Presenter` letterboxing a low-res target, `validate_wgsl`), `audio` (kira voices by path, DSP tracks), `assets` (`AssetRoot::discover`), `debug_ui` (egui panels; the game draws in the rect they leave free). Re-exports `wgpu` and `egui`.
+- [x] `pd_menu`: the spike's `pd_menu/` migrated onto `pd_core` (text, lang, model, anim, rng, lv, mp) and `n64` (rdp, pad). `Pd` is `MenuSystem`, split into menu state, `mp` (MP state) and `draw` (framebuffer, text state, resources, models, textures). Modules: `menu`, `item`, `gfx`, `handlers`, `generated`, `types`, `mpstate`, `model`, `stubs`, `script`.
+- [x] `start_match` is PD's `mp_start_match` (mplayer.c:141): quick-team sims, the unlock-gated options stripped, `STAGE_MP_RANDOM` resolved by `mp_choose_random_stage` (setup.c:130); the menus close and hand back `Outcome::StartMatch(MatchSetup)`; `return_from_match` reopens them.
+- [x] `pd_game`: the Menus state, a Match stand-in (see notes), `controls` (the spike's key table, gamepad k = controller k by raw code), `audio` (`SfxBank`: sound refs, `SFXMAP_*` resolved through the manifest's aliases), the F1 panel (frame rate 60/30/20, RGBA5551, save profile, restart, which controller the keyboard drives, START on 2-4).
+- [x] `pd_snapshot <out> menu [--scale n] [--fresh] [--combat] <steps...>`, the old `pd_combat_sim_snapshot` format (`pd_menu::script`).
+- [x] **Goldens:** 25 frames from the old spike (`crates/pd_menu/tests/golden/`, `scripts.txt`, `capture_from_spike.py`): the Perfect Menu opening and settled, Combat Simulator, Advanced Setup and its sibling layers, character select with its model and zoom, the arena list (scrolled; fresh save), weapons and the set dropdown, simulants (list, add, one added), the name keyboard (typing, delete), challenges, Quick Team, a second player joining. `tests/golden.rs` matches **all 25 pixel for pixel; there is no intentional difference.**
 
-**Done when:** goldens match, and the user playtests the menus in the window.
+Checked: `cargo test --workspace --release` green (n64 9, pd_core 35, engine 6, pd_menu 8 + the golden test, pd_game 2), clippy clean on the workspace, `check_boundaries.py` ok (it now also fails if `engine`'s source names the game or the console).
+
+**Done when:** goldens match (yes), and the user playtests the menus in the window (pending).
+
+### Notes for the next contexts
+
+- **The menus run on `Lv`.** The game ticks the engine at 60/30/20 Hz and each tick is `frametime_apply(n, 4n)` with `n` = 1/2/3; `MenuSystem::frame(&lv)` reads `diffframe60`/`diffframe240`. Set `MenuSystem::pads` (`Pad::next_frame`) and `back2` before each frame.
+- **Events live in `pd_core::events`** (not `pd_sim`, which only re-exports), because `pd_menu` may not depend on `pd_sim`. `Event::Sound { sound, pitch, volume, pan }` carries PD's sound ref; `pd_game::audio` plays a bare `snd_start` (the bank sound's own volume, not the `SFXMAP` alias's audio config). Add the world's variants to the same enum (M3+).
+- **`MatchSetup.weapons` are `g_MpWeapons` indices** (`MPWEAPON_*`), as `g_MpSetup.weapons` is. The Weapons dialog shows *option* indices among unlocked weapons (`mp_get_weapon_slot`); they differ on a fresh save, and a test pins the summary to what the dialog shows.
+- **Departure from the spike, towards PD:** the character model's configure tween now uses PD's `quaternion0f096ca0` + `quaternion_slerp` + `quaternion_to_mtx` (menu.c:2023) with no hemisphere flip; the spike used glam's slerp with a flip. No golden moved.
+- **The match stand-in** (`pd_game::states::Screen::Match`, `SUBST`) shows the `MatchSetup` in PD's text and returns to the menus on START/A, the way PD returns from a match (menutick.c:217). M3 replaces it with the world.
+- **Presentation:** a non-sRGB swapchain (`GpuConfig::srgb = false`) so PD's display-space colours pass through; the 320×220 frame sits in a 320×240, 4:3 picture, nearest-neighbour. `pd_render` will add its pipelines against `Frame`/`RenderTarget` the same way.
+- **Pads:** gamepad k in connection order is controller k, read by the USB adapter's raw codes plus a D-pad from buttons or hat, like the spike. An XInput pad's face buttons have other raw codes; a semantic fallback for standard pads is not done.
+- **Duplicates still open** (generator work, not M2's): `generated.rs` emits its own `MPOPTION_*`, `MPFEATURE_*`, `BOTDIFF_*`, `SFX*`, ... as `i32`, overlapping `pd_core::ids` (`u8`), and its `HEADS_AND_BODIES`/`MP_BODIES`/`MP_HEADS` repeat `data/bodies.json` (`pd_core::model::Bodies`). Folding them means `pd_menu_gen.py` emitting `use pd_core::ids::*` and the menus reading `Bodies`.
+- `build_assets.py` now also writes `crates/pd_menu/src/generated.rs` (`pd_menu_gen.write_rust`), which imports `pd_core::lang`. A rerun reproduces it byte for byte.
+- The old snapshot tool was built into the session's scratch directory (`cargo build --release --locked -p game --bin pd_combat_sim_snapshot` with `CARGO_TARGET_DIR` outside the old repo); rebuild it that way if a golden ever needs recapturing.
+- `pd_core/src/model/oracle.rs` stays until M4's gun snapshots pass (M2's goldens do).
+- **Playtest brief:** `cargo build --release`, run `target/release/perfect_dark.exe` (`--combat` to skip the Perfect Menu, `--fresh` for a new save). Look at: the Perfect Menu opening and the hudpiece, dialog transitions and sounds, the character carousel and zoom, the N64 pad (stick, D-pad, C-buttons, START), a second player joining (F2), the name keyboard (Backspace deletes), frame rate 30/20 Hz in the F1 panel, and Start Game → the Match Setup screen → START back to the menus.
 
 ---
 

@@ -20,7 +20,8 @@ exporter change.
 | sfx/          | pd_sfx.py `export_pool` |
 
 It also regenerates the Rust that is generated from the decomp:
-`crates/pd_core/src/ids.rs` (pd_ids.py). Stages (`stages/<code>/`) arrive with
+`crates/pd_core/src/ids.rs` (pd_ids.py) and `crates/pd_menu/src/generated.rs`
+(pd_menu_gen.py `write_rust`). Stages (`stages/<code>/`) arrive with
 M3's stage exporter.
 """
 
@@ -156,6 +157,7 @@ def main() -> int:
     counts.update(pd_menu_gen.export_assets())
     counts.update(pd_sfx.export_pool(out("sfx")))
     pd_ids.main()
+    pd_menu_gen.write_rust()
 
     exporters = {f: sha256_file(os.path.join(HERE, f)) for f in sorted(os.listdir(HERE)) if f.endswith(".py")}
     dirs = {}

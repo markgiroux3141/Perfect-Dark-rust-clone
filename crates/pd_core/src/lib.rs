@@ -10,6 +10,7 @@
 #![allow(clippy::excessive_precision, clippy::approx_constant, clippy::too_many_arguments, clippy::needless_range_loop, clippy::collapsible_if)]
 
 pub mod anim;
+pub mod events;
 pub mod assets;
 pub mod ids;
 pub mod lang;

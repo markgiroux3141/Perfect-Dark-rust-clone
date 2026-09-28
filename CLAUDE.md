@@ -7,10 +7,11 @@ A faithful recreation of Perfect Dark's Combat Simulator (NTSC final): the menus
 ## Build, test, run
 
 ```
-cargo build --release                       # the game: target/release/perfect_dark.exe
-cargo test --workspace --release            # all tests
+cargo build --release                       # the game: target/release/perfect_dark.exe (--combat, --fresh)
+cargo test --workspace --release            # all tests (incl. the menu goldens, crates/pd_menu/tests/golden/)
 cargo test -p pd_sim --release -- --ignored --nocapture   # long probes
-cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # offscreen PNGs (e.g. `out model dark_combat --gun chrfalcon2`)
+cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # offscreen PNGs (e.g. `out model dark_combat --gun chrfalcon2`,
+                                            #   `out menu --combat w40 down down down a w50 shot:setup`; script format in pd_menu::script)
 python tools/check_boundaries.py            # headless crates stay headless
 python tools/pd-assets/build_assets.py      # regenerate assets/ (and crates/pd_core/src/ids.rs) from the decomp
 python tools/pd-assets/check_against_spikes.py   # assets/ against the old repo's exports

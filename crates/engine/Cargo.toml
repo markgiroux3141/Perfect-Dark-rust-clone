@@ -6,7 +6,7 @@ rust-version.workspace = true
 version.workspace = true
 publish.workspace = true
 
-# Knows nothing about the N64 or Perfect Dark. Never depends on another crate
+# Knows nothing about the game or the console it recreates. Never depends on another crate
 # in this workspace.
 [dependencies]
 glam = { workspace = true }
@@ -21,8 +21,9 @@ egui-wgpu = { workspace = true }
 egui-winit = { workspace = true }
 image = { workspace = true }
 serde_json = { workspace = true }
+# The WGSL validator the shader tests use (`gpu::validate_wgsl`); wgpu already
+# builds this version of naga.
+naga = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
 
-[dev-dependencies]
-naga = { workspace = true }

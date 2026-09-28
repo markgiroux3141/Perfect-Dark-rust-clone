@@ -8,7 +8,7 @@
  },
  "rom_md5": "e03b088b6ac9e0080440efed07c1e40f",
  "exporters": {
-  "build_assets.py": "7ff95c5fb7c3ec14eabf1af5695c487f9438c0012e6018c834837531b7ffd193",
+  "build_assets.py": "87925a6f31137dc2a884df6dd235786ccd436f497029407d2555bdf5187b9b67",
   "check_against_spikes.py": "5ca208797cc81f491ec4e100cbaaf61bab4a0dc9e32f76fbb609915036d32cd7",
   "pd_anim.py": "85e2ec9a1b2d0fdcdee787909647e654364437652f0339fa9e34571135ba1785",
   "pd_animmap.py": "804be1a12ad6e530eab690de10f3fa3954858a87958f1af5249d9b570ae1f6ff",
@@ -17,7 +17,7 @@
   "pd_fpgun.py": "6a1050082b23e09334bbdc6b1adc65d83c1b0840232c9a6ed9931d46629e7037",
   "pd_gltf.py": "ae6da6c7b14e283701973d65e80615fb1200667aabe777e875dff02848d410ce",
   "pd_ids.py": "b7b2e239ddaccb4ee6d74c8d9bcdde94596a60af07d5f973c7bbdf9b6f26283e",
-  "pd_menu_gen.py": "fab3532b81ecc9265a61d4ec46ed31f09d3a85aa39c7a9b3b0b2c53606abd92b",
+  "pd_menu_gen.py": "8d0bc124c22ac1836792e73eed8c14512493eec5b44a277ced01d6baef1b95f9",
   "pd_model.py": "296358e46218e3c3df08e3809db18614ccdd998f28b681859162de9684a3983c",
   "pd_models.py": "07656f41c0ba317b27747b5c70f9f9b3963b5a337c158b53f3bacbf06e59ea99",
   "pd_paths.py": "bce54ee9800c28d0d6c5b152ef53d909fd33622459d0152c046efdcf5e31430a",

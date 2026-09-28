@@ -18,7 +18,8 @@ live there as data). build_assets.py calls it. The menu textures are in the
 texture pool (pd_models.py).
 
 Usage:
-    python tools/pd-assets/pd_menu_gen.py            # writes both
+    python tools/pd-assets/pd_menu_gen.py            # writes both; build_assets.py
+                                                     # calls write_rust + export_assets
 """
 
 from __future__ import annotations
@@ -322,7 +323,7 @@ def text_id(tok: str) -> str | None:
 
 # Dialogs the Combat Simulator references that live outside the ported files
 # (4MB variants, the file manager, solo-mission menus). Each maps to a stub in
-# `pd_menu::defs` so the tables stay verbatim; the call sites say what PD does.
+# `pd_menu::stubs` so the tables stay verbatim; the call sites say what PD does.
 EXTERNAL_DIALOGS = {
     "g_ChangeAgentMenuDialog": "STUB_NOT_IN_SPIKE_DIALOG",
     "g_CiOptionsViaPcMenuDialog": None,
@@ -402,7 +403,7 @@ class MenuGen:
 
     def dialog_ref(self, name: str) -> str:
         if name in EXTERNAL_DIALOGS and EXTERNAL_DIALOGS[name]:
-            return "super::defs::" + EXTERNAL_DIALOGS[name]
+            return "super::stubs::" + EXTERNAL_DIALOGS[name]
         return upper_snake(name)
 
     def emit(self) -> str:
@@ -677,7 +678,8 @@ def export_assets() -> dict:
     return {"fonts": len(FONTS), "langbanks": len(banks)}
 
 
-def main() -> int:
+def write_rust(verbose: bool = False) -> dict:
+    """Write `crates/pd_menu/src/generated.rs`: the menu and MP tables."""
     c = Consts()
     for h in ("constants.h", "files.h", "sfx.h"):
         c.load_header(os.path.join(SRC, "include", h))
@@ -713,7 +715,7 @@ def main() -> int:
         "",
         "use super::handlers as h;",
         "use super::types::*;",
-        "use super::lang::{tx, Tx};",
+        "use pd_core::lang::{tx, Tx};",
         "",
         "// Language banks (`L_<BANK>_nnn`): PD's LANGBANK_* numbers (include/lang.h),",
         "// as pd_core::lang indexes them.",
@@ -727,13 +729,18 @@ def main() -> int:
     with open(OUT_RS, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(head) + "\n" + tables + "\n// ---- Menus ----\n\n" + menus + "\n")
 
-    export_assets()
-
     print(f"pd_menu_gen: {len(mg.items)} item arrays, {len(mg.dialogs)} dialogs -> {OUT_RS}")
-    print("item text fns:", " ".join(sorted(ITEM_TEXT_FNS)))
-    print("dialog text fns:", " ".join(sorted(DIALOG_TEXT_FNS)))
-    print("item handlers:", " ".join(sorted(ITEM_HANDLERS)))
-    print("dialog handlers:", " ".join(sorted(DIALOG_HANDLERS)))
+    if verbose:
+        print("item text fns:", " ".join(sorted(ITEM_TEXT_FNS)))
+        print("dialog text fns:", " ".join(sorted(DIALOG_TEXT_FNS)))
+        print("item handlers:", " ".join(sorted(ITEM_HANDLERS)))
+        print("dialog handlers:", " ".join(sorted(DIALOG_HANDLERS)))
+    return {"menu_item_arrays": len(mg.items), "menu_dialogs": len(mg.dialogs)}
+
+
+def main() -> int:
+    write_rust(verbose=True)
+    export_assets()
     return 0
 
 

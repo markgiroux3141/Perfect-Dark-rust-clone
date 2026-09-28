@@ -1,0 +1,32 @@
+# The menu golden scripts: one run per line, in pd_snapshot's `menu` script format
+# (the old pd_combat_sim_snapshot format; see pd_menu::script). Each `shot:<name>`
+# is pinned by tests/golden/<name>.png, captured from the old repo's spike by
+# capture_from_spike.py. `--combat` starts in the Combat Simulator, `--fresh` on a
+# new save file; otherwise a run starts on the Perfect Menu.
+
+# The Perfect Menu opening, settled, and into the Combat Simulator.
+w6 shot:main_opening w54 shot:main_menu down down a w10 shot:main_to_combat w40 shot:main_combat_sim
+
+# The Combat Simulator menu, Advanced Setup and its sibling layers.
+--combat w40 shot:combat_sim down down down a w8 shot:advanced_opening w42 shot:advanced_setup right w30 shot:player_setup right w30 shot:stuff
+
+# Character select: the body carousel with its model, then the zoom to the face.
+--combat w40 down down down a w50 right w30 down a w80 shot:char_select w200 shot:char_zoom right w30 shot:char_next
+
+# The arena list, full and on a new save file.
+--combat w40 down down down a w50 down down a w40 shot:arena_list down down down down w20 shot:arena_scrolled
+--fresh --combat w40 down down down a w50 down down a w40 shot:arena_list_fresh
+
+# Weapons, and the weapon set dropdown.
+--combat w40 down down down a w50 down down down a w40 shot:weapons a w20 shot:weapon_set_dropdown
+
+# Simulants: the list, the add dialog, one MeatSim added.
+--combat w40 down down down a w50 down down down down down down a w40 shot:simulants a w30 shot:add_simulant a w30 shot:simulants_one
+
+# The name keyboard, with some typing and a delete.
+--combat w40 down down down a w50 right w30 a w40 shot:name_keyboard right a w6 down a w6 bs w6 shot:name_typed
+
+# Challenges, Quick Team, and a second player joining.
+--combat w40 a w50 shot:challenges
+--combat w40 down down a w40 shot:quick_team
+--combat w40 p2start w60 shot:two_players

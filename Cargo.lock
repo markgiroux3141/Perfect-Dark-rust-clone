@@ -2222,12 +2222,14 @@ dependencies = [
  "engine",
  "env_logger",
  "glam 0.29.3",
+ "image",
  "log",
  "n64",
  "pd_core",
  "pd_menu",
  "pd_render",
  "pd_sim",
+ "serde_json",
 ]
 
 [[package]]
@@ -2235,6 +2237,7 @@ name = "pd_menu"
 version = "0.1.0"
 dependencies = [
  "glam 0.29.3",
+ "image",
  "log",
  "n64",
  "pd_core",

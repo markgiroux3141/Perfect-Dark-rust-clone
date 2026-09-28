@@ -1,4 +1,6 @@
-//! What the world tells the outside each step: one `Event` enum (sound with PD pitch,
-//! volume and pan, stop loop, footstep, grunt, hit, kill, respawn, screen fade and
-//! shake, ...). Replaces the spikes' three sound-queue formats (`pd_guns::SoundReq`,
-//! `pd_spike` footsteps/grunts, `pd_menu`'s tuples).
+//! What the world tells the outside each step: the one [`Event`] type, which
+//! lives in `pd_core::events` so the menus can use it without depending on the
+//! world. The world's own variants (footstep, grunt, hit, kill, respawn, screen
+//! fade and shake, ...) are added there as they are ported.
+
+pub use pd_core::events::Event;
