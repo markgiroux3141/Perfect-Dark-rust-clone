@@ -144,6 +144,12 @@ def check_weapons(old: str) -> None:
                 # does not have and nothing reads at run time.
                 x.pop("editor", None)
                 y.pop("editor", None)
+                # Intended (M5): a projectile function names its model file and
+                # the model's scale (`projectilemodelnum`, `g_ModelStates`).
+                y["functions"] = [
+                    {k: v for k, v in f.items() if k not in ("projectile_model", "projectile_model_scale")} if isinstance(f, dict) else f
+                    for f in y.get("functions", [])
+                ]
                 if x != y:
                     fails.append(f"weapons.json {x['symbol']} differs")
             if len(a[k]) != len(b_weapons):

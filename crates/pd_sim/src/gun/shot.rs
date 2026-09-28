@@ -8,9 +8,10 @@
 //! the props in front of it; the first `penetration` props that slow it take
 //! the hit, and the BG takes it if nothing stopped the round.
 //!
-//! What a shot can hit, until M6/M8: the BG and the firing range's boards.
-//! `// M6:` chrs (the players' and simulants' bodies, by part box through
-//! `chr_test_hit`), `// M8:` objects and weapons on pads.
+//! What a shot can hit: the BG, the firing range's boards, and the objects the
+//! guns put in the world (`obj_test_hit`: a shot mine or grenade goes off, a
+//! shot sentry breaks). `// M6:` chrs (the players' and simulants' bodies, by
+//! part box through `chr_test_hit`), `// M8:` weapons on pads.
 //!
 //! Source: the shot half of the old repo's `pd_guns/sim.rs`.
 
@@ -30,10 +31,18 @@ pub fn hand_sound_handle(player: usize, hand: usize) -> u32 {
     (player * 2 + hand) as u32
 }
 
-/// A shot's round meeting a board, `t` along the ray.
+/// What a round met besides the BG.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ShotTarget {
+    Board(usize),
+    /// One of the guns' objects, by id.
+    Obj(u32),
+}
+
+/// A shot's round meeting a prop, `t` along the ray.
 #[derive(Clone, Copy, Debug)]
-struct BoardHit {
-    board: usize,
+struct PropHit {
+    target: ShotTarget,
     t: f32,
     pos: Vec3,
     normal: Vec3,
@@ -41,7 +50,7 @@ struct BoardHit {
 
 /// Slab test: the entry distance along `o + d·t` into the box, and the entry
 /// face's normal. `None` from inside or when it misses.
-fn ray_box(min: Vec3, max: Vec3, o: Vec3, d: Vec3, tmax: f32) -> Option<(f32, Vec3)> {
+pub(crate) fn ray_box(min: Vec3, max: Vec3, o: Vec3, d: Vec3, tmax: f32) -> Option<(f32, Vec3)> {
     let (mut t0, mut t1) = (0.0f32, tmax);
     let mut n = Vec3::ZERO;
     for a in 0..3 {
@@ -97,12 +106,13 @@ impl World {
         }
         let weaponnum = self.players[pi].gun.bgun_get_weapon_num(h);
         self.players[pi].gun.hands[h].activatesecondary = false;
+        let (gsetnum, gsetfunc) = (self.players[pi].gun.hands[h].weaponnum, self.players[pi].gun.hands[h].weaponfunc);
         match self.players[pi].gun.hands[h].attacktype {
             HANDATTACKTYPE_SHOOT => {
                 // Always the right hand; the left only if the right isn't
                 // firing this tick (no two guns on one tick).
                 if h == HAND_RIGHT || !self.players[pi].gun.hands[HAND_RIGHT].firing {
-                    // M5: chr_uncloak_temporarily.
+                    self.chr_uncloak_temporarily(pi);
                     self.shots_fired[pi] += 1;
                     if weaponnum == WEAPON_SHOTGUN {
                         for _ in 0..6 {
@@ -115,20 +125,30 @@ impl World {
                 }
             }
             HANDATTACKTYPE_MELEE => {
-                // M5: chr_uncloak_temporarily.
+                self.chr_uncloak_temporarily(pi);
                 self.hand_inflict_melee_damage(pi, h, false);
             }
             HANDATTACKTYPE_MELEENOUNCLOAK => self.hand_inflict_melee_damage(pi, h, true),
+            HANDATTACKTYPE_DETONATE => self.player_activate_remote_mine_detonator(pi),
+            HANDATTACKTYPE_BOOST => self.bgun_apply_boost(),
+            HANDATTACKTYPE_REVERTBOOST => self.bgun_revert_boost(),
+            HANDATTACKTYPE_SHOOTPROJECTILE => self.bgun_create_fired_projectile(pi, h),
             HANDATTACKTYPE_CROUCH => {
                 // bwalk_adjust_crouch_pos(±2): the sniper rifle's crouch.
                 let p = &mut self.players[pi];
                 let d = if p.crouchpos == CROUCHPOS_SQUAT { 2 } else { -2 };
                 p.crouchpos = (p.crouchpos + d).clamp(CROUCHPOS_SQUAT, CROUCHPOS_STAND);
             }
-            // M5: HANDATTACKTYPE_THROWPROJECTILE (bgun_create_thrown_projectile),
-            // _SHOOTPROJECTILE (bgun_create_fired_projectile), _DETONATE
-            // (player_activate_remote_mine_detonator), _BOOST / _REVERTBOOST,
-            // _RCP120CLOAK. _UPLINK is solo only.
+            HANDATTACKTYPE_THROWPROJECTILE => self.bgun_create_thrown_projectile(pi, h, gsetnum, gsetfunc),
+            HANDATTACKTYPE_RCP120CLOAK => {
+                let p = &mut self.players[pi];
+                if p.devicesactive & DEVICE_CLOAKRCP120 != 0 {
+                    p.devicesactive &= !DEVICE_CLOAKRCP120;
+                } else {
+                    p.devicesactive = (p.devicesactive & !DEVICE_CLOAKDEVICE) | DEVICE_CLOAKRCP120;
+                }
+            }
+            // HANDATTACKTYPE_UPLINK is solo only.
             _ => {}
         }
     }
@@ -177,6 +197,10 @@ impl World {
     fn shot_calculate_hits(&mut self, pi: usize, h: usize, isshooting: bool, gunpos2d: Vec3, gundir2d: Vec3) -> Option<usize> {
         let proj = self.players[pi].cam.projection;
         let w2s = self.players[pi].cam.world_to_screen;
+        // bgun0f0a9494(FINDPROPCONTEXT_QUERY): the dot is found again.
+        for hand in self.players[pi].gun.hands.iter_mut() {
+            hand.hasdotinfo = false;
+        }
         let gunpos3d = proj.transform_point3(gunpos2d);
         let gundir3d = proj.transform_vector3(gundir2d);
         let gun = &self.players[pi].gun;
@@ -209,9 +233,10 @@ impl World {
             gunpos3d + gundir3d * 65536.0
         };
 
-        // The BG: every room's display-list triangles (M5: the Farsight in
-        // x-ray skips it).
-        let bg = self.stage.bghit.bg_test_hit(gunpos3d, hitpos);
+        // The BG: every room's display-list triangles, unless the Farsight
+        // looks through it in x-ray (`prop.c:688`).
+        let xray = weaponnum == WEAPON_FARSIGHT && self.players[pi].visionmode == VISIONMODE_XRAY;
+        let bg = if xray { None } else { self.stage.bghit.bg_test_hit(gunpos3d, hitpos) };
         if let Some(b) = &bg {
             hitpos = b.pos;
         }
@@ -224,18 +249,41 @@ impl World {
             }
         }
 
-        // obj_test_hit on the boards, nearest first. M6: chr_test_hit.
+        // obj_test_hit on the boards and the guns' objects, nearest first. M6:
+        // chr_test_hit.
         let dirn = gundir3d.normalize_or_zero();
-        let mut hits: Vec<BoardHit> = Vec::new();
+        let mut hits: Vec<PropHit> = Vec::new();
         for (i, b) in self.boards.iter().enumerate() {
             if let Some((t, n)) = ray_box(b.min, b.max, gunpos3d, dirn, 65536.0) {
                 let pos = gunpos3d + dirn * t;
                 if -w2s.transform_point3(pos).z <= distance {
-                    hits.push(BoardHit { board: i, t, pos, normal: n });
+                    hits.push(PropHit { target: ShotTarget::Board(i), t, pos, normal: n });
                 }
             }
         }
+        let lodscale = self.players[pi].cam.c_lodscalez;
+        let dir2n = gundir2d.normalize_or_zero();
+        for o in self.props.objs.iter().filter(|o| !o.is_deleting() && o.flags & OBJFLAG_HELDROCKET == 0) {
+            // The shooter's own held rocket and a THROWTHROUGH object are skipped
+            // by the object test's own flags (OBJFLAG2_SHOOTTHROUGH is unset).
+            if let Some((depth, p, n)) = o.test_hit(&w2s, lodscale, gunpos2d, dir2n, distance) {
+                let pos = proj.transform_point3(p);
+                let normal = proj.transform_vector3(n).normalize_or_zero();
+                let t = (pos - gunpos3d).dot(dirn).max(0.0);
+                let _ = depth;
+                hits.push(PropHit { target: ShotTarget::Obj(o.id), t, pos, normal });
+            }
+        }
         hits.sort_by(|a, b| a.t.total_cmp(&b.t));
+        // bgun0f0a94d0: the dot is the nearest prop hit, else the BG's.
+        let dot = hits.first().map(|x| (x.pos, x.normal)).or(bg.as_ref().map(|b| (b.pos, b.normal)));
+        if let Some((pos, rot)) = dot.filter(|(p, _)| p.abs().max_element() < 100_000.0) {
+            for hand in self.players[pi].gun.hands.iter_mut() {
+                hand.hasdotinfo = true;
+                hand.dotpos = pos;
+                hand.dotrot = rot;
+            }
+        }
 
         if isshooting {
             let mut blockedbyprop = false;
@@ -244,7 +292,10 @@ impl World {
                 if laserstream && hit.t > 300.0 {
                     continue;
                 }
-                self.obj_hit(pi, hit, gunpos3d);
+                match hit.target {
+                    ShotTarget::Board(b) => self.board_hit(pi, b, hit, gunpos3d),
+                    ShotTarget::Obj(id) => self.obj_hit(pi, id, hit, &func),
+                }
                 // A board slows the bullet.
                 s1 += 1;
                 if s1 >= penetration {
@@ -278,17 +329,45 @@ impl World {
         } else {
             // The query (`prop.c:942`): the closest object, unless a laser
             // stream's is out of its reach.
-            return hits.first().filter(|x| !(laserstream && x.t > 300.0)).map(|x| x.board);
+            // Only the boards stand for objects the sight reacts to
+            // (OBJFLAG3_REACTTOSIGHT, MODEL_TARGET); the guns' objects don't.
+            return hits.first().filter(|x| !(laserstream && x.t > 300.0)).and_then(|x| match x.target {
+                ShotTarget::Board(b) => Some(b),
+                ShotTarget::Obj(_) => None,
+            });
         }
         None
     }
 
+    /// `obj_hit` (`propobj.c:14765`) on one of the guns' objects: sparks, the
+    /// prop hit sound and `obj_damage_by_gunfire`, which sets an explosive off
+    /// or breaks a sentry. `// SUBST:` PD also leaves a bullet hole on the
+    /// object's model / none (M8: wallhits riding props).
+    fn obj_hit(&mut self, pi: usize, id: u32, hit: &PropHit, func: &Option<super::gset::FuncDef>) {
+        let ismelee = func.as_ref().is_some_and(|f| f.kind() == INVENTORYFUNCTYPE_MELEE);
+        self.players[pi].gun.bgun_set_hit_pos(hit.pos);
+        if !ismelee {
+            self.fx.sparks.create(&mut self.rng, hit.pos, Vec3::ZERO, Vec3::ZERO, SPARKTYPE_DEFAULT);
+            // bgun_play_prop_hit_sound: an object's (g_SurfaceTypeMetalObj).
+            let sound = if self.rng.random().is_multiple_of(2) { 0x8089 } else { 0x808a };
+            self.sound_at(sound, 1.0, hit.pos, DEFAULT_DISTS);
+        }
+        let damage = func.as_ref().and_then(|f| f.shoot.as_ref()).map_or(0.0, |s| s.damage);
+        let weaponnum = self.players[pi].gun.bgun_get_weapon_num(HAND_RIGHT);
+        let destroyed = self.obj_damage(id, damage, weaponnum, pi as i32);
+        if destroyed {
+            if let Some(pos) = self.props.get(id).map(|o| o.pos) {
+                self.autogun_destroyed(pos, pi as i32, pi);
+            }
+        }
+    }
+
     /// `obj_hit` on a board: it counts the hit, takes a bullet hole and its
     /// object hit sound (`g_SurfaceTypeMetalObj`).
-    fn obj_hit(&mut self, pi: usize, hit: &BoardHit, gunpos3d: Vec3) {
+    fn board_hit(&mut self, pi: usize, board: usize, hit: &PropHit, gunpos3d: Vec3) {
         let gun = &self.players[pi].gun;
         let damage = self.res.gset.func(gun.hands[HAND_RIGHT].weaponnum, gun.hands[HAND_RIGHT].weaponfunc).and_then(|f| f.shoot.as_ref()).map_or(0.0, |s| s.damage);
-        let b = &mut self.boards[hit.board];
+        let b = &mut self.boards[board];
         b.hits += 1;
         b.damage += damage;
         b.flash = 1.0;
@@ -331,7 +410,7 @@ impl World {
             if explosiveshells {
                 self.explosion_create_simple(pi, b.pos, EXPLOSIONTYPE_PHOENIX);
             } else {
-                // M5: chr_is_using_paintball (a cheat, solo only).
+                // chr_is_using_paintball: a cheat, solo only.
                 if playercount >= 2 {
                     if self.rng.random().is_multiple_of(8) {
                         self.fx.smokes.smoke_create_simple(b.pos, SMOKETYPE_BULLETIMPACT);
@@ -360,7 +439,7 @@ impl World {
     /// `bgun_play_bg_hit_sound` (`bondgun.c:8741`, NTSC 1.0+): a ricochet from
     /// the shared table, then the surface's own hit sound. `soundsurface` is the
     /// hit texture's `soundsurfacetype` (`None`: no texture, no surface sound).
-    pub(crate) fn bgun_play_bg_hit_sound(&mut self, _pi: usize, weaponnum: u8, weaponfunc: usize, pos: Vec3, soundsurface: Option<u8>) {
+    pub(crate) fn bgun_play_bg_hit_sound(&mut self, pi: usize, weaponnum: u8, weaponfunc: usize, pos: Vec3, soundsurface: Option<u8>) {
         const RICOCHETS: [u16; 36] = [
             0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x17, 0x18, 0x19, 0x1a, 0x17, 0x18, 0x19, 0x1a, 0x1f, 0x20, 0x20, 0x21, 0x1f, 0x20, 0x20, 0x21, 0x1f, 0x20, 0x20, 0x21, 0x23, 0x24, 0x25,
             0x26, 0x27, 0x28, 0x29, 0x2a,
@@ -378,8 +457,10 @@ impl World {
         let mut playdefault = true;
         if weaponnum == WEAPON_LASER {
             playdefault = false;
-            // M5: gset->lasershots for the stream's every-fourth-shot sound.
-            if weaponfunc == FUNC_PRIMARY {
+            // gset->lasershots: the hand's burstbullets & 0xff (`gset.c:422`); the
+            // stream plays on every fourth, half the time.
+            let lasershots = self.players.get(pi).map_or(0, |p| p.gun.hands[HAND_RIGHT].burstbullets & 0xff);
+            if weaponfunc == FUNC_PRIMARY || (lasershots % 4 == 0 && !self.rng.random().is_multiple_of(2)) {
                 let id = if rand1.is_multiple_of(2) { 0x5b } else { 0x5c };
                 self.sound_at(id, 1.0, pos, DEFAULT_DISTS);
                 return;
@@ -470,8 +551,9 @@ impl World {
                         self.players[pi].gun.hands[hand].createsmoke = false;
                     }
                 }
-                // M5: the launcher's rocket and the cloak.
-                GunEvent::FreeHeldRocket { .. } | GunEvent::UpdateRocketLauncher { .. } | GunEvent::UncloakTemporarily => {}
+                GunEvent::FreeHeldRocket { hand } => self.bgun_free_held_rocket(pi, hand),
+                GunEvent::UpdateRocketLauncher { hand } => self.bgun_update_rocket_launcher(pi, hand),
+                GunEvent::UncloakTemporarily => self.chr_uncloak_temporarily(pi),
             }
         }
     }

@@ -118,6 +118,10 @@ pub struct Stage {
     pub props: Vec<serde_json::Value>,
     /// The BG triangles shots hit, with their textures' surface types.
     pub bghit: BgHitMesh,
+    /// `g_Stages[].eraserpropdist` and `unk30` (`stagetable.c`): the x-ray's
+    /// reach for props, and how much further the BG shows.
+    pub eraserpropdist: f32,
+    pub eraserbgextra: f32,
 }
 
 // ─── the files ───────────────────────────────────────────────────────────────
@@ -173,6 +177,14 @@ struct SetupFile {
 #[derive(Deserialize)]
 struct SetupStage {
     num: u8,
+    table: StageTableRow,
+}
+
+/// The `g_Stages` row fields the world reads (`struct stagetableentry`).
+#[derive(Deserialize)]
+struct StageTableRow {
+    eraserpropdist: i32,
+    unk30: i32,
 }
 
 fn check_format(what: &str, got: &str, want: &str) -> Result<(), String> {
@@ -247,11 +259,14 @@ impl Stage {
             intro: setup.intro,
             props: setup.props,
             bghit: BgHitMesh::load(assets, code)?,
+            eraserpropdist: setup.stage.table.eraserpropdist as f32,
+            eraserbgextra: setup.stage.table.unk30 as f32,
         })
     }
 
     /// A test stage from a box fixture: its polygons, shots hitting them as the
-    /// default surface, and a spawn pad at each `(pos, look)`.
+    /// default surface, a spawn pad at each `(pos, look)`, and the firing
+    /// range's x-ray reach (`STAGE_CITRAINING`: 400, 0).
     pub fn fixture(code: &str, geom: LevelGeom, spawns: &[(Vec3, Vec3)]) -> Stage {
         let pads: Vec<Pad> = spawns.iter().map(|&(pos, look)| Pad { pos, look, up: Vec3::Y, flags: 0, bbox: [0.0; 6], liftnum: -1 }).collect();
         Stage {
@@ -266,6 +281,8 @@ impl Stage {
             cover: Vec::new(),
             intro: Vec::new(),
             props: Vec::new(),
+            eraserpropdist: 400.0,
+            eraserbgextra: 0.0,
         }
     }
 

@@ -151,6 +151,14 @@ impl Audio {
         }
     }
 
+    /// Retune a playing voice: `volume` (linear) and playback `rate`.
+    pub fn set_voice(&mut self, id: VoiceId, volume: f32, rate: f64) {
+        if let Some(h) = self.voices.get_mut(&id) {
+            h.set_volume(amplitude_to_db(volume), Tween::default());
+            h.set_playback_rate(PlaybackRate(rate), Tween::default());
+        }
+    }
+
     /// Stop a voice (no-op if it already finished).
     pub fn stop_voice(&mut self, id: VoiceId) {
         if let Some(mut h) = self.voices.remove(&id) {

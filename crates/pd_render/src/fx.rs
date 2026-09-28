@@ -1,6 +1,9 @@
 //! PD's effects as triangles: tracers (`beam_render`), impact sparks
-//! (`sparks_render`), bullet holes (`wallhits_render`), smoke (`smoke_render`)
-//! and explosion flares (`explosion_render`), from the state `pd_sim::fx` and
+//! (`sparks_render`), bullet holes (`wallhits_render`), smoke (`smoke_render`),
+//! explosion flares (`explosion_render`), the N-Bomb's dome and its overlay
+//! (`nbomb_render`, `nbomb_render_overlay`), a sentry's muzzle flash
+//! (`model_render_node_chr_gunfire`), and in x-ray the BG and the props in
+//! their eraser colours ([`crate::xray`]); from the state `pd_sim::fx` and
 //! `pd_sim::props` tick, and the target boards. Each batch names its texture
 //! and combiner ([`FxKind`]); `fx.wgsl` draws them.
 //!
@@ -19,8 +22,12 @@ use glam::{Mat4, Vec3};
 use pd_core::assets::AssetDir;
 use pd_core::ids::*;
 use pd_sim::fx::{Beam, Smokes, Sparks, Wallhit};
+use pd_sim::player::vision::Eraser;
 use pd_sim::props::explosions::{etype, texture_pair, Explosion, ExplosionPart, Explosions};
+use pd_sim::props::nbomb::{nbomb_calculate_alpha, Nbombs};
 use pd_sim::world::Board;
+
+use crate::xray;
 use wgpu::util::DeviceExt;
 
 /// The effect shader's WGSL (validated by the tests).
@@ -57,7 +64,19 @@ pub enum FxKind {
     /// `g_TcGdl2` explosion flare frame `i`: flame × colour map
     /// (`G_CC_INTERFERENCE`) × shade (`G_CC_MODULATEIA2`), clamped.
     Explosion(u8),
+    /// The N-Bomb's dome and overlay: `TEX_GENERAL_NBOMBDOME` (IA8, wrapped) ×
+    /// shade (`G_CC_MODULATEIA`), `G_RM_ZB_XLU_SURF`, no cull.
+    Nbomb,
+    /// A `CHRGUNFIRE` billboard's texture × shade, clamped.
+    GunFire(u16),
+    /// The x-ray's BG: `G_CC_SHADE`, `G_RM_AA_XLU_SURF`, no z, no cull.
+    XrayBg,
+    /// A prop in x-ray drawn as flat colour (the boards), no z.
+    Xray,
 }
+
+/// `g_TcGeneralConfigs[TEX_GENERAL_NBOMBDOME]` (TEXTURE_063B).
+pub const TEX_NBOMBDOME: u16 = 0x063b;
 
 impl FxKind {
     /// The shader's combiner mode.
@@ -65,8 +84,8 @@ impl FxKind {
         match self {
             FxKind::Beam(_) => 0,
             FxKind::Spark => 1,
-            FxKind::Wallhit(_) | FxKind::Smoke => 2,
-            FxKind::Flat => 3,
+            FxKind::Wallhit(_) | FxKind::Smoke | FxKind::Nbomb | FxKind::GunFire(_) => 2,
+            FxKind::Flat | FxKind::XrayBg | FxKind::Xray => 3,
             FxKind::Explosion(_) => 4,
         }
     }
@@ -77,8 +96,10 @@ impl FxKind {
             FxKind::Beam(t) => (Some(t), None, false),
             FxKind::Spark => (Some(TEX_SPARK), None, true),
             FxKind::Wallhit(t) => (Some(t), None, true),
-            FxKind::Flat => (None, None, false),
+            FxKind::Flat | FxKind::XrayBg | FxKind::Xray => (None, None, false),
             FxKind::Smoke => (Some(TEX_SMOKE), None, false),
+            FxKind::Nbomb => (Some(TEX_NBOMBDOME), None, false),
+            FxKind::GunFire(t) => (Some(t), None, true),
             FxKind::Explosion(i) => {
                 let (a, b) = texture_pair(i as usize);
                 (Some(a), Some(b), true)
@@ -90,8 +111,14 @@ impl FxKind {
         match self {
             FxKind::Flat => FxPipe::Opaque,
             FxKind::Wallhit(_) => FxPipe::Decal,
+            FxKind::XrayBg | FxKind::Xray => FxPipe::NoZ,
             _ => FxPipe::Xlu,
         }
+    }
+
+    /// Drawn before the world's objects (the opaque boards; the x-ray's BG).
+    pub fn before_objects(self) -> bool {
+        matches!(self, FxKind::Flat | FxKind::XrayBg)
     }
 }
 
@@ -169,14 +196,47 @@ pub fn beam_geometry(beam: &Beam, campos: Vec3) -> Option<FxBatch> {
     Some(FxBatch { kind: FxKind::Beam(tex), verts: vec![v[0], v[2], v[3], v[0], v[3], v[1]] })
 }
 
+/// `beam_render_generic` (`gunfx.c:168`) with `arg2` 1: a quad `halfwidth`
+/// either side of head → tail, turned to the camera, `TEX_LASER_00` across it,
+/// the head's colour at the head and the tail's at the tail. Nothing when
+/// either end is over 100 m from the eye on any axis.
+fn beam_render_generic(head: Vec3, headcol: u32, halfwidth: f32, tail: Vec3, tailcol: u32, cam: &FxCam) -> Option<FxBatch> {
+    let d = tail - head;
+    let length = d.length();
+    if length < 0.00001 {
+        return None;
+    }
+    let dir = d / length;
+    for p in [head, tail] {
+        let e = cam.world_to_screen.transform_point3(p);
+        if e.abs().max_element() > 10000.0 {
+            return None;
+        }
+    }
+    let side = dir.cross(cam.pos - (head + dir * length));
+    let side = if side != Vec3::ZERO { side.normalize() } else { Vec3::Y } * halfwidth;
+    let (hc, tc) = (rgba(headcol), rgba(tailcol));
+    let (tw, th) = (16.0, 32.0);
+    let v = [fv(head + side, [0.0, 0.0], hc), fv(head - side, [tw, 0.0], hc), fv(tail - side, [tw, th], tc), fv(tail + side, [0.0, th], tc)];
+    // gSPTri2(0, 1, 2, 2, 3, 0)
+    Some(FxBatch { kind: FxKind::Beam(TEX_LASER), verts: vec![v[0], v[1], v[2], v[2], v[3], v[0]] })
+}
+
+/// `boltbeams_render` (`gunfx.c:977`): each crossbow bolt's trail, clear at
+/// the head (where the bolt left) to half-alpha pale blue at the bolt.
+pub fn boltbeam_geometry(beams: &pd_sim::fx::boltbeam::BoltBeams, cam: &FxCam) -> Vec<FxBatch> {
+    beams.live().filter_map(|b| beam_render_generic(b.headpos, 0xafafff00, 2.0, b.tailpos, 0xafafff7f, cam)).collect()
+}
+
 // ── sparks (sparks.c) ───────────────────────────────────────────────────────
 
 fn rgba(word: u32) -> [f32; 4] {
     [((word >> 24) & 0xff) as f32 / 255.0, ((word >> 16) & 0xff) as f32 / 255.0, ((word >> 8) & 0xff) as f32 / 255.0, (word & 0xff) as f32 / 255.0]
 }
 
-/// `sparks_render` (`sparks.c:273`): one stretched triangle per live spark.
-pub fn sparks_geometry(sparks: &Sparks, campos: Vec3, camlook: Vec3, fovy: f32) -> Option<FxBatch> {
+/// `sparks_render` (`sparks.c:273`): one stretched triangle per live spark; in
+/// x-ray in the eraser's colours, none beyond its reach.
+pub fn sparks_geometry(sparks: &Sparks, campos: Vec3, camlook: Vec3, fovy: f32, xray: Option<&Eraser>) -> Option<FxBatch> {
     let look = camlook.abs();
     let axis = if look.y > look.x {
         if look.z > look.y {
@@ -203,6 +263,16 @@ pub fn sparks_geometry(sparks: &Sparks, campos: Vec3, camlook: Vec3, fovy: f32) 
             let frac = (diff1 - diff2) / diff1;
             c0[3] *= frac;
             c1[3] *= frac;
+        }
+        if let Some(e) = xray {
+            // Both colours from unk1c's alpha (PD's @bug).
+            match xray::spark_colour(e, grp.pos, c0[3]) {
+                Some(c) => {
+                    c0 = c;
+                    c1 = c;
+                }
+                None => continue,
+            }
         }
         let sp120 = dist * 0.2 * (fovy / 60.0);
         let widen = ty.unk06 as f32 + grp.age as f32 * ty.unk0a as f32 + (sp120 as i32) as f32;
@@ -293,7 +363,7 @@ pub fn wallhit_tris(wh: &Wallhit, out: &mut Vec<FxVert>) {
 /// smoke, with its prop position for sorting. `right`/`up` are the camera's
 /// world axes (`cam_get_projection_mtxf()` columns 0 and 1); `brightness` is
 /// `room_get_final_brightness_for_player` (0..255).
-pub fn smoke_geometry(smokes: &Smokes, campos: Vec3, right: Vec3, up: Vec3, brightness: f32) -> Vec<(Vec3, FxBatch)> {
+pub fn smoke_geometry(smokes: &Smokes, campos: Vec3, right: Vec3, up: Vec3, brightness: f32, xray: Option<&Eraser>) -> Vec<(Vec3, FxBatch)> {
     let mut out = Vec::new();
     for smoke in smokes.slots.iter().flatten() {
         let t = pd_sim::fx::smoke::smoke_type(smoke.ty);
@@ -321,12 +391,18 @@ pub fn smoke_geometry(smokes: &Smokes, campos: Vec3, right: Vec3, up: Vec3, brig
             let sp7c = up * s74;
             // SMOKETYPE_PINBALL ignores the room light.
             let frac = if smoke.ty != SMOKETYPE_PINBALL { (brightness / 255.0).min(1.0) } else { 1.0 };
-            let col = [
-                ((t.r as f32 * frac) as u32 & 0xff) as f32 / 255.0,
-                ((t.g as f32 * frac) as u32 & 0xff) as f32 / 255.0,
-                ((t.b as f32 * frac) as u32 & 0xff) as f32 / 255.0,
-                alpha as f32 / 255.0,
-            ];
+            let col = match xray {
+                Some(e) => match xray::smoke_colour(e, part.pos, alpha as f32) {
+                    Some(c) => c,
+                    None => continue,
+                },
+                None => [
+                    ((t.r as f32 * frac) as u32 & 0xff) as f32 / 255.0,
+                    ((t.g as f32 * frac) as u32 & 0xff) as f32 / 255.0,
+                    ((t.b as f32 * frac) as u32 & 0xff) as f32 / 255.0,
+                    alpha as f32 / 255.0,
+                ],
+            };
             // s,t 1760 = 55 texels (the 56-texel tile's last texel edge).
             let v = [fv(c - spa0 - sp7c, [55.0, 0.0], col), fv(c + sp94 - sp88, [0.0, 0.0], col), fv(c + spa0 + sp7c, [0.0, 55.0], col), fv(c - sp94 + sp88, [55.0, 55.0], col)];
             // gSPTri2(0, 1, 2, 0, 2, 3)
@@ -343,16 +419,24 @@ pub fn smoke_geometry(smokes: &Smokes, campos: Vec3, right: Vec3, up: Vec3, brig
 
 /// `explosion_render` (`explosions.c:1226`): per explosion, texture pairs 14 →
 /// 0, each drawing the parts on that animation frame.
-pub fn explosion_geometry(explosions: &Explosions, right: Vec3, up: Vec3) -> Vec<(Vec3, Vec<FxBatch>)> {
+pub fn explosion_geometry(explosions: &Explosions, right: Vec3, up: Vec3, xray: Option<&Eraser>) -> Vec<(Vec3, Vec<FxBatch>)> {
     let mut out = Vec::new();
     for exp in explosions.slots.iter().flatten() {
         let t = etype(exp.ty);
+        // In x-ray every part takes the explosion's colour, or none draws.
+        let col = match xray {
+            Some(e) => match xray::explosion_colour(e, exp.pos) {
+                Some(c) => c,
+                None => continue,
+            },
+            None => [1.0; 4],
+        };
         let mut batches = Vec::new();
         for i in (0..15).rev() {
             let mut verts = Vec::new();
             for part in exp.parts.iter() {
                 if part.frame > 0 && i == ((part.frame - 1) as f32 / t.flarespeed) as i32 {
-                    explosion_render_part(exp, part, i, right, up, [1.0; 4], &mut verts);
+                    explosion_render_part(exp, part, i, right, up, col, &mut verts);
                 }
             }
             if !verts.is_empty() {
@@ -428,6 +512,139 @@ fn explosion_render_part(exp: &Explosion, part: &ExplosionPart, arg4: i32, right
     let sp98 = up * sine;
     let v = [fv(pos - spbc - sp98, [55.0, 0.0], col), fv(pos + spb0 - spa4, [0.0, 0.0], col), fv(pos + spbc + sp98, [0.0, 55.0], col), fv(pos - spb0 + spa4, [55.0, 55.0], col)];
     out.extend_from_slice(&[v[0], v[1], v[2], v[0], v[2], v[3]]);
+}
+
+// ── the N-Bomb (nbomb.c) ────────────────────────────────────────────────────
+
+/// `nbomb_create_gdl` + `nbomb_render` (`nbomb.c:311`, `:364`): per storm, a
+/// black geodesic dome (an octahedron split twice) of its radius, spun by
+/// `unk14`, its texture scrolled by `g_20SecIntervalFrac`. `// SUBST:` PD
+/// builds the display list before `nbomb_render` sets its 2000-unit scale, so
+/// a storm's very first frame draws a tiny dome / every frame is full size.
+pub fn nbomb_geometry(nbombs: &Nbombs, frac20: f32) -> Vec<(Vec3, FxBatch)> {
+    let mut out = Vec::new();
+    let cb00 = ((frac20 * 64.0 * 32.0 * 16.0) as i32 % 0x800) as f32;
+    for n in nbombs.bombs.iter().filter(|n| n.age240 >= 0) {
+        let alpha = nbomb_calculate_alpha(n) as f32 / 255.0;
+        let mut mtx = pd_core::math::load_rotation(Vec3::new(0.0, n.unk14 as f32 / 2048.0 * pd_core::math::dtor(360.0), 0.0));
+        pd_core::math::scale3(&mut mtx, n.radius / 2000.0);
+        let mtx = Mat4::from_translation(n.pos) * mtx;
+        let mut verts = Vec::new();
+        geodesic_dome(2, 2000.0, cb00, &mut |v: Vec3, st: [f32; 2]| verts.push(fv(mtx.transform_point3(v), st, [0.0, 0.0, 0.0, alpha])));
+        out.push((n.pos, FxBatch { kind: FxKind::Nbomb, verts }));
+    }
+    out
+}
+
+/// `func0f008558` + `func0f006c80` (`nbomb.c`): the octahedron's eight faces,
+/// each split `depth` times into four through the edge midpoints pushed out to
+/// the sphere. `MAKEVERTEX` gives each vertex s = y·256 and t = the angle
+/// around·256 texels plus the scroll; the second half's seam vertex (t = 0)
+/// moves to t = 256 (`var8009cb04`).
+fn geodesic_dome(depth: i32, scale: f32, cb00: f32, emit: &mut dyn FnMut(Vec3, [f32; 2])) {
+    let c = [Vec3::Z, Vec3::X, -Vec3::Z, -Vec3::X, Vec3::Y, -Vec3::Y];
+    let faces_a = [(0, 4, 1), (1, 4, 2), (1, 5, 0), (2, 5, 1)];
+    let faces_b = [(2, 4, 3), (3, 4, 0), (3, 5, 2), (0, 5, 3)];
+    for (half, faces) in [(false, faces_a), (true, faces_b)] {
+        let vert = |v: Vec3| -> (Vec3, [f32; 2]) {
+            let s = (v.y * 256.0 * 32.0) as i16 as f32;
+            let mut t = (pd_core::math::atan2f(v.x, v.z) / pd_core::math::dtor(360.0) * 256.0 * 32.0) as i16 as i32;
+            if half && t == 0 {
+                t = 256 * 32;
+            }
+            let t = (t + cb00 as i32) as i16 as f32;
+            (v * scale, [s / 32.0, t / 32.0])
+        };
+        for (a, b, cc) in faces {
+            dome_split(c[a], c[b], c[cc], depth, &vert, emit);
+        }
+    }
+}
+
+fn dome_split(a: Vec3, b: Vec3, c: Vec3, depth: i32, vert: &dyn Fn(Vec3) -> (Vec3, [f32; 2]), emit: &mut dyn FnMut(Vec3, [f32; 2])) {
+    let ab = (a + b).normalize();
+    let bc = (b + c).normalize();
+    let ca = (c + a).normalize();
+    if depth == 0 {
+        // gSPTri4(a, ab, ca,  b, bc, ab,  c, ca, bc,  ab, bc, ca)
+        for (p, q, r) in [(a, ab, ca), (b, bc, ab), (c, ca, bc), (ab, bc, ca)] {
+            for v in [p, q, r] {
+                let (pos, st) = vert(v);
+                emit(pos, st);
+            }
+        }
+    } else {
+        dome_split(a, ab, ca, depth - 1, vert, emit);
+        dome_split(b, bc, ab, depth - 1, vert, emit);
+        dome_split(c, ca, bc, depth - 1, vert, emit);
+        dome_split(ab, bc, ca, depth - 1, vert, emit);
+    }
+}
+
+/// `nbomb_render_overlay` (`nbomb.c:784`): standing inside a storm, its texture
+/// over the whole view in clip space, black at the strongest storm's alpha; s
+/// spans 5 texels across the view, t 30 down, both scrolling.
+pub fn nbomb_overlay(nbombs: &Nbombs, campos: Vec3, frac20: f32) -> Option<FxBatch> {
+    let finalalpha = nbombs.overlay_alpha(campos)?;
+    let s = ((8.0 * frac20 * 128.0 * 32.0) as i32 % 2048) as f32 / 32.0;
+    let t = (((campos.y * 8.0) as i32 % 2048) as i16 as i32 + (2.0 * frac20 * 128.0 * 32.0) as i16 as i32) as f32 / 32.0;
+    let col = [0.0, 0.0, 0.0, finalalpha as f32 / 255.0];
+    let v = [fv(Vec3::new(-1.0, 1.0, 0.5), [s, t], col), fv(Vec3::new(1.0, 1.0, 0.5), [s + 5.0, t], col), fv(Vec3::new(1.0, -1.0, 0.5), [s + 5.0, t + 30.0], col), fv(Vec3::new(-1.0, -1.0, 0.5), [s, t + 30.0], col)];
+    // gSPTri2(0, 1, 2, 2, 3, 0)
+    Some(FxBatch { kind: FxKind::Nbomb, verts: vec![v[0], v[1], v[2], v[2], v[3], v[0]] })
+}
+
+// ── a sentry's flash (model.c) ──────────────────────────────────────────────
+
+/// `model_render_node_chr_gunfire` (`model.c:3368`): the flash billboard turned
+/// to face the camera, 0.75..1.25 × `dim`, its texture square spun at random.
+/// `// SUBST:` PD's scale and spin come from `random()`, the one stream / from
+/// a hash of `seed`, so drawing never draws from the world's stream.
+pub fn gunfire_geometry(def: &pd_core::model::ModelDef, mats: &[Mat4], node: usize, campos: Vec3, seed: u32) -> Option<FxBatch> {
+    let pd_core::model::NodeKind::ChrGunfire { pos, dim, texture, texture_size } = def.nodes.get(node)?.kind else { return None };
+    let mi = def.find_node_mtx_index(def.nodes[node].parent?, 0)?;
+    let w = mats.get(mi)?;
+    let p = w.transform_point3(pos);
+    let scale_m = w.x_axis.truncate().length();
+    let mut e = campos - p;
+    let distance = e.length();
+    e = if distance > 0.0 { e / (scale_m * distance) } else { Vec3::new(0.0, 0.0, 1.0 / scale_m) };
+    let col = |i: usize| w.col(i).truncate();
+    let spec = e.dot(col(1)).clamp(-1.0, 1.0).acos();
+    let mut spf0 = (-(e.dot(col(2))) / spec.sin()).clamp(-1.0, 1.0).acos();
+    if -(e.dot(col(0))) < 0.0 {
+        spf0 = pd_core::math::baddtor(360.0) - spf0;
+    }
+    let (spdc, spd8) = (spf0.cos(), spf0.sin());
+    let (rot2, spd0) = (spec.cos(), spec.sin());
+    let h = |k: u32| {
+        let x = seed.wrapping_mul(0x9e37_79b9).wrapping_add(k.wrapping_mul(0x85eb_ca6b));
+        (x ^ (x >> 15)).wrapping_mul(0x2c1b_3c6d) ^ (x >> 13)
+    };
+    let scale = 0.75 + (h(1) % 128) as f32 / 256.0;
+    let d = dim * scale;
+    let spcc = d.x * spdc * 0.5;
+    let spc8 = d.z * spd8 * 0.5;
+    let spc4 = d.y * spd0 * 0.5;
+    let spc0 = d.x * rot2 * spd8 * 0.5;
+    let spbc = d.z * rot2 * spdc * 0.5;
+    let sp90 = Vec3::new(pos.x - d.x * 0.5, pos.y, pos.z);
+    let v = [
+        Vec3::new(sp90.x - spcc - spc0, sp90.y - spc4, sp90.z + spc8 - spbc),
+        Vec3::new(sp90.x - spcc + spc0, sp90.y + spc4, sp90.z + spc8 + spbc),
+        Vec3::new(sp90.x + spcc + spc0, sp90.y + spc4, sp90.z - spc8 + spbc),
+        Vec3::new(sp90.x + spcc - spc0, sp90.y - spc4, sp90.z - spc8 - spbc),
+    ];
+    // The texture square turned by a random angle; its half-diagonal
+    // (0.707 · width texels) keeps the square inside the quad.
+    let ang = ((h(2) as u16) as f32) / 65536.0 * std::f32::consts::TAU;
+    let r = texture_size[0] * 181.0 / 256.0;
+    let (c, sn) = (ang.cos() * r, ang.sin() * r);
+    let centre = texture_size[0] * 0.5;
+    let st = [[centre - c, centre - sn], [centre + sn, centre - c], [centre + c, centre + sn], [centre - sn, centre + c]];
+    let fv4 = |i: usize| fv(w.transform_point3(v[i]), st[i], [1.0; 4]);
+    // gSPTri2(0, 1, 2, 2, 3, 0)
+    Some(FxBatch { kind: FxKind::GunFire(texture? as u16), verts: vec![fv4(0), fv4(1), fv4(2), fv4(2), fv4(3), fv4(0)] })
 }
 
 // ── the target boards ───────────────────────────────────────────────────────
@@ -514,13 +731,27 @@ pub struct FxCam {
 }
 
 /// The world pass's effects in PD's order: the boards, the bullet holes, the
-/// translucent props (smoke, explosions) back to front by `prop->z`, then the
-/// sparks.
-pub fn world_fx(world: &pd_sim::world::World, cam: &FxCam) -> Vec<FxBatch> {
+/// translucent props (smoke, explosions, the N-Bomb's domes) back to front by
+/// `prop->z`, the sentries' tracers and flashes, the sparks, then the crossbow
+/// bolts' trails. In x-ray
+/// (`xray`): the BG's eraser triangles first, the props in their x-ray colours,
+/// and no bullet holes.
+pub fn world_fx(world: &pd_sim::world::World, cam: &FxCam, xray: Option<&Eraser>) -> Vec<FxBatch> {
     let mut out = Vec::new();
-    out.extend(board_geometry(&world.boards));
+    if let Some(e) = xray {
+        out.push(xray::bg_geometry(&world.stage.bghit, e));
+        let mut boards = Vec::new();
+        for b in &world.boards {
+            if let Some(col) = xray::obj_colour(e, (b.min + b.max) * 0.5) {
+                xray::box_geometry(b.min, b.max, cam.pos, col, &mut boards);
+            }
+        }
+        out.push(FxBatch { kind: FxKind::Xray, verts: boards });
+    } else {
+        out.extend(board_geometry(&world.boards));
+    }
     let mut by_tex: Vec<(u16, Vec<FxVert>)> = Vec::new();
-    for wh in &world.fx.wallhits {
+    for wh in world.fx.wallhits.iter().filter(|_| xray.is_none()) {
         let tex = WALLHIT_TEX[wh.texnum].0;
         let i = match by_tex.iter().position(|(t, _)| *t == tex) {
             Some(i) => i,
@@ -543,24 +774,57 @@ pub fn world_fx(world: &pd_sim::world::World, cam: &FxCam) -> Vec<FxBatch> {
         }
     };
     let mut xlu: Vec<(f32, Vec<FxBatch>)> = Vec::new();
-    for (pos, b) in smoke_geometry(&world.fx.smokes, cam.pos, right, up, cam.brightness) {
+    for (pos, b) in smoke_geometry(&world.fx.smokes, cam.pos, right, up, cam.brightness, xray) {
         xlu.push((propz(pos), vec![b]));
     }
-    for (pos, bs) in explosion_geometry(&world.explosions, right, up) {
+    for (pos, bs) in explosion_geometry(&world.explosions, right, up, xray) {
         xlu.push((propz(pos), bs));
     }
     xlu.sort_by(|a, b| b.0.total_cmp(&a.0));
     for (_, bs) in xlu {
         out.extend(bs);
     }
-    // SUBST: other players' tracers are their chrs' fireslot beams, drawn by
-    // `chr_render` / M6 draws the chrs.
-    out.extend(sparks_geometry(&world.fx.sparks, cam.pos, cam.look, cam.fovy));
+    // props_render_beams (`propobj.c:11450`): the sentries' tracers. SUBST:
+    // other players' tracers are their chrs' fireslot beams / M6 draws the chrs.
+    for o in &world.props.objs {
+        if let Some(a) = &o.autogun {
+            out.extend(beam_geometry(&a.beam, cam.pos));
+        }
+    }
+    // A firing sentry's flash, part of its model (not in x-ray, where the model
+    // is flat colour).
+    if xray.is_none() {
+        for o in &world.props.objs {
+            let Some(a) = &o.autogun else { continue };
+            if !(a.fireleft || a.fireright) {
+                continue;
+            }
+            let mats = o.init_matrices();
+            for (part, on) in [(MODELPART_AUTOGUN_FLASHLEFT, a.fireleft), (MODELPART_AUTOGUN_FLASHRIGHT, a.fireright)] {
+                if let Some(node) = o.def.get_part(part).filter(|_| on) {
+                    let seed = (world.lv.lvframenum as u32) ^ o.id.wrapping_mul(7919) ^ part as u32;
+                    out.extend(gunfire_geometry(&o.def, &mats, node, cam.pos, seed));
+                }
+            }
+        }
+    }
+    // nbombs_render (`lv.c:1313`), after the sparks in PD's order.
+    out.extend(sparks_geometry(&world.fx.sparks, cam.pos, cam.look, cam.fovy, xray));
+    for (_, b) in nbomb_geometry(&world.props.nbombs, world.frac20) {
+        out.push(b);
+    }
+    // player_render_hud's boltbeams_render (`player.c:4466`), before the gun,
+    // still in the world's projection and z.
+    out.extend(boltbeam_geometry(&world.fx.boltbeams, cam));
     out
 }
 
-/// The gun pass's effects: this player's tracers.
+/// The gun pass's effects: this player's tracers (none in x-ray or riding a
+/// rocket: `bgun_render` isn't reached).
 pub fn gun_fx(player: &pd_sim::player::Player, campos: Vec3) -> Vec<FxBatch> {
+    if player.visionmode == VISIONMODE_XRAY || player.cameramode == CAMERAMODE_THIRDPERSON {
+        return Vec::new();
+    }
     player.gun.hands.iter().filter(|h| h.visible).filter_map(|h| beam_geometry(&h.beam, campos)).collect()
 }
 
@@ -574,6 +838,8 @@ enum FxPipe {
     Decal,
     /// Translucent, z test, no write.
     Xlu,
+    /// Translucent, no z at all (the x-ray).
+    NoZ,
 }
 
 #[repr(C)]
@@ -588,6 +854,8 @@ struct PassU {
 pub enum FxPass {
     World,
     Gun,
+    /// Over the gun, in clip space (the N-Bomb's overlay).
+    Overlay,
 }
 
 pub struct FxRange {
@@ -603,7 +871,7 @@ pub struct FxRenderer {
     shader: wgpu::ShaderModule,
     draw_bgl: wgpu::BindGroupLayout,
     pipes: HashMap<FxPipe, wgpu::RenderPipeline>,
-    passes: [(wgpu::Buffer, wgpu::BindGroup); 2],
+    passes: [(wgpu::Buffer, wgpu::BindGroup); 3],
     binds: HashMap<FxKind, wgpu::BindGroup>,
     textures: HashMap<u16, (wgpu::TextureView, u32, u32)>,
     white: wgpu::TextureView,
@@ -671,7 +939,7 @@ impl FxRenderer {
             let bind = device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("pdfx-pass"), layout: &pass_bgl, entries: &[wgpu::BindGroupEntry { binding: 0, resource: buf.as_entire_binding() }] });
             (buf, bind)
         };
-        let passes = [pass(), pass()];
+        let passes = [pass(), pass(), pass()];
         let white = upload(device, queue, 1, 1, &[255; 4]);
         FxRenderer {
             layout,
@@ -717,7 +985,7 @@ impl FxRenderer {
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: self.depth_format,
                 depth_write_enabled: key == FxPipe::Opaque,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_compare: if key == FxPipe::NoZ { wgpu::CompareFunction::Always } else { wgpu::CompareFunction::LessEqual },
                 stencil: Default::default(),
                 bias: if key == FxPipe::Decal { wgpu::DepthBiasState { constant: -8, slope_scale: -2.0, clamp: 0.0 } } else { Default::default() },
             }),
@@ -783,10 +1051,10 @@ impl FxRenderer {
     /// Upload this frame's batches. `world_vp`/`gun_vp` take world cm to clip
     /// for each pass; `env` is the beams' env colour (the gun shade colour).
     #[allow(clippy::too_many_arguments)]
-    pub fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &AssetDir, world: &[FxBatch], gun: &[FxBatch], world_vp: Mat4, gun_vp: Mat4, env: [f32; 4]) {
+    pub fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &AssetDir, world: &[FxBatch], gun: &[FxBatch], overlay: &[FxBatch], world_vp: Mat4, gun_vp: Mat4, env: [f32; 4]) {
         let mut verts: Vec<FxVert> = Vec::new();
         self.ranges.clear();
-        for (pass, batches) in [(FxPass::World, world), (FxPass::Gun, gun)] {
+        for (pass, batches) in [(FxPass::World, world), (FxPass::Gun, gun), (FxPass::Overlay, overlay)] {
             for b in batches {
                 if b.verts.is_empty() {
                     continue;
@@ -807,17 +1075,22 @@ impl FxRenderer {
         if !verts.is_empty() {
             queue.write_buffer(&self.vbuf.as_ref().unwrap().0, 0, bytemuck::cast_slice(&verts));
         }
-        for (i, vp) in [world_vp, gun_vp].into_iter().enumerate() {
+        for (i, vp) in [world_vp, gun_vp, Mat4::IDENTITY].into_iter().enumerate() {
             queue.write_buffer(&self.passes[i].0, 0, bytemuck::bytes_of(&PassU { view_proj: vp.to_cols_array_2d(), env }));
         }
     }
 
     /// Draw one pass's batches, in order.
     pub fn draw<'a>(&'a self, rp: &mut wgpu::RenderPass<'a>, pass: FxPass) {
+        self.draw_some(rp, pass, |_| true);
+    }
+
+    /// Draw the batches of one pass `which` keeps, in order.
+    pub fn draw_some<'a>(&'a self, rp: &mut wgpu::RenderPass<'a>, pass: FxPass, which: impl Fn(FxKind) -> bool) {
         let Some((vb, _)) = &self.vbuf else { return };
         rp.set_vertex_buffer(0, vb.slice(..));
         rp.set_bind_group(0, &self.passes[pass as usize].1, &[]);
-        for r in self.ranges.iter().filter(|r| r.pass == pass) {
+        for r in self.ranges.iter().filter(|r| r.pass == pass && which(r.kind)) {
             let (Some(pipe), Some(bind)) = (self.pipes.get(&r.kind.pipe()), self.binds.get(&r.kind)) else { continue };
             rp.set_pipeline(pipe);
             rp.set_bind_group(1, bind, &[]);

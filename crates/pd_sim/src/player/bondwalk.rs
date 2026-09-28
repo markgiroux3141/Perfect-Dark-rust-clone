@@ -32,7 +32,7 @@ impl Player {
         let newpos = self.pos + Vec3::Y * amount;
         let (radius, ymax, ymin) = self.player_get_bbox();
         let ymin = ymin - 0.1;
-        let result = env.level.cd_test_volume_simple(newpos, radius, ymax - self.pos.y, ymin - self.pos.y, env.cyls);
+        let result = env.level.cd_test_volume_simple(newpos, radius, true, ymax - self.pos.y, ymin - self.pos.y, env.cyls);
         if result == CdResult::NoCollision {
             self.pos.y = newpos.y;
         }
@@ -60,12 +60,12 @@ impl Player {
                 }
                 self.cd.set(o);
                 if result == CdResult::NoCollision {
-                    let (r, o) = level.cd_test_volume_fromdir(self.pos, dstpos, radius, rymax, rymin, env.cyls);
+                    let (r, o) = level.cd_test_volume_fromdir(self.pos, dstpos, radius, true, rymax, rymin, env.cyls);
                     result = r;
                     self.cd.set(o);
                 }
             } else {
-                let (r, o) = level.cd_test_volume_fromdir(self.pos, dstpos, radius, rymax, rymin, env.cyls);
+                let (r, o) = level.cd_test_volume_fromdir(self.pos, dstpos, radius, true, rymax, rymin, env.cyls);
                 result = r;
                 self.cd.set(o);
             }

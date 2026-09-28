@@ -4,16 +4,22 @@
 //! sized for up to four humans, and split-screen is a renderer concern.
 //!
 //! The frame, as `main.c:1043` runs it:
-//! 1. `lv_tick`: the timing, then `casings_tick`, `sparks_tick`, and `props_tick`
-//!    (each player's tracers, the explosions, the smoke);
+//! 1. `lv_tick`: the timing (a Combat Boost caps it), `bgun_tick_boost`,
+//!    `casings_tick`, `sparks_tick`, `nbombs_tick`, `lv_update_misc_sfx`, and
+//!    `props_tick` (each player's tracers, the sentries' tracers, the explosions,
+//!    the smoke);
 //! 2. each player's `player_tick`: `bmove_tick` (the controls, the hands' state
-//!    machines in `bgun_tick_gameplay`, the walk) and the camera;
-//! 3. `lv_render`, per player: `lights_tick`, `hands_tick_attack` (the shots,
-//!    which set `hitpos`), then `player_render_hud` → `bgun_tick_gameplay2` (the
-//!    gun's pose; its tracer runs from the muzzle to `hitpos`) and the HUD's
-//!    timers.
+//!    machines in `bgun_tick_gameplay`, the walk) and the camera, or riding a
+//!    Slayer rocket;
+//! 3. `lv_render`, per player: the x-ray's eraser (`bg_tick`), `lights_tick`,
+//!    `props_tick_player` (the objects: projectiles in flight, fuses, mines, the
+//!    sentries; the player's cloak), after the last player `alarm_tick`'s
+//!    proximity triggers, then `hands_tick_attack` (the shots, which set
+//!    `hitpos`; throws and launches), `player_render_hud` → `bgun_tick_gameplay2`
+//!    (the vision mode, the gun's pose, the RC-P120's cloak drain) and the HUD's
+//!    timers, and the framebuffer effects (`lv_render`'s `bview_*`).
 //!
-//! Chrs and simulants (M6), props (M5/M8) and the match rules (M7) slot in
+//! Chrs and simulants (M6), pickups (M8) and the match rules (M7) slot in
 //! where PD ticks them.
 //!
 //! Source: `pd_complex/fight.rs` `Fight::frame` and `pd_guns/sim.rs` `Sim::frame`,
@@ -26,16 +32,18 @@ use glam::{Vec2, Vec3};
 use pd_core::anim::AnimBank;
 use pd_core::assets::AssetDir;
 use pd_core::events::Event;
-use pd_core::ids::{HAND_RIGHT, WEAPONFLAG_AIMTRACK};
+use pd_core::ids::{CAMERAMODE_DEFAULT, CAMERAMODE_THIRDPERSON, HAND_RIGHT, VISIONMODE_SLAYERROCKET, VISIONMODE_SLAYERROCKETSTATIC, WEAPONFLAG_AIMTRACK};
 use pd_core::lv::{Lv, LvTickIn};
 use pd_core::model::ModelStore;
 use pd_core::mp::MatchSetup;
 use pd_core::rng::Rng;
 
 use crate::fx::Fx;
+use crate::gun::boost::SpeedPill;
 use crate::gun::Gset;
 use crate::player::{player_choose_spawn_location, Player, PlayerInput, SpawnOther, WalkEnv};
 use crate::props::explosions::{ExpOut, ExpWorld, Explosions, Victim, VictimId};
+use crate::props::Props;
 use crate::propsnd::{self, AudioConfigs, Listener};
 use crate::stage::{PerimCyl, Stage, TileLevel};
 
@@ -198,12 +206,21 @@ pub struct World {
     pub spawns: Vec<u32>,
     pub fx: Fx,
     pub explosions: Explosions,
+    /// The guns' objects in the world, the N-Bomb storms, the detonators.
+    pub props: Props,
     /// The target boards (the firing range's); none on an arena.
     pub boards: Vec<Board>,
     pub lights: Lights,
     pub vi: ViShake,
-    /// Explosion damage each player has taken. M6 applies it (`chr_damage`).
+    /// Explosion and impact damage each player has taken. M6 applies it (`chr_damage`).
     pub player_damage: Vec<f32>,
+    /// N-Bomb dizziness each player has taken (`chr_damage_by_dizziness`). M6:
+    /// `blurdrugamount` and its blur.
+    pub player_dizzy: Vec<f32>,
+    /// The Combat Boost, `g_Vars.speedpill*`: one for the whole world.
+    pub speedpill: SpeedPill,
+    /// `g_MiscSfxActiveTypes`: which misc loops play, by `MISCSFX_*`.
+    pub misc_sfx: [bool; 3],
     /// Shots each player has fired (`mpstats_increment_player_shotcount`).
     pub shots_fired: Vec<u32>,
     /// `player->lookingatprop.prop`: the board under each player's crosshair
@@ -215,25 +232,15 @@ pub struct World {
 }
 
 /// The stage as the explosions see it.
-struct StageExp<'a> {
-    level: &'a TileLevel,
+pub(crate) struct StageExp<'a> {
+    pub level: &'a TileLevel,
 }
 
 impl ExpWorld for StageExp<'_> {
     /// The floor's room's bbox, from its tiles.
     fn room_bbox(&self, pos: Vec3) -> (Vec3, Vec3) {
-        if let Some(room) = self.level.floor_room(pos, 1.0) {
-            let mut lo = Vec3::splat(f32::INFINITY);
-            let mut hi = Vec3::splat(f32::NEG_INFINITY);
-            for p in self.level.geom.polys.iter().filter(|p| p.room == Some(room)) {
-                for v in &p.verts {
-                    lo = lo.min(*v);
-                    hi = hi.max(*v);
-                }
-            }
-            if lo.x <= hi.x {
-                return (lo, hi);
-            }
+        if let Some(bb) = self.level.floor_room(pos, 1.0).and_then(|room| self.level.room_bbox(room)) {
+            return bb;
         }
         let (lo, hi) = self.level.geom.bounds();
         (lo - Vec3::splat(100.0), hi + Vec3::splat(100.0))
@@ -272,10 +279,14 @@ impl World {
             spawns: vec![0; n],
             fx: Fx::default(),
             explosions: Explosions::default(),
+            props: Props::default(),
             boards: Vec::new(),
             lights: Lights::default(),
             vi: ViShake::default(),
             player_damage: vec![0.0; n],
+            player_dizzy: vec![0.0; n],
+            speedpill: SpeedPill::default(),
+            misc_sfx: [false; 3],
             shots_fired: vec![0; n],
             lookingatprop: vec![None; n],
             frac20: 0.0,
@@ -346,8 +357,11 @@ impl World {
     /// One PD frame `diffframe240` quarter-ticks long (4 at 60 Hz, 8 at 30,
     /// 12 at 20), with each player's controls (missing inputs are idle).
     pub fn step(&mut self, diffframe240: i32, inputs: &[PlayerInput]) {
-        // lv_tick. M7: the slow-motion option and Combat Boost (M5) feed LvTickIn.
-        self.lv.frame(diffframe240, LvTickIn::default());
+        // lv_tick: a boost caps the frame. M7: smart slow motion's "an enemy is
+        // on screen" (`bg_room_is_on_player_screen`).
+        let tickin = LvTickIn { speedpillon: self.speedpill.on, slowmo: self.setup.slowmotion(), ..LvTickIn::default() };
+        self.lv.frame(diffframe240, tickin);
+        self.bgun_tick_boost();
         // menu_tick_timers (`game_006900.c:42`), from lv_tick's menu_tick.
         self.frac20 += self.lv.diffframe240f / 4800.0;
         if self.frac20 > 1.0 {
@@ -355,6 +369,11 @@ impl World {
         }
         self.tick_casings();
         self.fx.sparks.tick(&self.lv);
+        if self.props.nbombs.active {
+            self.nbombs_tick();
+        }
+        self.lv_update_misc_sfx();
+        self.fx.boltbeams.tick(self.lv.lvupdate60freal);
         self.props_tick();
 
         // lv_tick_player: each player's player_tick.
@@ -363,7 +382,18 @@ impl World {
             let cyls = self.perims_except(i);
             let env = WalkEnv { level: &self.level, cyls: &cyls };
             let input = inputs.get(i).unwrap_or(&idle);
-            self.players[i].tick(input, &self.lv, &env, &self.res, &mut self.rng, &mut self.events);
+            // player.c:3302: a rocket that is gone loses its signal.
+            if self.players[i].visionmode == VISIONMODE_SLAYERROCKET && self.players[i].slayerrocket.is_none() {
+                self.players[i].visionmode = VISIONMODE_SLAYERROCKETSTATIC;
+            }
+            if self.players[i].visionmode == VISIONMODE_SLAYERROCKET {
+                // bmove_tick(0, 0, 0, 1): Jo stands still while the rocket flies.
+                self.players[i].tick(&idle, &self.lv, &env, &self.res, &mut self.rng, &mut self.events);
+                self.player_tick_slayer(i, input);
+            } else {
+                self.players[i].tick(input, &self.lv, &env, &self.res, &mut self.rng, &mut self.events);
+                self.players[i].cameramode = CAMERAMODE_DEFAULT;
+            }
             if self.players[i].die_request {
                 // SUBST: PD kills the player (fell for 4 s or out of the world)
                 // and runs the death sequence before the respawn / no deaths
@@ -384,20 +414,58 @@ impl World {
 
         // lv_render, per player.
         self.lights.tick(&self.lv);
-        for i in 0..self.players.len() {
+        let n = self.players.len();
+        for i in 0..n {
+            // SUBST: bgun_render draws a fired rocket at the muzzle once more and
+            // then lets go of it (`bondgun.c:8334`, and at once in x-ray) / the
+            // renderer can't write the world, so the hand lets go here, a frame on.
+            for hand in self.players[i].gun.hands.iter_mut() {
+                if hand.firedrocket {
+                    hand.rocket = None;
+                }
+            }
+            self.bg_tick_eraser(i);
+            self.props_tick_player(i);
+            if i == 0 {
+                // SUBST: PD clears g_PlayersDetonatingMines in alarm_tick after the
+                // last player's props, which with two players loses the first
+                // player's press for the mines only its pass ticks / cleared
+                // once the first pass has ticked the mines (the same with one).
+                self.props.detonating = 0;
+            }
+            // player_tick_third_person: the player's chr (M6: its body).
+            self.chr_update_cloak(i);
+            if i + 1 == n {
+                // alarm_tick (`propobj.c:20051`).
+                self.chrs_trigger_proxies();
+            }
             self.hands_tick_attack(i);
             // lookingatprop (`lv.c:1200`). The boards stand for the training
             // targets PD lets the sight react to (`MODEL_TARGET` in CI training).
             let aimtrack = self.res.gset.has_flag(self.players[i].gun.bgun_get_weapon_num(HAND_RIGHT), WEAPONFLAG_AIMTRACK) && self.players[i].insightaimmode;
             self.lookingatprop[i] = if self.players.len() == 1 || aimtrack { self.prop_find_aiming_at(i, HAND_RIGHT, false, false) } else { None };
-            {
-                let res = self.res.clone();
-                let p = &mut self.players[i];
-                let mut g = p.gun_ctx(&res, &mut self.rng, &self.lv);
-                g.bgun_tick_gameplay2();
-                g.bgun_tick_hud();
+            // player_render_hud (`player.c`): in the third person (riding a
+            // Slayer rocket) no gun, no HUD, and bgun_tick_gameplay2 doesn't run.
+            if self.players[i].cameramode != CAMERAMODE_THIRDPERSON {
+                self.bgun_tick_vision(i);
+                {
+                    let res = self.res.clone();
+                    let p = &mut self.players[i];
+                    let mut g = p.gun_ctx(&res, &mut self.rng, &self.lv);
+                    g.bgun_tick_gameplay2();
+                }
+                // bgun_tick_gameplay2's RC-P120 cloak (`bondgun.c:8050`). PD drains
+                // it before the hands are posed; the pose doesn't read the clip.
+                self.rcp120_cloak_tick(i);
+                {
+                    let res = self.res.clone();
+                    let p = &mut self.players[i];
+                    let mut g = p.gun_ctx(&res, &mut self.rng, &self.lv);
+                    g.bgun_tick_hud();
+                }
             }
             self.process_gun_events(i);
+            self.lv_render_fx(i);
         }
         for b in self.boards.iter_mut() {
             b.flash = (b.flash - self.lv.lvupdate60freal / 20.0).max(0.0);
@@ -429,12 +497,17 @@ impl World {
         }
     }
 
-    /// `props_tick` for what M4 has: the players' tracers
-    /// (`player_tick_beams`), the explosions, the smoke.
+    /// `props_tick` (`proptick.c:48`): the players' tracers (`player_tick_beams`),
+    /// the sentries' (`obj_tick`), the explosions, the smoke.
     fn props_tick(&mut self) {
         for p in self.players.iter_mut() {
             for h in 0..2 {
                 p.gun.hands[h].beam.tick(&mut self.rng, &self.lv);
+            }
+        }
+        for o in self.props.objs.iter_mut() {
+            if let Some(a) = o.autogun.as_mut() {
+                a.beam.tick(&mut self.rng, &self.lv);
             }
         }
         let victims: Vec<Victim> = self
@@ -446,6 +519,8 @@ impl World {
                 Victim { id: VictimId::Player(i), pos: p.pos, chrbox: Some((r, ymax, ymin)) }
             })
             .chain(self.boards.iter().enumerate().map(|(i, b)| Victim { id: VictimId::Board(i), pos: (b.min + b.max) * 0.5, chrbox: None }))
+            // The guns' objects: a blast sets off the explosives it reaches.
+            .chain(self.props.objs.iter().filter(|o| !o.is_deleting() && o.flags & pd_core::ids::OBJFLAG_HELDROCKET == 0).map(|o| Victim { id: VictimId::Prop(o.id), pos: o.pos, chrbox: None }))
             .collect();
         let mut out = ExpOut::default();
         // The scorches are coloured by the room at the camera, like the gun.
@@ -480,7 +555,14 @@ impl World {
                         }
                     }
                 }
-                VictimId::Prop(_) => {}
+                // obj_damage_by_explosion(prop, damage, pos, WEAPON_REMOTEMINE, owner).
+                VictimId::Prop(id) => {
+                    if self.obj_damage(id, dmg, pd_core::ids::WEAPON_REMOTEMINE, _owner) {
+                        if let Some(pos) = self.props.get(id).map(|o| o.pos) {
+                            self.autogun_destroyed(pos, _owner, 0);
+                        }
+                    }
+                }
             }
         }
         for (pos, start) in out.flashes {

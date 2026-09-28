@@ -175,6 +175,11 @@ impl BgHitMesh {
         self.tris.len()
     }
 
+    /// Every triangle whose batch's box meets `lo..hi` (the x-ray draws them).
+    pub fn tris_in(&self, lo: Vec3, hi: Vec3) -> impl Iterator<Item = [Vec3; 3]> + '_ {
+        self.batches.iter().filter(move |b| !(b.bbmax.cmplt(lo).any() || b.bbmin.cmpgt(hi).any())).flat_map(move |b| self.tris[b.tris.clone()].iter().map(|t| t.p))
+    }
+
     /// `bg_test_hit_in_room` over every room: the nearest triangle the segment
     /// `from..to` crosses. A translucent batch whose texture is of the default
     /// surface type lets the shot through (`bg.c:4309`).

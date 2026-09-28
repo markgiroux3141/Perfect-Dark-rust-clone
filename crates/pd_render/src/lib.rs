@@ -9,12 +9,16 @@
 //!
 //! A player's frame, in PD's order (`lv_render` → `player_render` →
 //! `bgun_render` → the HUD):
-//! 1. the world pass: the BG, then the world's effects depth-tested against it
-//!    (boards, bullet holes, smoke and explosions back to front, sparks);
+//! 1. the world pass: the BG (in x-ray, the eraser's triangles on black), the
+//!    world's objects, then the world's effects depth-tested against them
+//!    (bullet holes, smoke, explosions and N-Bomb domes back to front, the
+//!    sentries' tracers and flashes, sparks);
 //! 2. the gun pass: the z-buffer cleared and the gun's own projection (near 1.5,
-//!    far 1000, `vi0000aca4`), this player's tracers, each hand's gun then hand
-//!    model, then the casings;
-//! 3. the 2D layer: the sight and the gun HUD, drawn on the CPU in PD pixels.
+//!    far 1000, `vi0000aca4`), this player's tracers, each hand's loaded rocket,
+//!    gun then hand model, the casings, then the N-Bomb's overlay; none of it in
+//!    x-ray, nor riding a Slayer rocket;
+//! 3. the 2D layer: the sight and the gun HUD, drawn on the CPU in PD pixels;
+//! 4. `lv_render`'s framebuffer effects over all of it ([`post`]).
 
 pub mod bg;
 pub mod fx;
@@ -24,6 +28,7 @@ pub mod post;
 pub mod view;
 pub mod xray;
 
+use engine::gpu::RenderTarget;
 use glam::{Mat4, Vec3};
 use n64::gpu::{Combiner, FrameUniform};
 use n64::rdp::{rgba, Cull, Gfx};
@@ -45,11 +50,20 @@ pub struct Renderer {
     pub models: models::ModelRenderer,
     pub fx: fx::FxRenderer,
     pub overlay: hud::HudOverlay,
+    pub post: post::PostRenderer,
     assets: Option<AssetDir>,
     fonts: Option<Fonts>,
     text: TextState,
-    /// The last frame's 2D layer (kept for `pd_snapshot`).
+    /// The last frame's 2D layer (kept for `pd_snapshot`, and for the N64
+    /// video chain, which composites it itself).
     pub hud_gfx: Gfx,
+    /// The N64 video chain's switches (`n64::gpu::video`): the RDP's 3-point
+    /// texture filter; a texture the world's depth is copied into before the
+    /// gun pass clears it; and whether the 2D layer is drawn into the frame
+    /// (off: the chain lays it on).
+    pub three_point: bool,
+    pub world_depth_copy: Option<wgpu::Texture>,
+    pub hud_in_frame: bool,
 }
 
 /// `lights_set_for_room`'s light from a room's brightness (`dlights.c:303`),
@@ -82,10 +96,14 @@ impl Renderer {
             models: models::ModelRenderer::default(),
             fx: fx::FxRenderer::new(device, queue, color_format, DEPTH_FORMAT),
             overlay: hud::HudOverlay::new(device, color_format),
+            post: post::PostRenderer::new(device, color_format),
             assets: None,
             fonts: None,
             text: TextState::default(),
             hud_gfx: hud::layer(view::VIEW_W as usize, view::VIEW_H as usize),
+            three_point: false,
+            world_depth_copy: None,
+            hud_in_frame: true,
         }
     }
 
@@ -105,9 +123,12 @@ impl Renderer {
         Ok(())
     }
 
-    /// The loaded stage's z range, or PD's title-screen default (100, 10000).
+    /// The loaded stage's z range (`env->near`, `env->far`).
     pub fn z_range(&self) -> (f32, f32) {
-        self.bg.as_ref().map_or((100.0, 10000.0), |b| (b.env.near, b.env.far))
+        // SUBST: every view PD draws has a stage / a test stage (the firing
+        // range) has none, so it takes the arenas' (15, 10000) from
+        // `g_NoFogEnvironments`: a 1 m near plane would clip a thrown grenade.
+        self.bg.as_ref().map_or((15.0, 10000.0), |b| (b.env.near, b.env.far))
     }
 
     /// The clear colour: the stage's sky, or the old gun tool's grey for a test
@@ -119,7 +140,7 @@ impl Renderer {
     /// The BG alone into `color` + `depth` (same size), cleared first.
     pub fn render(&self, queue: &wgpu::Queue, encoder: &mut wgpu::CommandEncoder, color: &wgpu::TextureView, depth: &wgpu::TextureView, view: &View) {
         if let Some(bg) = &self.bg {
-            bg.prepare(queue, view);
+            bg.prepare(queue, view, self.three_point);
         }
         let mut rp = world_pass(encoder, color, depth, self.sky());
         if let Some(bg) = &self.bg {
@@ -127,70 +148,134 @@ impl Renderer {
         }
     }
 
-    /// Player `pi`'s whole frame into `color` + `depth` (same size).
+    /// Player `pi`'s whole frame into `target` (its colour texture is copied
+    /// for the framebuffer effects, so it needs `COPY_SRC`, and its depth).
     #[allow(clippy::too_many_arguments)]
-    pub fn render_player(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, encoder: &mut wgpu::CommandEncoder, color: &wgpu::TextureView, depth: &wgpu::TextureView, world: &World, pi: usize) {
+    pub fn render_player(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, encoder: &mut wgpu::CommandEncoder, target: &RenderTarget, world: &World, pi: usize) {
         let Some(p) = world.players.get(pi) else { return };
         let Some(assets) = self.assets.clone() else {
             log::warn!("render_player before load_stage/load_assets");
             return;
         };
+        let Some((_, depth)) = &target.depth else {
+            log::warn!("render_player: the target has no depth");
+            return;
+        };
+        let color = &target.view;
         let (znear, zfar) = self.z_range();
         // SUBST: vi_shake moves the displayed picture, 2D layer included / the
         // 3D passes move and the HUD stays put.
         let view = View::for_player(p, znear, zfar).with_shake(world.vi.offset);
         let w2e = view.world_to_eye();
+        let world_proj = view.projection();
         let gun_proj = view.gun_projection();
         let brightness = world.lights.brightness(p.floorroom);
         let gun = &p.gun;
         let shadecol = gun.p.gunshadecol;
         let env = [shadecol[0] as f32 / 255.0, shadecol[1] as f32 / 255.0, shadecol[2] as f32 / 255.0, shadecol[3] as f32 / 255.0];
+        // VISIONMODE_XRAY: the eraser's colours, and bgun_render returns at
+        // once (`bondgun.c:8191`). CAMERAMODE_THIRDPERSON (riding a Slayer
+        // rocket): player_render_hud draws no gun, overlay or HUD (`player.c:4448`).
+        let xray = (p.visionmode == VISIONMODE_XRAY).then_some(&p.eraser);
+        let riding = p.cameramode == CAMERAMODE_THIRDPERSON;
+        let draw_gun = xray.is_none() && !riding;
 
         // The effects.
         let cam = fx::FxCam { pos: p.cam.pos(), look: p.look, fovy: view.fovy, projection: p.cam.projection, world_to_screen: p.cam.world_to_screen, brightness };
-        let mut world_fx = fx::world_fx(world, &cam);
-        if self.bg.is_none() {
+        let mut world_fx = fx::world_fx(world, &cam, xray);
+        if self.bg.is_none() && xray.is_none() {
             // SUBST: a stage's BG is its textured display lists / a test stage
             // (the firing range) has none, so its polygons are drawn flat.
             world_fx.splice(0..0, fx::fixture_geometry(&world.stage.geom));
         }
         let gun_fx = fx::gun_fx(p, cam.pos);
-        self.fx.prepare(device, queue, &assets, &world_fx, &gun_fx, view.projection() * w2e, gun_proj * w2e, env);
+        // nbomb_render_overlay (`player.c:4475`), after the gun.
+        let overlay_fx: Vec<fx::FxBatch> = if riding { Vec::new() } else { fx::nbomb_overlay(&world.props.nbombs, cam.pos, world.frac20).into_iter().collect() };
+        self.fx.prepare(device, queue, &assets, &world_fx, &gun_fx, &overlay_fx, world_proj * w2e, gun_proj * w2e, env);
 
-        // The guns, the hands and the casings (`bgun_render`, `casings_render`).
         let res = &world.res;
-        let mut defs = Vec::new();
+        // The world's objects (`obj_render`, `propobj.c:12690`), in the world pass.
+        // SUBST: PD shades an object by its room's light and `obj->shadecol`
+        // (`colour[3] -= obj_get_brightness`) / we light it as the gun is, from
+        // the player's room, until the stage lighting port (M6) gives objects
+        // their rooms.
+        let obj_lights = gun_lights(brightness, false);
+        let held: Vec<u32> = gun.hands.iter().filter_map(|h| h.rocket).collect();
+        let mut objdraws: Vec<Draw> = Vec::new();
+        for o in &world.props.objs {
+            // A loaded rocket is drawn with the gun (`bgun_render`); a Slayer
+            // rider doesn't see their own rocket (`propobj.c:12715`).
+            if o.flags & OBJFLAG_HELDROCKET != 0 || held.contains(&o.id) || o.flags2 & OBJFLAG2_INVISIBLE != 0 {
+                continue;
+            }
+            if p.visionmode == VISIONMODE_SLAYERROCKET && p.slayerrocket == Some(o.id) {
+                continue;
+            }
+            let mut frame = lit_frame(world_proj, p.look, p.up, obj_lights, env);
+            let mut xlu = false;
+            if let Some(e) = xray {
+                // In x-ray: the flat eraser colour through the fog at full
+                // weight, alpha 0..128 as the env alpha (BONDGUN_OBJ_XLU).
+                let Some(c) = xray::obj_colour(e, o.pos) else { continue };
+                frame.flat = [c[0], c[1], c[2], 1.0];
+                frame.misc[0] = c[3];
+                xlu = true;
+            }
+            let joints = o.init_matrices().iter().map(|m| w2e * *m).collect();
+            objdraws.push((o.def.clone(), Vec::new(), joints, frame, None, xlu));
+        }
+
+        // The guns, the hands, the loaded rockets and the casings (`bgun_render`,
+        // `casings_render`).
+        let mut defs: Vec<Draw> = Vec::new();
+        // bgun_render (`bondgun.c:8305`): a cloaked player's gun goes
+        // see-through, env alpha 65 + 0.745 × the cloak's alpha.
+        let cloak_alpha = p.cloak.alpha();
+        let cloak = (cloak_alpha < 255).then(|| (65.0 + (cloak_alpha as f32 * 0.745_098_05).trunc()) / 255.0);
         for (h, hand) in gun.hands.iter().enumerate() {
-            if !hand.visible {
+            if !hand.visible || !draw_gun {
                 continue;
             }
             let Some(gm) = &hand.gunmodel else { continue };
             let weaponnum = gun.bgun_get_weapon_num(h);
             let lights = gun_lights(brightness, res.gset.has_flag(hand.weaponnum, WEAPONFLAG_BRIGHTER));
-            let colour = env;
+            let mut colour = env;
             let mut envcol = env;
             if hand.weaponnum == WEAPON_MAULER {
                 let e = rgba(colour_blend(0xff00007f, u32::from_be_bytes(shadecol), (hand.matmot1 * 50.0) as u32));
                 envcol = e;
             }
-            // M5: a cloaked player's gun (MODELRENDERCONTEXT_BONDGUN_OBJ_XLU).
+            let mut frame = lit_frame(gun_proj, p.look, p.up, lights, envcol);
+            if let Some(a) = cloak {
+                // fogcolour = envcolour; envcolour = 65 + alpha; colour = envcolour.
+                frame.misc[0] = a;
+                colour = envcol;
+            }
             let cull = res.gset.has_flag(weaponnum, WEAPONFLAG_DUALFLIP).then_some(if h == HAND_RIGHT { Cull::Back } else { Cull::Front });
-            defs.push((gm.def.clone(), gm.vis.clone(), gm.matrices.clone(), lit_frame(gun_proj, p.look, p.up, lights, envcol), cull));
+            // The launcher's rocket, from the muzzle (`bondgun.c:8321`).
+            if let Some(o) = hand.rocket.and_then(|id| world.props.get(id)) {
+                let inv = o.root_matrix().inverse();
+                let joints = o.init_matrices().iter().map(|m| hand.muzzlemat * inv * *m).collect();
+                defs.push((o.def.clone(), Vec::new(), joints, frame, None, cloak.is_some()));
+            }
+            defs.push((gm.def.clone(), gm.vis.clone(), gm.matrices.clone(), frame, cull, cloak.is_some()));
             if let Some(hm) = &hand.handmodel {
-                defs.push((hm.def.clone(), hm.vis.clone(), gm.matrices.clone(), lit_frame(gun_proj, p.look, p.up, lights, colour), cull));
+                let mut hframe = lit_frame(gun_proj, p.look, p.up, lights, colour);
+                hframe.misc = frame.misc;
+                defs.push((hm.def.clone(), hm.vis.clone(), gm.matrices.clone(), hframe, cull, cloak.is_some()));
             }
         }
         let casing_lights = gun_lights(brightness, false);
-        for c in &world.fx.casings {
+        for c in world.fx.casings.iter().filter(|_| draw_gun) {
             let Ok(def) = res.models.get(pd_sim::fx::casing::CART_MODELS[c.model]) else { continue };
-            defs.push((def, Vec::new(), vec![w2e * c.world_matrix()], lit_frame(gun_proj, p.look, p.up, casing_lights, env), None));
+            defs.push((def, Vec::new(), vec![w2e * c.world_matrix()], lit_frame(gun_proj, p.look, p.up, casing_lights, env), None, false));
         }
-        for (def, ..) in &defs {
+        for (def, ..) in objdraws.iter().chain(&defs) {
             if let Err(e) = self.models.load(device, queue, &mut self.combiner, &assets, def) {
                 log::warn!("model {}: {e}", def.stem);
             }
         }
-        for hand in &gun.hands {
+        for hand in gun.hands.iter().filter(|_| draw_gun) {
             if let Some(gm) = hand.gunmodel.as_ref().filter(|_| hand.visible) {
                 if world.players.len() == 1 {
                     self.models.slide_laser_liquid(queue, &gm.def.stem, world.lv.lvupdate240);
@@ -198,16 +283,18 @@ impl Renderer {
                 self.models.jitter_star(queue, &gm.def.stem);
             }
         }
+        if self.three_point {
+            for d in objdraws.iter_mut().chain(defs.iter_mut()) {
+                d.3.misc[1] = 1.0;
+            }
+        }
         self.models.begin_frame();
-        let instances: Vec<models::Instance> = defs
-            .iter()
-            .map(|(def, vis, joints, frame, cull)| models::Instance { def, vis: (!vis.is_empty()).then_some(vis.as_slice()), joints, frame: *frame, cull: *cull })
-            .collect();
-        let cmds = self.models.prepare(device, queue, &mut self.combiner, &instances);
+        let obj_cmds = self.models.prepare(device, queue, &mut self.combiner, &to_instances(&objdraws));
+        let cmds = self.models.prepare(device, queue, &mut self.combiner, &to_instances(&defs));
 
         // The 2D layer.
         self.hud_gfx = hud::layer(p.cam.c_screenwidth as usize, p.cam.c_screenheight as usize);
-        if let Some(fonts) = &self.fonts {
+        if let Some(fonts) = self.fonts.as_ref().filter(|_| !riding) {
             let hin = hud::HudIn {
                 gun,
                 gset: &res.gset,
@@ -216,7 +303,7 @@ impl Renderer {
                 isdead: false,
                 sighton: p.insightaimmode,
                 hasprop: world.lookingatprop.get(pi).copied().flatten().is_some(),
-                speedpilltime: 0,
+                speedpilltime: world.speedpill.time,
                 options: world.setup.players.get(pi).map_or(pd_core::mp::MatchPlayer::DEFAULT_OPTIONS, |m| m.options),
                 zoominfovy: p.zoominfovy,
             };
@@ -225,15 +312,23 @@ impl Renderer {
         }
         self.overlay.prepare(device, queue, &self.hud_gfx);
 
-        if let Some(bg) = &self.bg {
-            bg.prepare(queue, &view);
+        if let Some(bg) = self.bg.as_ref().filter(|_| xray.is_none()) {
+            bg.prepare(queue, &view, self.three_point);
         }
         {
-            let mut rp = world_pass(encoder, color, depth, self.sky());
-            if let Some(bg) = &self.bg {
+            // sky_render: the fill colour, black in x-ray (`sky.c:267`).
+            let sky = if xray.is_some() { [0.0; 3] } else { self.sky() };
+            let mut rp = world_pass(encoder, color, depth, sky);
+            if let Some(bg) = self.bg.as_ref().filter(|_| xray.is_none()) {
                 bg.draw(&mut rp, &self.combiner);
             }
-            self.fx.draw(&mut rp, fx::FxPass::World);
+            self.fx.draw_some(&mut rp, fx::FxPass::World, |k| k.before_objects());
+            self.models.draw(&mut rp, &self.combiner, &obj_cmds);
+            self.fx.draw_some(&mut rp, fx::FxPass::World, |k| !k.before_objects());
+        }
+        if let Some(t) = &self.world_depth_copy {
+            let (dt, _) = target.depth.as_ref().unwrap();
+            encoder.copy_texture_to_texture(dt.as_image_copy(), t.as_image_copy(), wgpu::Extent3d { width: target.width, height: target.height, depth_or_array_layers: 1 });
         }
         {
             // bgun_render: the z-buffer cleared, the gun's projection.
@@ -250,8 +345,9 @@ impl Renderer {
             });
             self.fx.draw(&mut rp, fx::FxPass::Gun);
             self.models.draw(&mut rp, &self.combiner, &cmds);
+            self.fx.draw(&mut rp, fx::FxPass::Overlay);
         }
-        {
+        if self.hud_in_frame {
             let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("pd-hud"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: color, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store } })],
@@ -261,7 +357,18 @@ impl Renderer {
             });
             self.overlay.draw(&mut rp);
         }
+        // lv_render's framebuffer effects, over the HUD (`lv.c:1439`).
+        self.post.draw(device, queue, encoder, target, &p.viewfx, p.cam.c_screenheight, p.cam.c_screenwidth, world.frac20);
     }
+}
+
+/// A model to draw: (model, visibility, joints (eye space), frame, cull, xlu).
+type Draw = (std::sync::Arc<pd_core::model::ModelDef>, Vec<bool>, Vec<Mat4>, FrameUniform, Option<Cull>, bool);
+
+fn to_instances(d: &[Draw]) -> Vec<models::Instance<'_>> {
+    d.iter()
+        .map(|(def, vis, joints, frame, cull, xlu)| models::Instance { def, vis: (!vis.is_empty()).then_some(vis.as_slice()), joints, frame: *frame, cull: *cull, xlu: *xlu })
+        .collect()
 }
 
 fn world_pass<'a>(encoder: &'a mut wgpu::CommandEncoder, color: &'a wgpu::TextureView, depth: &'a wgpu::TextureView, sky: [f64; 3]) -> wgpu::RenderPass<'a> {
@@ -317,7 +424,7 @@ mod tests {
         let (tw, th) = (320, 220);
         let t = engine::gpu::RenderTarget::on_device(&gpu.device, tw, th, format, true);
         let mut enc = gpu.device.create_command_encoder(&Default::default());
-        r.render_player(&gpu.device, &gpu.queue, &mut enc, &t.view, &t.depth.as_ref().unwrap().1, &w, 0);
+        r.render_player(&gpu.device, &gpu.queue, &mut enc, &t, &w, 0);
         gpu.queue.submit(Some(enc.finish()));
         let px = t.read_rgba8(&gpu.device, &gpu.queue);
         let at = |x: u32, y: u32| &px[((y * tw + x) * 4) as usize..][..3];

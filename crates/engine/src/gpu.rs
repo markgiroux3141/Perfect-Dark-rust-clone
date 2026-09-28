@@ -206,7 +206,8 @@ impl RenderTarget {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: Self::DEPTH_FORMAT,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                // Sampled and copied by post passes that read depth.
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
                 view_formats: &[],
             });
             let v = t.create_view(&wgpu::TextureViewDescriptor::default());

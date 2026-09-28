@@ -41,7 +41,7 @@ pub struct HudIn<'a> {
     pub sighton: bool,
     /// `lookingatprop.prop != NULL`.
     pub hasprop: bool,
-    /// `g_Vars.speedpilltime`. M5: the Combat Boost.
+    /// `g_Vars.speedpilltime`: the Combat Boost's time left.
     pub speedpilltime: i32,
     /// The player's `OPTION_*` (`g_PlayerConfigsArray[].options`).
     pub options: u16,

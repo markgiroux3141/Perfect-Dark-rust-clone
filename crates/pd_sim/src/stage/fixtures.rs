@@ -1,5 +1,6 @@
 //! Test stages built from boxes, as PD polygons, so they run through the same
-//! collision code as a real arena:
+//! collision code as a real arena. Each is one room, room 1 (PD's rooms start
+//! at 1; `nbomb_inflict_damage` and friends skip room 0):
 //!
 //! * [`arena`]: the simulant spike's room, 16 m square with a 3 m ceiling and
 //!   four 1.5 m pillars in a pinwheel (no two on one line through the centre, so
@@ -31,7 +32,7 @@ fn sides(min: Vec2, max: Vec2, y0: f32, y1: f32, out: &mut Vec<GeomPoly>) {
     for i in 0..4 {
         let (p, q) = (c[i], c[(i + 1) % 4]);
         let v = vec![Vec3::new(p.x, y0, p.y), Vec3::new(q.x, y0, q.y), Vec3::new(q.x, y1, q.y), Vec3::new(p.x, y1, p.y)];
-        out.push(GeomPoly::new(v, false, true, true, true, Some(0)));
+        out.push(GeomPoly::new(v, false, true, true, true, Some(1)));
     }
 }
 
@@ -43,15 +44,15 @@ fn quad_y(min: Vec2, max: Vec2, y: f32) -> Vec<Vec3> {
 pub fn arena() -> LevelGeom {
     let (min, max) = (Vec2::splat(-ARENA_HALF), Vec2::splat(ARENA_HALF));
     let mut polys = vec![
-        GeomPoly::new(quad_y(min, max, 0.0), true, false, true, true, Some(0)),
+        GeomPoly::new(quad_y(min, max, 0.0), true, false, true, true, Some(1)),
         // The ceiling blocks sight and shots but is neither floor nor wall.
-        GeomPoly::new(quad_y(min, max, ARENA_HEIGHT), false, false, true, true, Some(0)),
+        GeomPoly::new(quad_y(min, max, ARENA_HEIGHT), false, false, true, true, Some(1)),
     ];
     sides(min, max, 0.0, ARENA_HEIGHT, &mut polys);
     for c in ARENA_PILLARS {
         sides(c - Vec2::splat(ARENA_PILLAR_HALF), c + Vec2::splat(ARENA_PILLAR_HALF), 0.0, ARENA_HEIGHT, &mut polys);
     }
-    LevelGeom { polys, rooms: vec![0] }
+    LevelGeom { polys, rooms: vec![1] }
 }
 
 /// The gun spike's firing range: its hall, crates and pillars.
@@ -67,20 +68,20 @@ pub fn firing_range() -> LevelGeom {
         solids.push((Vec3::new(x - 60.0, 0.0, z - 60.0), Vec3::new(x + 60.0, 400.0, z + 60.0)));
     }
     let xz = |v: Vec3| Vec2::new(v.x, v.z);
-    let mut polys = vec![GeomPoly::new(quad_y(xz(lo), xz(hi), lo.y), true, false, true, true, Some(0))];
+    let mut polys = vec![GeomPoly::new(quad_y(xz(lo), xz(hi), lo.y), true, false, true, true, Some(1))];
     sides(xz(lo), xz(hi), lo.y, hi.y, &mut polys);
     for (mn, mx) in solids {
         sides(xz(mn), xz(mx), mn.y, mx.y, &mut polys);
-        polys.push(GeomPoly::new(quad_y(xz(mn), xz(mx), mx.y), true, false, true, true, Some(0)));
+        polys.push(GeomPoly::new(quad_y(xz(mn), xz(mx), mx.y), true, false, true, true, Some(1)));
     }
-    LevelGeom { polys, rooms: vec![0] }
+    LevelGeom { polys, rooms: vec![1] }
 }
 
 /// A solid box added to a test stage: four walls and a top you can stand on.
 pub fn add_box(geom: &mut LevelGeom, min: Vec3, max: Vec3) {
     let xz = |v: Vec3| Vec2::new(v.x, v.z);
     sides(xz(min), xz(max), min.y, max.y, &mut geom.polys);
-    geom.polys.push(GeomPoly::new(quad_y(xz(min), xz(max), max.y), true, false, true, true, Some(0)));
+    geom.polys.push(GeomPoly::new(quad_y(xz(min), xz(max), max.y), true, false, true, true, Some(1)));
 }
 
 /// Where a player starts in the firing range: the south end, looking north (+z).

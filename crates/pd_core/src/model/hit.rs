@@ -117,6 +117,69 @@ impl Model {
         }
     }
 
+    /// `model_update_relations_quick`'s distance half (`model.c:1403`) for a
+    /// model posed in eye space: each reachable distance node shows by its
+    /// matrix's depth times `lod_scale`.
+    pub fn update_distance_relations(&mut self, lod_scale: f32) {
+        for i in 0..self.def.nodes.len() {
+            if let NodeKind::Distance { near, far } = self.def.nodes[i].kind {
+                if !Self::reaches(&self.def, &self.vis, i) {
+                    continue;
+                }
+                let d = self.def.find_node_mtx_index(i, 0).map_or(0.0, |m| -self.matrices[m].w_axis.z * lod_scale);
+                self.vis[i] = (d > near * self.scale || near == 0.0) && d <= far * self.scale;
+            }
+        }
+    }
+
+    /// `obj_find_hitthing_by_gfx_tris` (`propobj.c:14063`): the ray `pos + t·dir`
+    /// against the triangles drawn under `node` (its subtree's display lists,
+    /// each vertex by its own matrix), the nearest hit as `(t, point, normal)`.
+    /// `// SUBST:` PD stops at the first display list with a hit
+    /// (`bg_find_hitthing_by_gfx_tris`) / the nearest triangle of all of them.
+    pub fn hit_tris(&self, node: usize, pos: Vec3, dir: Vec3) -> Option<(f32, Vec3, Vec3)> {
+        let def = &self.def;
+        let end = def.nodes.get(node)?.subtree_end;
+        let mut best: Option<(f32, Vec3, Vec3)> = None;
+        for n in node..end {
+            if !self.node_visible(n) {
+                continue;
+            }
+            for &bi in &def.nodes[n].batches {
+                let b = &def.batches[bi];
+                let at = |k: u16| {
+                    let v = &b.verts[k as usize];
+                    self.matrices.get(v.mtx as usize).map_or(v.pos, |m| m.transform_point3(v.pos))
+                };
+                for t in b.idx.chunks_exact(3) {
+                    let (p0, p1, p2) = (at(t[0]), at(t[1]), at(t[2]));
+                    let (e1, e2) = (p1 - p0, p2 - p0);
+                    let h = dir.cross(e2);
+                    let det = e1.dot(h);
+                    if det.abs() < 1e-12 {
+                        continue;
+                    }
+                    let inv = 1.0 / det;
+                    let s = pos - p0;
+                    let u = s.dot(h) * inv;
+                    if !(0.0..=1.0).contains(&u) {
+                        continue;
+                    }
+                    let q = s.cross(e1);
+                    let v = dir.dot(q) * inv;
+                    if v < 0.0 || u + v > 1.0 {
+                        continue;
+                    }
+                    let tt = e2.dot(q) * inv;
+                    if tt >= 0.0 && best.is_none_or(|(bt, _, _)| tt < bt) {
+                        best = Some((tt, pos + dir * tt, e1.cross(e2)));
+                    }
+                }
+            }
+        }
+        best
+    }
+
     fn hit_walk(&self, head: bool, from: usize, pos: Vec3, dir: Vec3, pad: HitPad) -> Option<(i32, HitNode)> {
         let (def, vis) = if head {
             (self.head.as_deref()?, &self.head_vis)

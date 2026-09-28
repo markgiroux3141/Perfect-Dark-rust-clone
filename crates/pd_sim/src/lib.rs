@@ -23,4 +23,6 @@ pub mod player;
 pub mod props;
 pub mod propsnd;
 pub mod stage;
+#[cfg(test)]
+mod testutil;
 pub mod world;

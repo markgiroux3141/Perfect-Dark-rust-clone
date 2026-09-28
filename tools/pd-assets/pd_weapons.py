@@ -678,6 +678,9 @@ def build(include_unarmed: bool = False) -> dict:
         # Fall back to the largest array in the file — the model table is by far it.
         model_table = max(gen_init.values(), key=lambda v: len(v["body"]))
     model_files: list[str | None] = []
+    # `struct modelstate` (types.h:4525): { modeldef, fileid, scale }; obj_init
+    # applies scale / 4096 (propobj.c:2098).
+    model_scales: list[int | None] = []
     for row in split_top_level(model_table["body"]):
         if not row.strip():
             continue
@@ -687,12 +690,16 @@ def build(include_unarmed: bool = False) -> dict:
         else:
             parts = [inner]
         sym = None
-        for p in parts:
+        scale = None
+        for i, p in enumerate(parts):
             p = p.strip().lstrip("&")
             if p.startswith("FILE_"):
                 sym = p
+                if i + 1 < len(parts):
+                    scale = parse_int(parts[i + 1])
                 break
         model_files.append(sym)
+        model_scales.append(scale)
 
     # Reverse map: MODEL_* name -> index, so a `model` field resolves to a file.
     model_consts = consts.by_prefix("MODEL_")
@@ -733,6 +740,13 @@ def build(include_unarmed: bool = False) -> dict:
             "source": f"invitems.c:{entry['line']}",
             **vals,
         }
+        # A thrown or fired function's world model: projectilemodelnum through
+        # g_ModelStates to its props/*.bin (the stem under models/) and scale.
+        pm = vals.get("projectilemodelnum")
+        if isinstance(pm, int) and 0 <= pm < len(model_files) and model_files[pm]:
+            pm_bin = file_symbol_to_path(model_files[pm])
+            out["projectile_model"] = os.path.splitext(os.path.basename(pm_bin))[0] if pm_bin else None
+            out["projectile_model_scale"] = model_scales[pm]
         out["name_text"] = gun_string(strings, vals.get("name"))
         # Decode the FUNCFLAG_* bits that are set, so the behaviour flags are
         # readable rather than a hex blob.

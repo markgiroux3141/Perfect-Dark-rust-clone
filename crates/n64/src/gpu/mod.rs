@@ -16,8 +16,9 @@
 //! Rendering targets are not sRGB: the combiner writes raw display-space values
 //! and the blender mixes them, as the RDP does.
 //!
-//! Later (M5): the VI + CRT chain (RGBA5551 + Bayer store, VI dither filter,
-//! divot, composite/S-Video encode) from the old repo's `pd_guns/n64video.rs`.
+//! [`video`]: the VI + CRT chain (RGBA5551 + Bayer store, VI dither, AA and
+//! divot filters, RGB/S-Video/composite signal, the tube, a TV set around it)
+//! from the old repo's `pd_guns/n64video.rs`.
 //!
 //! Source: the old repo's `pd_guns/render.rs` (`PdRenderer`'s gun pipeline) and
 //! `pdgun.wgsl`.
@@ -28,6 +29,8 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
 use crate::rdp::{self, AlphaTest, Cull, DrawState, MipTex};
+
+pub mod video;
 
 /// The combiner's WGSL (validated by the tests).
 pub const COMBINER_WGSL: &str = include_str!("combiner.wgsl");

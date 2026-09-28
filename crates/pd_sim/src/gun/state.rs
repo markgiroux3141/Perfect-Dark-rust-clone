@@ -150,7 +150,7 @@ impl GunCtx<'_> {
     }
 
     /// `bgun_tick_inc_attacking_throw` (`:2110`). The projectile itself is made
-    /// by `hand_tick_attack` → `bgun_create_thrown_projectile` (M5).
+    /// by `hand_tick_attack` → `bgun_create_thrown_projectile`.
     fn bgun_tick_inc_attacking_throw(&mut self, h: usize) -> bool {
         let Some(func) = self.func_of(h) else { return true };
         if self.b.hands[h].stateminor == HANDSTATEMINOR_ATTACK_THROW_0 {
@@ -756,7 +756,7 @@ impl GunCtx<'_> {
     // ─── switching (5228-5803) ───────────────────────────────────────────────
 
     /// `bgun_free_weapon` (`:5228`): loaded rounds go back into the reserve.
-    fn bgun_free_weapon(&mut self, h: usize) {
+    pub(crate) fn bgun_free_weapon(&mut self, h: usize) {
         if self.b.hands[h].inuse {
             for i in 0..2 {
                 if self.b.ctrl.ammotypes[i] >= 0 {

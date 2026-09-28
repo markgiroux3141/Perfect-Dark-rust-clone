@@ -26,4 +26,7 @@ pub enum Event {
     HandleSound { handle: u32, sound: u16, pitch: f32, volume: f32, pan: f32 },
     /// Stop the sound on `handle`, if it still plays.
     StopSound { handle: u32 },
+    /// `sndp_post_event(handle, AL_SNDP_PITCH_EVT / AL_SNDP_VOL_EVT)`: retune a
+    /// sound on `handle` that still plays (`volume` linear, 1 is its own).
+    SoundParams { handle: u32, pitch: f32, volume: f32 },
 }

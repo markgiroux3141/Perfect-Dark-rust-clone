@@ -173,6 +173,35 @@ pub fn scale_col2(m: &mut Mat4, s: f32) {
     m.z_axis *= s;
 }
 
+/// `mtx00015e80`: column 1 xyz.
+pub fn scale_col1_xyz(m: &mut Mat4, s: f32) {
+    m.y_axis.x *= s;
+    m.y_axis.y *= s;
+    m.y_axis.z *= s;
+}
+
+/// `mtx4_get_rotation` (`mtx.c:223`): the euler angles `load_rotation` would
+/// need to build `m`'s rotation.
+pub fn mtx4_get_rotation(m: &Mat4) -> Vec3 {
+    const EPSILON: f32 = 0.000_001_907_348_6;
+    let e = |c: usize, r: usize| m.col(c)[r];
+    let (sin_x_cos_y, cos_x_cos_y) = (e(1, 2), e(2, 2));
+    let norm = (sin_x_cos_y * sin_x_cos_y + cos_x_cos_y * cos_x_cos_y).sqrt();
+    if EPSILON < norm {
+        Vec3::new(atan2f(e(1, 2), e(2, 2)), atan2f(-e(0, 2), norm), atan2f(e(0, 1), e(0, 0)))
+    } else {
+        Vec3::new(0.0, atan2f(-e(0, 2), norm), atan2f(-e(1, 0), e(1, 1)))
+    }
+}
+
+/// `mtx4_load_rotation_from` (`mtx.c:514`): the 3×3's transpose (a rotation's
+/// inverse), no translation.
+pub fn load_rotation_from(m: &Mat4) -> Mat4 {
+    let mut r = Mat4::from_mat3(glam::Mat3::from_mat4(*m).transpose());
+    r.w_axis = Vec4::W;
+    r
+}
+
 /// `mtx00015edc`: column 2 xyz.
 pub fn scale_col2_xyz(m: &mut Mat4, s: f32) {
     m.z_axis.x *= s;
@@ -245,6 +274,28 @@ pub fn view_matrix(pos: Vec3, look: Vec3, up: Vec3) -> Mat4 {
         Vec4::new(a.z, u.z, l.z, 0.0),
         Vec4::new(-pos.dot(a), -pos.dot(u), -pos.dot(l), 1.0),
     )
+}
+
+/// `guRotateF` (`ultra/gu/rotate.c`): `a` degrees about the axis `(x, y, z)`.
+pub fn gu_rotate_f(a: f32, x: f32, y: f32, z: f32) -> Mat4 {
+    let len = (x * x + y * y + z * z).sqrt();
+    let (x, y, z) = if len > 0.0 { (x / len, y / len, z / len) } else { (x, y, z) };
+    let a = a * (3.141_592_6 / 180.0);
+    let (sine, cosine) = a.sin_cos();
+    let t = 1.0 - cosine;
+    let (ab, bc, ca) = (x * y * t, y * z * t, z * x * t);
+    let mut m = Mat4::IDENTITY;
+    let (xx, yy, zz) = (x * x, y * y, z * z);
+    m.x_axis.x = xx + cosine * (1.0 - xx);
+    m.z_axis.y = bc - x * sine;
+    m.y_axis.z = bc + x * sine;
+    m.y_axis.y = yy + cosine * (1.0 - yy);
+    m.z_axis.x = ca + y * sine;
+    m.x_axis.z = ca - y * sine;
+    m.z_axis.z = zz + cosine * (1.0 - zz);
+    m.y_axis.x = ab - z * sine;
+    m.x_axis.y = ab + z * sine;
+    m
 }
 
 /// `guAlignF` (`ultra/gu/align.c`), `angle` in degrees, as `mtx4_align` passes
@@ -458,6 +509,16 @@ pub fn quaternion0f097518(q: Quatf, t: f32) -> Quatf {
     } else {
         [q[0] * t + (1.0 - t) * sp30, q[1] * t, q[2] * t, q[3] * t]
     }
+}
+
+/// `quaternion_mult_quaternion` (`quaternion.c:234`): `a · b`.
+pub fn quaternion_mult_quaternion(a: Quatf, b: Quatf) -> Quatf {
+    [
+        a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+        a[0] * b[1] + b[0] * a[1] + a[2] * b[3] - a[3] * b[2],
+        a[0] * b[2] + b[0] * a[2] + a[3] * b[1] - a[1] * b[3],
+        a[0] * b[3] + b[0] * a[3] + a[1] * b[2] - a[2] * b[1],
+    ]
 }
 
 /// `quaternion0f0976c0` (`quaternion.c:224`): flip `q2` into `q1`'s hemisphere.

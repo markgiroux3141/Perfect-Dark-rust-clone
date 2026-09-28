@@ -36,14 +36,14 @@ pub fn chr_adjust_pos_for_spawn(level: &TileLevel, chrradius: f32, pos: Vec3, an
             -200.0
         }
     };
-    if level.cd_test_volume_simple(pos, chrradius, ymax, ymin_at(pos), cyls) != CdResult::Collision {
+    if level.cd_test_volume_simple(pos, chrradius, true, ymax, ymin_at(pos), cyls) != CdResult::Collision {
         return Some(pos);
     }
     let mut curangle = angle;
     for _ in 0..8 {
         let testpos = Vec3::new(pos.x + curangle.sin() * 60.0, pos.y, pos.z + curangle.cos() * 60.0);
         // `cd_test_los_oobok_getfinalroom_autoflags(..., CDTYPE_BG)`: the BG only.
-        if level.los_autoflags(pos, testpos) && level.cd_test_volume_simple(testpos, chrradius, ymax, ymin_at(testpos), cyls) != CdResult::Collision {
+        if level.los_autoflags(pos, testpos) && level.cd_test_volume_simple(testpos, chrradius, true, ymax, ymin_at(testpos), cyls) != CdResult::Collision {
             return Some(testpos);
         }
         curangle += baddtor(45.0);
@@ -52,6 +52,21 @@ pub fn chr_adjust_pos_for_spawn(level: &TileLevel, chrradius: f32, pos: Vec3, an
         }
     }
     None
+}
+
+/// `chr_calculate_push_contact_pos` (`chraction.c:1578`): where the line from
+/// `pushfrompos` along `dir` meets the edge `edge1 → edge2`, in the XZ plane (y
+/// follows `dir`).
+pub fn chr_calculate_push_contact_pos(edge1: Vec3, edge2: Vec3, pushfrompos: Vec3, dir: Vec3) -> Vec3 {
+    let value = dir.z * (edge2.x - edge1.x) - (edge2.z - edge1.z) * dir.x;
+    if value != 0.0 {
+        let tmp = ((edge2.z - edge1.z) * (pushfrompos.x - edge1.x) + (edge1.z - pushfrompos.z) * (edge2.x - edge1.x)) / value;
+        dir * tmp + pushfrompos
+    } else if dir.x == 0.0 && dir.z == 0.0 {
+        pushfrompos
+    } else {
+        edge1
+    }
 }
 
 /// `g_FootstepSounds` (`footstep.c:14`): per `FLOORTYPE_*`, walking (0, 1, 4, 5)
@@ -104,7 +119,7 @@ mod tests {
         let near = Vec3::new(c.x - fixtures::ARENA_PILLAR_HALF - 20.0, 60.0, c.y);
         let got = chr_adjust_pos_for_spawn(&l, 30.0, near, 0.0, &[]).unwrap();
         assert!((got.distance(near) - 60.0).abs() < 1e-3, "{got}");
-        assert_eq!(l.cd_test_volume_simple(got, 30.0, 200.0, -60.0, &[]), CdResult::NoCollision);
+        assert_eq!(l.cd_test_volume_simple(got, 30.0, true, 200.0, -60.0, &[]), CdResult::NoCollision);
     }
 
     #[test]

@@ -129,6 +129,17 @@ impl Default for MatchSetup {
 }
 
 impl MatchSetup {
+    /// `lv_get_slow_motion_type` (`lv.c:1945`) in a match: the option's.
+    pub fn slowmotion(&self) -> crate::lv::SlowMotion {
+        if self.options & MPOPTION_SLOWMOTION_ON != 0 {
+            crate::lv::SlowMotion::On
+        } else if self.options & MPOPTION_SLOWMOTION_SMART != 0 {
+            crate::lv::SlowMotion::Smart
+        } else {
+            crate::lv::SlowMotion::Off
+        }
+    }
+
     /// The time limit in minutes, or `None` for no limit.
     pub fn time_limit_minutes(&self) -> Option<u32> {
         (self.timelimit < 60).then_some(self.timelimit as u32 + 1)

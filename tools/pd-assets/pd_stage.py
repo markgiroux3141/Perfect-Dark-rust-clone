@@ -30,7 +30,8 @@ group, neighbours}` and `waygroups[]` `{neighbours}`, neighbours as PD encodes
 them (`id | WPSEGFLAG_OUTWARDSONLY 0x4000 | WPSEGFLAG_INWARDSONLY 0x8000`,
 `padhalllv.c:44`); `cover[]` `{pos, look, special}`.
 
-**setup.json** (`pd-setup/1`): `stage` (`STAGE_*` name and number), `intro[]`
+**setup.json** (`pd-setup/1`): `stage` (`STAGE_*` name and number, and `table`,
+its `g_Stages` row by `struct stagetableentry`'s field names), `intro[]`
 and `props[]`, one object per macro in the setup file, `{type, <param>: value}`
 with the parameter names of the macro's `#define` (`include/intro.h`,
 `include/props.h`). Pads are pad numbers; other arguments are evaluated where
@@ -234,6 +235,40 @@ def calls(body: str) -> list[tuple[str, list[str]]]:
     return outl
 
 
+#: `struct stagetableentry` (types.h:3075), the fields of a `g_Stages` row.
+STAGETABLE_FIELDS = [
+    "id", "light_type", "light_alpha", "light_width", "light_height", "unk06",
+    "bgfileid", "tilefileid", "padsfileid", "setupfileid", "mpsetupfileid",
+    "unk14", "unk18", "unk1c", "unk20", "unk22", "unk23", "unk24", "unk28",
+    "unk2c", "eraserpropdist", "unk30", "unk34",
+]
+
+
+def stage_row(stage_name: str) -> dict:
+    """The stage's `g_Stages` row (`stagetable.c`), numbers evaluated, file and
+    texture names kept as their symbols."""
+    path = src("game", "stagetable.c")
+    text = gen.read(path)
+    m = re.search(rf"/\*0x[0-9a-f]+\*/\s*({stage_name}\s*,[^\n]*)", text)
+    if not m:
+        raise SystemExit(f"{decomp_rel(path)}: no g_Stages row for {stage_name}")
+    args = [a.strip() for a in m.group(1).rstrip().rstrip(",").split(",")]
+    if len(args) != len(STAGETABLE_FIELDS):
+        raise SystemExit(f"{decomp_rel(path)}: {stage_name}'s row has {len(args)} fields")
+    c = gen.Consts()
+    c.load_header(src("include", "constants.h"))
+    row = {}
+    for k, a in zip(STAGETABLE_FIELDS, args):
+        try:
+            row[k] = int(a, 0)
+        except ValueError:
+            try:
+                row[k] = float(a.rstrip("f"))
+            except ValueError:
+                row[k] = a
+    return row
+
+
 def export_setup(stem: str, stage_name: str) -> dict:
     path = src("setups", f"mp_setup{stem}.c")
     text = gen.read(path)
@@ -272,7 +307,7 @@ def export_setup(stem: str, stage_name: str) -> dict:
     props = section("props", "endprops")
     write_json(out("stages", stem, "setup.json"), {
         "format": "pd-setup/1", "source": decomp_rel(path), "exporter": EXPORTER,
-        "stage": {"name": stage_name, "num": c.eval(stage_name), "code": stem},
+        "stage": {"name": stage_name, "num": c.eval(stage_name), "code": stem, "table": stage_row(stage_name)},
         "intro": intro, "props": props,
     })
     return {"spawns": sum(1 for e in intro if e["type"] == "spawn"), "props": len(props)}

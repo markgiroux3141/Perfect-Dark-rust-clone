@@ -100,10 +100,15 @@ pub struct ShootDef {
     pub turretdecel: f32,
 }
 
-/// The projectile half of `struct funcdef_throw` / `funcdef_shootprojectile` (M5).
+/// The projectile half of `struct funcdef_throw` / `funcdef_shootprojectile`.
 #[derive(Clone, Debug, Default)]
 pub struct ProjDef {
     pub projectilemodelnum: i32,
+    /// The model file `projectilemodelnum` names through `g_ModelStates`
+    /// (`modeldata/general.c:404`), by stem.
+    pub model: Option<String>,
+    /// `g_ModelStates[projectilemodelnum].scale / 4096` (`obj_init`, `propobj.c:2098`).
+    pub modelscale: f32,
     pub scale: f32,
     pub speed: f32,
     pub speeddecel: f32,
@@ -374,6 +379,8 @@ impl Gset {
                     specialfunc: handattacktype(f.get("specialfunc")),
                     proj: f.get("projectilemodelnum").and_then(Value::as_i64).map(|m| ProjDef {
                         projectilemodelnum: m as i32,
+                        model: string(f, "projectile_model"),
+                        modelscale: int(f, "projectile_model_scale") as f32 * (1.0 / 4096.0),
                         scale: if f.get("scale").is_some() { num(f, "scale") } else { 1.0 },
                         speed: num(f, "speed"),
                         speeddecel: num(f, "speeddecel"),

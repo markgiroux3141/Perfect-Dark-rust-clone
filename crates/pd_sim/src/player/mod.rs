@@ -29,7 +29,10 @@ mod bondhead;
 mod bondmove;
 mod bondwalk;
 pub mod camera;
+pub mod cloak;
+pub mod slayer;
 mod spawn;
+pub mod vision;
 #[cfg(test)]
 mod tests;
 
@@ -281,6 +284,26 @@ pub struct Player {
     /// `camera.c`'s state.
     pub cam: Camera,
 
+    /// `visionmode`: `VISIONMODE_*`.
+    pub visionmode: i32,
+    /// `cameramode`: `CAMERAMODE_*`; third person while riding a Slayer rocket,
+    /// when `player_render_hud` leaves the gun and the HUD out.
+    pub cameramode: i32,
+    /// `slayerrocket`: the Slayer rocket the camera rides, by object id.
+    pub slayerrocket: Option<u32>,
+    /// `badrockettime`: ticks the ridden rocket has been out of bounds.
+    pub badrockettime: i32,
+    /// Z held last frame, for the rocket's "pressed this frame".
+    pub slayer_prevfire: bool,
+    /// `devicesactive`: `DEVICE_*` (the RC-P120's cloak here).
+    pub devicesactive: u32,
+    /// The player chr's cloak (`CHRHFLAG_CLOAKED`, `cloakfadefrac`, ...).
+    pub cloak: cloak::ChrCloak,
+    /// The x-ray eraser (`eraserpos`, `erasertime`, the colour shifts).
+    pub eraser: vision::Eraser,
+    /// This frame's framebuffer effects (`lv_render`'s `bview_*` calls).
+    pub viewfx: vision::ViewFx,
+
     bank: Arc<AnimBank>,
     /// `PLAYERCOUNT()`.
     playercount: usize,
@@ -397,6 +420,15 @@ impl Player {
             aspect: SCREEN_W / SCREEN_H,
             gun,
             cam: Camera::default(),
+            visionmode: VISIONMODE_NORMAL,
+            cameramode: CAMERAMODE_DEFAULT,
+            slayerrocket: None,
+            badrockettime: 0,
+            slayer_prevfire: false,
+            devicesactive: 0,
+            cloak: cloak::ChrCloak::default(),
+            eraser: vision::Eraser::default(),
+            viewfx: vision::ViewFx::default(),
             bank,
             playercount,
         };

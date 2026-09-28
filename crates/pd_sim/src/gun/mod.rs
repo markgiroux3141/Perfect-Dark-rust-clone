@@ -20,6 +20,7 @@
 //! Replaces `pd_spike/weapons.rs` (8 hand-copied guns).
 
 mod bgun;
+pub mod boost;
 pub mod gset;
 pub mod hud;
 mod pose;
@@ -27,6 +28,7 @@ pub mod shot;
 mod state;
 #[cfg(test)]
 mod tests;
+pub mod throw;
 
 use glam::{Mat4, Vec3};
 use pd_core::anim::{Anim, AnimBank};
@@ -78,11 +80,11 @@ pub enum GunEvent {
     Casing { hand: usize, mtx: Mat4, casing: i32 },
     /// `smoke_create_for_hand`.
     Smoke { hand: usize, pos: Vec3, ty: usize },
-    /// `bgun_free_held_rocket` (`:4552`). M5: the launcher's rocket.
+    /// `bgun_free_held_rocket` (`:4552`): the launcher's rocket goes.
     FreeHeldRocket { hand: usize },
     /// `chr_uncloak_temporarily` for a thrown or fired projectile (`:7273`).
     UncloakTemporarily,
-    /// `bgun_update_rocket_launcher` (`:6997`). M5: the world owns the rocket.
+    /// `bgun_update_rocket_launcher` (`:6997`): the world owns the rocket.
     UpdateRocketLauncher { hand: usize },
 }
 
@@ -240,8 +242,15 @@ pub struct Hand {
     pub flash_toggles: Vec<usize>,
     /// The left hand of a `WEAPONFLAG_DUALFLIP` weapon is drawn mirrored.
     pub dualflip: bool,
-    /// `hand->rocket`: the rocket sitting in the launcher (M5).
+    /// `hand->rocket`: the rocket sitting in the launcher, by object id.
     pub rocket: Option<u32>,
+    /// `hand->firedrocket`: the rocket has left, the object is a projectile now.
+    pub firedrocket: bool,
+    /// `hasdotinfo` / `dotpos` / `dotrot`: what the last shot or query met
+    /// (`bgun0f0a94d0`, `bondgun.c:9280`), which arcing throws aim at.
+    pub hasdotinfo: bool,
+    pub dotpos: Vec3,
+    pub dotrot: Vec3,
     /// `hand->beam`: this hand's tracer.
     pub beam: Beam,
 }
@@ -365,6 +374,10 @@ impl Hand {
             flash_toggles: Vec::new(),
             dualflip: false,
             rocket: None,
+            firedrocket: false,
+            hasdotinfo: false,
+            dotpos: Vec3::ZERO,
+            dotrot: Vec3::ZERO,
             beam: Beam::default(),
         }
     }

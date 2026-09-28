@@ -74,6 +74,18 @@ GROUPS = [
     ("SMOKETYPE_", "usize", False, "`g_SmokeTypes` rows."),
     ("EXPLOSIONTYPE_", "usize", False, "`g_ExplosionTypes` rows."),
     ("WALLHITTEX_", "usize", True, "`g_WallhitTexes` rows."),
+    # The objects the guns put in the world (propobj.c, projectile.c).
+    ("PROJECTILEFLAG_", "u32", True, "`projectile->flags`."),
+    ("OBJHFLAG_", "u32", True, "`obj->hidden`."),
+    ("OBJFLAG_", "u32", True, "`obj->flags`."),
+    ("OBJFLAG2_", "u32", True, "`obj->flags2`."),
+    ("OBJFLAG3_", "u32", True, "`obj->flags3`."),
+    ("OBJTYPE_", "u8", True, "`obj->type`."),
+    ("CDTYPE_", "u32", True, "What a collision test considers."),
+    ("DEVICE_", "u32", True, "`player->devicesactive`."),
+    ("VISIONMODE_", "i32", False, "`player->visionmode`."),
+    ("CAMERAMODE_", "i32", False, "`player->cameramode`."),
+    ("MISCSFX_", "usize", False, "`g_MiscSfxSounds` rows (`lv.c:175`)."),
 ]
 
 

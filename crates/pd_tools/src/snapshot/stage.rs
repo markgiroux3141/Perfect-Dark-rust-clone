@@ -7,6 +7,10 @@
 //!
 //! The default size is PD's 320 × 220 view at 2×; the aspect is the image's,
 //! so `--size 960x540` frames the view like the old `pd_complex_snapshot`.
+//!
+//! `--farsight`: the player's whole frame instead (`Renderer::render_player`),
+//! the Farsight up and aimed for 80 frames, so the view is its x-ray, as
+//! `<code>_spawn<k>_farsight.png`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -24,6 +28,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let (mut w, mut h) = (640u32, 440u32);
     let mut spawns = 8usize;
     let mut frames = 40usize;
+    let mut farsight = false;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let mut val = |name: &str| it.next().cloned().ok_or(format!("{name} needs a value"));
@@ -36,6 +41,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             }
             "--spawns" => spawns = val("--spawns")?.parse().map_err(|e| format!("--spawns: {e}"))?,
             "--frames" => frames = val("--frames")?.parse().map_err(|e| format!("--frames: {e}"))?,
+            "--farsight" => farsight = true,
             s if !s.starts_with("--") && code.is_none() => code = Some(s.to_owned()),
             s => return Err(format!("stage: unknown argument {s:?}")),
         }
@@ -62,6 +68,24 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
         world.players[0].start_new_life(&level, p.pos, p.look_angle());
         for _ in 0..frames {
             world.step(4, &[PlayerInput::default()]);
+        }
+        if farsight {
+            world.step(4, &[PlayerInput { select: Some((pd_core::ids::WEAPON_FARSIGHT, false)), ..Default::default() }]);
+            for _ in 0..150 {
+                world.step(4, &[PlayerInput::default()]);
+            }
+            // Every frame drawn, so the zoom blur has its last frame.
+            for _ in 0..80 {
+                world.step(4, &[PlayerInput { aim: true, ..Default::default() }]);
+                let mut enc = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("snapshot") });
+                renderer.render_player(&gpu.device, &gpu.queue, &mut enc, &target, &world, 0);
+                gpu.queue.submit(Some(enc.finish()));
+            }
+            let rgba = target.read_rgba8(&gpu.device, &gpu.queue);
+            let path = outdir.join(format!("{code}_spawn{k}_farsight.png"));
+            crate::write_png(&path, w as usize, h as usize, &rgba)?;
+            paths.push(path);
+            continue;
         }
         let mut view = View::for_player(&world.players[0], znear, zfar);
         view.aspect = w as f32 / h as f32;

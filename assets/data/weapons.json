@@ -2581,6 +2581,8 @@
      "activatetime60": 240,
      "recoverytime60": 60,
      "damage": 0,
+     "projectile_model": "chrautogun",
+     "projectile_model_scale": 409,
      "name_text": "Deploy as Sentry Gun",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -2754,6 +2756,8 @@
      "activatetime60": 240,
      "recoverytime60": 60,
      "damage": 0,
+     "projectile_model": "chrdragon",
+     "projectile_model_scale": 409,
      "name_text": "Proximity Self Destruct",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -3331,6 +3335,8 @@
      "timer60": 1200,
      "hitspeedpreservationfrac": 0.1,
      "soundnum": "SFXMAP_8053_LAUNCH_ROCKET",
+     "projectile_model": "chrdraggrenade",
+     "projectile_model_scale": 409,
      "name_text": "Grenade Launcher",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -4171,6 +4177,8 @@
      "timer60": 1200,
      "hitspeedpreservationfrac": 0.3,
      "soundnum": "SFXMAP_8053_LAUNCH_ROCKET",
+     "projectile_model": "chrdevgrenade",
+     "projectile_model_scale": 409,
      "name_text": "Grenade Launcher",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -4214,6 +4222,8 @@
      "timer60": 360,
      "hitspeedpreservationfrac": 0.3,
      "soundnum": "SFXMAP_8053_LAUNCH_ROCKET",
+     "projectile_model": "chrdevgrenade",
+     "projectile_model_scale": 409,
      "name_text": "Wall Hugger",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -4366,6 +4376,8 @@
      "timer60": -1,
      "hitspeedpreservationfrac": 0.05,
      "soundnum": "SFXMAP_8053_LAUNCH_ROCKET",
+     "projectile_model": "chrdyrocketmis",
+     "projectile_model_scale": 409,
      "name_text": "Rocket Launch",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -4408,6 +4420,8 @@
      "timer60": -1,
      "hitspeedpreservationfrac": 0.05,
      "soundnum": "SFXMAP_8053_LAUNCH_ROCKET",
+     "projectile_model": "chrdyrocketmis",
+     "projectile_model_scale": 409,
      "name_text": "Targeted Rocket",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -4548,6 +4562,8 @@
      "timer60": -1,
      "hitspeedpreservationfrac": 0.05,
      "soundnum": "SFXMAP_8053_LAUNCH_ROCKET",
+     "projectile_model": "chrskrocketmis",
+     "projectile_model_scale": 409,
      "name_text": "Rocket Launch",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -4590,6 +4606,8 @@
      "timer60": -1,
      "hitspeedpreservationfrac": 0.05,
      "soundnum": "SFXMAP_8068_SLAYER_WHIR",
+     "projectile_model": "chrskrocketmis",
+     "projectile_model_scale": 409,
      "name_text": "Fly-By-Wire Rocket",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -4753,6 +4771,8 @@
      "activatetime60": 240,
      "recoverytime60": 60,
      "damage": 1,
+     "projectile_model": "chrknife",
+     "projectile_model_scale": 409,
      "name_text": "Throw Poison Knife",
      "flag_names": [
       "FUNCFLAG_NOMUZZLEFLASH",
@@ -4915,6 +4935,8 @@
      "timer60": -1,
      "hitspeedpreservationfrac": 0.05,
      "soundnum": -1,
+     "projectile_model": "chrcrossbolt",
+     "projectile_model_scale": 409,
      "name_text": "Sedate",
      "flag_names": [
       "FUNCFLAG_MAKEDIZZY",
@@ -4958,6 +4980,8 @@
      "timer60": -1,
      "hitspeedpreservationfrac": 0.05,
      "soundnum": -1,
+     "projectile_model": "chrcrossbolt",
+     "projectile_model_scale": 409,
      "name_text": "Instant Kill",
      "flag_names": [
       "FUNCFLAG_NOMUZZLEFLASH",
@@ -5272,6 +5296,8 @@
      "activatetime60": 240,
      "recoverytime60": 60,
      "damage": 0,
+     "projectile_model": "chrgrenade",
+     "projectile_model_scale": 409,
      "name_text": "4-Second Fuse",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -5294,6 +5320,8 @@
      "activatetime60": 90,
      "recoverytime60": 60,
      "damage": 0,
+     "projectile_model": "chrgrenade",
+     "projectile_model_scale": 409,
      "name_text": "Proximity Pinball",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -5424,6 +5452,8 @@
      "activatetime60": 240,
      "recoverytime60": 60,
      "damage": 0,
+     "projectile_model": "chrnbomb",
+     "projectile_model_scale": 409,
      "name_text": "Impact Detonation",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -5448,6 +5478,8 @@
      "activatetime60": 240,
      "recoverytime60": 60,
      "damage": 0,
+     "projectile_model": "chrnbomb",
+     "projectile_model_scale": 409,
      "name_text": "Proximity Detonation",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -5568,6 +5600,8 @@
      "activatetime60": 240,
      "recoverytime60": 0,
      "damage": 0,
+     "projectile_model": "chrtimedmine",
+     "projectile_model_scale": 409,
      "name_text": "Timed Explosive",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -5704,6 +5738,8 @@
      "activatetime60": 240,
      "recoverytime60": 0,
      "damage": 0,
+     "projectile_model": "chrproximitymine",
+     "projectile_model_scale": 409,
      "name_text": "Proximity Explosive",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",
@@ -5866,6 +5902,8 @@
      "activatetime60": 240,
      "recoverytime60": 0,
      "damage": 0,
+     "projectile_model": "chrremotemine",
+     "projectile_model_scale": 409,
      "name_text": "Remote Explosive",
      "flag_names": [
       "FUNCFLAG_NOAUTOAIM",

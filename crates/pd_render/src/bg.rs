@@ -170,8 +170,10 @@ impl StageBg {
     }
 
     /// Set this frame's camera: the BG's one matrix is world → eye.
-    pub fn prepare(&self, queue: &wgpu::Queue, view: &View) {
-        let frame = FrameUniform::new(view.projection()).with_lookat(view.look, view.up);
+    /// `three_point`: the RDP's 3-point texture filter.
+    pub fn prepare(&self, queue: &wgpu::Queue, view: &View, three_point: bool) {
+        let mut frame = FrameUniform::new(view.projection()).with_lookat(view.look, view.up);
+        frame.misc[1] = three_point as u32 as f32;
         self.slot.write(queue, &frame, &[view.world_to_eye()]);
     }
 

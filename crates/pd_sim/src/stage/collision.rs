@@ -96,6 +96,8 @@ pub struct TileLevel {
     duck: Vec<usize>,
     /// Rooms that share a polygon edge (`bg_room_get_neighbours`, see [`Self::new`]).
     room_neighbours: std::collections::BTreeMap<u16, Vec<u16>>,
+    /// Each room's box over its tiles (`g_Rooms[].bbmin/bbmax`, see [`Self::room_bbox`]).
+    room_bboxes: std::collections::BTreeMap<u16, (Vec3, Vec3)>,
 }
 
 /// Which flagged tiles [`TileLevel::is_cyl_touching_tile_with_flags`] looks at.
@@ -128,7 +130,14 @@ impl TileLevel {
         let crouch = pick(&|p| p.crouch);
         let duck = pick(&|p| p.duck);
         let room_neighbours = infer_room_neighbours(&geom);
-        TileLevel { geom, bbox, walls, floors, sight, shot, any_blocker, ladders, crouch, duck, room_neighbours }
+        let mut room_bboxes: std::collections::BTreeMap<u16, (Vec3, Vec3)> = Default::default();
+        for (p, &(lo, hi)) in geom.polys.iter().zip(&bbox) {
+            if let Some(r) = p.room {
+                let e = room_bboxes.entry(r).or_insert((lo, hi));
+                *e = (e.0.min(lo), e.1.max(hi));
+            }
+        }
+        TileLevel { geom, bbox, walls, floors, sight, shot, any_blocker, ladders, crouch, duck, room_neighbours, room_bboxes }
     }
 
     // ─── Volume tests ────────────────────────────────────────────────────────
@@ -170,16 +179,9 @@ impl TileLevel {
     /// `cd_volume_collect(..., GEOFLAG_WALL, ..., maxcollisions = 1)`: the first
     /// wall tile, else the first chr perimeter, the cylinder at `pos` touches. PD
     /// checks the background before props, so the order is the same.
-    fn volume_collect_wall(
-        &self,
-        pos: Vec3,
-        radius: f32,
-        ymax: f32,
-        ymin: f32,
-        cyls: &[PerimCyl],
-    ) -> Option<Hit> {
+    fn volume_collect_wall(&self, pos: Vec3, radius: f32, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PerimCyl]) -> Option<Hit> {
         for &poly in &self.walls {
-            if self.tile_in_range(poly, pos, radius, true, ymax, ymin) {
+            if self.tile_in_range(poly, pos, radius, checkvertical, ymax, ymin) {
                 if let Some(vertexindex) = self.volume_collect_tile(poly, pos.x, pos.z, radius) {
                     return Some(Hit::Tile { poly, vertexindex });
                 }
@@ -187,7 +189,7 @@ impl TileLevel {
         }
         for (k, c) in cyls.iter().enumerate() {
             // `cd_cyl_collides_with_cyl_laterally` (`collision.c:1163`).
-            let vertical = pos.y + ymax >= c.ymin && pos.y + ymin <= c.ymax;
+            let vertical = !checkvertical || (pos.y + ymax >= c.ymin && pos.y + ymin <= c.ymax);
             let (sx, sz, w) = (pos.x - c.x, pos.z - c.z, c.radius + radius);
             if vertical && sx * sx + sz * sz <= w * w {
                 return Some(Hit::Cyl(k));
@@ -233,8 +235,8 @@ impl TileLevel {
     }
 
     /// `cd_test_volume_simple` (`collision.c:2428`).
-    pub fn cd_test_volume_simple(&self, pos: Vec3, radius: f32, ymax: f32, ymin: f32, cyls: &[PerimCyl]) -> CdResult {
-        match self.volume_collect_wall(pos, radius, ymax, ymin, cyls) {
+    pub fn cd_test_volume_simple(&self, pos: Vec3, radius: f32, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PerimCyl]) -> CdResult {
+        match self.volume_collect_wall(pos, radius, checkvertical, ymax, ymin, cyls) {
             Some(_) => CdResult::Collision,
             None => CdResult::NoCollision,
         }
@@ -252,7 +254,7 @@ impl TileLevel {
         ymin: f32,
         cyls: &[PerimCyl],
     ) -> (CdResult, Option<Edge>) {
-        match self.volume_collect_wall(topos, radius, ymax, ymin, cyls) {
+        match self.volume_collect_wall(topos, radius, true, ymax, ymin, cyls) {
             None => (CdResult::NoCollision, None),
             Some(Hit::Tile { poly, vertexindex }) => {
                 let v = &self.geom.polys[poly].verts;
@@ -271,11 +273,12 @@ impl TileLevel {
     /// `cd_is_cylpath_intersecting_tilei` (`collision.c:2589`): does the centre line
     /// `frompos → topos` cross one of the tile's XZ edges while the swept cylinder
     /// overlaps the tile in y? Returns the crossing point and the edge.
-    fn cylpath_tile(&self, poly: usize, frompos: Vec3, topos: Vec3, ymax: f32, ymin: f32) -> Option<(Vec3, Edge)> {
+    fn cylpath_tile(&self, poly: usize, frompos: Vec3, topos: Vec3, checkvertical: bool, ymax: f32, ymin: f32) -> Option<(Vec3, Edge)> {
         let p = &self.geom.polys[poly];
         let v = &p.verts;
         let (tileymin, tileymax) = (self.bbox[poly].0.y, self.bbox[poly].1.y);
-        let vertical_ok = (frompos.y + ymax >= tileymin && topos.y + ymin <= tileymax)
+        let vertical_ok = !checkvertical
+            || (frompos.y + ymax >= tileymin && topos.y + ymin <= tileymax)
             || (frompos.y + ymin <= tileymax && topos.y + ymax >= tileymin);
         if !vertical_ok {
             return None;
@@ -295,7 +298,7 @@ impl TileLevel {
                 if distfrac < bestdistfrac {
                     let y1 = frompos.y + (topos.y - frompos.y) * distfrac;
                     let (y2, y1) = (y1 + ymax, y1 + ymin);
-                    if !(y1 >= tileymax || y2 <= tileymin) {
+                    if !checkvertical || !(y1 >= tileymax || y2 <= tileymin) {
                         bestdistfrac = distfrac;
                         best = Some((distfrac, i));
                     }
@@ -316,8 +319,9 @@ impl TileLevel {
     }
 
     /// `cd_is_cylpath_intersecting_cyl` (`collision.c:2857`).
-    fn cylpath_cyl(c: &PerimCyl, frompos: Vec3, topos: Vec3, ymax: f32, ymin: f32) -> Option<(Vec3, Edge)> {
-        let vertical_ok = (frompos.y + ymax >= c.ymin && topos.y + ymin <= c.ymax)
+    fn cylpath_cyl(c: &PerimCyl, frompos: Vec3, topos: Vec3, checkvertical: bool, ymax: f32, ymin: f32) -> Option<(Vec3, Edge)> {
+        let vertical_ok = !checkvertical
+            || (frompos.y + ymax >= c.ymin && topos.y + ymin <= c.ymax)
             || (frompos.y + ymin <= c.ymax && topos.y + ymax >= c.ymin);
         if !vertical_ok {
             return None;
@@ -343,7 +347,7 @@ impl TileLevel {
             return None;
         }
         let y = (topos.y - frompos.y) * mult + frompos.y;
-        if y + ymin >= c.ymax || y + ymax <= c.ymin {
+        if checkvertical && (y + ymin >= c.ymax || y + ymax <= c.ymin) {
             return None;
         }
         let end = frompos + (topos - frompos) * mult;
@@ -356,15 +360,17 @@ impl TileLevel {
     /// `closest` keeps the nearest crossing (the `findclosest` variants) instead of
     /// the first; either way the edge of the reported crossing comes back.
     fn atob_cyl(&self, frompos: Vec3, topos: Vec3, ymax: f32, ymin: f32, cyls: &[PerimCyl], closest: bool) -> Option<Edge> {
-        self.atob_cyl_obstacle(frompos, topos, ymax, ymin, cyls, closest).map(|(e, _)| e)
+        self.atob_cyl_obstacle(frompos, topos, true, ymax, ymin, cyls, closest).map(|(e, _)| e)
     }
 
     /// [`Self::atob_cyl`], also naming the perimeter that was hit (PD's
     /// `cd_get_obstacle_prop`) - `None` for a wall tile.
+    #[allow(clippy::too_many_arguments)]
     fn atob_cyl_obstacle(
         &self,
         frompos: Vec3,
         topos: Vec3,
+        checkvertical: bool,
         ymax: f32,
         ymin: f32,
         cyls: &[PerimCyl],
@@ -388,14 +394,14 @@ impl TileLevel {
             {
                 continue;
             }
-            if let Some((end, edge)) = self.cylpath_tile(poly, frompos, topos, ymax, ymin) {
+            if let Some((end, edge)) = self.cylpath_tile(poly, frompos, topos, checkvertical, ymax, ymin) {
                 if consider(end, edge, None) {
                     return best.map(|b| (b.1, b.2));
                 }
             }
         }
         for (k, c) in cyls.iter().enumerate() {
-            if let Some((end, edge)) = Self::cylpath_cyl(c, frompos, topos, ymax, ymin) {
+            if let Some((end, edge)) = Self::cylpath_cyl(c, frompos, topos, checkvertical, ymax, ymin) {
                 if consider(end, edge, Some(k)) {
                     return best.map(|b| (b.1, b.2));
                 }
@@ -462,7 +468,7 @@ impl TileLevel {
         ymin: f32,
         cyls: &[PerimCyl],
     ) -> (CdResult, Option<CdObstacle>) {
-        match self.atob_cyl_obstacle(frompos, topos, ymax, ymin, cyls, true) {
+        match self.atob_cyl_obstacle(frompos, topos, true, ymax, ymin, cyls, true) {
             Some((edge, cyl)) => {
                 let diff = Vec2::new(topos.x - frompos.x, topos.z - frompos.z);
                 let dist = func0f1579cc(
@@ -479,6 +485,39 @@ impl TileLevel {
         }
     }
 
+    /// `cd_test_cylmove_oobok_findclosest` (`collision.c:3604`): the nearest wall
+    /// or perimeter the centre line crosses, and its edge. Leaving the level is fine.
+    pub fn cd_test_cylmove_oobok_findclosest(&self, frompos: Vec3, topos: Vec3, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PerimCyl]) -> (CdResult, Option<Edge>) {
+        match self.atob_cyl_obstacle(frompos, topos, checkvertical, ymax, ymin, cyls, true) {
+            Some((edge, _)) => (CdResult::Collision, Some(edge)),
+            None => (CdResult::NoCollision, None),
+        }
+    }
+
+    /// `cd_test_cylmove_oobok_findclosest_getfinalroom_finddist` (`collision.c:3658`):
+    /// as [`Self::cd_test_cylmove_oobok_findclosest`], with the fraction of the
+    /// move a cylinder of `radius` makes before it meets the edge.
+    #[allow(clippy::too_many_arguments)]
+    pub fn cd_test_cylmove_oobok_findclosest_finddist(
+        &self,
+        frompos: Vec3,
+        topos: Vec3,
+        radius: f32,
+        checkvertical: bool,
+        ymax: f32,
+        ymin: f32,
+        cyls: &[PerimCyl],
+    ) -> (CdResult, Option<CdObstacle>) {
+        match self.atob_cyl_obstacle(frompos, topos, checkvertical, ymax, ymin, cyls, true) {
+            Some((edge, cyl)) => {
+                let diff = Vec2::new(topos.x - frompos.x, topos.z - frompos.z);
+                let dist = func0f1579cc(Vec2::new(frompos.x, frompos.z), radius, Vec2::new(edge.0.x, edge.0.z), Vec2::new(edge.1.x, edge.1.z), diff);
+                (CdResult::Collision, Some(CdObstacle { edge, dist: Some(dist), cyl }))
+            }
+            None => (CdResult::NoCollision, None),
+        }
+    }
+
     /// `cd_test_volume_fromdir` (`collision.c:2536`): the volume test at `topos`
     /// collecting up to 20 touched wall edges and perimeters
     /// (`cd_volumefromdir_collect`, `:1614`), then the one the move from `frompos`
@@ -487,11 +526,13 @@ impl TileLevel {
     /// Unlike `cd_volume_collect_tilei`, the fromdir collector only takes edges
     /// within `radius` (`cd_volumefromdir_collect_tilei`, `:1340`): a centre inside
     /// a wall tile's outline with no edge in reach touches nothing.
+    #[allow(clippy::too_many_arguments)]
     pub fn cd_test_volume_fromdir(
         &self,
         frompos: Vec3,
         topos: Vec3,
         radius: f32,
+        checkvertical: bool,
         ymax: f32,
         ymin: f32,
         cyls: &[PerimCyl],
@@ -500,7 +541,7 @@ impl TileLevel {
         // (edge, perimeter index, perimeter circle) per collision, in collection order.
         let mut collisions: Vec<(Edge, Option<usize>, Option<(f32, f32, f32)>)> = Vec::new();
         'bg: for &poly in &self.walls {
-            if !self.tile_in_range(poly, topos, radius, true, ymax, ymin) {
+            if !self.tile_in_range(poly, topos, radius, checkvertical, ymax, ymin) {
                 continue;
             }
             let v = &self.geom.polys[poly].verts;
@@ -524,7 +565,7 @@ impl TileLevel {
             }
         }
         for (k, c) in cyls.iter().enumerate() {
-            let vertical = topos.y + ymax >= c.ymin && topos.y + ymin <= c.ymax;
+            let vertical = !checkvertical || (topos.y + ymax >= c.ymin && topos.y + ymin <= c.ymax);
             let (xd, zd, f16) = (topos.x - c.x, topos.z - c.z, radius + c.radius);
             if vertical && xd * xd + zd * zd <= f16 * f16 && collisions.len() < MAX {
                 collisions.push(((Vec3::ZERO, Vec3::ZERO), Some(k), Some((c.x, c.z, c.radius))));
@@ -656,6 +697,53 @@ impl TileLevel {
             }
         }
         (curground, found)
+    }
+
+    /// `cd_find_y` over the floor tiles (`collision.c:985`, `GEOFLAG_FLOOR1 |
+    /// GEOFLAG_FLOOR2`): of the floors whose outline holds `pos`, the highest at or
+    /// below it (`ceiling` false), or the lowest at or above it (`ceiling` true).
+    fn cd_find_y(&self, pos: Vec3, ceiling: bool) -> Option<(f32, usize)> {
+        let mut best: Option<(f32, usize)> = None;
+        for &poly in &self.floors {
+            let (lo, hi) = self.bbox[poly];
+            if pos.x < lo.x || pos.x > hi.x || pos.z < lo.z || pos.z > hi.z {
+                continue;
+            }
+            if (!ceiling && pos.y < lo.y) || (ceiling && pos.y > hi.y) {
+                continue;
+            }
+            let p = &self.geom.polys[poly];
+            if !p.xz_in_convex(pos.x, pos.z) {
+                continue;
+            }
+            let y = p.find_y(pos.x, pos.z);
+            let better = match best {
+                None => true,
+                Some((b, _)) => (!ceiling && y > b) || (ceiling && y < b),
+            };
+            if better && ((!ceiling && y <= pos.y) || (ceiling && y >= pos.y)) {
+                best = Some((y, poly));
+            }
+        }
+        best
+    }
+
+    /// `cd_find_room_at_pos_ycnp` (`collision.c:2381`): the floor under `pos`,
+    /// its height and polygon; `None` where PD finds no room.
+    pub fn cd_find_room_at_pos_ycnp(&self, pos: Vec3) -> Option<(f32, usize)> {
+        self.cd_find_y(pos, false)
+    }
+
+    /// `cd_find_ceiling_room_at_pos_ycfn` (`collision.c:2401`): the nearest floor
+    /// at or above `pos` (what a falling object's bottom has sunk through).
+    pub fn cd_find_ceiling_room_at_pos_ycfn(&self, pos: Vec3) -> Option<(f32, usize)> {
+        self.cd_find_y(pos, true)
+    }
+
+    /// A room's bounding box. `// SUBST:` PD's `g_Rooms[].bbmin/bbmax` cover the
+    /// room's BG / the box over its collision tiles (M9: the BG's rooms).
+    pub fn room_bbox(&self, room: u16) -> Option<(Vec3, Vec3)> {
+        self.room_bboxes.get(&room).copied()
     }
 
     /// `bg_room_get_neighbours`.
@@ -1035,13 +1123,13 @@ mod tests {
         // every face) meets nothing; one straddling a face does.
         let c = ARENA_PILLARS[0];
         let p = (c - Vec2::splat(ARENA_PILLAR_HALF), c + Vec2::splat(ARENA_PILLAR_HALF));
-        assert_eq!(l.cd_test_volume_simple(Vec3::new(c.x, 50.0, c.y), 20.0, 135.0, -30.0, &[]), CdResult::NoCollision);
-        assert_eq!(l.cd_test_volume_simple(Vec3::new(p.0.x + 10.0, 50.0, c.y), 20.0, 135.0, -30.0, &[]), CdResult::Collision);
-        assert_eq!(l.cd_test_volume_simple(Vec3::new(0.0, 50.0, 0.0), 20.0, 135.0, -30.0, &[]), CdResult::NoCollision);
+        assert_eq!(l.cd_test_volume_simple(Vec3::new(c.x, 50.0, c.y), 20.0, true, 135.0, -30.0, &[]), CdResult::NoCollision);
+        assert_eq!(l.cd_test_volume_simple(Vec3::new(p.0.x + 10.0, 50.0, c.y), 20.0, true, 135.0, -30.0, &[]), CdResult::Collision);
+        assert_eq!(l.cd_test_volume_simple(Vec3::new(0.0, 50.0, 0.0), 20.0, true, 135.0, -30.0, &[]), CdResult::NoCollision);
         // A cylinder just touching a pillar face collides; 1 cm further out it doesn't.
         let face = Vec3::new(p.0.x - 20.0, 50.0, c.y);
-        assert_eq!(l.cd_test_volume_simple(face, 20.0, 135.0, -30.0, &[]), CdResult::Collision);
-        assert_eq!(l.cd_test_volume_simple(face - Vec3::X, 20.0, 135.0, -30.0, &[]), CdResult::NoCollision);
+        assert_eq!(l.cd_test_volume_simple(face, 20.0, true, 135.0, -30.0, &[]), CdResult::Collision);
+        assert_eq!(l.cd_test_volume_simple(face - Vec3::X, 20.0, true, 135.0, -30.0, &[]), CdResult::NoCollision);
         // Sight: blocked through the pillar, clear beside it.
         assert!(!l.los(Vec3::new(c.x - 300.0, 150.0, c.y), Vec3::new(c.x + 300.0, 150.0, c.y)));
         assert!(l.los(Vec3::new(c.x - 300.0, 150.0, c.y + 200.0), Vec3::new(c.x + 300.0, 150.0, c.y + 200.0)));

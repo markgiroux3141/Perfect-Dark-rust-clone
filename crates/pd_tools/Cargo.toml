@@ -12,7 +12,7 @@ path = "src/bin/pd_snapshot.rs"
 
 [dependencies]
 engine = { workspace = true }
-n64 = { workspace = true }
+n64 = { workspace = true, features = ["gpu"] }
 pd_core = { workspace = true }
 pd_sim = { workspace = true }
 pd_menu = { workspace = true }

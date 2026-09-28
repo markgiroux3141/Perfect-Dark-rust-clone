@@ -7,15 +7,17 @@ version.workspace = true
 publish.workspace = true
 
 # Knows the console, not the game. The CPU half is pure Rust; the `gpu` feature
-# adds the WGSL ports of the same combiner and video chain.
+# adds the WGSL ports of the same combiner and video chain (`image` decodes the
+# video chain's two TV-set photos, which are compiled in).
 [features]
 default = []
-gpu = ["dep:wgpu", "dep:bytemuck"]
+gpu = ["dep:wgpu", "dep:bytemuck", "dep:image"]
 
 [dependencies]
 glam = { workspace = true }
 wgpu = { workspace = true, optional = true }
 bytemuck = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
 
 [dev-dependencies]
 naga = { workspace = true }

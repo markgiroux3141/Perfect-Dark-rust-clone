@@ -5,6 +5,8 @@
 //! - `controls`: keyboard, mouse and gamepads to N64 controllers (menus) and to
 //!   each player's `PlayerInput` (a match);
 //! - `audio`: `pd_menu`/`pd_sim` sound events to engine voices, with PD's pitch;
+//! - `tvaudio`: the `n64::audio` N64 output + TV speaker chain on a DSP track;
+//! - `presentation`: the panel's video and audio options;
 //! - `states`: the menu and match states.
 //!
 //! `perfect_dark [--combat] [--fresh]`: start in the Combat Simulator rather than
@@ -12,7 +14,9 @@
 
 mod audio;
 mod controls;
+mod presentation;
 mod states;
+mod tvaudio;
 
 use engine::app::{AppConfig, Ctx, Game};
 use engine::assets::AssetRoot;
@@ -31,6 +35,8 @@ use pd_menu::{MenuSystem, Outcome, FB_H, FB_W};
 use pd_render::view::{VIEW_H, VIEW_W};
 use pd_render::Renderer;
 use pd_sim::world::World;
+
+use n64::gpu::video::{tube_rect, Frame as VideoFrame, N64Video, VideoSettings};
 
 use audio::SfxBank;
 use controls::Controls;
@@ -78,9 +84,13 @@ struct PdGame {
     renderer: Option<Renderer>,
     /// The stage the renderer has loaded.
     loaded_stage: Option<String>,
-    /// The match view, `render_scale` × PD's 320 × 220, with depth.
+    /// The match view, `render_scale` × PD's 320 × 220 (or the N64 video's
+    /// resolution), with depth.
     match_target: Option<RenderTarget>,
     render_scale: u32,
+    /// The match's N64 video / CRT chain (off by default) and its passes.
+    video: VideoSettings,
+    n64v: Option<N64Video>,
     /// Seeds the next match's `random()`.
     next_seed: u64,
 }
@@ -114,6 +124,8 @@ impl PdGame {
             loaded_stage: None,
             match_target: None,
             render_scale: 4,
+            video: VideoSettings::default(),
+            n64v: None,
             next_seed,
         })
     }
@@ -205,7 +217,8 @@ impl PdGame {
     }
 
     fn ensure_match_target(&mut self, ctx: &mut Ctx) {
-        let (w, h) = (VIEW_W * self.render_scale, VIEW_H * self.render_scale);
+        // N64 video: the view renders at the N64's resolution, whatever the window.
+        let (w, h) = if self.video.active() { self.video.resolution.size() } else { (VIEW_W * self.render_scale, VIEW_H * self.render_scale) };
         if self.match_target.as_ref().is_none_or(|t| t.width != w || t.height != h) {
             self.match_target = Some(RenderTarget::new(ctx.gpu, w, h, MATCH_FORMAT, true));
         }
@@ -232,11 +245,11 @@ impl PdGame {
                 .weak(),
         );
         let mut scale = self.render_scale;
-        egui::ComboBox::from_label("resolution").selected_text(format!("{}×{}", VIEW_W * scale, VIEW_H * scale)).show_ui(ui, |ui| {
+        ui.add_enabled_ui(!self.video.active(), |ui| egui::ComboBox::from_label("resolution").selected_text(format!("{}×{}", VIEW_W * scale, VIEW_H * scale)).show_ui(ui, |ui| {
             for s in [1, 2, 3, 4] {
                 ui.selectable_value(&mut scale, s, format!("{}×{}{}", VIEW_W * s, VIEW_H * s, if s == 1 { " (N64)" } else { "" }));
             }
-        });
+        }));
         self.render_scale = scale;
         ui.button("End the match").clicked()
     }
@@ -247,6 +260,7 @@ impl Game for PdGame {
         self.target = Some(RenderTarget::new(ctx.gpu, FB_W as u32, FB_H as u32, wgpu::TextureFormat::Rgba8Unorm, false));
         self.presenter = Some(Presenter::new(ctx.gpu));
         self.renderer = Some(Renderer::new(&ctx.gpu.device, &ctx.gpu.queue, MATCH_FORMAT));
+        self.n64v = Some(N64Video::new(&ctx.gpu.device, &ctx.gpu.queue, ctx.gpu.config.format));
     }
 
     fn tick(&mut self, ctx: &mut Ctx) {
@@ -298,48 +312,60 @@ impl Game for PdGame {
         let mut restart = false;
         let mut end = false;
         egui::SidePanel::left("pd").resizable(false).default_width(250.0).show(egui, |ui| {
-            ui.heading("PERFECT DARK");
-            ui.label(egui::RichText::new("Combat Simulator, from the decomp").weak());
-            ui.label(format!("{fps:.0} fps · {pads} pad(s)"));
-            ui.label(format!("root {} · {dialog}", self.menu.menudata.root));
-            if let Screen::StandIn { setup, .. } = &self.screen {
-                ui.label(format!("match: stage {:#x}, {} player(s), {} sim(s)", setup.stagenum, setup.players.len(), setup.simulants.len()));
-            }
-            if let Some(e) = &self.menu.draw.error {
-                ui.colored_label(egui::Color32::YELLOW, e);
-            }
-            end = self.match_panel(ui);
-            ui.separator();
-            ui.label("Menus: arrows/WASD D-pad · Enter A · Esc B · Space START · Z Z · Q/E L/R · Backspace delete · F1 panel · F2-F4 START on 2-4");
-            ui.separator();
-            egui::ComboBox::from_label("frame rate").selected_text(rate.label()).show_ui(ui, |ui| {
-                for r in [Rate::Hz60, Rate::Hz30, Rate::Hz20] {
-                    ui.selectable_value(&mut rate, r, r.label());
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.heading("PERFECT DARK");
+                ui.label(egui::RichText::new("Combat Simulator, from the decomp").weak());
+                ui.label(format!("{fps:.0} fps · {pads} pad(s)"));
+                ui.label(format!("root {} · {dialog}", self.menu.menudata.root));
+                if let Screen::StandIn { setup, .. } = &self.screen {
+                    ui.label(format!("match: stage {:#x}, {} player(s), {} sim(s)", setup.stagenum, setup.players.len(), setup.simulants.len()));
                 }
-            });
-            ui.checkbox(&mut self.n64_colour, "RGBA5551 framebuffer (menus)");
-            ui.separator();
-            ui.label("Save file (unlocks)");
-            ui.radio_value(&mut profile, Profile::Complete, "Complete (everything unlocked)");
-            ui.radio_value(&mut profile, Profile::Fresh, "Fresh (new file)");
-            if ui.button("Restart at the Perfect Menu").clicked() {
-                restart = true;
-            }
-            ui.separator();
-            ui.label("Players");
-            egui::ComboBox::from_label("keyboard drives").selected_text(format!("controller {}", kb + 1)).show_ui(ui, |ui| {
-                for i in 0..MAX_PADS {
-                    ui.selectable_value(&mut kb, i, format!("controller {}", i + 1));
+                if let Some(e) = &self.menu.draw.error {
+                    ui.colored_label(egui::Color32::YELLOW, e);
                 }
-            });
-            ui.horizontal(|ui| {
-                for i in 1..MAX_PADS {
-                    if ui.button(format!("START on {}", i + 1)).clicked() {
-                        self.controls.start_taps[i] = true;
+                end = self.match_panel(ui);
+                ui.separator();
+                ui.label("Menus: arrows/WASD D-pad · Enter A · Esc B · Space START · Z Z · Q/E L/R · Backspace delete · F1 panel · F2-F4 START on 2-4");
+                ui.separator();
+                egui::ComboBox::from_label("frame rate").selected_text(rate.label()).show_ui(ui, |ui| {
+                    for r in [Rate::Hz60, Rate::Hz30, Rate::Hz20] {
+                        ui.selectable_value(&mut rate, r, r.label());
+                    }
+                });
+                ui.checkbox(&mut self.n64_colour, "RGBA5551 framebuffer (menus)");
+                ui.separator();
+                ui.label("Save file (unlocks)");
+                ui.radio_value(&mut profile, Profile::Complete, "Complete (everything unlocked)");
+                ui.radio_value(&mut profile, Profile::Fresh, "Fresh (new file)");
+                if ui.button("Restart at the Perfect Menu").clicked() {
+                    restart = true;
+                }
+                ui.separator();
+                ui.label("Players");
+                egui::ComboBox::from_label("keyboard drives").selected_text(format!("controller {}", kb + 1)).show_ui(ui, |ui| {
+                    for i in 0..MAX_PADS {
+                        ui.selectable_value(&mut kb, i, format!("controller {}", i + 1));
+                    }
+                });
+                ui.horizontal(|ui| {
+                    for i in 1..MAX_PADS {
+                        if ui.button(format!("START on {}", i + 1)).clicked() {
+                            self.controls.start_taps[i] = true;
+                        }
+                    }
+                });
+                ui.label(egui::RichText::new("A second player joins the Combat Simulator by pressing START; then set 'keyboard drives' to that controller.").weak());
+                ui.separator();
+                presentation::video_panel(ui, &mut self.video);
+                if let Some(sfx) = &mut self.sfx {
+                    ui.separator();
+                    let mut a = sfx.tv();
+                    presentation::audio_panel(ui, &mut a);
+                    if a != sfx.tv() {
+                        sfx.set_tv(a);
                     }
                 }
             });
-            ui.label(egui::RichText::new("A second player joins the Combat Simulator by pressing START; then set 'keyboard drives' to that controller.").weak());
         });
         if rate != self.rate {
             self.rate = rate;
@@ -361,10 +387,28 @@ impl Game for PdGame {
     fn render(&mut self, ctx: &mut Ctx, frame: &mut Frame) {
         if matches!(self.screen, Screen::Match(_)) {
             self.ensure_match_target(ctx);
-            let (Screen::Match(world), Some(target), Some(presenter), Some(renderer)) = (&self.screen, &self.match_target, &self.presenter, &mut self.renderer) else { return };
-            let depth = &target.depth.as_ref().expect("the match target has depth").1;
+            let (Screen::Match(world), Some(target), Some(presenter), Some(renderer), Some(nv)) = (&self.screen, &self.match_target, &self.presenter, &mut self.renderer, &mut self.n64v) else { return };
+            let video = self.video;
+            let n64 = video.active();
+            let (device, queue) = (&ctx.gpu.device, &ctx.gpu.queue);
+            renderer.three_point = n64 && video.three_point;
+            renderer.hud_in_frame = !n64;
+            renderer.world_depth_copy = (n64 && video.aa).then(|| nv.world_depth(device, target.width, target.height));
             // M12: split screen. The first player's view fills the window.
-            renderer.render_player(&ctx.gpu.device, &ctx.gpu.queue, &mut frame.encoder, &target.view, depth, world, 0);
+            renderer.render_player(device, queue, &mut frame.encoder, target, world, 0);
+            if n64 {
+                // SUBST: PD draws lv_render's framebuffer effects over the HUD /
+                // the chain lays the HUD on after them, in its RDP pass.
+                let hud = &renderer.hud_gfx;
+                nv.upload_hud(device, queue, Some((&pd_render::hud::premultiplied_rgba8(hud), hud.w as u32, hud.h as u32)));
+                let (znear, zfar) = renderer.z_range();
+                let depth = &target.depth.as_ref().expect("the match target has depth").1;
+                let vf = VideoFrame { color: &target.view, color_srgb: false, size: (target.width, target.height), gun_depth: Some(depth), world_near_far: (znear, zfar), gun_near_far: (1.5, 1000.0) };
+                clear(&mut frame.encoder, &frame.view);
+                let rect = tube_rect(frame.size.0, frame.size.1, frame.viewport[0]);
+                nv.run(device, queue, &mut frame.encoder, &vf, &frame.view, rect, &video);
+                return;
+            }
             // The VI shows PD's 220 lines inside a 240-line, 4:3 picture.
             presenter.present(ctx.gpu, frame, target, (VIEW_W * self.render_scale, 240 * self.render_scale), Filter::Nearest);
             return;
@@ -381,6 +425,17 @@ impl Game for PdGame {
         // The VI shows PD's 220 lines inside a 240-line, 4:3 picture.
         presenter.present(ctx.gpu, frame, target, (320, 240), Filter::Nearest);
     }
+}
+
+/// Clear the window before a pass that draws only part of it.
+fn clear(encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("clear"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment { view, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+    });
 }
 
 fn main() {

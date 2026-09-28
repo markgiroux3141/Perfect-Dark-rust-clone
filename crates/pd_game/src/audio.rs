@@ -11,14 +11,19 @@
 //! charge) keeps its voice until it is stopped or replaced, and loops if its
 //! sample has a loop in the bank.
 //!
-//! Later: the `n64::audio` TV-speaker chain on an engine DSP track (M5).
+//! With the `n64::audio` chain switched on ([`SfxBank::set_tv`]), new voices play
+//! on its DSP track ([`crate::tvaudio`]); with it off they play on the main track.
+//! A voice stays on the track it started on.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use engine::audio::{Audio, VoiceId};
+use n64::audio::AudioSettings;
 use pd_core::assets::AssetDir;
 use pd_core::events::Event;
+
+use crate::tvaudio::TvRoute;
 
 struct Entry {
     path: PathBuf,
@@ -31,8 +36,10 @@ pub struct SfxBank {
     sounds: HashMap<u16, Entry>,
     /// `SFXMAP_*` refs to bank sound numbers.
     maps: HashMap<u16, u16>,
-    /// The voices playing on sound handles.
-    handles: HashMap<u32, VoiceId>,
+    /// The voices playing on sound handles, with their sample's own volume.
+    handles: HashMap<u32, (VoiceId, f32)>,
+    /// The N64 output + TV speaker chain, and which track voices play on.
+    tv: TvRoute,
 }
 
 fn hex4(s: &str) -> Option<u16> {
@@ -56,7 +63,7 @@ impl SfxBank {
                 }
             }
         }
-        Ok(SfxBank { sounds, maps, handles: HashMap::new() })
+        Ok(SfxBank { sounds, maps, handles: HashMap::new(), tv: TvRoute::default() })
     }
 
     /// The bank sound a ref plays.
@@ -67,40 +74,58 @@ impl SfxBank {
 
     pub fn play(&mut self, audio: Option<&mut Audio>, events: &[Event]) {
         let Some(audio) = audio else { return };
+        let track = self.tv.track(audio);
         for ev in events {
             match *ev {
                 Event::Sound { sound, pitch, volume, pan } => match self.resolve(sound) {
                     Some(e) => {
-                        audio.play_voice(&e.path, e.volume * volume, pitch as f64, pan, false);
+                        audio.play_voice_on(track, &e.path, e.volume * volume, pitch as f64, pan, false);
                     }
                     None => log::debug!("sfx: no sample for sound {sound:#06x}"),
                 },
                 Event::HandleSound { handle, sound, pitch, volume, pan } => {
-                    if let Some(v) = self.handles.remove(&handle) {
+                    if let Some((v, _)) = self.handles.remove(&handle) {
                         audio.stop_voice(v);
                     }
                     match self.resolve(sound) {
                         Some(e) => {
-                            if let Some(v) = audio.play_voice(&e.path, e.volume * volume, pitch as f64, pan, e.looping) {
-                                self.handles.insert(handle, v);
+                            let base = e.volume;
+                            if let Some(v) = audio.play_voice_on(track, &e.path, base * volume, pitch as f64, pan, e.looping) {
+                                self.handles.insert(handle, (v, base));
                             }
                         }
                         None => log::debug!("sfx: no sample for sound {sound:#06x}"),
                     }
                 }
                 Event::StopSound { handle } => {
-                    if let Some(v) = self.handles.remove(&handle) {
+                    if let Some((v, _)) = self.handles.remove(&handle) {
                         audio.stop_voice(v);
+                    }
+                }
+                Event::SoundParams { handle, pitch, volume } => {
+                    if let Some(&(v, base)) = self.handles.get(&handle) {
+                        audio.set_voice(v, base * volume, pitch as f64);
                     }
                 }
             }
         }
     }
 
+    /// The N64 output + TV speaker settings in use.
+    pub fn tv(&self) -> AudioSettings {
+        self.tv.settings()
+    }
+
+    /// Change the N64 output + TV speaker settings (all off by default). The
+    /// DSP track is made on the next sound once something is on.
+    pub fn set_tv(&mut self, s: AudioSettings) {
+        self.tv.set(s);
+    }
+
     /// Stop every handled sound (the match ended).
     pub fn stop_all(&mut self, audio: Option<&mut Audio>) {
         let Some(audio) = audio else { return };
-        for (_, v) in self.handles.drain() {
+        for (_, (v, _)) in self.handles.drain() {
             audio.stop_voice(v);
         }
     }

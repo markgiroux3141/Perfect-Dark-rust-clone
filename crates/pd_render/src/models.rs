@@ -59,6 +59,9 @@ pub struct Instance<'a> {
     pub frame: FrameUniform,
     /// A cull that overrides every batch's (the DUALFLIP mirror's).
     pub cull: Option<Cull>,
+    /// `MODELRENDERCONTEXT_BONDGUN_OBJ_XLU`: every batch blended, z-tested,
+    /// writing no z (a cloaked gun, an object in x-ray).
+    pub xlu: bool,
 }
 
 /// A resolved batch draw.
@@ -219,7 +222,11 @@ impl ModelRenderer {
                     let c = inst.cull.unwrap_or(c);
                     // G_CULL_BOTH: the RSP culls every triangle.
                     let Some(ck) = CullKey::from_cull(c) else { continue };
-                    let key = gm.materials[batch.material].key(ck);
+                    let mut key = gm.materials[batch.material].key(ck);
+                    if inst.xlu {
+                        key.alpha = true;
+                        key.zwrite = false;
+                    }
                     combiner.prepare(device, key);
                     cmds.push(Cmd { model: def.stem.clone(), batch: bi, slot, key });
                 }

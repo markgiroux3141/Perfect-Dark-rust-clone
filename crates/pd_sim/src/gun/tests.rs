@@ -3,80 +3,18 @@
 //! and pad tests; the projectile, explosive and special ones are M5's), on a
 //! `World` instead of the range `Sim`.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use glam::{Mat4, Vec3};
 use pd_core::anim::{Anim, AnimCtx};
-use pd_core::assets::AssetDir;
-use pd_core::events::Event;
 use pd_core::ids::*;
 use pd_core::model::{Model, NodeKind, PoseParams};
 use pd_core::mp::{MatchPlayer, MatchSetup};
 
 use crate::player::PlayerInput;
 use crate::stage::{fixtures, Stage, TileLevel};
-use crate::world::{World, WorldRes};
-
-fn assets() -> AssetDir {
-    AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn res() -> Arc<WorldRes> {
-    static RES: OnceLock<Arc<WorldRes>> = OnceLock::new();
-    RES.get_or_init(|| Arc::new(WorldRes::load(&assets()).expect("assets/"))).clone()
-}
-
-/// One player in the firing range, with its boards, as the spike's `Sim::new`.
-fn range() -> World {
-    range_with(fixtures::firing_range())
-}
-
-fn range_with(geom: crate::stage::LevelGeom) -> World {
-    let stage = Stage::fixture("range", geom, &[fixtures::FIRING_RANGE_SPAWN]);
-    let level = TileLevel::new(stage.geom.clone());
-    let setup = MatchSetup { players: vec![MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
-    let mut w = World::new(setup, Arc::new(stage), Arc::new(level), res(), 0x1234_5678).unwrap();
-    w.boards = fixtures::firing_range_boards();
-    w
-}
-
-fn run(w: &mut World, input: &PlayerInput, n: usize) {
-    for _ in 0..n {
-        w.step(4, std::slice::from_ref(input));
-    }
-}
-
-fn idle(w: &mut World, n: usize) {
-    run(w, &PlayerInput::default(), n);
-}
-
-/// Equip `weapon` and let it come up (the spike's `settled_sim`).
-fn settled(weapon: u8) -> World {
-    let mut w = range();
-    run(&mut w, &PlayerInput { select: Some((weapon, false)), ..Default::default() }, 1);
-    idle(&mut w, 200);
-    w
-}
-
-fn fire_once(w: &mut World) {
-    run(w, &PlayerInput { fire: true, ..Default::default() }, 1);
-}
-
-/// Hold B until the gun function toggles, then let it settle.
-fn secondary(w: &mut World) {
-    run(w, &PlayerInput { use_held: true, ..Default::default() }, 30);
-    idle(w, 80);
-}
-
-fn sounds(events: &[Event]) -> Vec<u16> {
-    events
-        .iter()
-        .filter_map(|e| match e {
-            Event::Sound { sound, .. } | Event::HandleSound { sound, .. } => Some(*sound),
-            _ => None,
-        })
-        .collect()
-}
+use crate::testutil::*;
+use crate::world::World;
 
 /// Every POSITION node of a hand model matches the gun's joint with the same
 /// anim part: the same rest offset and matrix slot (`bondgun.c:8394` draws the
