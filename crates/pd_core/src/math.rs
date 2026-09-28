@@ -481,6 +481,80 @@ pub fn quat_to_glam(q: Quatf) -> Quat {
     Quat::from_xyzw(q[1], q[2], q[3], q[0])
 }
 
+/// `func0002f560` (`lib_2f490_c.c:205`): where the line from `from` along
+/// `dir` (the whole segment to `to`) crosses triangle `p0 p1 p2`, and the
+/// triangle's (unnormalised) normal `(p1 - p0) × (p2 - p1)`. `None` when it
+/// misses, lies parallel, or crosses outside `from..to`. PD's arithmetic, in
+/// its order: the BG hit test (`bg_test_hit_in_vtx_batch`) depends on it.
+pub fn func0002f560(p0: Vec3, p1: Vec3, p2: Vec3, from: Vec3, to: Vec3, dir: Vec3) -> Option<(Vec3, Vec3)> {
+    let (f0, f1, f2) = (p0.x, p0.y, p0.z);
+    let f3 = p1.x - f0;
+    let f4 = p1.y - f1;
+    let f5 = p1.z - f2;
+    let f6 = p2.x - p1.x;
+    let f7 = p2.y - p1.y;
+    let f8 = p2.z - p1.z;
+    let f9 = p2.x - f0;
+    let f10 = p2.y - f1;
+    let f11 = p2.z - f2;
+    let f12 = f4 * f8 - f7 * f5;
+    let f13 = f5 * f6 - f8 * f3;
+    let f14 = f3 * f7 - f6 * f4;
+    let f15 = f12 * f0 + f13 * f1 + f14 * f2;
+    let (f16, f17, f18) = (dir.x, dir.y, dir.z);
+    let f19 = f12 * f16 + f13 * f17 + f14 * f18;
+    if f19 == 0.0 {
+        return None;
+    }
+    let (f20, f21, f22) = (to.x, to.y, to.z);
+    let t = (f15 - f12 * f20 - f13 * f21 - f14 * f22) / f19;
+    let (f23, f24, f25) = (f20 + t * f16, f21 + t * f17, f22 + t * f18);
+    // Past `to`.
+    if f16 * (f23 - f20) + f17 * (f24 - f21) + f18 * (f25 - f22) > 0.0 {
+        return None;
+    }
+    // Before `from`.
+    let (g20, g21, g22) = (from.x, from.y, from.z);
+    if f16 * (f23 - g20) + f17 * (f24 - g21) + f18 * (f25 - g22) < 0.0 {
+        return None;
+    }
+    let (d0, d1, d2) = (f23 - f0, f24 - f1, f25 - f2);
+    let (f26, f27, f28);
+    let c = f6 * f4 - f3 * f7;
+    if c != 0.0 {
+        f26 = c;
+        f27 = d0 * f4;
+        f28 = d1 * f3;
+    } else {
+        let c = f7 * f5 - f4 * f8;
+        if c != 0.0 {
+            f26 = c;
+            f27 = d1 * f5;
+            f28 = d2 * f4;
+        } else {
+            f26 = f8 * f3 - f5 * f6;
+            f27 = d2 * f3;
+            f28 = d0 * f5;
+        }
+    }
+    let v = (f27 - f28) / f26;
+    if v < 0.0 {
+        return None;
+    }
+    let u = if f3 != 0.0 {
+        (d0 - v * f9) / f3
+    } else if f4 != 0.0 {
+        (d1 - v * f10) / f4
+    } else {
+        (d2 - v * f11) / f5
+    };
+    if u >= 0.0 && u + v <= 1.0 {
+        Some((Vec3::new(f23, f24, f25), Vec3::new(f12, f13, f14)))
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -536,6 +610,23 @@ mod tests {
         assert_eq!(M_BADPI, 3.141_092_641);
         assert!((turn() - 6.282_185).abs() < 1e-5);
         assert!(wrap_pos(-0.5) > 5.7 && wrap_pos(turn()) == 0.0);
+    }
+
+    #[test]
+    fn a_line_crosses_a_triangle_inside_the_segment_only() {
+        let (a, b, c) = (Vec3::new(0.0, 0.0, 10.0), Vec3::new(10.0, 0.0, 10.0), Vec3::new(0.0, 10.0, 10.0));
+        let from = Vec3::new(2.0, 2.0, 0.0);
+        let to = Vec3::new(2.0, 2.0, 20.0);
+        let (hit, n) = func0002f560(a, b, c, from, to, to - from).unwrap();
+        assert!((hit - Vec3::new(2.0, 2.0, 10.0)).length() < 1e-5, "{hit}");
+        assert!(n.cross(Vec3::Z).length() < 1e-5, "normal along z: {n}");
+        // Short of the triangle, beyond it, or beside it: no hit.
+        let near = Vec3::new(2.0, 2.0, 5.0);
+        assert!(func0002f560(a, b, c, from, near, near - from).is_none());
+        let past = Vec3::new(2.0, 2.0, 15.0);
+        assert!(func0002f560(a, b, c, past, to, to - past).is_none());
+        let off = Vec3::new(9.0, 9.0, 0.0);
+        assert!(func0002f560(a, b, c, off, off + Vec3::Z * 20.0, Vec3::Z * 20.0).is_none());
     }
 
     #[test]

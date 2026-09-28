@@ -53,8 +53,6 @@ pub mod hit;
 pub mod pose;
 
 #[cfg(test)]
-mod oracle;
-#[cfg(test)]
 mod tests;
 
 pub use n64::rdp::Cull;

@@ -6517,6 +6517,148 @@
    "sectopri_animation": null,
    "aimsettings": "invaimsettings_default",
    "gunviscmds_symbol": null
+  },
+  {
+   "mp_index": null,
+   "mpweapon": null,
+   "weapon": "WEAPON_UNARMED",
+   "weaponnum": 1,
+   "symbol": "invitem_unarmed",
+   "source": "invitems.c:312",
+   "equipment_only": false,
+   "name_text": "Unarmed",
+   "short_text": "Unarmed",
+   "manufacturer_text": "",
+   "description_text": "Even without a weapon, you are still a worthy adversary. Use your fists to knock your opponents out or disarm them and use their weapons against them.",
+   "muzzlez": 1,
+   "posx": 7.5,
+   "posy": -41,
+   "posz": -16,
+   "sway": 1,
+   "weapon_flags": 134488664,
+   "weapon_flag_names": [
+    "WEAPONFLAG_ONEHANDED",
+    "WEAPONFLAG_AICANUSE",
+    "WEAPONFLAG_00000040",
+    "WEAPONFLAG_TRACKTIMEUSED",
+    "WEAPONFLAG_HASGUNSCRIPT",
+    "WEAPONFLAG_HIDEMENUMODEL",
+    "WEAPONFLAG_UNDROPPABLE"
+   ],
+   "ai_can_use": true,
+   "assets": {
+    "fp_model_symbol": "FILE_GCOMBATHANDSLOD",
+    "fp_model": "guns/combathandslod.bin",
+    "tp_model_symbol": null,
+    "tp_model": null,
+    "tp_model_const": null,
+    "extrascale": null
+   },
+   "mp": null,
+   "part_visibility": [],
+   "gun_vis": [],
+   "editor": null,
+   "export": null,
+   "bot": {
+    "score1": 13,
+    "score2": 13,
+    "dualscore1": 13,
+    "dualscore2": 13,
+    "haspriammogoal": 1,
+    "hassecammogoal": 1,
+    "pridistconfig": 0,
+    "secdistconfig": 0,
+    "targetammopri": 0,
+    "targetammosec": 0,
+    "criticalammopri": 0,
+    "criticalammosec": 0,
+    "reloaddelay": 0,
+    "allowpartialreloaddelay": 0,
+    "source": "botinv.c:21"
+   },
+   "functions": [
+    {
+     "symbol": "invfunc_unarmed_punch",
+     "struct": "funcdef_melee",
+     "line": 264,
+     "source": "invitems.c:264",
+     "type": 3,
+     "name": "L_GUN_100",
+     "unk06": 0,
+     "ammoindex": -1,
+     "noisesettings": "invnoisesettings_silent",
+     "fire_animation": "invanim_punch",
+     "flags": 4301312,
+     "damage": 0.5,
+     "range": 60,
+     "unused0": 105,
+     "unused1": 105,
+     "unused2": 105,
+     "unused3": 7.5,
+     "unused4": -35,
+     "unused5": 7.5,
+     "unused6": -35,
+     "unused7": -1,
+     "unused8": -1,
+     "unused9": 2,
+     "unused10": 2,
+     "unused11": 0,
+     "name_text": "Punch",
+     "flag_names": [
+      "FUNCFLAG_MAKEDIZZY",
+      "FUNCFLAG_NOMUZZLEFLASH",
+      "FUNCFLAG_BLUNTIMPACT",
+      "FUNCFLAG_NOSTUN",
+      "FUNCFLAG_00400000"
+     ]
+    },
+    {
+     "symbol": "invfunc_unarmed_disarm",
+     "struct": "funcdef_melee",
+     "line": 288,
+     "source": "invitems.c:288",
+     "type": 3,
+     "name": "L_GUN_101",
+     "unk06": 0,
+     "ammoindex": -1,
+     "noisesettings": "invnoisesettings_silent",
+     "fire_animation": "invanim_punch",
+     "flags": 4302336,
+     "damage": 0.3,
+     "range": 60,
+     "unused0": 105,
+     "unused1": 105,
+     "unused2": 105,
+     "unused3": 7.5,
+     "unused4": -35,
+     "unused5": 7.5,
+     "unused6": -35,
+     "unused7": -1,
+     "unused8": -1,
+     "unused9": 2,
+     "unused10": 2,
+     "unused11": 0,
+     "name_text": "Disarm",
+     "flag_names": [
+      "FUNCFLAG_MAKEDIZZY",
+      "FUNCFLAG_DISARM",
+      "FUNCFLAG_NOMUZZLEFLASH",
+      "FUNCFLAG_BLUNTIMPACT",
+      "FUNCFLAG_NOSTUN",
+      "FUNCFLAG_00400000"
+     ]
+    }
+   ],
+   "ammo": [
+    null,
+    null
+   ],
+   "equip_animation": null,
+   "unequip_animation": null,
+   "pritosec_animation": null,
+   "sectopri_animation": null,
+   "aimsettings": "invaimsettings_unarmed",
+   "gunviscmds_symbol": null
   }
  ],
  "scripts": {
@@ -8831,6 +8973,111 @@
     }
    ]
   },
+  "invanim_punch": {
+   "line": 256,
+   "cmds": [
+    {
+     "op": "random",
+     "probability": 20,
+     "target": "invanim_punch_right"
+    },
+    {
+     "op": "random",
+     "probability": 40,
+     "target": "invanim_punch_push"
+    },
+    {
+     "op": "random",
+     "probability": 60,
+     "target": "invanim_punch_left"
+    },
+    {
+     "op": "include",
+     "condition": 0,
+     "target": "invanim_punch_double"
+    },
+    {
+     "op": "end"
+    }
+   ]
+  },
+  "invanim_punch_double": {
+   "line": 249,
+   "cmds": [
+    {
+     "op": "playanimation",
+     "anim": 1061,
+     "params": 10000
+    },
+    {
+     "op": "allowfeature",
+     "keyframe": 8,
+     "feature": 2
+    },
+    {
+     "op": "allowfeature",
+     "keyframe": 18,
+     "feature": 3
+    },
+    {
+     "op": "end"
+    }
+   ]
+  },
+  "invanim_punch_left": {
+   "line": 231,
+   "cmds": [
+    {
+     "op": "playanimation",
+     "anim": 1001,
+     "params": 10000
+    },
+    {
+     "op": "allowfeature",
+     "keyframe": 7,
+     "feature": 2
+    },
+    {
+     "op": "end"
+    }
+   ]
+  },
+  "invanim_punch_push": {
+   "line": 243,
+   "cmds": [
+    {
+     "op": "playanimation",
+     "anim": 1055,
+     "params": 10000
+    },
+    {
+     "op": "allowfeature",
+     "keyframe": 7,
+     "feature": 2
+    },
+    {
+     "op": "end"
+    }
+   ]
+  },
+  "invanim_punch_right": {
+   "line": 237,
+   "cmds": [
+    {
+     "op": "playanimation",
+     "anim": 1002,
+     "params": 10000
+    },
+    {
+     "op": "allowfeature",
+     "keyframe": 8,
+     "feature": 2
+    },
+    {
+     "op": "end"
+    }
+   ]
+  },
   "invanim_rcp120_reload": {
    "line": 1574,
    "cmds": [
@@ -10376,6 +10623,8 @@
   237,
   277,
   278,
+  1001,
+  1002,
   1003,
   1004,
   1005,
@@ -10418,11 +10667,13 @@
   1049,
   1050,
   1051,
+  1055,
   1056,
   1057,
   1058,
   1059,
   1060,
+  1061,
   1062,
   1063,
   1064,

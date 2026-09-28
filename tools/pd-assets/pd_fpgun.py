@@ -900,7 +900,7 @@ def parse_guncmds(text: str, consts: pd_weapons.Consts, anims: dict[str, int], s
 
 def build_weapons() -> dict:
     """pd_weapons.build() + scripts/aim/recoil/noise + every referenced anim id."""
-    table = pd_weapons.build()
+    table = pd_weapons.build(include_unarmed=True)
     consts = pd_weapons.Consts()
     consts.all.update(pd_weapons.scrape_defines(
         pd_weapons.src("include", "constants.h"),

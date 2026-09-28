@@ -19,4 +19,11 @@ pub enum Event {
     /// recorded), `volume` (linear, 1 is the sound's own) and `pan` (−1 left,
     /// 1 right).
     Sound { sound: u16, pitch: f32, volume: f32, pan: f32 },
+    /// A sound PD keeps a handle to so it can stop it later (a hand's
+    /// `audiohandle`: the Reaper's spin, the Mauler's charge). `handle` is
+    /// unique among the sounds playing; a new one on the same handle replaces
+    /// the old.
+    HandleSound { handle: u32, sound: u16, pitch: f32, volume: f32, pan: f32 },
+    /// Stop the sound on `handle`, if it still plays.
+    StopSound { handle: u32 },
 }

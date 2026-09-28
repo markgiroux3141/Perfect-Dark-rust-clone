@@ -16,17 +16,19 @@
 //! `mplayer.c:129`), and control style 1.1 for an N64 pad (`bondmove.c:1166`),
 //! except the gun-function toggle, which keeps the N64's hold-B behaviour.
 //!
-//! **The guns are M4.** Every place `bmove_process_input` and
-//! `bwalk_update_horizontal` call into `bondgun.c` is marked `// M4:`; until then
-//! the player is unarmed: no trigger, no zoom, no gun sway. The player-side state
-//! those calls read (`crouchpos`, `bondbreathing`, `insightaimmode`,
-//! `guncloseroffset`) lives here, as it does in PD's `struct player`.
+//! The player carries its guns ([`Player::gun`], `crate::gun`) and its camera
+//! ([`camera`]), both part of PD's `struct player`: `bmove_process_input` drives
+//! the trigger, the gun function, reloads, weapon cycling and the zoom, and the
+//! walk feeds the gun's sway. The player fields the gun code reads
+//! (`crouchpos`, `bondbreathing`, `insightaimmode`, `guncloseroffset`) are
+//! copied into its [`GunCtx`] per call.
 //!
-//! Source: the old repo's `pd_guns/player.rs`, with the `bgun` coupling removed.
+//! Source: the old repo's `pd_guns/player.rs`.
 
 mod bondhead;
 mod bondmove;
 mod bondwalk;
+pub mod camera;
 mod spawn;
 #[cfg(test)]
 mod tests;
@@ -45,8 +47,11 @@ use pd_core::math::{self, baddtor2};
 use pd_core::model::{Model, ModelDef, NodeKind};
 use pd_core::rng::Rng;
 
+use crate::gun::{Bgun, GunCtx, GunIn, HAND_MODELS};
 use crate::stage::{CdObstacle, Edge, PerimCyl, TileLevel};
+use crate::world::WorldRes;
 use bondhead::HeadAnim;
+use camera::{Camera, SCREEN_H, SCREEN_W};
 
 /// `PLAYER_DEFAULT_FOV`.
 pub const PLAYER_DEFAULT_FOV: f32 = 60.0;
@@ -265,8 +270,16 @@ pub struct Player {
     pub mouseaimspeed: f32,
     pub crosshairsway: f32,
     pub crosshairedgeboundary: f32,
-    /// The view's aspect ratio (`player_get_aspect_ratio`), for the mouse aim.
+    /// The view: `player_get_viewport_width/height` and `player_get_aspect_ratio`
+    /// (320 × 220 at 320/220 for one player).
+    pub viewwidth: f32,
+    pub viewheight: f32,
     pub aspect: f32,
+
+    /// The hands and `gunctrl` (`bondgun.c`).
+    pub gun: Bgun,
+    /// `camera.c`'s state.
+    pub cam: Camera,
 
     bank: Arc<AnimBank>,
     /// `PLAYERCOUNT()`.
@@ -274,9 +287,12 @@ pub struct Player {
 }
 
 impl Player {
-    /// A player standing at `feet` facing `theta` degrees, with `bhead_reset`
-    /// run. `playercount` is `PLAYERCOUNT()`, which the head model's posing reads.
-    pub fn new(bank: Arc<AnimBank>, feet: Vec3, theta: f32, playercount: usize, rng: &mut Rng) -> Result<Player, String> {
+    /// A player standing at `feet` facing `theta` degrees, with `bgun_reset` and
+    /// `bhead_reset` run, holding Joanna's combat hands. `playercount` is
+    /// `PLAYERCOUNT()`, which the models' posing reads.
+    pub fn new(res: &WorldRes, feet: Vec3, theta: f32, playercount: usize, rng: &mut Rng) -> Result<Player, String> {
+        let bank = res.bank.clone();
+        let gun = Bgun::new(HAND_MODELS[0], &res.gset, rng);
         let anim = |name: &str| bank.by_name(name).ok_or_else(|| format!("no {name} in the animation bank"));
         let (walk, run, hold) = (anim("ANIM_002B")?, anim("ANIM_0029")?, anim("ANIM_TWO_GUN_HOLD")?);
         let mut p = Player {
@@ -376,7 +392,11 @@ impl Player {
             mouseaimspeed: 0.7,
             crosshairsway: 1.0,
             crosshairedgeboundary: 0.7,
-            aspect: 320.0 / 220.0,
+            viewwidth: SCREEN_W,
+            viewheight: SCREEN_H,
+            aspect: SCREEN_W / SCREEN_H,
+            gun,
+            cam: Camera::default(),
             bank,
             playercount,
         };
@@ -435,19 +455,44 @@ impl Player {
         self.update_crouch_offset_real();
     }
 
-    /// `bmove_tick` in walk mode (`bondmove.c:1880`): input, then walking
-    /// (`bwalk_tick`, `bondwalk.c:1791`), then the footsteps. Sounds go to `events`.
-    pub fn tick(&mut self, input: &PlayerInput, lv: &Lv, env: &WalkEnv, rng: &mut Rng, events: &mut Vec<Event>) {
+    /// `player_tick`'s part for a living player in the first person
+    /// (`player.c:3140`): the view (`vi_set_fov_aspect_and_size(60, ...)`), then
+    /// `bmove_tick` in walk mode (`bondmove.c:1880`: the controls with the guns'
+    /// `bgun_tick_gameplay`, walking with `bwalk_tick`, `bondwalk.c:1791`, the
+    /// footsteps), then the camera's matrices for this frame
+    /// (`player_allocate_matrices`). Sounds go to `events`.
+    pub fn tick(&mut self, input: &PlayerInput, lv: &Lv, env: &WalkEnv, res: &WorldRes, rng: &mut Rng, events: &mut Vec<Event>) {
         self.die_request = false;
         self.landed = None;
-        self.bmove_process_input(input, lv);
+        self.cam.vi_set_fov_aspect_and_size(PLAYER_DEFAULT_FOV, self.aspect, self.viewwidth, self.viewheight);
+        self.cam.cam_set_screen_position(0.0, 0.0);
+        self.bmove_process_input(input, lv, res, rng);
         // bwalk_update_prev_pos
         self.prevpos = self.pos;
         self.bwalk_update_theta(lv);
         self.bmove_update_look();
-        self.bwalk_update_horizontal(lv, env, rng);
+        self.bwalk_update_horizontal(lv, env, res, rng);
         self.bwalk_update_vertical(lv, env);
         self.bmove_footsteps(rng, events);
+        self.cam.player_allocate_matrices(self.pos, self.look, self.up);
+    }
+
+    /// The player fields the gun code reads.
+    pub fn gun_in(&self) -> GunIn {
+        GunIn {
+            crouchpos: self.crouchpos,
+            bondbreathing: self.bondbreathing,
+            guncloseroffset: self.guncloseroffset,
+            insightaimmode: self.insightaimmode,
+            isdead: false,
+            playercount: self.playercount,
+        }
+    }
+
+    /// This player as `g_Vars.currentplayer` for the gun code.
+    pub fn gun_ctx<'a>(&'a mut self, res: &'a WorldRes, rng: &'a mut Rng, lv: &'a Lv) -> GunCtx<'a> {
+        let pl = self.gun_in();
+        GunCtx { b: &mut self.gun, gset: &res.gset, bank: &res.bank, models: &res.models, rng, lv, cam: &self.cam, pl }
     }
 
     /// `player_get_bbox` (`player.c:5193`), walk mode: radius, then the absolute

@@ -5,7 +5,8 @@
 //!   blockers, ladders, crouch zones, floor types, rooms) from `tiles.json`;
 //! - collision on it ([`TileLevel`]: the `lib/collision.c` primitives);
 //! - pads, PD's waypoint graph (waypoints + waygroups) and cover from `pads.json`;
-//! - the MP setup's spawn pads (`intro[]`'s `spawn()`s) and props from `setup.json`.
+//! - the MP setup's spawn pads (`intro[]`'s `spawn()`s) and props from `setup.json`;
+//! - what shots hit ([`BgHitMesh`]): the textured BG's triangles from `bg.json`.
 //!
 //! The box [`fixtures`] (the simulant spike's arena, the gun spike's range) are
 //! test stages built from the same polygons.
@@ -14,10 +15,12 @@
 //! `pd_tiles.rs`. The spike read the decomp's JSON and `mp_setup<code>.c` at run
 //! time; the stage exporter owns that now.
 
+pub mod bghit;
 mod collision;
 pub mod fixtures;
 mod geom;
 
+pub use bghit::{BgHit, BgHitMesh, TexSurface};
 pub use collision::*;
 pub use geom::*;
 
@@ -113,6 +116,8 @@ pub struct Stage {
     /// (`{type, <param>: value}`), for the pickups (M8) and scenarios (M10).
     pub intro: Vec<serde_json::Value>,
     pub props: Vec<serde_json::Value>,
+    /// The BG triangles shots hit, with their textures' surface types.
+    pub bghit: BgHitMesh,
 }
 
 // ─── the files ───────────────────────────────────────────────────────────────
@@ -241,7 +246,27 @@ impl Stage {
             spawn_pads,
             intro: setup.intro,
             props: setup.props,
+            bghit: BgHitMesh::load(assets, code)?,
         })
+    }
+
+    /// A test stage from a box fixture: its polygons, shots hitting them as the
+    /// default surface, and a spawn pad at each `(pos, look)`.
+    pub fn fixture(code: &str, geom: LevelGeom, spawns: &[(Vec3, Vec3)]) -> Stage {
+        let pads: Vec<Pad> = spawns.iter().map(|&(pos, look)| Pad { pos, look, up: Vec3::Y, flags: 0, bbox: [0.0; 6], liftnum: -1 }).collect();
+        Stage {
+            code: code.to_owned(),
+            stagenum: 0,
+            bghit: BgHitMesh::from_geom(&geom),
+            geom,
+            spawn_pads: (0..pads.len()).collect(),
+            pads,
+            waypoints: Vec::new(),
+            waygroups: Vec::new(),
+            cover: Vec::new(),
+            intro: Vec::new(),
+            props: Vec::new(),
+        }
     }
 
     pub fn waypoint_pos(&self, w: usize) -> Vec3 {

@@ -34,17 +34,34 @@ pub struct MatchChr {
 }
 
 /// `struct mpplayerconfig`: one human player.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MatchPlayer {
     /// The chr slot, 0..3 (`chrslots` bit).
     pub slot: u8,
     pub chr: MatchChr,
     /// `CONTROLMODE_*` (1.1 is 0).
     pub controlmode: u8,
-    /// `MPPLAYEROPTION_*` (auto-aim, look-ahead, sight on screen, ...).
+    /// `OPTION_*` (auto-aim, look-ahead, sight on screen, ...).
     pub options: u16,
     /// `handicap`: 0..255, 128 is none (`mp_get_handicap_mult`).
     pub handicap: u8,
+}
+
+impl MatchPlayer {
+    /// `mp_init_player`'s options (`mplayer.c:379`).
+    pub const DEFAULT_OPTIONS: u16 = OPTION_LOOKAHEAD | OPTION_SIGHTONSCREEN | OPTION_AUTOAIM | OPTION_AMMOONSCREEN | OPTION_SHOWGUNFUNCTION | OPTION_HEADROLL | OPTION_0100 | OPTION_ALWAYSSHOWTARGET | OPTION_SHOWZOOMRANGE;
+
+    pub fn has_option(&self, option: u16) -> bool {
+        self.options & option != 0
+    }
+}
+
+impl Default for MatchPlayer {
+    /// A fresh player config (`mp_init_player`, `mplayer.c:370`): control style
+    /// 1.1, PD's default options, no handicap.
+    fn default() -> Self {
+        MatchPlayer { slot: 0, chr: MatchChr::default(), controlmode: 0, options: Self::DEFAULT_OPTIONS, handicap: 128 }
+    }
 }
 
 /// `struct mpbotconfig`: one simulant.

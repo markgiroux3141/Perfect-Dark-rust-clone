@@ -41,7 +41,8 @@ indices into that batch's vertices.
 `textures/<num>.png` (RGBA8, level 0, in N64 display space: no gamma) for every
 pool texture a model references, plus the ones the menus, the gun effects and the
 stage BGs sample (added by `pd_stage.py`). `textures/index.json`: {"<num>": {w, h, format, codec,
-numcolours, numlods, hasloddata}}. PD rebuilds mip levels at load
+numcolours, numlods, hasloddata, soundsurfacetype, surfacetype}} (the last two
+from `g_Textures`: what a shot hitting it sounds like and leaves). PD rebuilds mip levels at load
 (`tex_shrink_*`) unless `hasloddata`; per-use texconfig levels are in each model's
 `textures` entry. Textures stored inside a model file (a51guard, dd_shock, elvis,
 the casings) are model-local: `models/tex/<stem>_<index>.png`.
@@ -194,6 +195,21 @@ def model_list(weapons: dict, c: gen.Consts) -> list[tuple[str, str]]:
 # ---------------------------------------------------------------------------
 
 
+_SURFACE_TYPES: list[tuple[int, int]] | None = None
+
+
+def texture_surface_types() -> list[tuple[int, int]]:
+    """`g_Textures[num]`'s `soundsurfacetype` and `surfacetype` (`types.h:4842`),
+    from the extract's `textures.json`: `flag00` is the byte's high nibble, the
+    sound one (`tools/assetmgr/mktextures:31`)."""
+    global _SURFACE_TYPES
+    if _SURFACE_TYPES is None:
+        with open(asset("textures.json"), encoding="utf-8") as fh:
+            rows = json.load(fh)
+        _SURFACE_TYPES = [(r["flag00"] & 0x0f, r["surfacetype"] & 0x0f) for r in rows]
+    return _SURFACE_TYPES
+
+
 class TexturePool:
     """Writes `textures/<num>.png` once per pool texture and model-local textures
     to `models/tex/`, and collects `textures/index.json`."""
@@ -214,10 +230,12 @@ class TexturePool:
         t = pd_tex.decode(data)
         with open(out("textures", f"{texnum:04x}.png"), "wb") as fh:
             fh.write(pd_gltf.png_bytes(t.width, t.height, t.rgba))
+        sound, surface = texture_surface_types()[texnum]
         e = {
             "w": t.width, "h": t.height, "format": t.format_name,
             "codec": "zlib" if data[0] & 0x40 else "non-zlib",
             "numcolours": t.numcolours, "numlods": t.numlods, "hasloddata": bool(t.hasloddata),
+            "soundsurfacetype": sound, "surfacetype": surface,
         }
         self.entries[texnum] = e
         return e

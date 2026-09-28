@@ -7,19 +7,23 @@
 //! `snd_start_extra` paths apply; a bare `snd_start`, which is how the menus play,
 //! does not, so this plays the bank sound's own entry.
 //!
-//! Later: loops stopped by id (M4), and the `n64::audio` TV-speaker chain on an
-//! engine DSP track (M5).
+//! A sound on a handle (a hand's `audiohandle`: the Reaper's spin, the Mauler's
+//! charge) keeps its voice until it is stopped or replaced, and loops if its
+//! sample has a loop in the bank.
+//!
+//! Later: the `n64::audio` TV-speaker chain on an engine DSP track (M5).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use engine::audio::Audio;
+use engine::audio::{Audio, VoiceId};
 use pd_core::assets::AssetDir;
 use pd_core::events::Event;
 
 struct Entry {
     path: PathBuf,
     volume: f32,
+    looping: bool,
 }
 
 pub struct SfxBank {
@@ -27,6 +31,8 @@ pub struct SfxBank {
     sounds: HashMap<u16, Entry>,
     /// `SFXMAP_*` refs to bank sound numbers.
     maps: HashMap<u16, u16>,
+    /// The voices playing on sound handles.
+    handles: HashMap<u32, VoiceId>,
 }
 
 fn hex4(s: &str) -> Option<u16> {
@@ -42,14 +48,15 @@ impl SfxBank {
             if key.len() == 4 {
                 let (Some(num), Some(file)) = (hex4(key), e["file"].as_str()) else { continue };
                 let volume = e["volume"].as_f64().unwrap_or(1.0) as f32;
-                sounds.insert(num, Entry { path: assets.root().join("sfx").join(file), volume });
+                let looping = !e["loop"].is_null();
+                sounds.insert(num, Entry { path: assets.root().join("sfx").join(file), volume, looping });
             } else if let Some(rest) = key.strip_prefix("SFXMAP_") {
                 if let (Some(r), Some(num)) = (hex4(rest), e["sound"].as_str().and_then(hex4)) {
                     maps.insert(r, num);
                 }
             }
         }
-        Ok(SfxBank { sounds, maps })
+        Ok(SfxBank { sounds, maps, handles: HashMap::new() })
     }
 
     /// The bank sound a ref plays.
@@ -58,7 +65,7 @@ impl SfxBank {
         self.sounds.get(&num)
     }
 
-    pub fn play(&self, audio: Option<&mut Audio>, events: &[Event]) {
+    pub fn play(&mut self, audio: Option<&mut Audio>, events: &[Event]) {
         let Some(audio) = audio else { return };
         for ev in events {
             match *ev {
@@ -68,7 +75,33 @@ impl SfxBank {
                     }
                     None => log::debug!("sfx: no sample for sound {sound:#06x}"),
                 },
+                Event::HandleSound { handle, sound, pitch, volume, pan } => {
+                    if let Some(v) = self.handles.remove(&handle) {
+                        audio.stop_voice(v);
+                    }
+                    match self.resolve(sound) {
+                        Some(e) => {
+                            if let Some(v) = audio.play_voice(&e.path, e.volume * volume, pitch as f64, pan, e.looping) {
+                                self.handles.insert(handle, v);
+                            }
+                        }
+                        None => log::debug!("sfx: no sample for sound {sound:#06x}"),
+                    }
+                }
+                Event::StopSound { handle } => {
+                    if let Some(v) = self.handles.remove(&handle) {
+                        audio.stop_voice(v);
+                    }
+                }
             }
+        }
+    }
+
+    /// Stop every handled sound (the match ended).
+    pub fn stop_all(&mut self, audio: Option<&mut Audio>) {
+        let Some(audio) = audio else { return };
+        for (_, v) in self.handles.drain() {
+            audio.stop_voice(v);
         }
     }
 }

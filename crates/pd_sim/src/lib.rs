@@ -21,5 +21,6 @@ pub mod mp;
 pub mod nav;
 pub mod player;
 pub mod props;
+pub mod propsnd;
 pub mod stage;
 pub mod world;

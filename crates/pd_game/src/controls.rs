@@ -9,7 +9,7 @@
 //! keyboard and mouse drive player [`Controls::kb_player`] the PC port's way
 //! (the gun spike's key table):
 //! WASD move · mouse look · RMB (hold) aim · LMB fire · E / MMB use ·
-//! R reload · Q / wheel next gun · 1-0 pick a gun · Ctrl or C crouch down ·
+//! R reload · Q next gun · 1-0 pick a gun (by inventory slot) · Ctrl or C crouch down ·
 //! Space crouch up · ↑/↓ zoom · Esc frees the mouse (a click takes it back).
 //!
 //! Keyboard (menus; it drives controller [`Controls::kb_player`]): arrows / WASD
@@ -179,5 +179,23 @@ impl Controls {
         inp.crouch_up = input.key_pressed(KeyCode::Space);
         inp.zoom_in = k(KeyCode::ArrowUp);
         inp.zoom_out = k(KeyCode::ArrowDown);
+    }
+
+    /// The inventory slot a number key picks this tick (1 is the first, 0 the
+    /// tenth); the caller looks the weapon up in the player's inventory.
+    pub fn slot_pressed(&self, input: &Input) -> Option<usize> {
+        const DIGITS: [KeyCode; 10] = [
+            KeyCode::Digit1,
+            KeyCode::Digit2,
+            KeyCode::Digit3,
+            KeyCode::Digit4,
+            KeyCode::Digit5,
+            KeyCode::Digit6,
+            KeyCode::Digit7,
+            KeyCode::Digit8,
+            KeyCode::Digit9,
+            KeyCode::Digit0,
+        ];
+        DIGITS.iter().position(|&k| input.key_pressed(k))
     }
 }

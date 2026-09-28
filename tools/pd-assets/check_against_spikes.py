@@ -26,6 +26,7 @@ OLD_DEFAULT = r"D:\Claude Code Projects\Hide and Seek Level Builder"
 
 #: Intended differences, each with its reason.
 KNOWN = {
+    "unarmed": "invitem_unarmed joins the export for the fists (M4); g_MpWeapons does not list it",
     "sfx envelope": "the spikes exported some sounds raw (the menu set, grunts, footstep impacts) and "
                     "the gun set with the envelope; the pool bakes PD's playback envelope into every "
                     "non-looping sound (n_sndplayer.c applies it to all voices)",
@@ -131,9 +132,13 @@ def check_sfx(old: str) -> None:
 def check_weapons(old: str) -> None:
     a = json.load(open(os.path.join(old, "weapons/pd_fp/weapons.json"), encoding="utf-8"))
     b = json.load(open(out("data", "weapons.json"), encoding="utf-8"))
+    # Intended: the export now has `invitem_unarmed` (the fists every player holds,
+    # which g_MpWeapons does not list), and so its scripts and animations too.
+    added = [w for w in b["weapons"] if w["weapon"] == "WEAPON_UNARMED"]
+    b_weapons = [w for w in b["weapons"] if w["weapon"] != "WEAPON_UNARMED"]
     for k in sorted(set(a) - {"anims", "models"}):  # now the anim bank and models/index.json
         if k == "weapons":
-            for x, y in zip(a[k], b[k]):
+            for x, y in zip(a[k], b_weapons):
                 x, y = dict(x), dict(y)
                 # `editor` pointed at the old repo's Perfect Gold dump, which this repo
                 # does not have and nothing reads at run time.
@@ -141,11 +146,24 @@ def check_weapons(old: str) -> None:
                 y.pop("editor", None)
                 if x != y:
                     fails.append(f"weapons.json {x['symbol']} differs")
-            if len(a[k]) != len(b[k]):
+            if len(a[k]) != len(b_weapons):
                 fails.append("weapons.json weapon count differs")
+        elif k == "scripts":
+            if any(b[k].get(n) != v for n, v in a[k].items()):
+                fails.append("weapons.json scripts differ")
+            extra = sorted(set(b[k]) - set(a[k]))
+            if extra and not all(n.startswith("invanim_punch") for n in extra):
+                fails.append(f"weapons.json has unexpected new scripts {extra}")
+        elif k == "anim_ids":
+            if not set(a[k]) <= set(b[k]):
+                fails.append("weapons.json lost anim ids")
         elif a[k] != b.get(k):
             fails.append(f"weapons.json {k} differs")
-    notes.append(f"weapons.json: {len(b['weapons'])} weapons and {len(b['scripts'])} gun scripts identical")
+    notes.append(
+        f"weapons.json: {len(b_weapons)} weapons and {len(a['scripts'])} gun scripts identical; "
+        f"added {len(added)} (unarmed) and {len(b['scripts']) - len(a['scripts'])} punch scripts "
+        f"({KNOWN['unarmed']})"
+    )
 
 
 def check_fonts_lang(old: str) -> None:

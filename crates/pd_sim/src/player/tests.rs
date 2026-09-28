@@ -5,7 +5,6 @@
 use std::sync::Arc;
 
 use glam::{Vec2, Vec3};
-use pd_core::anim::AnimBank;
 use pd_core::assets::AssetDir;
 use pd_core::ids::*;
 use pd_core::lv::{Lv, LvTickIn};
@@ -17,6 +16,11 @@ use crate::stage::{FloorKind, GeomPoly, Stage, TileLevel};
 
 fn assets() -> AssetDir {
     AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR"))
+}
+
+fn res() -> Arc<crate::world::WorldRes> {
+    static RES: std::sync::OnceLock<Arc<crate::world::WorldRes>> = std::sync::OnceLock::new();
+    RES.get_or_init(|| Arc::new(crate::world::WorldRes::load(&assets()).expect("assets/"))).clone()
 }
 
 fn complex() -> (Stage, TileLevel) {
@@ -35,16 +39,15 @@ struct Walker {
 
 impl Walker {
     fn new() -> Walker {
-        let bank = Arc::new(AnimBank::load(&assets()).expect("assets/anims"));
         let mut rng = Rng::new(0);
-        let p = Player::new(bank, Vec3::ZERO, 0.0, 1, &mut rng).unwrap();
+        let p = Player::new(&res(), Vec3::ZERO, 0.0, 1, &mut rng).unwrap();
         Walker { p, lv: Lv::new(), rng, events: Vec::new() }
     }
 
     fn frame(&mut self, level: &TileLevel, input: &PlayerInput) {
         self.lv.frame(4, LvTickIn::default());
         let env = WalkEnv { level, cyls: &[] };
-        self.p.tick(input, &self.lv, &env, &mut self.rng, &mut self.events);
+        self.p.tick(input, &self.lv, &env, &res(), &mut self.rng, &mut self.events);
     }
 }
 
@@ -293,8 +296,9 @@ fn walking_on_complex_makes_metal_footsteps_every_150cm() {
         w.frame(&level, &PlayerInput { walk_y: 127, ..PlayerInput::default() });
         walked += (w.p.pos - before).length();
     }
-    let steps: Vec<u16> = w.events.iter().map(|e| match e {
-        Event::Sound { sound, .. } => *sound,
+    let steps: Vec<u16> = w.events.iter().filter_map(|e| match e {
+        Event::Sound { sound, .. } => Some(*sound),
+        _ => None,
     }).collect();
     assert!(walked > 300.0, "walked only {walked:.0} cm from {start}");
     assert!(steps.iter().all(|s| metal.contains(s)), "{steps:x?}");
@@ -340,13 +344,12 @@ fn crouching_lowers_the_eye_and_a_ceiling_keeps_you_down() {
 fn players_spawn_on_complexs_spawn_pads() {
     use pd_core::mp::{MatchPlayer, MatchSetup};
     let (stage, level) = complex();
-    let bank = Arc::new(AnimBank::load(&assets()).unwrap());
     let setup = MatchSetup {
         stagenum: STAGE_MP_COMPLEX,
         players: (0..4).map(|slot| MatchPlayer { slot, handicap: 128, ..Default::default() }).collect(),
         ..Default::default()
     };
-    let world = crate::world::World::new(setup, Arc::new(stage.clone()), Arc::new(level), bank, 1).unwrap();
+    let world = crate::world::World::new(setup, Arc::new(stage.clone()), Arc::new(level), res(), 1).unwrap();
     assert_eq!(world.players.len(), 4);
     for p in &world.players {
         let pad = stage
@@ -374,9 +377,8 @@ fn a_seeded_walk_is_reproducible() {
     use pd_core::mp::{MatchPlayer, MatchSetup};
     let run = || {
         let (stage, level) = complex();
-        let bank = Arc::new(AnimBank::load(&assets()).unwrap());
         let setup = MatchSetup { stagenum: STAGE_MP_COMPLEX, players: vec![MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
-        let mut world = crate::world::World::new(setup, Arc::new(stage), Arc::new(level), bank, 7).unwrap();
+        let mut world = crate::world::World::new(setup, Arc::new(stage), Arc::new(level), res(), 7).unwrap();
         for t in 0..600 {
             let input = PlayerInput { walk_y: 127, mouse_dx: if (t / 90) % 2 == 0 { 3.0 } else { -2.0 }, ..PlayerInput::default() };
             world.step(4, &[input]);

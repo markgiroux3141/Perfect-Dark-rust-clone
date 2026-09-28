@@ -637,7 +637,10 @@ EQUIPMENT_ONLY = {
 }
 
 
-def build() -> dict:
+def build(include_unarmed: bool = False) -> dict:
+    """The MP weapon table. `include_unarmed` adds `invitem_unarmed` (the fists every
+    player holds, `WEAPON_UNARMED`), which `g_MpWeapons` does not list; its row has
+    no `mp_index`, `mp` or `export`."""
     require_decomp()
     consts = Consts()
     strings = load_gun_strings()
@@ -887,34 +890,7 @@ def build() -> dict:
     # `FILE_GFALCON2`) resolve to the plain Falcon's export.
     editor_by_bin: dict[str, dict] = {}
 
-    rows = []
-    for mp_index, raw in enumerate(mp_rows_raw):
-        inner = raw.strip()
-        body = inner[1:-1] if inner.startswith("{") else inner
-        mp = map_fields(body, MPWEAPON_FIELDS, consts)
-        weaponnum = mp.get("weaponnum")
-        if not isinstance(weaponnum, int) or weaponnum <= 1:
-            continue  # WEAPON_NONE / WEAPON_UNARMED
-        if weaponnum == consts.value("WEAPON_DISABLED"):
-            continue  # the `{ WEAPON_DISABLED }` sentinel row that ends the table
-
-        mp_name = mpweapon_names.get(mp_index, f"MPWEAPON_{mp_index:#04x}")
-        wsym = weapon_symbols[weaponnum] if weaponnum < len(weapon_symbols) else None
-        wdef_entry = inv.get(wsym) if isinstance(wsym, str) else None
-        if wdef_entry is None:
-            print(f"warning: {mp_name} -> {wsym!r} has no weapondef", file=sys.stderr)
-            continue
-
-        try:
-            wdef = map_fields(
-                wdef_entry["body"], weapondef_fields(wdef_entry["body"]), consts
-            )
-        except ValueError as exc:
-            raise ValueError(f"{wsym} (invitems.c:{wdef_entry['line']}): {exc}") from exc
-        # Normalise the two shapes onto one `functions` list.
-        if "functions" not in wdef:
-            wdef["functions"] = [wdef.pop("pri_function", None), wdef.pop("sec_function", None)]
-
+    def make_row(mp_index, mp_name, mp, weaponnum, wsym, wdef_entry, wdef):
         hi_sym = None
         for k, v in consts.files.items():
             if v == wdef.get("hi_model"):
@@ -931,7 +907,7 @@ def build() -> dict:
         name_text = gun_string(strings, wdef.get("name"))
         part_vis = expand_partvis(wdef.get("partvisibility"))
 
-        rows.append(
+        return (
             {
                 "mp_index": mp_index,
                 "mpweapon": mp_name,
@@ -967,7 +943,7 @@ def build() -> dict:
                     else None,
                     "extrascale": mp.get("extrascale"),
                 },
-                "mp": {
+                "mp": None if mp_index is None else {
                     "pri_ammo_type": mp.get("priammotype"),
                     "pri_ammo_qty": mp.get("priammoqty"),
                     "sec_ammo_type": mp.get("secammotype"),
@@ -977,7 +953,7 @@ def build() -> dict:
                 "part_visibility": part_vis,
                 "gun_vis": expand_gunvis(wdef.get("gunviscmds")),
                 "editor": None,  # filled in below, once fp_model is known
-                "export": export_info(
+                "export": None if mp_index is None else export_info(
                     w_slug(mp_index, name_text),
                     tp_bin,
                     has_flash=any(
@@ -990,6 +966,46 @@ def build() -> dict:
                 "ammo": [expand_ammo(wdef.get("pri_ammo")), expand_ammo(wdef.get("sec_ammo"))],
             }
         )
+
+    rows = []
+    for mp_index, raw in enumerate(mp_rows_raw):
+        inner = raw.strip()
+        body = inner[1:-1] if inner.startswith("{") else inner
+        mp = map_fields(body, MPWEAPON_FIELDS, consts)
+        weaponnum = mp.get("weaponnum")
+        if not isinstance(weaponnum, int) or weaponnum <= 1:
+            continue  # WEAPON_NONE / WEAPON_UNARMED
+        if weaponnum == consts.value("WEAPON_DISABLED"):
+            continue  # the `{ WEAPON_DISABLED }` sentinel row that ends the table
+
+        mp_name = mpweapon_names.get(mp_index, f"MPWEAPON_{mp_index:#04x}")
+        wsym = weapon_symbols[weaponnum] if weaponnum < len(weapon_symbols) else None
+        wdef_entry = inv.get(wsym) if isinstance(wsym, str) else None
+        if wdef_entry is None:
+            print(f"warning: {mp_name} -> {wsym!r} has no weapondef", file=sys.stderr)
+            continue
+
+        try:
+            wdef = map_fields(
+                wdef_entry["body"], weapondef_fields(wdef_entry["body"]), consts
+            )
+        except ValueError as exc:
+            raise ValueError(f"{wsym} (invitems.c:{wdef_entry['line']}): {exc}") from exc
+        # Normalise the two shapes onto one `functions` list.
+        if "functions" not in wdef:
+            wdef["functions"] = [wdef.pop("pri_function", None), wdef.pop("sec_function", None)]
+
+        rows.append(make_row(mp_index, mp_name, mp, weaponnum, wsym, wdef_entry, wdef))
+
+    if include_unarmed:
+        # invitem_unarmed (invitems.c): the fists, FILE_GCOMBATHANDSLOD.
+        weaponnum = consts.value("WEAPON_UNARMED")
+        wsym = weapon_symbols[weaponnum]
+        wdef_entry = inv[wsym]
+        wdef = map_fields(wdef_entry["body"], weapondef_fields(wdef_entry["body"]), consts)
+        if "functions" not in wdef:
+            wdef["functions"] = [wdef.pop("pri_function", None), wdef.pop("sec_function", None)]
+        rows.append(make_row(None, None, {}, weaponnum, wsym, wdef_entry, wdef))
 
     # Resolve the editor dump per row, falling back to whichever gun shares the
     # same first-person model file (the Falcon variants).

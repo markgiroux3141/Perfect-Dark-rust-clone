@@ -7,12 +7,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use n64::rdp::Gfx;
-use pd_core::anim::AnimBank;
 use pd_core::assets::AssetDir;
 use pd_core::mp::MatchSetup;
 use pd_core::text::{FontId, Fonts, TextCtx, TextState};
 use pd_sim::stage::{Stage, TileLevel};
-use pd_sim::world::World;
+use pd_sim::world::{World, WorldRes};
 
 pub enum Screen {
     Menus,
@@ -25,16 +24,17 @@ pub enum Screen {
     StandIn { setup: MatchSetup, lines: Vec<String> },
 }
 
-/// Loaded stages and the animation bank, kept between matches.
+/// Loaded stages and the world's resources (animations, guns, models, sound
+/// configs), kept between matches.
 pub struct MatchAssets {
     assets: AssetDir,
     stages: HashMap<String, (Arc<Stage>, Arc<TileLevel>)>,
-    bank: Option<Arc<AnimBank>>,
+    res: Option<Arc<WorldRes>>,
 }
 
 impl MatchAssets {
     pub fn new(assets: &AssetDir) -> MatchAssets {
-        MatchAssets { assets: assets.clone(), stages: HashMap::new(), bank: None }
+        MatchAssets { assets: assets.clone(), stages: HashMap::new(), res: None }
     }
 
     /// Whether `stages/<code>/` has been exported.
@@ -49,11 +49,11 @@ impl MatchAssets {
             let level = TileLevel::new(stage.geom.clone());
             self.stages.insert(code.to_owned(), (Arc::new(stage), Arc::new(level)));
         }
-        if self.bank.is_none() {
-            self.bank = Some(Arc::new(AnimBank::load(&self.assets)?));
+        if self.res.is_none() {
+            self.res = Some(Arc::new(WorldRes::load(&self.assets)?));
         }
         let (stage, level) = self.stages[code].clone();
-        World::new(setup, stage, level, self.bank.clone().unwrap(), seed)
+        World::new(setup, stage, level, self.res.clone().unwrap(), seed)
     }
 }
 

@@ -13,12 +13,11 @@ use std::sync::Arc;
 
 use engine::gpu::{HeadlessGpu, RenderTarget};
 use engine::wgpu;
-use pd_core::anim::AnimBank;
 use pd_core::mp::{MatchPlayer, MatchSetup};
 use pd_render::{Renderer, View};
 use pd_sim::player::PlayerInput;
 use pd_sim::stage::{Stage, TileLevel};
-use pd_sim::world::World;
+use pd_sim::world::{World, WorldRes};
 
 pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let mut code: Option<String> = None;
@@ -45,9 +44,9 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let assets = crate::assets();
     let stage = Arc::new(Stage::load(&assets, &code)?);
     let level = Arc::new(TileLevel::new(stage.geom.clone()));
-    let bank = Arc::new(AnimBank::load(&assets)?);
+    let res = Arc::new(WorldRes::load(&assets)?);
     let setup = MatchSetup { stagenum: stage.stagenum, players: vec![MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
-    let mut world = World::new(setup, stage.clone(), level.clone(), bank, 0)?;
+    let mut world = World::new(setup, stage.clone(), level.clone(), res, 0)?;
 
     let gpu = HeadlessGpu::new()?;
     let format = wgpu::TextureFormat::Rgba8Unorm;

@@ -29,7 +29,7 @@ use pd_core::mp::MatchSetup;
 use pd_menu::mpstate::Profile;
 use pd_menu::{MenuSystem, Outcome, FB_H, FB_W};
 use pd_render::view::{VIEW_H, VIEW_W};
-use pd_render::{Renderer, View};
+use pd_render::Renderer;
 use pd_sim::world::World;
 
 use audio::SfxBank;
@@ -136,6 +136,9 @@ impl PdGame {
 
     /// Leave a match (or its stand-in) for the menus, as PD does at the end.
     fn end_match(&mut self, ctx: &mut Ctx) {
+        if let Some(sfx) = &mut self.sfx {
+            sfx.stop_all(ctx.audio.as_deref_mut());
+        }
         self.menu.return_from_match();
         self.screen = Screen::Menus;
         self.controls.captured = ctx.set_cursor_captured(false);
@@ -183,7 +186,11 @@ impl PdGame {
         } else if !self.controls.captured && ctx.input.mouse_pressed(MouseButton::Left) {
             self.controls.captured = ctx.set_cursor_captured(true);
         }
-        let (inputs, start) = self.controls.read_match(ctx.input, world.players.len());
+        let (mut inputs, start) = self.controls.read_match(ctx.input, world.players.len());
+        let kb = self.controls.kb_player;
+        if let (Some(slot), Some(p)) = (self.controls.slot_pressed(ctx.input), world.players.get(kb)) {
+            inputs[kb].select = p.gun.p.inventory.get(slot).copied();
+        }
         // SUBST: START opens PD's pause menu, whose End Game leaves the match /
         // there is no pause menu until M7, so START ends the match.
         if start {
@@ -191,7 +198,7 @@ impl PdGame {
         }
         world.step(4 * self.rate as i32, &inputs);
         let events = world.take_events();
-        if let Some(sfx) = &self.sfx {
+        if let Some(sfx) = &mut self.sfx {
             sfx.play(ctx.audio.as_deref_mut(), &events);
         }
         true
@@ -221,7 +228,7 @@ impl PdGame {
             ui.label(format!("   speed fwd {:.2} side {:.2} · {crouch}{state}", p.speedforwards, p.speedsideways));
         }
         ui.label(
-            egui::RichText::new("WASD move · mouse look (click to capture, Esc frees it) · Ctrl/C crouch down · Space crouch up · Enter or pad START: back to the menus (no pause menu until M7)")
+            egui::RichText::new("WASD move · mouse look (click to capture, Esc frees it) · LMB fire · RMB aim · E/MMB use (hold: gun function) · R reload · Q next gun · 1-0 pick a gun · ↑/↓ zoom · Ctrl/C crouch down · Space crouch up · Enter or pad START: back to the menus (no pause menu until M7)")
                 .weak(),
         );
         let mut scale = self.render_scale;
@@ -275,7 +282,7 @@ impl Game for PdGame {
             Screen::Match(_) => {}
         }
         let events = self.menu.take_events();
-        if let Some(sfx) = &self.sfx {
+        if let Some(sfx) = &mut self.sfx {
             sfx.play(ctx.audio.as_deref_mut(), &events);
         }
     }
@@ -354,12 +361,10 @@ impl Game for PdGame {
     fn render(&mut self, ctx: &mut Ctx, frame: &mut Frame) {
         if matches!(self.screen, Screen::Match(_)) {
             self.ensure_match_target(ctx);
-            let (Screen::Match(world), Some(target), Some(presenter), Some(renderer)) = (&self.screen, &self.match_target, &self.presenter, &self.renderer) else { return };
-            let Some(p) = world.players.first() else { return };
-            let (znear, zfar) = renderer.z_range();
-            let view = View::for_player(p, znear, zfar);
+            let (Screen::Match(world), Some(target), Some(presenter), Some(renderer)) = (&self.screen, &self.match_target, &self.presenter, &mut self.renderer) else { return };
             let depth = &target.depth.as_ref().expect("the match target has depth").1;
-            renderer.render(&ctx.gpu.queue, &mut frame.encoder, &target.view, depth, &view);
+            // M12: split screen. The first player's view fills the window.
+            renderer.render_player(&ctx.gpu.device, &ctx.gpu.queue, &mut frame.encoder, &target.view, depth, world, 0);
             // The VI shows PD's 220 lines inside a 240-line, 4:3 picture.
             presenter.present(ctx.gpu, frame, target, (VIEW_W * self.render_scale, 240 * self.render_scale), Filter::Nearest);
             return;

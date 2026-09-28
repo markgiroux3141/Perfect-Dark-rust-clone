@@ -10,6 +10,7 @@ use pd_core::rng::Rng;
 
 use super::bondmove::bmove_dampen_shotspeed;
 use super::{CdGlobals, Player, WalkEnv, HEADANIM_MOVING};
+use crate::world::WorldRes;
 use crate::stage::{CdResult, Edge};
 
 /// Add `rotateamount` radians to `vv_theta` (degrees) the way PD does:
@@ -346,7 +347,7 @@ impl Player {
     }
 
     /// `bwalk_update_horizontal` (`bondwalk.c:1425`).
-    pub(super) fn bwalk_update_horizontal(&mut self, lv: &Lv, env: &WalkEnv, rng: &mut Rng) {
+    pub(super) fn bwalk_update_horizontal(&mut self, lv: &Lv, env: &WalkEnv, res: &WorldRes, rng: &mut Rng) {
         let lv60 = lv.lvupdate60freal;
         let spc0 = (self.eyeheight - 159.0) / 353.333_3 + 1.0;
         // bwalk_apply_crouch_speed
@@ -518,9 +519,20 @@ impl Player {
         self.swayoffset0 += f0 * spb4;
         self.swayoffset2 += f0 * spb0;
 
-        // M4: the gun's sway (bondwalk.c:1771): bgun_update_sway(breathing ×1.2
-        // when running, gunspeed, verta/crouch speed, speedtheta), then
-        // bgun_set_adjust_pos(verta). `bhead_get_breathing_value` is its input.
+        // The gun's sway inputs (bondwalk.c:1771).
+        let sp44 = self.speedtheta;
+        let sp40 = (self.speedverta / 0.7 + self.crouchspeed / 5.0).clamp(-1.0, 1.0);
+        let sp3c = self.gunspeed;
+        let mut breathing = self.bhead_get_breathing_value();
+        if self.headanim == HEADANIM_MOVING {
+            breathing *= 1.2;
+        }
+        self.gun_ctx(res, rng, lv).bgun_update_sway(breathing, sp3c, sp40, sp44, 0.0);
+        let mut v360 = self.verta;
+        if v360 < 0.0 {
+            v360 += 360.0;
+        }
+        self.gun.bgun_set_adjust_pos(v360 * 0.017_450_513);
     }
 
     /// `bwalk_update_vertical` (`bondwalk.c:739`), NTSC final: ladders, the

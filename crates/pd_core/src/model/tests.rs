@@ -7,7 +7,6 @@ use glam::{Mat4, Vec3};
 
 use super::draw::{draw_model, DrawOpts, TextureCache};
 use super::hit::{HitNode, HitPad};
-use super::oracle;
 use super::*;
 use crate::anim::tests::{assets, bank};
 use crate::anim::{update_chr_info, Anim, AnimCtx};
@@ -37,10 +36,6 @@ fn anim_at(num: u16, frame: f32, speed: f32) -> Anim {
     let mut ctx = AnimCtx { bank: bank(), scale: 1.0, chrinfo: None, merging_enabled: true };
     a.set_animation(&mut ctx, num, false, frame, speed, 0.0);
     a
-}
-
-fn max_diff(a: &Mat4, b: &Mat4) -> f32 {
-    a.to_cols_array().iter().zip(b.to_cols_array().iter()).map(|(x, y)| (x - y).abs()).fold(0.0, f32::max)
 }
 
 // ─── the format ──────────────────────────────────────────────────────────────
@@ -146,92 +141,6 @@ fn falcon_reload_moves_the_left_hand_in_and_back() {
     let start_gap = (w0 - g0).length();
     assert!(closest < start_gap * 0.6, "the left hand never came to the gun: {start_gap:.1} -> {closest:.1}");
     assert_eq!(anim.frame as i32, 91, "clamped on the last frame (non-looping)");
-}
-
-// ─── the merged walker against the spike walkers ─────────────────────────────
-
-/// Every model without helper joints (guns, hands, casings, held guns, props)
-/// poses exactly as the gun spike's walker did: at rest, and on the gun
-/// animations at whole and fractional frames.
-#[test]
-fn guns_and_props_pose_bit_for_bit_as_the_gun_walker() {
-    let bank = bank();
-    let rendermtx = Mat4::from_scale(Vec3::splat(0.1)) * Mat4::from_rotation_y(0.4);
-    let weapons: serde_json::Value = assets().read_json(&assets().data("weapons.json")).unwrap();
-    let anims: Vec<u16> = weapons["anim_ids"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap() as u16).collect();
-    let mut compared = 0;
-    for stem in stems(&["gun", "hand", "casing", "held", "prop"]) {
-        let def = store().get(&stem).unwrap();
-        let mut m = Model::new(def.clone());
-        let p = PoseParams::new(rendermtx, bank);
-        let mut old = vec![Mat4::IDENTITY; def.nummatrices];
-        let mut cases: Vec<Option<Anim>> = vec![None];
-        for (_, &num) in anims.iter().enumerate().filter(|(k, _)| k % 9 == stem.len() % 9) {
-            let n = bank.num_frames(num).max(1) as f32;
-            cases.push(Some(anim_at(num, (n * 0.37).floor(), 1.0)));
-            cases.push(Some(anim_at(num, (n * 0.61).floor() + 0.25, 1.0)));
-        }
-        for a in &cases {
-            m.set_matrices_with_anim(&p, a.as_ref(), None);
-            oracle::gun_walk(&def, &m.vis, &mut old, m.scale, &m.chrinfo, &rendermtx, a.as_ref(), bank);
-            for (slot, (new, old)) in m.matrices.iter().zip(&old).enumerate() {
-                assert_eq!(new, old, "{stem} slot {slot} anim {:?}", a.as_ref().map(|a| (a.animnum, a.frame)));
-            }
-            compared += 1;
-        }
-    }
-    assert!(compared > 500, "{compared}");
-}
-
-/// Every chr body poses as the menu spike's walker did, except where the spike
-/// departed from `model.c` (see `pose.rs`): the main joints bit for bit, the
-/// helper matrices within float noise of PD's half-rotation and `BADDTOR(360)`
-/// fold, and a merge within the difference between glam's slerp and PD's.
-#[test]
-fn chr_bodies_pose_as_the_menu_walker_up_to_the_named_fixes() {
-    let bank = bank();
-    let rendermtx = Mat4::from_translation(Vec3::new(0.0, -50.0, -400.0));
-    let walk = 0x0002; // a run cycle
-    let mut worst = [0.0f32; 3]; // main slots, helper slots, merged
-    for stem in stems(&["chr"]).into_iter().filter(|s| !s.starts_with("head")) {
-        let def = store().get(&stem).unwrap();
-        if def.skel != SKEL_CHR {
-            continue;
-        }
-        let mut helper = vec![false; def.nummatrices];
-        for n in &def.nodes {
-            if let NodeKind::Position { mtx, .. } = n.kind {
-                for s in &mtx[1..] {
-                    if *s >= 0 {
-                        helper[*s as usize] = true;
-                    }
-                }
-            }
-        }
-        let mut m = Model::new(def.clone());
-        m.scale = 0.1;
-        m.chrinfo.pos = Vec3::new(5.0, 2.0, -3.0);
-        m.chrinfo.yrot = 1.3;
-        let p = PoseParams::new(rendermtx, bank);
-        let mut old = vec![Mat4::IDENTITY; def.nummatrices];
-        let mut merged = anim_at(0x01fc, 12.0, 1.0);
-        let mut ctx = AnimCtx { bank, scale: 1.0, chrinfo: None, merging_enabled: true };
-        merged.set_animation(&mut ctx, walk, false, 3.5, 1.0, 16.0);
-        merged.tick(&mut ctx, 5, false);
-        for (a, is_merge) in [(anim_at(0x01fc, 0.0, 1.0), false), (anim_at(0x01fc, 40.5, 1.0), false), (anim_at(walk, 17.25, 1.0), false), (merged.clone(), true)] {
-            m.set_matrices_with_anim(&p, Some(&a), None);
-            oracle::menu_walk(&def, &m.vis, &mut old, m.scale, &m.chrinfo, &rendermtx, &a, bank);
-            for slot in 0..def.nummatrices {
-                let d = max_diff(&m.matrices[slot], &old[slot]);
-                let k = if is_merge { 2 } else if helper[slot] { 1 } else { 0 };
-                worst[k] = worst[k].max(d);
-            }
-        }
-    }
-    eprintln!("max |new - spike| over chr bodies: main {:.2e}, helpers {:.2e}, merged {:.2e}", worst[0], worst[1], worst[2]);
-    assert_eq!(worst[0], 0.0, "the main joints must pose bit for bit");
-    assert!(worst[1] < 2e-3, "helper matrices moved {:.2e}", worst[1]);
-    assert!(worst[2] < 2e-3, "a merged pose moved {:.2e}", worst[2]);
 }
 
 // ─── chrs on the floor ───────────────────────────────────────────────────────

@@ -8,7 +8,7 @@
 //!   position to its flee vector (`chraction.c:15690`), and at the origin that
 //!   still reads as "back away".
 //! * [`firing_range`]: the gun spike's range, a 12 × 36 m hall with crates and
-//!   pillars. Its target boards come back with the guns (M4).
+//!   pillars, with its target boards ([`firing_range_boards`]).
 //!
 //! Sources: the old repo's `pd_spike/arena.rs` `Arena::geom` and
 //! `pd_guns/range.rs` `Range::standard` / `Range::geom`.
@@ -74,6 +74,35 @@ pub fn firing_range() -> LevelGeom {
         polys.push(GeomPoly::new(quad_y(xz(mn), xz(mx), mx.y), true, false, true, true, Some(0)));
     }
     LevelGeom { polys, rooms: vec![0] }
+}
+
+/// A solid box added to a test stage: four walls and a top you can stand on.
+pub fn add_box(geom: &mut LevelGeom, min: Vec3, max: Vec3) {
+    let xz = |v: Vec3| Vec2::new(v.x, v.z);
+    sides(xz(min), xz(max), min.y, max.y, &mut geom.polys);
+    geom.polys.push(GeomPoly::new(quad_y(xz(min), xz(max), max.y), true, false, true, true, Some(0)));
+}
+
+/// Where a player starts in the firing range: the south end, looking north (+z).
+pub const FIRING_RANGE_SPAWN: (Vec3, Vec3) = (Vec3::new(0.0, 50.0, -150.0), Vec3::Z);
+
+/// The range's target boards at 5, 10, 20 and 30 m, 80 × 120 cm, their faces
+/// 110 cm up.
+pub fn firing_range_boards() -> Vec<crate::world::Board> {
+    let half = Vec2::new(40.0, 60.0);
+    let centre_y = 110.0;
+    [(0.0, 500.0), (-200.0, 1000.0), (200.0, 1000.0), (0.0, 2000.0), (-150.0, 3000.0), (150.0, 3000.0)]
+        .into_iter()
+        .map(|(x, z)| crate::world::Board {
+            min: Vec3::new(x - half.x, centre_y - half.y, z - 4.0),
+            max: Vec3::new(x + half.x, centre_y + half.y, z + 4.0),
+            face: Vec3::new(x, centre_y, z - 4.0),
+            half,
+            hits: 0,
+            damage: 0.0,
+            flash: 0.0,
+        })
+        .collect()
 }
 
 #[cfg(test)]

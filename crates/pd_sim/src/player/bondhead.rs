@@ -254,8 +254,7 @@ impl Player {
     }
 
     /// `bhead_get_breathing_value` (`bondhead.c:308`): the gun sway's breathing
-    /// input (M4, `bgun_update_sway`).
-    #[allow(dead_code)]
+    /// input (`bgun_update_sway`).
     pub(super) fn bhead_get_breathing_value(&self) -> f32 {
         if self.headanim >= 0 {
             let a = self.bondbreathing * 0.012_500_001 + 1.0 / 240.0;

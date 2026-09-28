@@ -246,7 +246,7 @@ mod tests {
         let pad = &stage.pads[stage.spawn_pads[1]];
         let eye = pad.pos + Vec3::Y * 106.0;
         let look = Vec3::new(pad.look.x, 0.0, pad.look.z).normalize();
-        let view = crate::View { eye, look, up: Vec3::Y, fovy: 60.0, aspect: 320.0 / 220.0, znear: 15.0, zfar: 10000.0 };
+        let view = crate::View { eye, look, up: Vec3::Y, fovy: 60.0, aspect: 320.0 / 220.0, znear: 15.0, zfar: 10000.0, shake: 0.0 };
         let t = engine::gpu::RenderTarget::on_device(&gpu.device, 320, 220, format, true);
         let mut enc = gpu.device.create_command_encoder(&Default::default());
         r.render(&gpu.queue, &mut enc, &t.view, &t.depth.as_ref().unwrap().1, &view);
