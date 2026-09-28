@@ -420,7 +420,7 @@ pub fn mp_challenges_list_handler(pd: &mut MenuSystem, op: i32, _item: &'static 
 macro_rules! stat_text {
     ($name:ident, $field:ident) => {
         pub fn $name(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
-            format!("{}\n", pd.mp.players[cur_player(pd)].$field)
+            format!("{}\n", pd.mp.players[cur_player(pd)].career.$field)
         }
     };
 }
@@ -436,7 +436,7 @@ stat_text!(mp_menu_text_medal_kill_master, killmastermedals);
 stat_text!(mp_menu_text_medal_survivor, survivormedals);
 
 pub fn mp_menu_text_ammo_used(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
-    let mut value = pd.mp.players[cur_player(pd)].ammoused;
+    let mut value = pd.mp.players[cur_player(pd)].career.ammoused;
     if value > 100000 {
         value /= 1000;
         if value > 100000 {
@@ -449,11 +449,11 @@ pub fn mp_menu_text_ammo_used(pd: &mut MenuSystem, _item: &'static MenuItem) -> 
 }
 
 pub fn mp_menu_text_distance(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
-    format!("{:.1}km\n", pd.mp.players[cur_player(pd)].distance as f32 / 10.0)
+    format!("{:.1}km\n", pd.mp.players[cur_player(pd)].career.distance as f32 / 10.0)
 }
 
 pub fn mp_menu_text_time(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
-    let raw = pd.mp.players[cur_player(pd)].time;
+    let raw = pd.mp.players[cur_player(pd)].career.time;
     if raw == 0 {
         return "--:--\n".into();
     }
@@ -472,7 +472,7 @@ pub fn mp_menu_text_time(pd: &mut MenuSystem, _item: &'static MenuItem) -> Strin
 }
 
 pub fn mp_menu_text_accuracy(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
-    format!("{:.1}%", pd.mp.players[cur_player(pd)].accuracy as f32 / 10.0)
+    format!("{:.1}%", pd.mp.players[cur_player(pd)].career.accuracy as f32 / 10.0)
 }
 
 /// `mp_format_damage_value` (setup.c:913, NTSC 1.0+).
@@ -493,11 +493,11 @@ fn mp_format_damage_value(damage: f32) -> String {
 }
 
 pub fn mp_menu_text_pain_received(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
-    mp_format_damage_value(pd.mp.players[cur_player(pd)].painreceived as f32 / 10.0)
+    mp_format_damage_value(pd.mp.players[cur_player(pd)].career.painreceived as f32 / 10.0)
 }
 
 pub fn mp_menu_text_damage_dealt(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
-    mp_format_damage_value(pd.mp.players[cur_player(pd)].damagedealt as f32 / 10.0)
+    mp_format_damage_value(pd.mp.players[cur_player(pd)].career.damagedealt as f32 / 10.0)
 }
 
 /// `mp_medal_menu_handler` (setup.c:957): the medal star after each count.
@@ -1988,4 +1988,254 @@ pub fn menuhandler_main_menu_counter_operative(pd: &mut MenuSystem, op: i32, ite
         return HRet::I(1);
     }
     menuhandler_main_menu_solo_missions(pd, op, item, data)
+}
+
+// ---------------------------------------------------------------------------
+// ingame.c: the pause menu and the end of a match
+// ---------------------------------------------------------------------------
+
+/// The chr slots taking part, in slot order.
+fn match_slots(pd: &MenuSystem) -> Vec<usize> {
+    (0..pd_core::mp::MAX_MPCHRS).filter(|&i| pd.mp.setup.chrslots & (1 << i) != 0).collect()
+}
+
+/// The player (`g_Vars.players[]`) whose menu this is: `g_Menus[g_MpPlayerNum].playernum`.
+fn menu_player(pd: &MenuSystem) -> Option<&super::MatchViewPlayer> {
+    pd.matchview.players.get(pd.mr().playernum)
+}
+
+/// `mp_stats_for_player_dropdown_handler` (ingame.c:31): the chrs taking part.
+pub fn mp_stats_for_player_dropdown_handler(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, data: &mut HandlerData) -> R {
+    let slots = match_slots(pd);
+    let p = cur_player(pd);
+    match op {
+        MENUOP_GET_OPTION_COUNT => data.value = slots.len() as i32,
+        MENUOP_GET_OPTION_TEXT => {
+            return slots.get(data.value.max(0) as usize).and_then(|&i| pd.mpchr(i)).map_or(String::new(), |c| c.name).into();
+        }
+        MENUOP_CONFIRM => {
+            if let Some(&i) = slots.get(data.value.max(0) as usize) {
+                pd.mp_selected_for_stats[p] = i;
+            }
+        }
+        MENUOP_GET_SELECTED_INDEX => {
+            if let Some(k) = slots.iter().position(|&i| i == pd.mp_selected_for_stats[p]) {
+                data.value = k as i32;
+            }
+        }
+        _ => {}
+    }
+    ok()
+}
+
+/// `menuhandler_mp_end_game` (ingame.c:101): the player aborts and the match
+/// ends. (PD marks `g_Vars.currentplayer`; here the menu's own player, the
+/// same one in a one-player match.)
+pub fn menuhandler_mp_end_game(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, _data: &mut HandlerData) -> R {
+    if op == MENUOP_CONFIRM {
+        let playernum = pd.mr().playernum;
+        pd.outcomes.push_back(super::Outcome::EndGame { playernum });
+    }
+    ok()
+}
+
+/// `menuhandler00178018` (ingame.c:114): the challenge's name, shown in a
+/// challenge only.
+pub fn menuhandler00178018(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, _data: &mut HandlerData) -> R {
+    if op == MENUOP_IS_HIDDEN && pd.mp.bossfile.locktype as i32 != MPLOCKTYPE_CHALLENGE {
+        return HRet::I(1);
+    }
+    ok()
+}
+
+/// `mp_menu_text_challenge_name` (setup.c:4633).
+pub fn mp_menu_text_challenge_name(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
+    if pd.mp.bossfile.locktype as i32 != MPLOCKTYPE_CHALLENGE {
+        return pd.lang(tx(B_MPMENU, 50));
+    }
+    format!("{}:\n", pd.challenge_get_name(pd.mp.challenge_index).trim_end_matches('\n'))
+}
+
+/// `mp_menu_text_scenario_name` (scenarios.c:296).
+pub fn mp_menu_text_scenario_name(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
+    let s = pd.mp.setup.scenario as usize;
+    format!("{}\n", pd.lang(MP_SCENARIO_OVERVIEWS[s.min(5)].name))
+}
+
+/// `mp_menu_text_in_game_limit` (ingame.c:125): "10 Min", "10", or the team
+/// limit as a challenge scales it.
+pub fn mp_menu_text_in_game_limit(pd: &mut MenuSystem, item: &'static MenuItem) -> String {
+    let (fmt, value) = match item.param {
+        0 => (114, pd.mp.setup.timelimit as i32 + 1),
+        1 => (113, pd.mp.setup.scorelimit as i32 + 1),
+        2 => (113, pd.mp_calculate_team_score_limit() + 1),
+        _ => return String::new(),
+    };
+    pd.lang(tx(B_MPMENU, fmt)).replacen("%d", &value.to_string(), 1)
+}
+
+/// `menuhandler_mp_in_game_limit_label` (ingame.c:144): a limit set to "No
+/// Limit" is left out.
+pub fn menuhandler_mp_in_game_limit_label(pd: &mut MenuSystem, op: i32, item: &'static MenuItem, _data: &mut HandlerData) -> R {
+    if op == MENUOP_IS_HIDDEN {
+        let s = &pd.mp.setup;
+        let hidden = match item.param {
+            0 => s.timelimit == 60,
+            1 => s.scorelimit == 100,
+            2 => s.teamscorelimit == 400,
+            _ => false,
+        };
+        if hidden {
+            return HRet::I(1);
+        }
+    }
+    ok()
+}
+
+/// `menuhandler_mp_pause` (ingame.c:157): with two or more players, pause or
+/// unpause the match.
+pub fn menuhandler_mp_pause(pd: &mut MenuSystem, op: i32, item: &'static MenuItem, _data: &mut HandlerData) -> R {
+    if op == MENUOP_CONFIRM {
+        let mode = if pd.mp_is_paused() { pd_core::ids::MPPAUSEMODE_UNPAUSED } else { pd_core::ids::MPPAUSEMODE_PAUSED };
+        pd.matchview.paused = mode;
+        pd.outcomes.push_back(super::Outcome::SetPaused(mode));
+    }
+    if op == MENUOP_IS_HIDDEN && pd.matchview.players.len() == 1 {
+        return HRet::I(1);
+    }
+    if op == MENUOP_IS_PREFOCUSED && item.param == 1 {
+        return HRet::I(1);
+    }
+    ok()
+}
+
+/// `menutext_pause_or_unpause` (ingame.c:182).
+pub fn menutext_pause_or_unpause(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
+    pd.lang(tx(B_MPMENU, if pd.mp_is_paused() { 289 } else { 288 }))
+}
+
+/// `menutext_match_time` (ingame.c:191): the time played.
+pub fn menutext_match_time(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
+    pd_core::text::format_time(pd.matchview.stagetime60, pd_core::text::TIMEPRECISION_SECONDS)
+}
+
+/// `menuhandler_inventory_list` (mainmenu.c:4176): the player's weapons; a
+/// pick equips one (the game does, `bgun_equip_weapon2`), a focus shows its
+/// description.
+pub fn menuhandler_inventory_list(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, data: &mut HandlerData) -> R {
+    let Some(p) = menu_player(pd).cloned() else { return ok() };
+    match op {
+        MENUOP_GET_OPTION_COUNT => data.value = p.inventory.len() as i32,
+        MENUOP_GET_OPTION_TEXT => return p.inventory.get(data.value.max(0) as usize).map_or(String::new(), |r| r.name.clone()).into(),
+        MENUOP_CONFIRM => {
+            // (A Combat Simulator inventory has no devices: every row equips.)
+            let playernum = pd.mr().playernum;
+            pd.outcomes.push_back(super::Outcome::Equip { playernum, index: data.value.max(0) as usize });
+        }
+        MENUOP_GET_SELECTED_INDEX => data.value = p.invcur,
+        MENUOP_ON_OPTION_FOCUS => {
+            pd.m().mppause_weaponnum = p.inventory.get(data.value.max(0) as usize).map_or(0, |r| r.weaponnum as i32);
+        }
+        _ => {}
+    }
+    ok()
+}
+
+/// `mp_menu_text_weapon_description` (ingame.c:426).
+pub fn mp_menu_text_weapon_description(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
+    let w = pd.mr().mppause_weaponnum;
+    let Some(row) = menu_player(pd).and_then(|p| p.inventory.iter().find(|r| r.weaponnum as i32 == w)) else { return "\n".into() };
+    // lang_get's strings end in a line break.
+    let mut d = row.description.clone();
+    if !d.ends_with('\n') {
+        d.push('\n');
+    }
+    d
+}
+
+/// `mp_menu_title_stats_for` (ingame.c:438): "Stats for <name>".
+pub fn title_mp_menu_title_stats_for(pd: &mut MenuSystem, _def: &'static MenuDialogDef) -> String {
+    let slot = pd.mp_selected_for_stats[cur_player(pd)];
+    let name = pd.mpchr(slot).map(|c| c.name).unwrap_or_default();
+    pd.lang(tx(B_MPMENU, 280)).replacen("%s", &name, 1)
+}
+
+/// `mp_menu_text_weapon_of_choice_name` (ingame.c:454).
+pub fn mp_menu_text_weapon_of_choice_name(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
+    menu_player(pd).map(|p| p.weapon_of_choice.clone()).unwrap_or_default()
+}
+
+/// An award's name: `g_AwardNames` is `L_MPMENU_000` .. `L_MPMENU_016`, in
+/// `AWARD_*` bit order.
+fn award_text(pd: &MenuSystem, award: Option<u8>) -> String {
+    award.map_or(String::new(), |a| pd.lang(tx(B_MPMENU, a as u16)))
+}
+
+/// `mp_menu_text_award1` (ingame.c:459).
+pub fn mp_menu_text_award1(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
+    let a = menu_player(pd).and_then(|p| p.award1);
+    award_text(pd, a)
+}
+
+/// `mp_menu_text_award2` (ingame.c:464).
+pub fn mp_menu_text_award2(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
+    let a = menu_player(pd).and_then(|p| p.award2);
+    award_text(pd, a)
+}
+
+/// `mp_menu_text_placement_with_suffix` (ingame.c:606): "1st" .. "12th".
+pub fn mp_menu_text_placement_with_suffix(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
+    let placement = pd.mp.players[cur_player(pd)].base.stats.placement.min(11);
+    pd.lang(tx(B_MPMENU, 264 + placement as u16))
+}
+
+/// `mp_placement_menu_handler` (ingame.c:626): the winner's place pulses yellow.
+pub fn mp_placement_menu_handler(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, data: &mut HandlerData) -> R {
+    if op == MENUOP_GET_LABEL_COLOURS && pd.mp.players[cur_player(pd)].base.stats.placement == 0 {
+        data.colour2 = pd_core::text::colour_blend(data.colour2, 0xffff00ff, (super::gfx::sin_osc(pd.frac20, 40.0) * 255.0) as u32);
+    }
+    ok()
+}
+
+/// `mp_awards_menu_handler` (ingame.c:637): a star for each medal won, right
+/// to left: KillMaster red, Headshot yellow, Accuracy green, Survivor blue.
+pub fn mp_awards_menu_handler(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, data: &mut HandlerData) -> R {
+    if op == MENUOP_RENDER {
+        let Some(rd) = data.render else { return ok() };
+        let medals = pd.mp.players[cur_player(pd)].medals;
+        let mut x = rd.x + rd.width - 15;
+        for i in 0..4 {
+            if medals & (1 << i) != 0 {
+                let colour = [0xff7f7fff, 0xbfbf00ff, 0x00ff00ff, 0x00bfbfff][i];
+                // gSPTextureRectangle(x, y - 2, x + 11, y + 9, s 0x0010, t 0x0150, dtdy -1024).
+                pd.draw_envstar_rect(x, rd.y - 2, x + 11, rd.y + 9, colour, 0.5, 10.5, -1.0);
+                x -= 14;
+            }
+        }
+    }
+    ok()
+}
+
+/// `mp_player_title_menu_handler` (ingame.c:707): a title that changed this
+/// match pulses yellow.
+pub fn mp_player_title_menu_handler(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, data: &mut HandlerData) -> R {
+    let pl = &pd.mp.players[cur_player(pd)];
+    if op == MENUOP_GET_LABEL_COLOURS && pl.title != pl.newtitle {
+        data.colour2 = pd_core::text::colour_blend(data.colour2, 0xffff00ff, (super::gfx::sin_osc(pd.frac20, 40.0) * 255.0) as u32);
+    }
+    ok()
+}
+
+/// `mp_confirm_player_name_handler` (ingame.c:724): the new player's name,
+/// then where to save it (the file manager: no pak here).
+pub fn mp_confirm_player_name_handler(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, data: &mut HandlerData) -> R {
+    let p = cur_player(pd);
+    match op {
+        MENUOP_GET_KEYBOARD_STRING => data.string = kb_from(&pd.mp.players[p].base.name),
+        MENUOP_SET_KEYBOARD_STRING => pd.mp.players[p].base.name = format!("{}\n", kb_to(&data.string)),
+        // filemgr_push_select_location_dialog(6, FILETYPE_MPPLAYER)
+        MENUOP_CONFIRM => pd.menu_push_dialog(&stubs::STUB_PAK_DIALOG),
+        _ => {}
+    }
+    ok()
 }

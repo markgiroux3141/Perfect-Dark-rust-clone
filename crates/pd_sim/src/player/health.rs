@@ -60,6 +60,9 @@ pub struct Health {
     healthdamagetype: usize,
     pub oldhealth: f32,
     pub apparenthealth: f32,
+    /// The shield's share of the bar: `oldarmour`, `apparentarmour`.
+    pub oldarmour: f32,
+    pub apparentarmour: f32,
     /// `colourscreenred/green/blue/frac`: the tint over the view.
     pub colourscreen: [i32; 3],
     pub colourscreenfrac: f32,
@@ -82,6 +85,8 @@ impl Default for Health {
             healthdamagetype: 7,
             oldhealth: 1.0,
             apparenthealth: 1.0,
+            oldarmour: 0.0,
+            apparentarmour: 0.0,
             colourscreen: [0xff, 0xff, 0xff],
             colourscreenfrac: 0.0,
             colourfadetime60: 0.0,
@@ -133,12 +138,19 @@ impl Health {
         }
     }
 
-    /// `player_display_health` (`player.c:2430`), called before the health drops.
-    pub fn player_display_health(&mut self, bondhealth: f32) {
+    /// `player_display_health` (`player.c:2430`), called before the health (or
+    /// the shield, `shieldfrac` = `player_get_shield_frac`) changes.
+    pub fn player_display_health(&mut self, bondhealth: f32, shieldfrac: f32) {
         use HealthShowMode::*;
         match self.healthshowmode {
-            Hidden | Closing => self.oldhealth = bondhealth,
-            Updating | Current => self.oldhealth = self.apparenthealth,
+            Hidden | Closing => {
+                self.oldhealth = bondhealth;
+                self.oldarmour = shieldfrac;
+            }
+            Updating | Current => {
+                self.oldhealth = self.apparenthealth;
+                self.oldarmour = self.apparentarmour;
+            }
             Opening | Previous => {}
         }
         match self.healthshowmode {
@@ -171,8 +183,9 @@ impl Health {
         }
     }
 
-    /// `player_tick_damage_and_health` (`player.c:2474`): no shield (M8), no menus.
-    pub fn player_tick_damage_and_health(&mut self, bondhealth: f32, isdead: bool, lvupdate60freal: f32, diffframe60freal: f32) {
+    /// `player_tick_damage_and_health` (`player.c:2474`). `shieldfrac` is
+    /// `player_get_shield_frac`, `menuopen` `current_player_is_menu_open_in_solo_or_mp`.
+    pub fn player_tick_damage_and_health(&mut self, bondhealth: f32, shieldfrac: f32, isdead: bool, menuopen: bool, lvupdate60freal: f32, diffframe60freal: f32) {
         if self.damageshowtime >= 0.0 {
             if self.damageshowtime == 0.0 {
                 self.sightoff_damage = true;
@@ -199,13 +212,14 @@ impl Health {
         if self.healthshowmode != HealthShowMode::Hidden {
             use HealthShowMode::*;
             if self.healthshowmode == Opening {
-                self.healthdamagetype = ((bondhealth * 8.0) as i32).clamp(0, 7) as usize;
+                self.healthdamagetype = (((bondhealth + shieldfrac) * 8.0) as i32).clamp(0, 7) as usize;
             }
             let h = G_HEALTH_DAMAGE_TYPES[self.healthdamagetype];
             if !isdead {
                 match self.healthshowmode {
                     Opening => {
                         self.apparenthealth = self.oldhealth;
+                        self.apparentarmour = self.oldarmour;
                         self.healthshowtime += diffframe60freal;
                         if self.healthshowtime >= h[0] {
                             self.healthshowmode = Previous;
@@ -213,7 +227,11 @@ impl Health {
                     }
                     Previous => {
                         self.apparenthealth = self.oldhealth;
+                        self.apparentarmour = self.oldarmour;
                         self.healthshowtime += diffframe60freal;
+                        if menuopen {
+                            self.healthshowmode = Current;
+                        }
                         if self.healthshowtime >= h[1] {
                             self.healthshowmode = Updating;
                         }
@@ -221,16 +239,25 @@ impl Health {
                     Updating => {
                         self.healthshowtime += diffframe60freal;
                         let frac = ((self.healthshowtime - h[1]) / (h[2] - h[1])).clamp(0.0, 1.0);
+                        if menuopen {
+                            self.healthshowmode = Current;
+                        }
                         let healthdiff = self.oldhealth - bondhealth;
+                        let armourdiff = self.oldarmour - shieldfrac;
                         self.apparenthealth = self.oldhealth - frac * healthdiff;
+                        self.apparentarmour = self.oldarmour - frac * armourdiff;
                         if self.healthshowtime >= h[2] {
                             self.healthshowmode = Current;
                         }
                     }
                     Current => {
                         self.apparenthealth = bondhealth;
+                        self.apparentarmour = shieldfrac;
                         self.healthshowtime += diffframe60freal;
-                        if self.healthshowtime >= h[3] {
+                        if menuopen {
+                            self.healthshowtime = h[3];
+                        }
+                        if self.healthshowtime >= h[3] && !menuopen {
                             self.healthshowmode = Closing;
                             self.healthshowtime = h[3];
                         }
@@ -303,9 +330,9 @@ impl super::Player {
     /// `player_render_hud`'s dead branch (`player.c:4546`), normal
     /// multiplayer: the red wash while the head falls, then a fade to black
     /// and the body fading out, then any of A, Z or START (held, `0xb000`)
-    /// starts a new life. `// M10:` `!mp_is_paused()`; `// M7:`
-    /// `g_NumReasonsToEndMpMatch`.
-    pub fn player_tick_death(&mut self, input: &super::PlayerInput) {
+    /// starts a new life, while the match isn't paused or ending
+    /// (`canrestart`: `!mp_is_paused() && g_NumReasonsToEndMpMatch == 0`).
+    pub fn player_tick_death(&mut self, input: &super::PlayerInput, canrestart: bool) {
         if !self.isdead {
             return;
         }
@@ -325,7 +352,7 @@ impl super::Player {
                 self.health.player_adjust_fade(60.0, [0, 0, 0], 1.0);
                 self.player_start_chr_fade(120.0, 0.0);
             }
-            if self.health.player_is_fade_complete() && (input.a_held || input.fire || input.start) {
+            if self.health.player_is_fade_complete() && (input.a_held || input.fire || input.start) && canrestart {
                 self.dostartnewlife = true;
             }
         }
@@ -363,13 +390,13 @@ mod tests {
     fn a_hit_flashes_red_and_the_bar_opens_slides_and_closes() {
         let mut h = Health::default();
         let mut health = 1.0;
-        h.player_display_health(health);
+        h.player_display_health(health, 0.0);
         health -= 0.25;
         h.player_display_damage();
         let mut reddest = 0.0f32;
         let mut seen = vec![];
         for _ in 0..400 {
-            h.player_tick_damage_and_health(health, false, 1.0, 1.0);
+            h.player_tick_damage_and_health(health, 0.0, false, false, 1.0, 1.0);
             reddest = reddest.max(h.colourscreenfrac);
             if seen.last() != Some(&h.healthshowmode) {
                 seen.push(h.healthshowmode);

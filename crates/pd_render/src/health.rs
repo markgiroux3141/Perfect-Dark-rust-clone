@@ -78,16 +78,16 @@ fn strip(markers: &[Marker], idx: &[i32], offx: f32, offy: f32, colour: impl Fn(
 }
 
 /// `healthbar_draw(gdl, NULL, 0, 0)` (`healthbar.c:133`) as triangle strips:
-/// the shield ring (empty: no shields until M8), then the armour (green, the
-/// health above a quarter) and the trauma (red, below it).
-fn healthbar_strips(apparenthealth: f32, heightfrac: f32) -> Vec<Vec<(f32, f32, u32)>> {
+/// the shield ring (`apparentarmour`, filling the other way), then the armour
+/// (green, the health above a quarter) and the trauma (red, below it).
+fn healthbar_strips(apparenthealth: f32, apparentarmour: f32, heightfrac: f32) -> Vec<Vec<(f32, f32, u32)>> {
     let (radmax, radmed, radmin) = (30.0f32, 18.0f32, 12.0f32);
     let (len1, len2, len3) = (170.0f32, 47.0f32, 40.0f32);
     let (shieldcol, armourcol, traumacol, bgcol) = (0x10500090u32, 0x00c00060u32, 0xff000060u32, 0x00000080u32);
     let (offx, offy) = (-85.0f32, -185.0f32);
     let (shieldfade, armourfade, traumafade) = (100.0f32, 100.0f32, 200.0f32);
     let hf = heightfrac;
-    let shieldfrac = 0.0f32;
+    let shieldfrac = apparentarmour;
     let armourfrac = ((apparenthealth - 0.25) / 0.75).max(0.0);
     let traumafrac = ((0.25 - apparenthealth) * 4.0).max(0.0);
     let m = |x1: f32, y1: f32, x2: f32, y2: f32, frac: f32| Marker { x1, y1, x2, y2, frac };
@@ -149,7 +149,7 @@ fn healthbar_strips(apparenthealth: f32, heightfrac: f32) -> Vec<Vec<(f32, f32, 
 /// `player_render_health_bar` (`player.c:2683`) into the view `[x, y, w, h]`
 /// of the layer: the bar's plane seen from (0, 370, 0) looking at the origin
 /// with −z up the screen, through the view's perspective (`fovy` degrees).
-pub fn draw_health_bar(gfx: &mut Gfx, view: [i32; 4], apparenthealth: f32, heightfrac: f32, fovy: f32) {
+pub fn draw_health_bar(gfx: &mut Gfx, view: [i32; 4], apparenthealth: f32, apparentarmour: f32, heightfrac: f32, fovy: f32) {
     let [vx, vy, vw, vh] = view.map(|v| v as f32);
     let eye = pd_core::math::view_matrix(Vec3::new(0.0, 370.0, 0.0), Vec3::new(0.0, -1.0, 0.0), Vec3::new(0.0, 0.0, -1.0));
     let proj = Mat4::perspective_rh(fovy.to_radians(), vw / vh, 10.0, 10000.0);
@@ -159,7 +159,7 @@ pub fn draw_health_bar(gfx: &mut Gfx, view: [i32; 4], apparenthealth: f32, heigh
         (p.w > 0.0).then(|| SV { x: vx + (p.x / p.w * 0.5 + 0.5) * vw, y: vy + (0.5 - p.y / p.w * 0.5) * vh, c: rgba(c), ..SV::default() })
     };
     let st = TriState { cc: Cc::Shade, tex: None, filter: Filter::Point, blend: Blend::Xlu, env: [1.0; 4], persp: false, zbuf: false, cull_back: false };
-    for s in healthbar_strips(apparenthealth, heightfrac) {
+    for s in healthbar_strips(apparenthealth, apparentarmour, heightfrac) {
         for k in 0..s.len().saturating_sub(2) {
             let v: Option<Vec<SV>> = s[k..k + 3].iter().map(|&(x, z, c)| to_px(x, z, c)).collect();
             if let Some(v) = v {
@@ -182,13 +182,18 @@ pub fn draw_fade(gfx: &mut Gfx, view: [i32; 4], rgb: [i32; 3], frac: f32) {
 mod tests {
     use super::*;
 
+    fn draw(health: f32, armour: f32) -> (Gfx, usize, usize) {
+        let (w, h) = (320usize, 220usize);
+        let mut g = crate::hud::layer(w, h);
+        draw_health_bar(&mut g, [0, 0, w as i32, h as i32], health, armour, 1.0, 60.0);
+        (g, w, h)
+    }
+
     /// The bar sits at the top of the view, green at full health, red at low.
     #[test]
     fn the_health_bar_fills_green_then_red_and_sits_at_the_top() {
-        let (w, h) = (320usize, 220usize);
         let colour_at = |health: f32| {
-            let mut g = crate::hud::layer(w, h);
-            draw_health_bar(&mut g, [0, 0, w as i32, h as i32], health, 1.0, 60.0);
+            let (g, w, h) = draw(health, 0.0);
             let (mut green, mut red, mut top, mut bottom) = (0, 0, h, 0);
             for y in 0..h {
                 for x in 0..w {
@@ -205,12 +210,24 @@ mod tests {
                     }
                 }
             }
-            (green, red, top, bottom)
+            (green, red, top, bottom, h)
         };
-        let (g1, r1, top, bottom) = colour_at(1.0);
+        let (g1, r1, top, bottom, h) = colour_at(1.0);
         assert!(g1 > 200 && r1 == 0, "full health: green {g1} red {r1}");
         assert!(bottom < h / 3, "the bar is at the top: rows {top}..{bottom}");
         let (g2, r2, ..) = colour_at(0.1);
         assert!(r2 > 20 && g2 < g1 / 4, "low health: green {g2} red {r2}");
+    }
+
+    /// A shield fills the ring around the bar (`apparentarmour`).
+    #[test]
+    fn a_shield_fills_the_ring() {
+        let (none, ..) = draw(1.0, 0.0);
+        let (full, ..) = draw(1.0, 1.0);
+        let (half, ..) = draw(1.0, 0.5);
+        let differ = |a: &Gfx, b: &Gfx| a.fb.iter().zip(&b.fb).filter(|(p, q)| (p[0] - q[0]).abs() + (p[1] - q[1]).abs() + (p[2] - q[2]).abs() > 0.02).count();
+        let (d_full, d_half) = (differ(&none, &full), differ(&none, &half));
+        assert!(d_full > 150, "a full shield changes the ring: {d_full} px");
+        assert!(d_half > 40 && d_half < d_full, "half a shield, part of it: {d_half} of {d_full}");
     }
 }

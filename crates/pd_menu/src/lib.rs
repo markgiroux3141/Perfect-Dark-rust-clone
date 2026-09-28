@@ -226,6 +226,65 @@ pub enum Outcome {
     /// the menus have closed; the game starts this match, then calls
     /// [`MenuSystem::return_from_match`].
     StartMatch(MatchSetup),
+    /// `mp_set_paused(mode)` (the pause menu's Pause / Unpause,
+    /// `menuhandler_mp_pause`, ingame.c:157): `MPPAUSEMODE_*`.
+    SetPaused(u8),
+    /// `menuhandler_mp_end_game` (ingame.c:101): player `playernum` aborts
+    /// (`aborted = true`) and the match ends (`main_end_stage`).
+    EndGame { playernum: usize },
+    /// The pause menu's inventory (`menuhandler_inventory_list`'s confirm,
+    /// mainmenu.c:4176): player `playernum` equips inventory row `index`.
+    Equip { playernum: usize, index: usize },
+    /// Every end-of-match dialog has closed (menutick.c:615,
+    /// `g_MpReturningFromMatch`): the game leaves the match and calls
+    /// [`MenuSystem::return_from_match`].
+    ReturnFromMatch,
+}
+
+/// One row of the pause menu's inventory (`inv_get_name_by_index`), with the
+/// weapon's description for the marquee.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct InvRow {
+    pub weaponnum: u8,
+    pub name: String,
+    pub description: String,
+}
+
+/// A human player in the match, as the pause and end-of-match dialogs read it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MatchViewPlayer {
+    /// The player's chr slot (`playerstats.mpindex`, the menu it owns).
+    pub slot: usize,
+    /// The player's view: left, top, width, height (`viewleft`, ...).
+    pub view: [i32; 4],
+    pub inventory: Vec<InvRow>,
+    /// `inv_get_current_index`.
+    pub invcur: i32,
+    /// `mp_player_get_weapon_of_choice_name` (title.c:108).
+    pub weapon_of_choice: String,
+    /// `player->award1` / `award2`, as `g_AwardNames` indexes.
+    pub award1: Option<u8>,
+    pub award2: Option<u8>,
+    /// `player->aborted`: the player chose End Game.
+    pub aborted: bool,
+}
+
+/// The running match, as the menus read it. PD's pause and end-of-match
+/// dialogs read the globals the match writes (`g_MpSetup.paused`, the
+/// mpchrconfigs' counters, `g_Vars.players[]`); the game hands them over every
+/// frame ([`MenuSystem::set_match_view`]).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MatchView {
+    /// `g_MpSetup.paused` (`MPPAUSEMODE_*`).
+    pub paused: u8,
+    /// `g_MainIsEndscreen`.
+    pub endscreen: bool,
+    /// `lv_get_stage_time60()`.
+    pub stagetime60: i32,
+    /// The mpchrconfigs' counters, by chr slot.
+    pub chrs: [pd_core::mp::MpChrStats; pd_core::mp::MAX_MPCHRS],
+    /// By player number (`g_Vars.players[i]`).
+    pub players: Vec<MatchViewPlayer>,
 }
 
 /// The whole of PD's menu system: `g_Menus`, `g_MenuData`, the menu fields of
@@ -260,9 +319,12 @@ pub struct MenuSystem {
     pub mp_selected_for_stats: [usize; 4],
     /// Sounds (and later other events) queued this frame.
     pub events: Vec<Event>,
-    pub outcome: Option<Outcome>,
-    /// A match is running: the menus are closed and do not tick.
+    pub outcomes: std::collections::VecDeque<Outcome>,
+    /// A match is running (`g_Vars.normmplayerisrunning`): the menus are the
+    /// pause and end-of-match menus, drawn over the game.
     pub in_match: bool,
+    /// The running match, as its dialogs read it.
+    pub matchview: MatchView,
 }
 
 impl MenuSystem {
@@ -298,8 +360,9 @@ impl MenuSystem {
             scissor_menu: [0, 0, FB_W as i32, FB_H as i32],
             mp_selected_for_stats: [0, 1, 2, 3],
             events: Vec::new(),
-            outcome: None,
+            outcomes: std::collections::VecDeque::new(),
             in_match: false,
+            matchview: MatchView::default(),
         };
         pd.pads[0].connected = true;
         for m in pd.menus.iter_mut() {
@@ -358,10 +421,20 @@ impl MenuSystem {
     /// One PD frame: `menu_tick` then `menu_render`, at `lv.diffframe60`. Set
     /// [`MenuSystem::pads`] (and [`MenuSystem::back2`]) first.
     pub fn frame(&mut self, lv: &Lv) {
+        self.tick(lv);
+        self.render();
+    }
+
+    /// The input half of [`MenuSystem::frame`]: `menu_tick`. In a match PD
+    /// runs it inside `lv_tick`, before the players' controls
+    /// (`pd_game::session`), and draws the menus later in the frame.
+    pub fn tick(&mut self, lv: &Lv) {
         self.lv = lv.clone();
-        if !self.in_match {
-            self.menu_tick();
-        }
+        self.menu_tick();
+    }
+
+    /// The drawing half of [`MenuSystem::frame`]: `menu_render`.
+    pub fn render(&mut self) {
         self.menu_render();
         self.back2 = [false; MAX_PADS];
     }
@@ -371,8 +444,130 @@ impl MenuSystem {
         std::mem::take(&mut self.events)
     }
 
+    /// The next thing the menus asked of the game, oldest first.
     pub fn take_outcome(&mut self) -> Option<Outcome> {
-        self.outcome.take()
+        self.outcomes.pop_front()
+    }
+
+    /// The match as it stands this frame (see [`MatchView`]): the counters go
+    /// into the mpchrconfigs, which the dialogs read as PD's do.
+    pub fn set_match_view(&mut self, view: MatchView) {
+        for (i, stats) in view.chrs.iter().enumerate() {
+            if let Some(c) = self.mpchr_mut(i) {
+                c.stats = *stats;
+            }
+        }
+        self.matchview = view;
+    }
+
+    /// `mp_is_paused` (mplayer.c:1167), as the menus ask it.
+    pub fn mp_is_paused(&self) -> bool {
+        if self.matchview.players.len() == 1 && self.menus[self.matchview.players[0].slot].curdialog.is_some() {
+            return true;
+        }
+        self.matchview.paused != pd_core::ids::MPPAUSEMODE_UNPAUSED
+    }
+
+    /// `mp_push_pause_dialog` (ingame.c:770) for player `playernum`: its
+    /// rankings, as a new `MENUROOT_MPPAUSE` root, unless the match is over or
+    /// its menu was closed a moment ago (`openinhibit`).
+    pub fn mp_push_pause_dialog(&mut self, playernum: usize) {
+        if self.matchview.paused == pd_core::ids::MPPAUSEMODE_GAMEOVER || self.matchview.endscreen {
+            return;
+        }
+        let Some(slot) = self.matchview.players.get(playernum).map(|p| p.slot) else { return };
+        let prev = self.mpplayernum;
+        self.mpplayernum = slot;
+        if self.menus[slot].openinhibit == 0 {
+            self.menus[slot].playernum = playernum;
+            // (g_Vars.normmplayerisrunning: no two-player missions here.)
+            if self.mp.setup.options & generated::MPOPTION_TEAMSENABLED as u32 != 0 {
+                self.menu_push_root_dialog(&generated::G_MP_PAUSE_TEAM_RANKINGS_MENU_DIALOG, MENUROOT_MPPAUSE);
+            } else {
+                self.menu_push_root_dialog(&generated::G_MP_PAUSE_PLAYER_RANKING_MENU_DIALOG, MENUROOT_MPPAUSE);
+            }
+        }
+        self.mpplayernum = prev;
+    }
+
+    /// `menu_save_and_close_all` for one player's menu (`player_die_by_shooter`
+    /// closes a dying player's pause menu, player.c:4817).
+    pub fn close_player_menus(&mut self, playernum: usize) {
+        let Some(slot) = self.matchview.players.get(playernum).map(|p| p.slot) else { return };
+        let prev = self.mpplayernum;
+        self.mpplayernum = slot;
+        self.menu_save_and_close_all();
+        self.mpplayernum = prev;
+    }
+
+    /// The menus' half of `mp_end_match` (mplayer.c:2426): the players' files
+    /// take `mp_calculate_awards`' results (statistics, medals, title), then
+    /// `menu_save_and_push_root_dialog(NULL, MENUROOT_END_MP_MATCH)` opens every
+    /// player's end screen on the next tick.
+    pub fn mp_end_match(&mut self, results: &[pd_core::mp::MpPlayerResult]) {
+        for r in results {
+            if let Some(p) = self.mp.players.get_mut(r.slot) {
+                p.career = r.career;
+                p.medals = r.medals;
+                p.title = r.title;
+            }
+        }
+        self.menu_save_and_push_root_dialog(None, MENUROOT_END_MP_MATCH);
+    }
+
+    /// `mp_push_endscreen_dialog` (ingame.c:802): player `playernum`'s (chr
+    /// slot `slot`'s) Game Over, or a challenge's verdict, then the offer to
+    /// save a new player once per player.
+    pub fn mp_push_endscreen_dialog(&mut self, playernum: usize, slot: usize) {
+        let prev = self.mpplayernum;
+        self.mpplayernum = slot;
+        self.menus[slot].playernum = playernum;
+        if self.mp.setup.options & generated::MPOPTION_TEAMSENABLED as u32 != 0 {
+            if self.mp.bossfile.locktype == generated::MPLOCKTYPE_CHALLENGE as u8 {
+                // (No cheats.)
+                if self.challenge_is_complete_for_endscreen() {
+                    self.menu_push_root_dialog(&generated::G_MP_ENDSCREEN_CHALLENGE_COMPLETED_MENU_DIALOG, MENUROOT_MPENDSCREEN);
+                } else {
+                    self.menu_push_root_dialog(&generated::G_MP_ENDSCREEN_CHALLENGE_FAILED_MENU_DIALOG, MENUROOT_MPENDSCREEN);
+                }
+            } else {
+                self.menu_push_root_dialog(&generated::G_MP_ENDSCREEN_TEAM_GAME_OVER_MENU_DIALOG, MENUROOT_MPENDSCREEN);
+            }
+        } else {
+            self.menu_push_root_dialog(&generated::G_MP_ENDSCREEN_IND_GAME_OVER_MENU_DIALOG, MENUROOT_MPENDSCREEN);
+        }
+        // SUBST: PD asks once whether to save a new player (it has no file
+        // yet, `fileguid` 0) / there are no player files here, so the offer
+        // always comes once per player per run; saving shows the pak stub.
+        let pl = &mut self.mp.players[slot];
+        if pl.options & pd_core::ids::OPTION_ASKEDSAVEPLAYER as u32 == 0 && pl.fileid == 0 {
+            pl.options |= pd_core::ids::OPTION_ASKEDSAVEPLAYER as u32;
+            self.menu_push_dialog(&generated::G_MP_ENDSCREEN_SAVE_PLAYER_MENU_DIALOG);
+        }
+        self.mpplayernum = prev;
+    }
+
+    /// The menu half of `menu_reset` (menu.c:3734), which a stage load runs: no
+    /// dialogs, no root, no background, no hudpiece.
+    pub fn menu_reset(&mut self) {
+        self.menudata.hudpieceactive = false;
+        self.menudata.triggerhudpiece = false;
+        for m in self.menus.iter_mut() {
+            m.curdialog = None;
+            m.depth = 0;
+            m.numdialogs = 0;
+            m.rowend = 0;
+            m.blockend = 0;
+            m.colend = 0;
+        }
+        self.menudata.nextdialog = None;
+        self.menudata.nextroot = -1;
+        self.menudata.count = 0;
+        self.menudata.root = 0;
+        self.menudata.bgopacityfrac = 0.0;
+        self.menudata.bg = 0;
+        self.menudata.checkroots = false;
+        self.menudata.nextbg = 255;
     }
 
     /// `MENUROOT_START_MP_MATCH` (menutick.c:521): `mp_start_match`
@@ -392,13 +587,21 @@ impl MenuSystem {
         }
         let setup = self.match_setup(stagenum as u8);
         log::info!("pd_menu: starting a match: {}", self.describe_match(&setup).join(" | "));
-        self.outcome = Some(Outcome::StartMatch(setup));
+        self.outcomes.push_back(Outcome::StartMatch(setup));
         for i in 0..4 {
             self.mpplayernum = i;
             self.menu_save_and_close_all();
         }
         self.mpplayernum = 0;
-        self.menudata.count = 0;
+        // The arena loads (menu_reset); the match's mpchrconfig counters start
+        // at zero (mp_reset_mpchrconfig_for_match, mp_reset).
+        self.menu_reset();
+        for i in 0..pd_core::mp::MAX_MPCHRS {
+            if let Some(c) = self.mpchr_mut(i) {
+                c.stats = pd_core::mp::MpChrStats::default();
+            }
+        }
+        self.matchview = MatchView::default();
         self.in_match = true;
     }
 
@@ -434,12 +637,12 @@ impl MenuSystem {
     /// `g_MpSetup` and the chrs in its slots, as a [`MatchSetup`].
     pub fn match_setup(&self, stagenum: u8) -> MatchSetup {
         let s = &self.mp.setup;
-        let chr = |c: &mpstate::MpChrConfig| MatchChr { name: c.name.trim_end().to_string(), mpbodynum: c.mpbodynum, mpheadnum: c.mpheadnum, team: c.team };
+        let chr = |c: &mpstate::MpChrConfig| MatchChr { name: c.name.trim_end().to_string(), mpbodynum: c.mpbodynum, mpheadnum: c.mpheadnum, team: c.team, displayoptions: c.displayoptions as u8 };
         let players = (0..4)
             .filter(|&i| s.chrslots & (1 << i) != 0)
             .map(|i| {
                 let p = &self.mp.players[i];
-                MatchPlayer { slot: i as u8, chr: chr(&p.base), controlmode: p.controlmode, options: p.options as u16, handicap: p.handicap as u8 }
+                MatchPlayer { slot: i as u8, chr: chr(&p.base), controlmode: p.controlmode, options: p.options as u16, handicap: p.handicap as u8, career: p.career }
             })
             .collect();
         let simulants = (0..8)
@@ -460,6 +663,7 @@ impl MenuSystem {
             players,
             simulants,
             teamnames: self.mp.bossfile.teamnames.iter().map(|t| t.trim_end().to_string()).collect(),
+            challenge: self.mp.bossfile.locktype == generated::MPLOCKTYPE_CHALLENGE as u8,
         }
     }
 
@@ -492,6 +696,10 @@ impl MenuSystem {
 
     /// Back from the match (menutick.c:217, `g_MpReturningFromMatch`).
     pub fn return_from_match(&mut self) {
+        // The CI stage loads (menu_reset), then g_MpReturningFromMatch reopens
+        // the Combat Simulator (the blur behind its menus is CI's again).
+        self.menu_reset();
+        self.draw.res.blur_from_image(None);
         self.in_match = false;
         self.mp_num_joined = 0;
         self.vars.mpsetupmenu = if self.vars.usingadvsetup { generated::MPSETUPMENU_ADVSETUP } else { generated::MPSETUPMENU_GENERAL };

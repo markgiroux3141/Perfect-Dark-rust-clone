@@ -59,9 +59,17 @@ pub use n64::rdp::Cull;
 pub use pose::{JointFn, Model, PoseParams};
 
 /// `modeldef.skel` values that matter to callers (`g_Skel*`, skeletons.c).
+/// `g_SkelChrGun` (`modeldata/chrgun.c:11`): a held gun, a weapon pickup.
+pub const SKEL_CHRGUN: i32 = 0x03;
 pub const SKEL_CHR: i32 = 0x09;
 pub const SKEL_HEAD: i32 = 0x0d;
 pub const SKEL_HUDPIECE: i32 = 0x2a;
+
+/// A model's visibility with every toggle on and only the nearest LOD
+/// showing: how a model is drawn with no instance state.
+pub fn near_lod_vis(def: &ModelDef) -> Vec<bool> {
+    def.nodes.iter().map(|n| !matches!(n.kind, NodeKind::Distance { near, .. } if near > 0.0)).collect()
+}
 
 /// The node-type flag bits that give a POSITION node its helper matrices.
 pub const MODELNODETYPE_0100: u32 = 0x0100;
@@ -556,6 +564,13 @@ pub struct ModelIndexEntry {
     pub kind: String,
     pub source: String,
     pub tris: usize,
+    /// The `g_ModelStates` row naming the file (`MODEL_*`), if any.
+    #[serde(default)]
+    pub modelnum: Option<i32>,
+    /// That row's scale: an object's model scale is `statescale / 4096`
+    /// (`obj_init`, `propobj.c:2098`).
+    #[serde(default)]
+    pub statescale: Option<i32>,
 }
 
 /// Every exported model file, loaded on first use and shared.
@@ -571,6 +586,16 @@ impl ModelStore {
         let index: HashMap<String, ModelIndexEntry> = assets.read_json(&assets.model_index())?;
         let by_filenum = index.iter().map(|(stem, e)| (e.filenum, stem.clone())).collect();
         Ok(ModelStore { assets: assets.clone(), index, by_filenum, defs: Mutex::new(HashMap::new()) })
+    }
+
+    /// The stem of `MODEL_*` number `modelnum` (`g_ModelStates[modelnum].fileid`).
+    pub fn stem_of_modelnum(&self, modelnum: i32) -> Option<&str> {
+        self.index.iter().find(|(_, e)| e.modelnum == Some(modelnum)).map(|(s, _)| s.as_str())
+    }
+
+    /// `g_ModelStates[].scale / 4096` for the model `stem` (1 if it has no row).
+    pub fn modelstate_scale(&self, stem: &str) -> f32 {
+        self.index.get(stem).and_then(|e| e.statescale).map_or(1.0, |s| s as f32 * (1.0 / 4096.0))
     }
 
     /// A model by file stem (e.g. `"falcon2"`, `"dark_combat"`).

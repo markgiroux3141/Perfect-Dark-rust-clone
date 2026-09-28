@@ -9,21 +9,21 @@
  "rom_md5": "e03b088b6ac9e0080440efed07c1e40f",
  "exporters": {
   "build_assets.py": "6897b5857efb0e52e70e64581733f652496b6b380476b96a1101dd9528be291a",
-  "check_against_spikes.py": "0d22349304cc5bf29751e78dcde293b510e7875e3f59e93daf75a9ad8b0be73e",
+  "check_against_spikes.py": "5a45d31669fb9b9b79a181bff4226eb3e99806f9abc82ac070a277fc361b8c7f",
   "pd_anim.py": "85e2ec9a1b2d0fdcdee787909647e654364437652f0339fa9e34571135ba1785",
   "pd_animmap.py": "804be1a12ad6e530eab690de10f3fa3954858a87958f1af5249d9b570ae1f6ff",
   "pd_bg.py": "395baf18782819f7e7429ecb65932d30f9609d6320b41a337e1c0a1d75a64dcc",
   "pd_bg_preview.py": "73172f4ba61b94f948b1bd140d31e1b6f2c113c453c3df7208641d2b91998155",
   "pd_fpgun.py": "8a2f78f9a56ea9b5c8236a8e9c3bcaa67e19092d8c95e7777871ed3cb29931c5",
   "pd_gltf.py": "ae6da6c7b14e283701973d65e80615fb1200667aabe777e875dff02848d410ce",
-  "pd_ids.py": "861ea4bb61888526618d9a2bc77a4d0f407ec35e4e0d695f3e34225151e73d7e",
-  "pd_menu_gen.py": "8d0bc124c22ac1836792e73eed8c14512493eec5b44a277ced01d6baef1b95f9",
+  "pd_ids.py": "82fb3fb28e47a9a9e5bd2273820a57a2a7c8e84bece62c29820e21406390f850",
+  "pd_menu_gen.py": "02e16bebdc3e7d6a48579706fc7319110bde5e4bd10131277c1fe2e40e0dc0e5",
   "pd_model.py": "296358e46218e3c3df08e3809db18614ccdd998f28b681859162de9684a3983c",
-  "pd_models.py": "0a853bc3a6211faffb7fa282800bd2d084c015ab304e2d7da0a1372bbe841f08",
+  "pd_models.py": "fbfe3f27d0b7929e8b4be50dacd1e66dff5470f8a49d49aa28ab5484c3a79263",
   "pd_paths.py": "bce54ee9800c28d0d6c5b152ef53d909fd33622459d0152c046efdcf5e31430a",
   "pd_pose.py": "38400087d82a55f27975064e5a477800f95273cfab526efdb823b3e9301b66de",
   "pd_preview.py": "1ac546d8fe6dc1df13f2db5f947f35f8d8cd50d7a432852ff9c8de9787e76dfe",
-  "pd_sfx.py": "d0f8e775f345523fdd0c878a5d39e3df12671e0d97af1ef5e6a19d4a1687e293",
+  "pd_sfx.py": "eb00db57acf8d473435fa768f654e6c1ef8f1ade877fd1a608a68abae7dacea9",
   "pd_stage.py": "5ccb94e9439ab3f313487ec02f90fd4a7c1ae11007e715afb0c8d2d4aabd7f3e",
   "pd_tex.py": "547674a91e44c255fa656e13bfcccacc7c6a289800744ccfc495758a0e5ef65f",
   "pd_triage.py": "66077a025a4191827bc7996f21d559e1d0818c9465d30d9a48ccfad25e7777d9",
@@ -32,7 +32,7 @@
  "counts": {
   "weapons": 38,
   "gun_scripts": 100,
-  "models": 225,
+  "models": 226,
   "model_textures": 9,
   "headsandbodies": 152,
   "stages": {
@@ -50,21 +50,21 @@
     "props": 35
    }
   },
-  "pool_textures": 1382,
+  "pool_textures": 1386,
   "anims": 1207,
   "fonts": 5,
   "langbanks": 68,
-  "sounds": 232,
-  "keys": 565
+  "sounds": 236,
+  "keys": 573
  },
  "dirs": {
   "models": {
-   "files": 460,
-   "sha256": "31f40a791b6cc80bb5d71344121588868fdeff2cf5685da55a458eafd2bca70f"
+   "files": 462,
+   "sha256": "3bc848183a374b02b07ef1126103d317d944137d9dad831d564a37a52b17df65"
   },
   "textures": {
-   "files": 1383,
-   "sha256": "00da073ff8cbb9461deb05085ab1291dfe48c7b7d9a2d2fd30466bcf67edbc1d"
+   "files": 1387,
+   "sha256": "813137a62c62cf4cc5a20aa27bf274070c3c8a272d50b842dd9cbebd7b5b3ffd"
   },
   "anims": {
    "files": 1208,
@@ -83,8 +83,8 @@
    "sha256": "25fade935e333dd0ddddc234e42db69bbe9d8903c8467ea8ff536275f0ce4e2b"
   },
   "sfx": {
-   "files": 233,
-   "sha256": "786deb8a7a86817bf93b5730827a4d7d8ed5134e2246245ff3f5cc63a2ebe38f"
+   "files": 237,
+   "sha256": "93d2b9ec4ada310c2dde693ffb8bf29745aa5da77b50af80ab7bc529d5665c45"
   },
   "stages": {
    "files": 5,

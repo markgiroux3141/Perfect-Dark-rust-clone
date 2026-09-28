@@ -12594,6 +12594,50 @@
   "soundsurfacetype": 0,
   "surfacetype": 0
  },
+ "08cd": {
+  "w": 32,
+  "h": 32,
+  "format": "RGBA16_CI4",
+  "codec": "zlib",
+  "numcolours": 16,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "08ce": {
+  "w": 64,
+  "h": 32,
+  "format": "IA8",
+  "codec": "non-zlib",
+  "numcolours": 0,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "08cf": {
+  "w": 32,
+  "h": 32,
+  "format": "RGBA16_CI4",
+  "codec": "zlib",
+  "numcolours": 16,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "08d0": {
+  "w": 32,
+  "h": 32,
+  "format": "RGBA16_CI4",
+  "codec": "zlib",
+  "numcolours": 16,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
  "08d7": {
   "w": 64,
   "h": 32,

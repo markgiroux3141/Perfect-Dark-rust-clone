@@ -177,6 +177,9 @@ pub struct Menu {
     /// `training.unke1c` / `training.mpconfig`: the challenge a confirm dialog shows.
     pub training_slot: i32,
     pub training_config: Option<usize>,
+    /// `mppause.weaponnum`: the inventory row in focus (its description scrolls
+    /// in the marquee).
+    pub mppause_weaponnum: i32,
 }
 
 impl Default for Menu {
@@ -210,6 +213,7 @@ impl Default for Menu {
             inhibit_input: false,
             training_slot: 0,
             training_config: None,
+            mppause_weaponnum: 0,
         }
     }
 }
@@ -1196,6 +1200,29 @@ impl MenuSystem {
                     _ => (left, top, right, bottom),
                 }
             }
+            MENUROOT_MPPAUSE | MENUROOT_MPENDSCREEN | MENUROOT_PICKTARGET => {
+                // The player's view (menu.c:3287). With one player it is the
+                // whole 320 x 220 frame.
+                let playernum = self.mr().playernum;
+                let [vl, vt, vw2, vh2] = self.matchview.players.get(playernum).map_or([0, 0, vw, vh], |p| p.view);
+                let (mut l, t, mut r, b) = (vl / us, vt, (vl + vw2) / us, vt + vh2);
+                let playercount = self.matchview.players.len();
+                if playercount > 2 {
+                    if playernum == 0 || playernum == 2 {
+                        l += 22;
+                    } else {
+                        r -= 22;
+                    }
+                }
+                if playercount == 2 && self.vars.screensplit == SCREENSPLIT_VERTICAL {
+                    if playernum == 0 {
+                        l += 22;
+                    } else {
+                        r -= 22;
+                    }
+                }
+                (l, t, r, b)
+            }
             _ => (left, top, right, bottom),
         }
     }
@@ -1579,6 +1606,7 @@ impl MenuSystem {
         self.dialog_calculate_position(di);
         self.dialog_tick_height(di);
         {
+            let root = self.menudata.root;
             let d = self.dlg(di);
             let tween = |cur: &mut i32, dst: i32, k: f32| {
                 if *cur != dst {
@@ -1597,8 +1625,14 @@ impl MenuSystem {
                     }
                 }
             };
-            tween(&mut d.x, d.dstx, 0.3);
-            tween(&mut d.y, d.dsty, 0.3);
+            if matches!(root, MENUROOT_MPPAUSE | MENUROOT_PICKTARGET | MENUROOT_MPENDSCREEN) {
+                // Don't slide
+                d.x = d.dstx;
+                d.y = d.dsty;
+            } else {
+                tween(&mut d.x, d.dstx, 0.3);
+                tween(&mut d.y, d.dsty, 0.3);
+            }
             tween(&mut d.width, d.dstwidth, 0.3);
             tween(&mut d.height, d.dstheight, 0.3);
         }
@@ -2027,7 +2061,11 @@ impl MenuSystem {
                 }
             }
         }
-        if self.menudata.root == MENUROOT_MAINMENU && inputs.start && !starttoselect {
+        if self.menudata.root == MENUROOT_MPPAUSE {
+            // (No cutscenes in a match.)
+            self.m().openinhibit = 10;
+        }
+        if matches!(self.menudata.root, MENUROOT_ENDSCREEN | MENUROOT_MAINMENU | MENUROOT_MPPAUSE | MENUROOT_MPENDSCREEN | MENUROOT_TRAINING) && inputs.start && !starttoselect {
             if let Some(cd) = self.mr().curdialog {
                 if self.mr().dialogs[cd].def().flags & MENUDIALOGFLAG_IGNOREBACK == 0 {
                     self.menu_save_and_close_all();
@@ -2104,7 +2142,7 @@ impl MenuSystem {
             bgy1 += LINEHEIGHT;
         }
         // The walls/floor/ceiling coming from the projection source (not in MP setup).
-        if self.menudata.root != MENUROOT_MPSETUP && self.menudata.root != MENUROOT_MPPAUSE {
+        if self.menudata.root != MENUROOT_MPSETUP && (self.menudata.root != MENUROOT_MPPAUSE || self.in_match) {
             let t = &mut self.draw.text;
             t.text_holoray(bgx1, bgy1, bgx2, bgy1, colour4, colour5, MENUPLANE_00);
             t.text_holoray(bgx2, bgy1, bgx2, bgy2, colour5, colour4, MENUPLANE_00);
@@ -2130,7 +2168,7 @@ impl MenuSystem {
             self.tc().render_v2(&mut x, &mut y, &title, FontId::Sm, c & 0xff, dialogwidth, vh, 0, 0);
             let (mut x, mut y) = (dialogleft + 2, dialogtop + 2);
             self.tc().render_v2(&mut x, &mut y, &title, FontId::Sm, c, dialogwidth, vh, 0, 0);
-            if self.menudata.root == MENUROOT_MPSETUP || self.menudata.root == MENUROOT_MPPAUSE {
+            if matches!(self.menudata.root, MENUROOT_MPSETUP | MENUROOT_MPPAUSE | MENUROOT_MPENDSCREEN) {
                 let (mut x, mut y) = (dialogright - 9, dialogtop + 2);
                 let num = ["1\n", "2\n", "3\n", "4\n"][self.mpplayernum];
                 self.tc().render_v2(&mut x, &mut y, num, FontId::Sm, c, dialogwidth, vh, 0, 0);
@@ -2358,6 +2396,14 @@ impl MenuSystem {
     /// dialog, then the current one on top.
     fn menu_render_dialogs(&mut self) {
         let Some(cd) = self.mr().curdialog else { return };
+        if matches!(self.menudata.root, MENUROOT_MPPAUSE | MENUROOT_PICKTARGET | MENUROOT_MPENDSCREEN) {
+            let d = self.mr().dialogs[cd];
+            let (vw, vh) = (self.draw.gfx.w as i32 / self.draw.gfx.uiscale, self.draw.gfx.h as i32);
+            self.draw.text.holoray_fromx = d.x + d.width / 2 - vw / 2;
+            self.draw.text.holoray_fromy = d.y + d.height / 2 - vh / 2;
+            self.menu_render_dialog(cd);
+            return;
+        }
         let mut other = None;
         for i in 0..self.mr().depth {
             let layer = self.mr().layers[i];
@@ -2425,7 +2471,13 @@ impl MenuSystem {
         // The frame behind the menus: PD draws the stage (CI) first. With no
         // background the spike shows black (the "screenshot" the blur comes from
         // is `res.blur`, see `Resources::blur_from_image`).
-        self.draw.gfx.clear([0.0, 0.0, 0.0]);
+        if self.in_match {
+            // The match is behind the menus (lv_render draws menu_render last):
+            // the frame is a layer the game lays over its view.
+            self.draw.gfx.clear_transparent();
+        } else {
+            self.draw.gfx.clear([0.0, 0.0, 0.0]);
+        }
         let (bg, nextbg, frac) = (self.menudata.bg, self.menudata.nextbg, self.menudata.bgopacityfrac);
         if nextbg != 255 {
             if nextbg == 0 {
@@ -2496,9 +2548,19 @@ impl MenuSystem {
             // text_enable_holo_ray: the rays PD records go under the dialogs.
             self.draw.text.holorays.clear();
             self.draw.gfx.push_layer();
-            for i in 0..4 {
-                self.mpplayernum = i;
-                self.menu_render_dialogs();
+            if matches!(self.menudata.root, MENUROOT_MPPAUSE | MENUROOT_MPENDSCREEN) {
+                // Each player's view draws that player's menus (the game draws
+                // every view into the one frame).
+                let slots: Vec<usize> = self.matchview.players.iter().map(|p| p.slot).collect();
+                for i in slots {
+                    self.mpplayernum = i;
+                    self.menu_render_dialogs();
+                }
+            } else {
+                for i in 0..4 {
+                    self.mpplayernum = i;
+                    self.menu_render_dialogs();
+                }
             }
             self.mpplayernum = 0;
             self.draw.text.holoray_enabled = false;
@@ -2727,6 +2789,17 @@ impl MenuSystem {
                     // Match is beginning: mp_start_match + menu_stop, which hand
                     // the setup to the game (`MenuSystem::start_match`).
                     self.start_match();
+                } else if self.menudata.nextroot == MENUROOT_END_MP_MATCH {
+                    // Match is ending: each player's end screen, by chr slot
+                    // (menu_queue_save: no pak).
+                    let mut playernum = 0;
+                    for i in 0..4 {
+                        if self.mp.setup.chrslots & (1 << i) != 0 {
+                            self.mp_push_endscreen_dialog(playernum, i);
+                            anyopen2 = true;
+                            playernum += 1;
+                        }
+                    }
                 } else if let Some(def) = self.menudata.nextdialog {
                     let root = self.menudata.nextroot;
                     self.menu_push_root_dialog(def, root);
@@ -2737,6 +2810,14 @@ impl MenuSystem {
                 }
                 self.menudata.nextdialog = None;
                 self.menudata.nextroot = -1;
+            } else if self.menudata.root == MENUROOT_MPENDSCREEN {
+                // Every end screen is closed: g_MpReturningFromMatch, the match
+                // unpaused and over, a challenge's lock released, and the CI
+                // stage loads (the game leaves the match).
+                if self.mp.bossfile.locktype == gd::MPLOCKTYPE_CHALLENGE as u8 {
+                    self.mp.bossfile.locktype = gd::MPLOCKTYPE_NONE as u8;
+                }
+                self.outcomes.push_back(super::Outcome::ReturnFromMatch);
             }
         }
         self.menu_count_dialogs();

@@ -102,301 +102,387 @@
   "file": "FILE_PCHRAR34",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrar34.bin",
-  "tris": 102
+  "tris": 102,
+  "modelnum": 254,
+  "statescale": 409
  },
  "chrautogun": {
   "filenum": 1298,
   "file": "FILE_PCHRAUTOGUN",
   "kind": "prop",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrautogun.bin",
-  "tris": 72
+  "tris": 72,
+  "modelnum": 343,
+  "statescale": 409
  },
  "chravenger": {
   "filenum": 852,
   "file": "FILE_PCHRAVENGER",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chravenger.bin",
-  "tris": 67
+  "tris": 67,
+  "modelnum": 257,
+  "statescale": 409
  },
  "chrcloaker": {
   "filenum": 1231,
   "file": "FILE_PCHRCLOAKER",
   "kind": "gun",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrcloaker.bin",
-  "tris": 196
+  "tris": 196,
+  "modelnum": 302,
+  "statescale": 409
  },
  "chrcmp150": {
   "filenum": 848,
   "file": "FILE_PCHRCMP150",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrcmp150.bin",
-  "tris": 53
+  "tris": 53,
+  "modelnum": 253,
+  "statescale": 409
  },
  "chrcrossbolt": {
   "filenum": 884,
   "file": "FILE_PCHRCROSSBOLT",
   "kind": "prop",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrcrossbolt.bin",
-  "tris": 52
+  "tris": 52,
+  "modelnum": 289,
+  "statescale": 409
  },
  "chrcrossbow": {
   "filenum": 864,
   "file": "FILE_PCHRCROSSBOW",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrcrossbow.bin",
-  "tris": 56
+  "tris": 56,
+  "modelnum": 269,
+  "statescale": 409
  },
  "chrcyclone": {
   "filenum": 853,
   "file": "FILE_PCHRCYCLONE",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrcyclone.bin",
-  "tris": 67
+  "tris": 67,
+  "modelnum": 258,
+  "statescale": 409
  },
  "chrdevastator": {
   "filenum": 860,
   "file": "FILE_PCHRDEVASTATOR",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdevastator.bin",
-  "tris": 51
+  "tris": 51,
+  "modelnum": 265,
+  "statescale": 409
  },
  "chrdevgrenade": {
   "filenum": 885,
   "file": "FILE_PCHRDEVGRENADE",
   "kind": "prop",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdevgrenade.bin",
-  "tris": 56
+  "tris": 56,
+  "modelnum": 290,
+  "statescale": 409
  },
  "chrdraggrenade": {
   "filenum": 886,
   "file": "FILE_PCHRDRAGGRENADE",
   "kind": "prop",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdraggrenade.bin",
-  "tris": 56
+  "tris": 56,
+  "modelnum": 291,
+  "statescale": 409
  },
  "chrdragon": {
   "filenum": 850,
   "file": "FILE_PCHRDRAGON",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdragon.bin",
-  "tris": 61
+  "tris": 61,
+  "modelnum": 255,
+  "statescale": 409
  },
  "chrdruggun": {
   "filenum": 865,
   "file": "FILE_PCHRDRUGGUN",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdruggun.bin",
-  "tris": 52
+  "tris": 52,
+  "modelnum": 270,
+  "statescale": 409
  },
  "chrdy357": {
   "filenum": 843,
   "file": "FILE_PCHRDY357",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdy357.bin",
-  "tris": 50
+  "tris": 50,
+  "modelnum": 248,
+  "statescale": 409
  },
  "chrdy357trent": {
   "filenum": 844,
   "file": "FILE_PCHRDY357TRENT",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdy357trent.bin",
-  "tris": 50
+  "tris": 50,
+  "modelnum": 249,
+  "statescale": 409
  },
  "chrdyrocket": {
   "filenum": 859,
   "file": "FILE_PCHRDYROCKET",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdyrocket.bin",
-  "tris": 60
+  "tris": 60,
+  "modelnum": 264,
+  "statescale": 409
  },
  "chrdyrocketmis": {
   "filenum": 882,
   "file": "FILE_PCHRDYROCKETMIS",
   "kind": "prop",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdyrocketmis.bin",
-  "tris": 99
+  "tris": 99,
+  "modelnum": 287,
+  "statescale": 409
  },
  "chrfalcon2": {
   "filenum": 840,
   "file": "FILE_PCHRFALCON2",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrfalcon2.bin",
-  "tris": 45
+  "tris": 45,
+  "modelnum": 245,
+  "statescale": 409
  },
  "chrfalcon2scope": {
   "filenum": 847,
   "file": "FILE_PCHRFALCON2SCOPE",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrfalcon2scope.bin",
-  "tris": 61
+  "tris": 61,
+  "modelnum": 252,
+  "statescale": 409
  },
  "chrfalcon2sil": {
   "filenum": 846,
   "file": "FILE_PCHRFALCON2SIL",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrfalcon2sil.bin",
-  "tris": 57
+  "tris": 57,
+  "modelnum": 251,
+  "statescale": 409
  },
  "chrgrenade": {
   "filenum": 869,
   "file": "FILE_PCHRGRENADE",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrgrenade.bin",
-  "tris": 36
+  "tris": 36,
+  "modelnum": 274,
+  "statescale": 409
  },
  "chrknife": {
   "filenum": 866,
   "file": "FILE_PCHRKNIFE",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrknife.bin",
-  "tris": 172
+  "tris": 172,
+  "modelnum": 271,
+  "statescale": 409
  },
  "chrlaser": {
   "filenum": 1883,
   "file": "FILE_PCHRLASER",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrlaser.bin",
-  "tris": 50
+  "tris": 50,
+  "modelnum": 405,
+  "statescale": 409
  },
  "chrleegun1": {
   "filenum": 841,
   "file": "FILE_PCHRLEEGUN1",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrleegun1.bin",
-  "tris": 42
+  "tris": 42,
+  "modelnum": 246,
+  "statescale": 409
  },
  "chrmaianpistol": {
   "filenum": 845,
   "file": "FILE_PCHRMAIANPISTOL",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrmaianpistol.bin",
-  "tris": 50
+  "tris": 50,
+  "modelnum": 250,
+  "statescale": 409
  },
  "chrmaiansmg": {
   "filenum": 854,
   "file": "FILE_PCHRMAIANSMG",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrmaiansmg.bin",
-  "tris": 47
+  "tris": 47,
+  "modelnum": 259,
+  "statescale": 409
  },
  "chrmauler": {
   "filenum": 842,
   "file": "FILE_PCHRMAULER",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrmauler.bin",
-  "tris": 52
+  "tris": 52,
+  "modelnum": 247,
+  "statescale": 409
  },
  "chrnbomb": {
   "filenum": 867,
   "file": "FILE_PCHRNBOMB",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrnbomb.bin",
-  "tris": 36
+  "tris": 36,
+  "modelnum": 272,
+  "statescale": 409
  },
  "chrnightsight": {
   "filenum": 838,
   "file": "FILE_PCHRNIGHTSIGHT",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrnightsight.bin",
-  "tris": 24
+  "tris": 24,
+  "modelnum": 243,
+  "statescale": 3072
  },
  "chrpcgun": {
   "filenum": 856,
   "file": "FILE_PCHRPCGUN",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrpcgun.bin",
-  "tris": 54
+  "tris": 54,
+  "modelnum": 261,
+  "statescale": 409
  },
  "chrproximitymine": {
   "filenum": 871,
   "file": "FILE_PCHRPROXIMITYMINE",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrproximitymine.bin",
-  "tris": 70
+  "tris": 70,
+  "modelnum": 276,
+  "statescale": 409
  },
  "chrrcp120": {
   "filenum": 855,
   "file": "FILE_PCHRRCP120",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrrcp120.bin",
-  "tris": 56
+  "tris": 56,
+  "modelnum": 260,
+  "statescale": 409
  },
  "chrremotemine": {
   "filenum": 872,
   "file": "FILE_PCHRREMOTEMINE",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrremotemine.bin",
-  "tris": 70
+  "tris": 70,
+  "modelnum": 277,
+  "statescale": 409
  },
  "chrshield": {
   "filenum": 839,
   "file": "FILE_PCHRSHIELD",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrshield.bin",
-  "tris": 68
+  "tris": 68,
+  "modelnum": 244,
+  "statescale": 409
  },
  "chrshotgun": {
   "filenum": 857,
   "file": "FILE_PCHRSHOTGUN",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrshotgun.bin",
-  "tris": 56
+  "tris": 56,
+  "modelnum": 262,
+  "statescale": 409
  },
  "chrskminigun": {
   "filenum": 858,
   "file": "FILE_PCHRSKMINIGUN",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrskminigun.bin",
-  "tris": 75
+  "tris": 75,
+  "modelnum": 263,
+  "statescale": 409
  },
  "chrskrocket": {
   "filenum": 861,
   "file": "FILE_PCHRSKROCKET",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrskrocket.bin",
-  "tris": 58
+  "tris": 58,
+  "modelnum": 266,
+  "statescale": 409
  },
  "chrskrocketmis": {
   "filenum": 883,
   "file": "FILE_PCHRSKROCKETMIS",
   "kind": "prop",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrskrocketmis.bin",
-  "tris": 18
+  "tris": 18,
+  "modelnum": 288,
+  "statescale": 409
  },
  "chrsniperrifle": {
   "filenum": 863,
   "file": "FILE_PCHRSNIPERRIFLE",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrsniperrifle.bin",
-  "tris": 55
+  "tris": 55,
+  "modelnum": 268,
+  "statescale": 409
  },
  "chrspeedpill": {
   "filenum": 1232,
   "file": "FILE_PCHRSPEEDPILL",
   "kind": "gun",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrspeedpill.bin",
-  "tris": 236
+  "tris": 236,
+  "modelnum": 303,
+  "statescale": 10240
  },
  "chrsuperdragon": {
   "filenum": 851,
   "file": "FILE_PCHRSUPERDRAGON",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrsuperdragon.bin",
-  "tris": 75
+  "tris": 75,
+  "modelnum": 256,
+  "statescale": 409
  },
  "chrtimedmine": {
   "filenum": 870,
   "file": "FILE_PCHRTIMEDMINE",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrtimedmine.bin",
-  "tris": 70
+  "tris": 70,
+  "modelnum": 275,
+  "statescale": 409
  },
  "chrz2020": {
   "filenum": 862,
   "file": "FILE_PCHRZ2020",
   "kind": "held",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrz2020.bin",
-  "tris": 65
+  "tris": 65,
+  "modelnum": 267,
+  "statescale": 409
  },
  "ciaguy": {
   "filenum": 459,
@@ -1364,6 +1450,15 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/mrblonde.bin",
   "tris": 1039
  },
+ "multi_ammo_crate": {
+  "filenum": 443,
+  "file": "FILE_PMULTI_AMMO_CRATE",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/multi_ammo_crate.bin",
+  "tris": 16,
+  "modelnum": 193,
+  "statescale": 4096
+ },
  "nbomb": {
   "filenum": 1276,
   "file": "FILE_GNBOMB",
@@ -1565,7 +1660,9 @@
   "file": "FILE_PXRAYSPECS",
   "kind": "gun",
   "source": "pd-decomp/src/assets/ntsc-final/files/props/xrayspecs.bin",
-  "tris": 24
+  "tris": 24,
+  "modelnum": 414,
+  "statescale": 3072
  },
  "z2020": {
   "filenum": 907,

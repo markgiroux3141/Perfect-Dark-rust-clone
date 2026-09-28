@@ -31,6 +31,9 @@ pub struct MatchChr {
     pub mpheadnum: u8,
     /// 0..7 when teams are on.
     pub team: u8,
+    /// `MPDISPLAYOPTION_*` (highlight players, pickups or teams; the radar).
+    #[serde(default)]
+    pub displayoptions: u8,
 }
 
 /// `struct mpplayerconfig`: one human player.
@@ -45,6 +48,9 @@ pub struct MatchPlayer {
     pub options: u16,
     /// `handicap`: 0..255, 128 is none (`mp_get_handicap_mult`).
     pub handicap: u8,
+    /// The player file's statistics, which the end of the match adds to.
+    #[serde(default)]
+    pub career: MpCareer,
 }
 
 impl MatchPlayer {
@@ -60,7 +66,7 @@ impl Default for MatchPlayer {
     /// A fresh player config (`mp_init_player`, `mplayer.c:370`): control style
     /// 1.1, PD's default options, no handicap.
     fn default() -> Self {
-        MatchPlayer { slot: 0, chr: MatchChr::default(), controlmode: 0, options: Self::DEFAULT_OPTIONS, handicap: 128 }
+        MatchPlayer { slot: 0, chr: MatchChr::default(), controlmode: 0, options: Self::DEFAULT_OPTIONS, handicap: 128, career: MpCareer::default() }
     }
 }
 
@@ -97,6 +103,79 @@ pub struct MatchSetup {
     pub simulants: Vec<MatchSimulant>,
     /// The team names (`g_BossFile.teamnames`).
     pub teamnames: Vec<String>,
+    /// A challenge is being played (`g_BossFile.locktype == MPLOCKTYPE_CHALLENGE`).
+    #[serde(default)]
+    pub challenge: bool,
+}
+
+/// `struct mpweapon` (`types.h:4933`): a row of `g_MpWeapons`
+/// ([`crate::mpweapons::MP_WEAPONS`]). `model` is a `MODEL_*` number (the
+/// weapon's third-person model), `hasweapon` whether a weapon location puts
+/// the weapon on its pad or only its ammo crates (the grenades and mines).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MpWeapon {
+    pub weaponnum: i32,
+    pub priammotype: i32,
+    pub priammoqty: i32,
+    pub secammotype: i32,
+    pub secammoqty: i32,
+    pub hasweapon: i32,
+    pub unlockfeature: i32,
+    pub model: i32,
+    pub extrascale: i32,
+}
+
+/// `g_MpWeapons[g_MpSetup.weapons[slot]]`.
+pub fn mp_weapon(weapons: &[u8; 6], slot: usize) -> &'static MpWeapon {
+    let m = crate::mpweapons::MP_WEAPONS;
+    &m[(weapons[slot] as usize).min(m.len() - 1)]
+}
+
+/// `mp_get_mp_weapon_by_location` (`mplayer.c:942`): weapon location
+/// `locationindex` (`WEAPON_MPLOCATION00 + n` in a setup file) takes the
+/// set's slots in turn, skipping the disabled ones and wrapping; with every
+/// slot disabled it is `g_MpWeapons[0]` (nothing).
+pub fn mp_get_mp_weapon_by_location(weapons: &[u8; 6], locationindex: i32) -> &'static MpWeapon {
+    let m = crate::mpweapons::MP_WEAPONS;
+    let mut v0 = locationindex + 1;
+    let mut slot = 0;
+    let mut a2 = v0;
+    let mut mpweaponnum = 0usize;
+    while v0 > 0 {
+        mpweaponnum = weapons[slot] as usize;
+        if m[mpweaponnum.min(m.len() - 1)].weaponnum != WEAPON_DISABLED as i32 {
+            v0 -= 1;
+        }
+        if v0 > 0 {
+            slot += 1;
+            if slot >= weapons.len() {
+                slot = 0;
+                if a2 == v0 {
+                    mpweaponnum = 0;
+                    v0 = 0;
+                }
+                a2 = v0;
+            }
+        }
+    }
+    &m[mpweaponnum.min(m.len() - 1)]
+}
+
+/// The `MPWEAPON_*` index of `weaponnum` in `g_MpWeapons` (the menus' slot
+/// value for it).
+pub fn mpweapon_index(weaponnum: u8) -> Option<u8> {
+    crate::mpweapons::MP_WEAPONS.iter().position(|w| w.weaponnum == weaponnum as i32).map(|i| i as u8)
+}
+
+/// `mp_has_shield` (`botinv.c:425`).
+pub fn mp_has_shield(weapons: &[u8; 6]) -> bool {
+    (0..weapons.len()).any(|i| mp_weapon(weapons, i).weaponnum == WEAPON_MPSHIELD as i32)
+}
+
+/// `mp_get_weapon_slot_by_weapon_num` (`botinv.c:443`): the first slot holding
+/// `weaponnum`, if any.
+pub fn mp_get_weapon_slot_by_weapon_num(weapons: &[u8; 6], weaponnum: i32) -> Option<usize> {
+    (0..weapons.len()).find(|&i| mp_weapon(weapons, i).weaponnum == weaponnum)
 }
 
 impl Default for MatchSetup {
@@ -124,6 +203,7 @@ impl Default for MatchSetup {
             players: Vec::new(),
             simulants: Vec::new(),
             teamnames: Vec::new(),
+            challenge: false,
         }
     }
 }
@@ -155,6 +235,11 @@ impl MatchSetup {
         (self.teamscorelimit < 400).then_some(self.teamscorelimit as u32 + 1)
     }
 
+    /// `mp_calculate_team_score_limit` (`mplayer.c:578`) for this setup.
+    pub fn mp_calculate_team_score_limit(&self) -> i32 {
+        mp_calculate_team_score_limit(self.teamscorelimit, self.challenge, self.scenario, self.players.len())
+    }
+
     pub fn teams_enabled(&self) -> bool {
         self.options & MPOPTION_TEAMSENABLED != 0
     }
@@ -165,9 +250,338 @@ impl MatchSetup {
     }
 }
 
+/// `mp_calculate_team_score_limit` (`mplayer.c:578`): a challenge's Combat or
+/// King of the Hill team limit grows with the number of players.
+pub fn mp_calculate_team_score_limit(teamscorelimit: u16, challenge: bool, scenario: u8, numplayers: usize) -> i32 {
+    let limit = teamscorelimit as i32;
+    if challenge && teamscorelimit != 400 && (scenario == MPSCENARIO_COMBAT || scenario == MPSCENARIO_KINGOFTHEHILL) {
+        return match numplayers {
+            2 => limit * 2 + 1,
+            3 => (limit * 5 + 5) / 2 - 1,
+            4 => limit * 3 + 2,
+            _ => limit,
+        };
+    }
+    limit
+}
+
+/// `MAX_MPCHRS`: four players and eight simulants, by chr slot.
+pub const MAX_MPCHRS: usize = 12;
+/// `MAX_TEAMS`.
+pub const MAX_TEAMS: usize = 8;
+
+/// The match's counters in `struct mpchrconfig` (`types.h:4012`), which
+/// `mp_reset_mpchrconfig_for_match` (`mplayer.c:128`) zeroes and
+/// `mpstats_record_death` (`mpstats.c:238`) counts, by chr slot (0..3 the
+/// players, 4..11 the simulants, as `g_MpSetup.chrslots` numbers them).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MpChrStats {
+    /// `killcounts[slot]`: how often this chr killed chr slot `slot`; its own
+    /// slot counts its suicides.
+    pub killcounts: [i16; MAX_MPCHRS],
+    /// Every death, suicides included.
+    pub numdeaths: i16,
+    pub numpoints: i16,
+    /// Written by [`mp_get_player_rankings`]: 0 is first (in a team game, the
+    /// team's place).
+    pub placement: u8,
+    pub rankablescore: u32,
+}
+
+/// The statistics half of `struct mpplayerconfig` (`types.h:4029`): the player
+/// file's totals, which `mp_calculate_awards` adds each match to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MpCareer {
+    pub kills: u32,
+    pub deaths: u32,
+    pub gamesplayed: u32,
+    pub gameswon: u32,
+    pub gameslost: u32,
+    /// Seconds.
+    pub time: u32,
+    /// Units of 100 m (a match adds `playerstats.distance / 10000` cm).
+    pub distance: u32,
+    /// Thousandths.
+    pub accuracy: u32,
+    /// Tenths of a health bar.
+    pub damagedealt: u32,
+    pub painreceived: u32,
+    pub headshots: u32,
+    pub ammoused: u32,
+    pub accuracymedals: u32,
+    pub headshotmedals: u32,
+    pub killmastermedals: u32,
+    pub survivormedals: u32,
+}
+
+impl Default for MpCareer {
+    /// `mp_player_set_defaults` (`mplayer.c:370`): everything zero, accuracy 100%.
+    fn default() -> Self {
+        MpCareer {
+            kills: 0,
+            deaths: 0,
+            gamesplayed: 0,
+            gameswon: 0,
+            gameslost: 0,
+            time: 0,
+            distance: 0,
+            accuracy: 1000,
+            damagedealt: 0,
+            painreceived: 0,
+            headshots: 0,
+            ammoused: 0,
+            accuracymedals: 0,
+            headshotmedals: 0,
+            killmastermedals: 0,
+            survivormedals: 0,
+        }
+    }
+}
+
+/// `mp_calculate_player_title` (`mplayer.c:1537`, the NTSC 1.0+ tiers): one
+/// tally for each tier a counter reaches, over ten counters, the sum (at most
+/// 100) divided by five, at most `MPPLAYERTITLE_PERFECT`.
+pub fn mp_calculate_player_title(c: &MpCareer) -> u8 {
+    const TIERS: [u32; 10] = [2, 4, 8, 16, 28, 60, 100, 150, 210, 300];
+    // MULT(val) is val * 3 from NTSC 1.0.
+    let counters: [(u32, u32); 10] = [
+        (c.kills, 20 * 3),
+        (c.gameswon, 3),
+        (c.accuracymedals, 3),
+        (c.headshotmedals, 3),
+        (c.killmastermedals, 3),
+        (c.time, 1200 * 3),
+        (c.distance, 100 * 3),
+        (c.damagedealt, 3),
+        (c.ammoused, 500 * 3),
+        (c.survivormedals, 3),
+    ];
+    let sum: u32 = counters.iter().map(|&(value, mult)| TIERS.iter().take_while(|&&t| value >= t * mult).count() as u32).sum();
+    ((sum.min(100) / 5) as u8).min(MPPLAYERTITLE_PERFECT)
+}
+
+/// What `mp_calculate_awards` (`mplayer.c:1962`) leaves in a player's
+/// mpplayerconfig at the end of a match: the file's statistics with the match
+/// added, the medals won (`MEDAL_*`) and the title worked out again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MpPlayerResult {
+    /// The player's chr slot.
+    pub slot: usize,
+    pub career: MpCareer,
+    pub medals: u8,
+    pub title: u8,
+}
+
+/// `struct ranking`: one row of the rankings, best first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Ranking {
+    /// `mpchr`: a player row's chr slot; `None` in a team row.
+    pub mpchr: Option<usize>,
+    /// A team row's team; in a player row the chr slot (PD stores
+    /// `chrnums[j]` here).
+    pub teamnum: usize,
+    pub positionindex: usize,
+    pub score: i32,
+}
+
+/// What the scoring reads of `g_MpSetup` and the mpchrconfigs: the chrs taking
+/// part, whether teams are on, each chr slot's team and counters.
+#[derive(Clone, Copy, Debug)]
+pub struct MpScoring<'a> {
+    pub chrslots: u16,
+    pub teams_enabled: bool,
+    /// `mpchrconfig.team` by chr slot.
+    pub teams: &'a [u8; MAX_MPCHRS],
+    pub stats: &'a [MpChrStats; MAX_MPCHRS],
+}
+
+/// `(score + 0x8000) << 16 | (0xffff - deaths)`: the score, fewer deaths
+/// breaking a tie (`mp_get_player_rankings`, `mp_calculate_team_score`).
+fn rankable(score: i32, deaths: i32) -> u32 {
+    (score.wrapping_add(0x8000).wrapping_shl(16) | (0xffff - deaths)) as u32
+}
+
+impl MpScoring<'_> {
+    /// `scenario_calculate_player_score` (`scenarios.c:651`) with no scenario
+    /// callback (Combat has none): a kill scores a point, a suicide or (with
+    /// teams on) a teammate's death costs one. Also the chr's deaths.
+    pub fn scenario_calculate_player_score(&self, chrnum: usize) -> (i32, i32) {
+        let mpchr = &self.stats[chrnum];
+        let mut score = 0i32;
+        for i in 0..MAX_MPCHRS {
+            let k = mpchr.killcounts[i] as i32;
+            if i == chrnum {
+                score -= k;
+            } else if self.teams_enabled {
+                if self.teams[i] == self.teams[chrnum] {
+                    score -= k;
+                } else {
+                    score += k;
+                }
+            } else {
+                score += k;
+            }
+        }
+        (score, mpchr.numdeaths as i32)
+    }
+
+    /// `mp_calculate_team_score` (`mplayer.c:773`): the team's rankable score
+    /// (0 for a team with no chrs) and its summed score (unset then).
+    pub fn mp_calculate_team_score(&self, teamnum: usize) -> (u32, Option<i32>) {
+        let (mut teamscore, mut teamdeaths, mut exists) = (0i32, 0i32, false);
+        for i in 0..MAX_MPCHRS {
+            if self.chrslots & (1 << i) != 0 && self.teams[i] as usize == teamnum {
+                let (score, deaths) = self.scenario_calculate_player_score(i);
+                exists = true;
+                teamscore += score;
+                teamdeaths += deaths;
+            }
+        }
+        if exists {
+            (rankable(teamscore, teamdeaths), Some(teamscore))
+        } else {
+            (0, None)
+        }
+    }
+
+    /// `mp_get_team_rankings` (`mplayer.c:810`): the teams that have chrs, best
+    /// first; of equal rankable scores the lower team number goes first.
+    pub fn mp_get_team_rankings(&self) -> Vec<Ranking> {
+        let mut apparentscores = [-8000i32; MAX_TEAMS];
+        let mut rankablescores = [0u32; MAX_TEAMS];
+        for i in 0..MAX_TEAMS {
+            let (r, s) = self.mp_calculate_team_score(i);
+            rankablescores[i] = r;
+            if let Some(s) = s {
+                apparentscores[i] = s;
+            }
+        }
+        let mut out = Vec::new();
+        loop {
+            let mut best = 0u32;
+            let mut thisteamnum: i32 = -8000;
+            for i in 0..MAX_TEAMS {
+                let t = 7 - i;
+                if apparentscores[t] > -8000 && rankablescores[t] >= best {
+                    thisteamnum = t as i32;
+                    best = rankablescores[t];
+                }
+            }
+            if thisteamnum <= -8000 {
+                return out;
+            }
+            let t = thisteamnum as usize;
+            out.push(Ranking { mpchr: None, teamnum: t, positionindex: out.len() + 1, score: apparentscores[t] });
+            apparentscores[t] = -8000;
+        }
+    }
+}
+
+/// `mp_get_player_rankings`' (`mplayer.c:640`) answer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlayerRankings {
+    pub rankings: Vec<Ranking>,
+    /// `g_MpLockInfo.lastwinner` / `lastloser`: the best and the worst placed
+    /// human player's slot, or -1.
+    pub lastwinner: i32,
+    pub lastloser: i32,
+}
+
+/// `mp_get_player_rankings` (`mplayer.c:640`): every chr taking part, best
+/// first (a later slot goes after the ones it ties with). It writes each chr's
+/// `placement` and `rankablescore`: in a team game, the team's place and 255 −
+/// that place.
+pub fn mp_get_player_rankings(chrslots: u16, teams_enabled: bool, teams: &[u8; MAX_MPCHRS], stats: &mut [MpChrStats; MAX_MPCHRS]) -> PlayerRankings {
+    let scoring = MpScoring { chrslots, teams_enabled, teams, stats };
+    let teamrankings = if teams_enabled { scoring.mp_get_team_rankings() } else { Vec::new() };
+    let mut rows: Vec<(u32, i32, usize)> = Vec::new();
+    for i in 0..MAX_MPCHRS {
+        if chrslots & (1 << i) != 0 {
+            let (score, deaths) = scoring.scenario_calculate_player_score(i);
+            let r = rankable(score, deaths);
+            let dstindex = rows.iter().position(|&(rs, _, _)| r > rs).unwrap_or(rows.len());
+            rows.insert(dstindex, (r, score, i));
+        }
+    }
+    let numteams = teamrankings.len() as i32;
+    let (mut winner, mut loser) = (-1, -1);
+    let mut rankings = Vec::with_capacity(rows.len());
+    for (j, &(r, score, chrnum)) in rows.iter().enumerate() {
+        rankings.push(Ranking { mpchr: Some(chrnum), teamnum: chrnum, positionindex: j, score });
+        if teams_enabled {
+            let mut placement = numteams - 1;
+            for (k, t) in teamrankings.iter().enumerate() {
+                if t.teamnum == teams[chrnum] as usize {
+                    placement = k as i32;
+                }
+            }
+            stats[chrnum].placement = placement as u8;
+            stats[chrnum].rankablescore = (255 - placement) as u32;
+        } else {
+            stats[chrnum].placement = j as u8;
+            stats[chrnum].rankablescore = r;
+        }
+        if chrnum < MAX_PLAYERS {
+            loser = chrnum as i32;
+            if winner == -1 {
+                winner = chrnum as i32;
+            }
+        }
+    }
+    PlayerRankings { rankings, lastwinner: winner, lastloser: loser }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Slot 0 killed slot 4 twice and itself once; slot 4 killed slot 5.
+    /// A score is kills minus suicides; fewer deaths break a tie.
+    #[test]
+    fn rankings_score_kills_minus_suicides_and_break_ties_on_deaths() {
+        let mut stats = [MpChrStats::default(); MAX_MPCHRS];
+        stats[0].killcounts[4] = 2;
+        stats[0].killcounts[0] = 1;
+        stats[0].numdeaths = 1;
+        stats[4].killcounts[5] = 1;
+        stats[4].numdeaths = 2;
+        stats[5].numdeaths = 1;
+        let slots = 0b11_0001;
+        let r = mp_get_player_rankings(slots, false, &[0; MAX_MPCHRS], &mut stats);
+        let order: Vec<(Option<usize>, i32)> = r.rankings.iter().map(|x| (x.mpchr, x.score)).collect();
+        // Slot 0: 2 - 1 = 1 with 1 death; slot 4: 1 with 2 deaths; slot 5: 0.
+        assert_eq!(order, [(Some(0), 1), (Some(4), 1), (Some(5), 0)]);
+        assert_eq!((stats[0].placement, stats[4].placement, stats[5].placement), (0, 1, 2));
+        assert_eq!((r.lastwinner, r.lastloser), (0, 0));
+
+        // Teams: 0 and 5 on team 2, 4 on team 1. Team 2 scores slot 0's point
+        // (its kills of 4 count, its suicide costs) and slot 5's 0; team 1 scores
+        // 4's kill of 5. Both have 2 deaths: the lower team number wins the tie.
+        let mut teams = [0u8; MAX_MPCHRS];
+        teams[0] = 2;
+        teams[5] = 2;
+        teams[4] = 1;
+        let sc = MpScoring { chrslots: slots, teams_enabled: true, teams: &teams, stats: &stats };
+        let t: Vec<(usize, i32)> = sc.mp_get_team_rankings().iter().map(|x| (x.teamnum, x.score)).collect();
+        assert_eq!(t, [(1, 1), (2, 1)]);
+        mp_get_player_rankings(slots, true, &teams, &mut stats);
+        assert_eq!((stats[4].placement, stats[0].placement, stats[5].placement), (0, 1, 1));
+        assert_eq!(stats[0].rankablescore, 254);
+    }
+
+    #[test]
+    fn a_new_player_is_a_beginner_and_the_title_climbs_with_the_counters() {
+        let mut c = MpCareer::default();
+        assert_eq!(mp_calculate_player_title(&c), 0);
+        // Kills 120 reach the first tier (2 × 60); 12 games won the first two
+        // (2 × 3, 4 × 3); 16 hours the first four: 7 tallies, title 1.
+        c.kills = 120;
+        c.gameswon = 12;
+        c.time = 16 * 3600;
+        assert_eq!(mp_calculate_player_title(&c), 1);
+        let max = MpCareer { kills: u32::MAX, gameswon: u32::MAX, accuracymedals: u32::MAX, headshotmedals: u32::MAX, killmastermedals: u32::MAX, time: u32::MAX, distance: u32::MAX, damagedealt: u32::MAX, ammoused: u32::MAX, survivormedals: u32::MAX, ..MpCareer::default() };
+        assert_eq!(mp_calculate_player_title(&max), MPPLAYERTITLE_PERFECT);
+    }
 
     #[test]
     fn pds_defaults_and_limit_encodings() {

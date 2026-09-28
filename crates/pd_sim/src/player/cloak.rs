@@ -92,8 +92,9 @@ impl World {
         self.players[pi].cloak.pause = 120;
     }
 
-    /// `chr_update_cloak` (`chr.c:2088`), the player branch. The cloaking
-    /// device (`DEVICE_CLOAKDEVICE`) is not a Combat Simulator pickup (M8).
+    /// `chr_update_cloak` (`chr.c:2088`), the player branch. (The cloaking
+    /// device's own toggle, `DEVICE_CLOAKDEVICE`, is not ported: it is a locked
+    /// pickup, left for later.)
     pub(crate) fn chr_update_cloak(&mut self, pi: usize) {
         let (lv240, lv60) = (self.lv.lvupdate240, self.lv.lvupdate60);
         {

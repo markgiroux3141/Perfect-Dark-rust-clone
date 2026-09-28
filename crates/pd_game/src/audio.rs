@@ -107,7 +107,15 @@ impl SfxBank {
                         audio.set_voice(v, base * volume, pitch as f64);
                     }
                 }
-                Event::Kill { .. } => {}
+                // SUBST: sndp_stop_all stops every voice / the kept ones stop
+                // (the alarm, the loops); the one-shots play out, as the
+                // engine keeps no list of them.
+                Event::StopAllSounds => {
+                    for (_, (v, _)) in self.handles.drain() {
+                        audio.stop_voice(v);
+                    }
+                }
+                Event::Kill { .. } | Event::MpPushPauseDialog { .. } | Event::MpCloseMenus { .. } | Event::MpEndMatch => {}
             }
         }
     }

@@ -8,10 +8,11 @@
 //! hit (`cd_test_los_oobok_findclosest` with `g_Vars.useperimshoot`), a chr's or
 //! a player's perimeter cylinder included, so it need not hit its target.
 //!
+//! A launcher fires its projectile instead (`crate::bot::botact`), and a
+//! Farsight also shoots through walls at an unseen target.
+//!
 //! `// SUBST:` PD's round also meets objects (`CDTYPE_OBJS`: mines, the
-//! sentry, pickups) / the BG and chrs only until M8's props. The projectile
-//! launchers and the Farsight's through-wall shot (`botact_shoot_farsight`) are
-//! not in a simulant's M6 loadout.
+//! sentry, pickups) / the BG and chrs only.
 //!
 //! Source: the old repo's `pd_spike/chraction.rs` (shooting) and
 //! `pd_complex/fight.rs` (`bot_shot_effects`), checked against
@@ -57,12 +58,13 @@ fn ray_vs_cylinder(o: Vec3, d: Vec3, x: f32, z: f32, r: f32, ymin: f32, ymax: f3
 }
 
 impl Chr {
-    /// `chr_set_hand_firing` (`chraction.c:9429`).
+    /// `chr_set_hand_firing` (`chraction.c:9429`): the trigger; let go, the
+    /// flash goes (`chr_set_firing(chr, hand, false)`).
     pub fn chr_set_hand_firing(&mut self, hand: usize, firing: bool) {
         self.hand_firing[hand] = firing;
         if !firing {
             if let Some(h) = self.held[hand].as_mut() {
-                h.gunfire = false;
+                h.weapon_set_gunfire_visible(false);
             }
         }
     }
@@ -184,7 +186,7 @@ impl World {
             }
         }
         let mut firingthisframe = false;
-        let normalshoot = true;
+        let mut normalshoot = true;
         let mut gunpos = Vec3::ZERO;
         let mut hitpos = Vec3::ZERO;
         if shotdue {
@@ -215,8 +217,26 @@ impl World {
                 let squat = super::thirdperson::bot_guess_crouch_pos(c.height) == CROUCHPOS_SQUAT;
                 let dir0 = c.chr_shot_dir();
                 let dir = self.bgun_calculate_bot_shot_spread(dir0, weaponnum, gunfunc, burstsdone, squat, dual);
+                // The Farsight at an unseen target (`chraction.c:10074`).
+                if weaponnum == WEAPON_FARSIGHT && !self.ab(i).targetinsight {
+                    makebeam = true;
+                    self.botact_shoot_farsight(i, dir, gunpos);
+                }
                 hitpos = gunpos + dir * 65536.0;
-                let hit = self.chr_round_first_hit(i, gunpos, dir, 65536.0);
+                let launcher = matches!(weaponnum, WEAPON_ROCKETLAUNCHER | WEAPON_SLAYER | WEAPON_DEVASTATOR | WEAPON_CROSSBOW | WEAPON_KINGSCEPTRE) || (weaponnum == WEAPON_SUPERDRAGON && gunfunc == FUNC_SECONDARY);
+                let mut maulercharge = maulercharge;
+                if launcher {
+                    // Projectile launchers (`chraction.c:10132`): a simulant
+                    // always fires, however close.
+                    makebeam = false;
+                    normalshoot = false;
+                    self.chr_shoot_projectile(i, weaponnum, gunfunc, gunpos, dir);
+                } else if weaponnum == WEAPON_MAULER && gunfunc == FUNC_SECONDARY {
+                    // gset.maulercharge = aibot->maulercharge × 10, then spent.
+                    maulercharge *= 10.0;
+                    self.ab_mut(i).maulercharge[hand] = 0.0;
+                }
+                let hit = if normalshoot { self.chr_round_first_hit(i, gunpos, dir, 65536.0) } else { None };
                 self.navstats.rounds += 1;
                 if matches!(hit, Some((_, RoundHit::Chr(_)))) {
                     self.navstats.round_hits += 1;
@@ -283,9 +303,13 @@ impl World {
         if firingthisframe && a.loadedammo[hand] > 0 {
             a.loadedammo[hand] -= 1;
         }
-        // chr_set_firing: the muzzle flash.
-        if let Some(h) = self.chrs[i].held[hand].as_mut() {
-            h.gunfire = firingthisframe && normalshoot;
+        // chr_set_firing (`chraction.c:9392`): the muzzle flash, which lights
+        // the chr's room (`room_flash_lighting(room, 48, 128)`).
+        let flash = self.chrs[i].held[hand].as_mut().is_some_and(|h| h.weapon_set_gunfire_visible(firingthisframe && normalshoot));
+        if flash {
+            if let Some(room) = self.chrs[i].rooms.first().copied() {
+                self.lights.room(room).flash(48.0, 128);
+            }
         }
     }
 

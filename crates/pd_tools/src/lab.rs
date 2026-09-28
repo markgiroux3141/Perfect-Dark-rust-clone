@@ -1,6 +1,7 @@
 //! `pd_lab`'s picture of a match, from above: the floors (by height band),
-//! the route graph (PD's or ours), and every chr with its facing, its
-//! go-to's waypoints, its target and its sight polls. It is a list of 2D
+//! the route graph (PD's or ours), the pickups (dim while they respawn), and
+//! every chr with its facing, its go-to's waypoints, the pickup it is
+//! fetching, its target and its sight polls. It is a list of 2D
 //! primitives in world x/z (cm), which the window draws with egui
 //! (`bin/pd_lab.rs`) and `pd_snapshot lab` rasterises into a PNG.
 //!
@@ -141,7 +142,33 @@ pub fn chrs(w: &World, o: &LabOpts) -> Vec<Prim> {
         if o.names {
             let a = c.aibot.as_ref();
             let mode = a.and_then(|a| a.distmode).map_or("", |d| d.label());
-            out.push(Prim::Text { at: p + Vec2::new(30.0, -30.0), text: format!("{} K{}D{} {mode}", c.name, c.kills, c.deaths), col });
+            out.push(Prim::Text { at: p + Vec2::new(30.0, -30.0), text: format!("{} K{}D{} {mode}", c.name, w.mp_chr_kills(i), w.mp_chr_deaths(i)), col });
+        }
+    }
+    out
+}
+
+/// The pickups: weapons yellow, crates brown, shields cyan, dim while gone;
+/// and a line from each simulant fetching one (`MA_AIBOTGETITEM`) to it.
+pub fn pickups(w: &World, o: &LabOpts) -> Vec<Prim> {
+    let mut out = Vec::new();
+    for ob in w.props.objs.iter().filter(|ob| ob.is_pickup() && ob.pos.y >= o.ymin && ob.pos.y <= o.ymax) {
+        let mut col = match ob.ty {
+            pd_core::ids::OBJTYPE_WEAPON => [255, 230, 90, 255],
+            pd_core::ids::OBJTYPE_SHIELD => [90, 230, 255, 255],
+            _ => [190, 130, 70, 255],
+        };
+        if ob.is_gone() || ob.timetoregen > 0 {
+            col[3] = 70;
+        }
+        let c = Vec2::new(ob.pos.x, ob.pos.z);
+        let h = 22.0;
+        out.push(Prim::Poly { pts: vec![c + Vec2::new(-h, -h), c + Vec2::new(h, -h), c + Vec2::new(h, h), c + Vec2::new(-h, h)], fill: col });
+    }
+    for c in &w.chrs {
+        let Some(a) = c.aibot.as_ref().filter(|a| a.myaction == pd_sim::bot::MyAction::GetItem) else { continue };
+        if let Some(ob) = a.gotoprop.and_then(|id| w.props.get(id)) {
+            out.push(Prim::Line { a: Vec2::new(c.pos.x, c.pos.z), b: Vec2::new(ob.pos.x, ob.pos.z), col: [90, 230, 255, 170], width_px: 1.5 });
         }
     }
     out
@@ -153,6 +180,7 @@ pub fn picture(w: &World, o: &LabOpts) -> Vec<Prim> {
     if o.graph {
         out.extend(graph(&w.nav, o));
     }
+    out.extend(pickups(w, o));
     out.extend(chrs(w, o));
     out
 }

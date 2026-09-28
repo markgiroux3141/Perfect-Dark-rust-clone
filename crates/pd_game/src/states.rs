@@ -1,7 +1,7 @@
 //! Game states. **Menus**: the `pd_menu` framebuffer presented full screen.
-//! **Match**: a `pd_sim` world on the chosen arena, drawn by `pd_render` (the
-//! pause menu composited over it arrives with M7). **Results** (PD's
-//! end-of-match dialogs, which are menus too) arrive with M7.
+//! **Match**: a `pd_sim` world on the chosen arena, drawn by `pd_render`, with
+//! the menus' frame laid over its HUD: the pause menu, and at the end PD's
+//! end-of-match dialogs (they are menus too) until they close.
 
 use std::collections::HashMap;
 use std::sync::Arc;

@@ -8,7 +8,7 @@
 //! PD's `SLIDING` branch pushes furniture and hoverprops; nothing the guns make
 //! slides, so it is not ported.
 
-use glam::{Mat3, Vec3};
+use glam::{Mat3, Mat4, Vec3};
 use pd_core::ids::*;
 
 use super::{Embed, Obj};
@@ -23,6 +23,9 @@ use crate::world::World;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EmbedProp {
     Board(usize),
+    /// A chr (`g_EmbedProp` a chr or player) and the part hit
+    /// (`g_EmbedHitPart`; 0 for a perimeter hit).
+    Chr { chr: usize, hitpart: i32 },
 }
 
 impl World {
@@ -70,7 +73,9 @@ impl World {
         }
         let mut fulltick = o.notyetticked;
         o.notyetticked = false;
-        if let Some(owner) = o.projectile.as_ref().and_then(|p| p.ownerprop) {
+        // A player's projectile ticks in its owner's pass; a simulant's in the
+        // first pass (`propobj.c:11113`).
+        if let Some(owner) = o.projectile.as_ref().and_then(|p| p.ownerprop).filter(|&c| c < self.players.len()) {
             fulltick = owner == pi;
         }
         if fulltick {
@@ -100,7 +105,9 @@ impl World {
     /// Every chr's perimeter a moving object collides with (`CDTYPE_ALL`), the
     /// owner's left out (`prop_set_perim_enabled(ownerprop, false)`).
     fn obj_cyls(&self, owner: Option<usize>) -> Vec<PerimCyl> {
-        self.players.iter().enumerate().filter(|&(j, _)| Some(j) != owner).map(|(_, p)| p.perim()).collect()
+        let players = self.players.iter().enumerate().filter(|&(j, p)| Some(j) != owner && !p.isdead).map(|(_, p)| p.perim());
+        let chrs = self.chrs.iter().enumerate().filter(|&(j, c)| c.player.is_none() && Some(j) != owner).filter_map(|(_, c)| c.perim());
+        players.chain(chrs).collect()
     }
 
     /// `projectile_launch` (`propobj.c:6230`): the first step, from where the
@@ -174,29 +181,71 @@ impl World {
     }
 
     /// `projectile_find_colliding_prop` (`propobj.c:3140`): the nearest prop
-    /// along `pos1 → pos2`, writing the hit point and normal.
+    /// along `pos1 → pos2`, writing the hit point and normal: the boards, and
+    /// the chrs but the owner (whose perimeter the move turns off). A simulant
+    /// drawn this tick by its part boxes and triangles (`projectile_0f06c28c` →
+    /// `chr_test_hit`), otherwise, like a player, by its perimeter
+    /// (`projectile_0f06b488`, the torso).
     /// `// SUBST:` PD tests an object's model part boxes and triangles
-    /// (`projectile_0f06b610`) / the firing range's boards are boxes. `// M6:`
-    /// chrs and players by their bodies (`projectile_0f06c28c`).
-    fn projectile_find_colliding_prop(&self, _o: &Obj, pos1: Vec3, pos2: Vec3, arg4: &mut Vec3, arg5: &mut Vec3) -> Option<EmbedProp> {
+    /// (`projectile_0f06b610`) / the firing range's boards are boxes; a
+    /// shielded chr's boxes grow by 10 cm (`var8005efc0`) / they don't.
+    fn projectile_find_colliding_prop(&self, o: &Obj, pos1: Vec3, pos2: Vec3, arg4: &mut Vec3, arg5: &mut Vec3) -> Option<EmbedProp> {
         let d = pos2 - pos1;
         let dist = d.length();
         if dist == 0.0 {
             return None;
         }
         let dir = d / dist;
-        let mut best: Option<(f32, usize, Vec3)> = None;
+        let mut best: Option<(f32, EmbedProp, Vec3, Vec3)> = None;
         for (i, b) in self.boards.iter().enumerate() {
             if let Some((t, n)) = crate::gun::shot::ray_box(b.min, b.max, pos1, dir, dist) {
-                if best.is_none_or(|(bt, _, _)| t < bt) {
-                    best = Some((t, i, n));
+                if best.as_ref().is_none_or(|(bt, ..)| t < *bt) {
+                    best = Some((t, EmbedProp::Board(i), pos1 + dir * t, n));
                 }
             }
         }
-        let (t, i, n) = best?;
-        *arg4 = pos1 + dir * t;
+        let owner = o.projectile.as_ref().and_then(|p| p.ownerprop);
+        for (ci, c) in self.chrs.iter().enumerate() {
+            if Some(ci) == owner || c.actiontype == crate::chr::Act::Dead || c.player.is_some_and(|p| self.players[p].isdead) {
+                continue;
+            }
+            let r = c.chr_get_hit_radius();
+            let spd4 = (c.pos - pos1).dot(dir);
+            if c.player.is_none() {
+                if !(-r <= spd4 && spd4 <= dist + r && crate::chr::body::pos_is_facing_pos(pos1, dir, c.pos, r)) {
+                    continue;
+                }
+                if c.onscreen {
+                    if let Some(h) = c.chr_test_hit(pos1, dir, false) {
+                        let t = (h.pos - pos1).dot(dir);
+                        if t <= dist && best.as_ref().is_none_or(|(bt, ..)| t < *bt) {
+                            best = Some((t, EmbedProp::Chr { chr: ci, hitpart: h.hitpart }, h.pos, h.normal));
+                        }
+                    }
+                    continue;
+                }
+            }
+            // projectile_0f06b488: the segment against the perimeter; the normal
+            // faces back along the flight, level.
+            let Some(perim) = (match c.player {
+                Some(p) => Some(self.players[p].perim()),
+                None => c.perim(),
+            }) else {
+                continue;
+            };
+            if let Some(f) = crate::props::autogun::segment_cyl(pos1, pos2, &perim) {
+                let t = f * dist;
+                if best.as_ref().is_none_or(|(bt, ..)| t < *bt) {
+                    let n = Vec3::new(-dir.x, 0.0, -dir.z).try_normalize().unwrap_or(Vec3::Z);
+                    let hitpart = if c.player.is_some() { 0 } else { HITPART_TORSO };
+                    best = Some((t, EmbedProp::Chr { chr: ci, hitpart }, pos1 + dir * t, n));
+                }
+            }
+        }
+        let (_, e, p, n) = best?;
+        *arg4 = p;
         *arg5 = n;
-        Some(EmbedProp::Board(i))
+        Some(e)
     }
 
     /// `func0f06d37c` (`propobj.c:3401`): move a non-sticky object as a
@@ -308,8 +357,34 @@ impl World {
         }
         let realrot = o.realrot;
         // PROJECTILEFLAG_MISSILE is implemented but no gun sets it.
-        // M6: homing rockets steer at `targetprop` (the player's tracked prop);
-        // with no chrs to track one flies on its launch line.
+        // A homing rocket turns towards `targetprop` (`propobj.c:6790`), by a
+        // PD controller whose memory is one static for every rocket.
+        if o.ty == OBJTYPE_WEAPON && o.weaponnum == WEAPON_HOMINGROCKET {
+            if let Some(t) = o.projectile.as_ref().and_then(|p| p.targetprop).filter(|&t| t < self.chrs.len()) {
+                let tpos = self.chrs[t].pos;
+                let r = o.realrot;
+                let sp29c = (r.x_axis.x * r.x_axis.x + r.y_axis.x * r.y_axis.x + r.z_axis.x * r.z_axis.x).sqrt();
+                let mtx = Mat4::from_mat3(r * (1.0 / sp29c));
+                let sp290 = (tpos - o.pos).normalize_or_zero();
+                let p = o.projectile.as_mut().unwrap();
+                let sp2ec = p.speed.normalize_or_zero();
+                let sp28c = sp2ec.dot(sp290).clamp(-1.0, 1.0).acos();
+                if !(-0.001..=0.001).contains(&sp28c) {
+                    // kkd 20, kkp 120, kkg 3 (`main_override_variable`'s defaults).
+                    let tmp = ((20.0 / 100.0 * self.props.homing_prevangle / lv60) + (120.0 / 100.0 * sp28c * lv60)) * (3.0 / 100.0);
+                    self.props.homing_prevangle = sp28c;
+                    let sp280 = Vec3::new(sp2ec.y * sp290.z - sp2ec.z * sp290.y, -(sp2ec.x * sp290.z - sp2ec.z * sp290.x), sp2ec.x * sp290.y - sp2ec.y * sp290.x);
+                    let (s, c) = (tmp * 0.5).sin_cos();
+                    let sp260 = [c, sp280.x * s, sp280.y * s, sp280.z * s];
+                    let sp20c = pd_core::math::quaternion_to_mtx(sp260);
+                    p.accel = Vec3::ZERO;
+                    p.speed = sp20c.transform_vector3(p.speed);
+                    let sp270 = pd_core::math::quaternion0f097044(&mtx);
+                    let sp250 = pd_core::math::quaternion_mult_quaternion(sp270, sp260);
+                    o.realrot = Mat3::from_mat4(pd_core::math::quaternion_to_mtx(sp250)) * sp29c;
+                }
+            }
+        }
         {
             let p = o.projectile.as_mut().unwrap();
             if p.flags & PROJECTILEFLAG_POWERED == 0 {
@@ -360,20 +435,47 @@ impl World {
                     }
                 }
             // A board is an object that is not a projectile, not shielded and not
-            // glass, so nothing above refuses the stick.
+            // glass, so nothing above refuses the stick. Nothing sticks to a
+            // shielded chr.
+            if let Some(EmbedProp::Chr { chr, .. }) = embed {
+                if self.chrs[chr].cshield > 0.0 {
+                    stick = false;
+                }
+            }
             if !handled && embed.is_some() && o.ty == OBJTYPE_WEAPON {
+                // var8009ce78: the flight's direction.
+                let dir = (sp5dc - prevpos).normalize_or_zero();
+                let owner = o.projectile.as_ref().and_then(|p| p.ownerprop);
                 match o.weaponnum {
-                    WEAPON_BOLT | WEAPON_COMBATKNIFE => {
+                    WEAPON_BOLT | WEAPON_COMBATKNIFE => match embed {
                         // Embed into an object: MODEL_TARGET's face scores
-                        // (fr_calculate_hit). M6: into a chr, chr_damage_by_impact.
-                        if let Some(EmbedProp::Board(b)) = embed {
-                            self.board_struck(b, 0.0);
+                        // (fr_calculate_hit).
+                        Some(EmbedProp::Board(b)) => self.board_struck(b, 0.0),
+                        // Into a chr (`propobj.c:7056`): the weapon's damage.
+                        Some(EmbedProp::Chr { chr, hitpart }) => {
+                            let p = o.projectile.as_ref().unwrap();
+                            if p.flags & PROJECTILEFLAG_AIRBORNE != 0 && p.bouncecount <= 0 {
+                                let ownershield = self.chrs[chr].cshield;
+                                let damage = self.chr_gset_damage(o.weaponnum, o.gunfunc, 0.0);
+                                self.chr_damage_by_impact(chr, damage, dir, crate::chr::DamageFrom::new(owner, o.weaponnum, o.gunfunc), hitpart);
+                                if ownershield <= 0.0 {
+                                    self.chr_emit_sparks(chr, hitpart, sp5e8, sp5f4);
+                                }
+                            }
                         }
-                    }
+                        None => {}
+                    },
                     WEAPON_ROCKET | WEAPON_HOMINGROCKET => {
-                        // obj_damage(g_EmbedProp->obj, 100, ...). M6: chr_damage_by_impact(2).
-                        if let Some(EmbedProp::Board(b)) = embed {
-                            self.board_struck(b, 100.0);
+                        match embed {
+                            // obj_damage(g_EmbedProp->obj, 100, ...).
+                            Some(EmbedProp::Board(b)) => self.board_struck(b, 100.0),
+                            // chr_damage_by_impact(chr, 2, ..., the owner by its bits).
+                            Some(EmbedProp::Chr { chr, hitpart }) => {
+                                let ownerchr = o.owner();
+                                let attacker = (ownerchr < self.chrs.len()).then_some(ownerchr);
+                                self.chr_damage_by_impact(chr, 2.0, dir, crate::chr::DamageFrom::new(attacker, o.weaponnum, o.gunfunc), hitpart);
+                            }
+                            None => {}
                         }
                         handled = true;
                         o.timer240 = 0;
@@ -396,8 +498,12 @@ impl World {
         if sticky && !handled {
             if cdresult != CdResult::Collision {
                 o.pos = sp5dc;
+            } else if matches!(embed, Some(EmbedProp::Chr { .. })) {
+                // Against a chr only y moves (`propobj.c:7246`).
+                sp5dc.x = o.pos.x;
+                sp5dc.z = o.pos.z;
+                o.pos = sp5dc;
             } else {
-                // M6: against a chr only y moves (sp5dc keeps the old x, z).
                 sp5dc = sp5e8;
                 o.pos = sp5dc;
             }
@@ -712,6 +818,16 @@ impl World {
             }
         }
         match embed {
+            Some(EmbedProp::Chr { chr, .. }) => {
+                // SUBST: PD embeds the blade or bolt in the chr's model
+                // (`obj_embed`), carried until the chr lets go of it / it
+                // stops where it hit and falls to the floor, to be picked up.
+                let pos = self.chrs[chr].pos;
+                self.bgun_play_prop_hit_sound_chr(o.weaponnum, o.gunfunc, pos);
+                o.hidden &= !OBJHFLAG_ATTACHED;
+                o.projectile = Some(super::Projectile { flags: PROJECTILEFLAG_AIRBORNE, startframe: self.lv.lvframenum, ..Default::default() });
+                o.realrot = glam::Mat3::from_diagonal(Vec3::splat(o.scale));
+            }
             Some(EmbedProp::Board(b)) => {
                 if o.ty == OBJTYPE_WEAPON {
                     // bgun_play_prop_hit_sound: an object's.
@@ -734,7 +850,7 @@ impl World {
 }
 
 /// `obj_get_ground_clearance` (`propobj.c:2190`).
-fn obj_get_ground_clearance(o: &Obj) -> f32 {
+pub(crate) fn obj_get_ground_clearance(o: &Obj) -> f32 {
     if o.ty == OBJTYPE_WEAPON {
         0.0
     } else {

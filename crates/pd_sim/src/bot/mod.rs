@@ -19,17 +19,18 @@
 //!
 //! Nothing moves before `lvframe60 >= 145` (2.4 s into the match), as in PD.
 //!
-//! `// SUBST:` a simulant spawns unarmed and runs for the arena's weapons
-//! (`bot_find_default_pickup`, `botinv`) / until pickups (M8) it is handed its
-//! loadout on every spawn ([`crate::world::World::bot_give_loadout`]). Its
-//! personality (`BOTTYPE_*`) is the general sim's (M11).
+//! A simulant spawns unarmed and goes for the arena's pickups
+//! (`bot_find_default_pickup`, [`botinv`]), choosing what to hold as it goes
+//! (`botinv_tick`). Its personality (`BOTTYPE_*`) is the general sim's (M11).
 //!
 //! Sources: the old repo's `pd_spike/bot.rs` and `botcmd.rs`, checked against
 //! `reference/pd_bot_port_sheet.md`, which added the per-weapon punch timers,
 //! the Reaper's spin, the Cyclone's discharge, the Mauler's charge, the reload
 //! sound, the dizzy wobble and the model's turn in `bot_apply_movement`.
 
+pub mod botact;
 pub mod botcmd;
+pub mod botinv;
 
 use glam::{Vec2, Vec3};
 use pd_core::ids::*;
@@ -89,6 +90,8 @@ impl BotConfig {
 pub enum MyAction {
     MainLoop,
     Attack,
+    /// `MA_AIBOTGETITEM`: going to `aibot->gotoprop`.
+    GetItem,
 }
 
 /// `struct aibot` (the Combat fields).
@@ -102,8 +105,28 @@ pub struct Aibot {
     pub gunfunc: usize,
     pub ismeleeweapon: bool,
     pub loadedammo: [i32; 2],
-    /// `ammoheld[]` for the current weapon's ammo.
-    pub ammoheld: i32,
+    /// `ammoheld[]`: the reserve by ammo type.
+    pub ammoheld: [i32; 33],
+    /// `aibot->items`: the inventory (`botinv_init(chr, 10)`).
+    pub items: [Option<botinv::BotInvItem>; botinv::MAX_BOTINV_ITEMS],
+    /// `BOTFLAG_*`.
+    pub flags: u32,
+    /// `aibot->gotoprop`: the pickup it is going for (an object id).
+    pub gotoprop: Option<u32>,
+    pub throwtimer60: i32,
+    /// What it has learnt of the set's weapons, by slot and function
+    /// (`botinv_score_weapon`'s `learn`).
+    pub equipdurations60: [[i32; 2]; 6],
+    pub killsbygunfunc: [[f32; 2]; 6],
+    pub suicidesbygunfunc: [[f32; 2]; 6],
+    pub equipextrascores: [i32; 6],
+    pub equipextrascorestimer60: i32,
+    pub dampensuicidesttl60: i32,
+    pub random1ttl60: i32,
+    /// `aibot->cloakdeviceenabled` (the cloaking device: M11).
+    pub cloakdeviceenabled: bool,
+    /// `aibot->skrocket`: a Slayer rocket it is flying (an object id).
+    pub skrocket: Option<u32>,
     pub timeuntilreload60: [i32; 2],
     pub nextbullettimer60: [i32; 2],
     pub burstsdone: [u8; 2],
@@ -162,6 +185,9 @@ pub struct Aibot {
     pub last_dist: f32,
     /// The last animation choice (debug).
     pub last_choice: Option<thirdperson::Choice>,
+    /// `lastkilledbyplayernum`: the chr index of whoever last killed this
+    /// simulant (`mpstats_record_death`), -1 none.
+    pub lastkilledbyplayernum: i32,
 }
 
 impl Aibot {
@@ -175,7 +201,20 @@ impl Aibot {
             gunfunc: FUNC_PRIMARY,
             ismeleeweapon: true,
             loadedammo: [0; 2],
-            ammoheld: 0,
+            ammoheld: [0; 33],
+            items: [None; botinv::MAX_BOTINV_ITEMS],
+            flags: 0,
+            gotoprop: None,
+            throwtimer60: 0,
+            equipdurations60: [[0; 2]; 6],
+            killsbygunfunc: [[0.0; 2]; 6],
+            suicidesbygunfunc: [[0.0; 2]; 6],
+            equipextrascores: [0; 6],
+            equipextrascorestimer60: 0,
+            dampensuicidesttl60: 0,
+            random1ttl60: 0,
+            cloakdeviceenabled: false,
+            skrocket: None,
             timeuntilreload60: [0; 2],
             nextbullettimer60: [0; 2],
             burstsdone: [0; 2],
@@ -228,6 +267,7 @@ impl Aibot {
             targetcloaktimer60: 0,
             last_dist: 0.0,
             last_choice: None,
+            lastkilledbyplayernum: -1,
         }
     }
 }
@@ -489,6 +529,10 @@ impl World {
         }
         self.bot_apply_movement(i);
         self.chr_tick(i, fulltick);
+        // bot.c:1085: (scenario_tick_chr, M10) then what it walked over.
+        if self.lv.lvframe60 >= 145 && updateable && !self.chr_is_dead(i) {
+            self.bot_check_pickups(i);
+        }
     }
 
     /// `bot_is_about_to_attack(chr, forcloak)` (`bot.c:831`): should the
@@ -623,29 +667,62 @@ impl World {
                 }
             }
         }
-        // (changeguntimer60: botinv's weapon switching, M8.)
+        // Switching weapons (`bot.c:2491`).
+        self.bot_tick_changegun(i);
+        // (bot.c:2522-2680: the laser's ammo, cloaks, KazeSim, the scenarios'
+        // commands: M10/M11.)
 
-        // The main loop: with a target, attack it (no pickups, commands or
-        // personalities until M8/M11).
-        {
-            let target = self.chrs[i].target;
-            let a = self.ab_mut(i);
-            let mut newaction = None;
-            if a.myaction == MyAction::MainLoop || a.forcemainloop {
+        // The main loop (`bot.c:2681`): pickups it needs, else attack the
+        // target, else anything to pick up. (Commands and personalities: M11;
+        // following a teammate with no target, `bot_find_teammate_to_follow`: M11.)
+        if self.ab(i).myaction == MyAction::MainLoop || self.ab(i).forcemainloop {
+            {
+                let a = self.ab_mut(i);
                 a.forcemainloop = false;
                 a.attackingplayernum = None;
-                if target.is_some() {
-                    newaction = Some(MyAction::Attack);
-                    a.abortattacktimer60 = -1;
+            }
+            let mut newaction = None;
+            let gotoprop = self.bot_find_pickup(i, botinv::PICKUPCRITERIA_DEFAULT);
+            self.ab_mut(i).gotoprop = gotoprop;
+            if gotoprop.is_some() {
+                newaction = Some(MyAction::GetItem);
+            }
+            if newaction.is_none() && self.chrs[i].target.is_some() {
+                newaction = Some(MyAction::Attack);
+                self.ab_mut(i).abortattacktimer60 = -1;
+            }
+            if newaction.is_none() {
+                let gotoprop = self.bot_find_pickup(i, botinv::PICKUPCRITERIA_ANY);
+                self.ab_mut(i).gotoprop = gotoprop;
+                if gotoprop.is_some() {
+                    newaction = Some(MyAction::GetItem);
                 }
             }
-            if newaction == Some(MyAction::Attack) && a.myaction != MyAction::Attack {
-                a.myaction = MyAction::Attack;
-                a.distmode = None;
+            match newaction {
+                Some(MyAction::GetItem) => {
+                    // chr_go_to_prop(chr, gotoprop, GOPOSFLAG_RUN).
+                    if let Some(pos) = self.ab(i).gotoprop.and_then(|id| self.props.get(id)).map(|o| o.pos) {
+                        self.chr_go_to_room_pos(i, pos);
+                        self.ab_mut(i).myaction = MyAction::GetItem;
+                    }
+                }
+                Some(MyAction::Attack) => {
+                    let a = self.ab_mut(i);
+                    if a.myaction != MyAction::Attack {
+                        a.myaction = MyAction::Attack;
+                        a.distmode = None;
+                    }
+                }
+                _ => {}
             }
         }
-        // The action is no longer valid: back to the main loop.
-        if self.ab(i).myaction == MyAction::Attack {
+        // The action is no longer valid: back to the main loop (`bot.c:3225`).
+        if self.ab(i).myaction == MyAction::GetItem {
+            let gone = self.ab(i).gotoprop.and_then(|id| self.props.get(id)).is_none_or(|o| o.timetoregen != 0 || o.is_gone());
+            if self.chrs[i].actiontype != crate::chr::Act::GoPos || gone {
+                self.ab_mut(i).myaction = MyAction::MainLoop;
+            }
+        } else if self.ab(i).myaction == MyAction::Attack {
             let invalid = match self.ab(i).attackingplayernum {
                 Some(p) => self.chr_is_dead(p),
                 None => self.chrs[i].target.is_none_or(|t| self.chr_is_dead(t)),
@@ -654,9 +731,14 @@ impl World {
                 self.ab_mut(i).myaction = MyAction::MainLoop;
             } else {
                 self.botcmd_tick_dist_mode(i);
-                let a = self.ab(i);
-                if a.abortattacktimer60 >= 0 && a.targetlastseen60 < lvframe60 - a.abortattacktimer60 {
+                if self.bot_find_pickup(i, botinv::PICKUPCRITERIA_CRITICAL).is_some() {
+                    // bot_can_do_critical_pickup.
                     self.ab_mut(i).myaction = MyAction::MainLoop;
+                } else {
+                    let a = self.ab(i);
+                    if a.abortattacktimer60 >= 0 && a.targetlastseen60 < lvframe60 - a.abortattacktimer60 {
+                        self.ab_mut(i).myaction = MyAction::MainLoop;
+                    }
                 }
             }
         }
@@ -677,7 +759,8 @@ impl World {
                 }
             }
         }
-        // (botinv_tick: M8.)
+        // Tick the inventory: it may switch weapons.
+        self.botinv_tick(i);
 
         self.bot_tick_triggers(i);
     }
@@ -705,13 +788,17 @@ impl World {
                     a.nextbullettimer60[h] = 1;
                 }
             }
-            if self.ab(i).changeguntimer60 <= 0 {
+            if self.ab(i).skrocket.is_none() && self.ab(i).changeguntimer60 <= 0 {
                 let (weaponnum, gunfunc) = (self.ab(i).weaponnum, self.ab(i).gunfunc);
                 if self.ab(i).ismeleeweapon {
                     // Punching (and pistol whips): punchtimer60 is 0 idle,
                     // positive cooling down, negative "punch now".
                     let a = self.ab(i);
-                    if a.punchtimer60[h] >= 0 && a.timeuntilreload60[h] <= 0 {
+                    let minclip = crate::gun::bgun_get_min_clip_qty(&gset, WEAPON_TRANQUILIZER, FUNC_SECONDARY);
+                    if a.punchtimer60[h] >= 0 && a.timeuntilreload60[h] <= 0 && weaponnum == WEAPON_TRANQUILIZER && a.loadedammo[h] < minclip {
+                        self.ab_mut(i).punchtimer60[h] = 0;
+                        self.bot_schedule_reload(i, h);
+                    } else if a.punchtimer60[h] >= 0 && a.timeuntilreload60[h] <= 0 {
                         let range = 210.0;
                         self.ab_mut(i).punchtimer60[h] -= lv60;
                         let a = self.ab(i);
@@ -719,7 +806,8 @@ impl World {
                             if !dizzy {
                                 let tp = target_pos.unwrap();
                                 let c = &self.chrs[i];
-                                if !c.chr_is_pos_in_fov(tp, 40) || c.pos.distance(tp) > range + 150.0 {
+                                let out = if weaponnum == WEAPON_TRANQUILIZER { !c.chr_is_pos_in_fov(tp, 30) || c.pos.distance(tp) > range } else { !c.chr_is_pos_in_fov(tp, 40) || c.pos.distance(tp) > range + 150.0 };
+                                if out {
                                     self.ab_mut(i).punchtimer60[h] = 0;
                                 }
                             }
@@ -734,9 +822,30 @@ impl World {
                             }
                         }
                     }
+                } else if weaponnum == WEAPON_SLAYER && gunfunc != FUNC_PRIMARY && target.is_some() {
+                    // botact_create_slayer_rocket: never reached, the fly-by-wire
+                    // scores 0 (see botinv_score_weapon's SUBST).
                 } else if botact_is_weapon_throwable(weaponnum, gunfunc != FUNC_PRIMARY) {
-                    // `// M8:` botact_throw (grenades, mines, knives): a simulant
-                    // only gets a gun it can shoot from its loadout.
+                    // A throw from the right hand (`bot.c:3547`).
+                    if h == HAND_RIGHT {
+                        if self.ab(i).throwtimer60 > 0 {
+                            self.ab_mut(i).throwtimer60 -= lv60;
+                        }
+                        if self.ab(i).throwtimer60 <= 0 && (self.ab(i).botact_get_ammo_quantity_by_weapon(&gset, weaponnum, gunfunc, false) > 0 || weaponnum == WEAPON_LAPTOPGUN || weaponnum == WEAPON_DRAGON) {
+                            let a = self.ab(i);
+                            let infov = target_pos.is_some_and(|tp| self.chrs[i].chr_is_pos_in_fov(tp, 45));
+                            if target.is_some() && a.targetinsight && a.shootdelaytimer60 >= shootdelay60 && (dizzy || infov) {
+                                self.chr_uncloak_temporarily_chr(i);
+                                self.ab_mut(i).botact_try_remove_ammo_from_reserve(&gset, weaponnum, gunfunc, 1);
+                                self.botact_throw(i);
+                                if gset.func(weaponnum, gunfunc).is_some_and(|f| f.flags & FUNCFLAG_DISCARDWEAPON != 0) {
+                                    self.ab_mut(i).botinv_remove_item(weaponnum);
+                                    self.botinv_switch_to_weapon(i, WEAPON_UNARMED, FUNC_PRIMARY);
+                                }
+                                self.ab_mut(i).throwtimer60 = botact::botact_get_projectile_throw_interval(weaponnum);
+                            }
+                        }
+                    }
                 } else if self.chrs[i].held[h].is_some() && self.ab(i).loadedammo[h] > 0 {
                     let tps = weapon_get_num_ticks_per_shot(&gset, weaponnum, gunfunc);
                     let mut canshoot = false;
@@ -822,8 +931,10 @@ impl World {
                 }
             }
             WEAPON_TRANQUILIZER => {
-                // `// M8:` the tranquilizer's secondary ammo (bgun_get_min_clip_qty).
-                self.ab_mut(i).punchtimer60[0] = 60;
+                let q = crate::gun::bgun_get_min_clip_qty(&self.res.gset, WEAPON_TRANQUILIZER, FUNC_SECONDARY);
+                let a = self.ab_mut(i);
+                a.punchtimer60[0] = 60;
+                a.loadedammo[0] -= q;
             }
             WEAPON_REAPER => self.ab_mut(i).punchtimer60[0] = 0,
             _ => {
@@ -880,8 +991,7 @@ impl World {
         if capacity > 0 {
             let a = self.ab_mut(i);
             let tryamount = capacity - a.loadedammo[hand];
-            let actual = tryamount.min(a.ammoheld).max(0);
-            a.ammoheld -= actual;
+            let actual = a.botact_try_remove_ammo_from_reserve(&gset, weaponnum, gunfunc, tryamount);
             a.loadedammo[hand] += actual;
             if actual > 0 && withsound {
                 let sound = if weaponnum == WEAPON_FARSIGHT { 0x0433 } else { 0x804f };
@@ -1059,9 +1169,10 @@ impl World {
         }
         self.bot_update_zero_angle(i);
 
-        // Drop a dead target, or one out of sight and invisible (cloaked).
+        // Drop a dead target, one out of sight and invisible (cloaked), or a
+        // teammate (bot.c:1679). `// M11:` the peace and coward checks.
         if let Some(t) = self.chrs[i].target {
-            if self.chr_is_dead(t) || (!self.ab(i).targetinsight && self.bot_is_target_invisible(i, t)) {
+            if self.chr_is_dead(t) || (!self.ab(i).targetinsight && self.bot_is_target_invisible(i, t)) || self.chr_compare_teams(i, t, crate::mp::Compare::Friends) {
                 self.chrs[i].target = None;
             }
         }
@@ -1074,7 +1185,7 @@ impl World {
                     continue;
                 }
                 let k = k as usize;
-                if k != i && !self.chr_is_dead(k) {
+                if k != i && !self.chr_is_dead(k) && self.chr_compare_teams(i, k, crate::mp::Compare::Enemies) {
                     if self.ab(i).chrsinsight[k] {
                         self.bot_set_target(i, Some(k));
                         return;
@@ -1103,7 +1214,7 @@ impl World {
                 continue;
             }
             let k = k as usize;
-            if self.ab(i).chrsinsight[k] && k != i && !self.chr_is_dead(k) {
+            if self.ab(i).chrsinsight[k] && k != i && !self.chr_is_dead(k) && self.chr_compare_teams(i, k, crate::mp::Compare::Enemies) {
                 self.bot_set_target(i, Some(k));
                 return;
             }
@@ -1134,7 +1245,18 @@ impl World {
             c.firecount = [0; 2];
             c.held = [None, None];
             c.height = 185.0;
+            // The fresh aibot is bot_reset's list: no ammo, an empty inventory
+            // (botinv_clear), the fists, nothing to fetch.
             let mut a = Aibot::new(old.config, old.aibotnum, n, r1);
+            // What it has learnt of the set is kept (only botmgr_allocate_bot
+            // clears it).
+            a.killsbygunfunc = old.killsbygunfunc;
+            a.suicidesbygunfunc = old.suicidesbygunfunc;
+            a.equipdurations60 = old.equipdurations60;
+            a.equipextrascores = old.equipextrascores;
+            a.equipextrascorestimer60 = old.equipextrascorestimer60;
+            a.dampensuicidesttl60 = old.dampensuicidesttl60;
+            a.lastkilledbyplayernum = old.lastkilledbyplayernum;
             // Kept over a respawn: the facing (reset from the model in
             // bot_spawn), the moverates and the zeroing memory PD doesn't clear.
             a.zeroangle = old.zeroangle;
@@ -1150,7 +1272,9 @@ impl World {
             a.randomfrac = rf;
             a.random2ttl60 = 0;
             c.aibot = Some(Box::new(a));
+            self.chr_set_shield(i, 0.0);
         }
+        self.bot_reset_shield(i);
         self.ab_mut(i).fadeintimer60 = 120;
     }
 
@@ -1175,39 +1299,46 @@ impl World {
         let c = &mut self.chrs[i];
         c.actiontype = Act::Stand;
         c.lastmoveok60 = lvframe60;
-        self.bot_give_loadout(i);
+        if !self.bot_loadout.is_empty() {
+            self.bot_give_loadout(i);
+        }
     }
 
-    /// `// SUBST:` PD's simulant spawns unarmed and runs for the arena's
-    /// weapons (`bot_find_default_pickup`) / until pickups (M8) it is handed
-    /// its loadout weapon the way `bot_tick_unpaused`'s weapon switch does it
-    /// (`chr_give_weapon` + `botact_reload`, `bot.c:2491`), twice where the
-    /// weapon dual-wields (`WEAPONFLAG_DUALWIELD`) and the setup asks for it,
-    /// with a reserve that never runs out.
+    /// Not PD: the harness's loadout ([`World::bot_loadout`], the A/B probes
+    /// and the tests that stand a simulant somewhere armed): the weapon in the
+    /// inventory (a pair if asked and it dual-wields), a full reserve and PD's
+    /// unlimited-ammo flag (`BOTFLAG_UNLIMITEDAMMO`), and in hand at once, loaded.
     pub(crate) fn bot_give_loadout(&mut self, i: usize) {
-        let Some((weaponnum, dual)) = self.bot_loadout.get(self.ab(i).aibotnum).copied().flatten() else {
-            let a = self.ab_mut(i);
-            a.weaponnum = WEAPON_UNARMED;
-            a.ismeleeweapon = true;
-            return;
-        };
-        let res = self.res.clone();
-        let Some(stem) = res.gset.weapon(weaponnum).and_then(|w| w.tp_model.clone()) else { return };
-        let Ok(held) = crate::chr::Held::new(&res.models, weaponnum, &stem) else { return };
+        let Some((weaponnum, dual)) = self.bot_loadout.get(self.ab(i).aibotnum).copied().flatten() else { return };
+        let dual = dual && self.res.gset.has_flag(weaponnum, WEAPONFLAG_DUALWIELD);
+        let gset = self.res.gset.clone();
         {
             let a = self.ab_mut(i);
+            // A full reserve: PD's reload reads the reserve before the flag
+            // (`botact_try_remove_ammo_from_reserve`).
+            for f in [FUNC_PRIMARY, FUNC_SECONDARY] {
+                let t = botinv::botact_get_ammo_type_by_function(&gset, weaponnum, f);
+                if t > 0 {
+                    a.ammoheld[t as usize] = crate::gun::Bgun::bgun_get_capacity_by_ammotype(t);
+                }
+            }
+            a.botinv_give_single_weapon(weaponnum);
+            if dual {
+                a.botinv_give_dual_weapon(weaponnum);
+            }
+            a.flags |= BOTFLAG_UNLIMITEDAMMO;
             a.weaponnum = weaponnum;
             a.gunfunc = FUNC_PRIMARY;
             a.ismeleeweapon = false;
-            a.ammoheld = 1_000_000;
+            a.changeguntimer60 = 0;
         }
-        self.chrs[i].held[HAND_RIGHT] = Some(held.clone());
-        self.botact_reload(i, HAND_RIGHT, false);
-        if dual && res.gset.has_flag(weaponnum, WEAPONFLAG_DUALWIELD) {
-            self.chrs[i].held[HAND_LEFT] = Some(held);
+        if self.chr_give_weapon(i, weaponnum, HAND_RIGHT) {
+            self.botact_reload(i, HAND_RIGHT, false);
+        }
+        if dual && self.chr_give_weapon(i, weaponnum, HAND_LEFT) {
             self.botact_reload(i, HAND_LEFT, false);
         }
     }
 }
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

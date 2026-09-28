@@ -22,7 +22,9 @@
 //!    timers and the death sequence, the framebuffer effects (`lv_render`'s
 //!    `bview_*`), and a new life for a player who asked (`lv.c:1652`).
 //!
-//! Pickups (M8) and the match rules (M7) slot in where PD ticks them.
+//! The pickups respawn in `props_tick` (`obj_tick`) and are collected in each
+//! player's `lv_render` pass (`props_test_for_pickup`, `lv.c:1304`) and in each
+//! simulant's `bot_tick` (`bot_check_pickups`).
 //!
 //! Source: `pd_complex/fight.rs` `Fight::frame` and `pd_guns/sim.rs` `Sim::frame`,
 //! which glued the two spike sims.
@@ -35,7 +37,9 @@ use pd_core::anim::AnimBank;
 use pd_core::assets::AssetDir;
 use pd_core::events::Event;
 use pd_core::ids::{CAMERAMODE_DEFAULT, CAMERAMODE_THIRDPERSON, HAND_RIGHT, VISIONMODE_SLAYERROCKET, VISIONMODE_SLAYERROCKETSTATIC, WEAPONFLAG_AIMTRACK};
+use pd_core::lang::Lang;
 use pd_core::lv::{Lv, LvTickIn};
+use pd_core::text::Fonts;
 use pd_core::model::{Bodies, ModelStore};
 use pd_core::mp::MatchSetup;
 use pd_core::rng::Rng;
@@ -60,6 +64,10 @@ pub struct WorldRes {
     pub models: Arc<ModelStore>,
     pub bodies: Arc<Bodies>,
     pub audio: Arc<AudioConfigs>,
+    /// The English text (the HUD messages).
+    pub lang: Arc<Lang>,
+    /// The fonts, for the HUD messages' measures.
+    pub fonts: Arc<Fonts>,
 }
 
 impl WorldRes {
@@ -70,6 +78,8 @@ impl WorldRes {
             models: Arc::new(ModelStore::load(assets)?),
             bodies: Arc::new(Bodies::load(assets)?),
             audio: Arc::new(AudioConfigs::load(assets)?),
+            lang: Arc::new(Lang::load(assets, "en")?),
+            fonts: Arc::new(Fonts::load(assets)?),
         })
     }
 }
@@ -183,8 +193,8 @@ impl ViShake {
     }
 }
 
-/// A target board: the firing range's props, a thin box that counts its hits.
-/// They stand in for the objects a shot can hit until props arrive (M8).
+/// A target board: the firing range's props, a thin box that counts its hits
+/// (standing in for the training range's `MODEL_TARGET`s).
 #[derive(Clone, Debug)]
 pub struct Board {
     pub min: Vec3,
@@ -217,10 +227,11 @@ pub struct World {
     /// Go-to bookkeeping for the A/B harness; `record_gotos` logs each request.
     pub navstats: NavStats,
     pub record_gotos: bool,
-    /// The weapons the match hands out (`g_MpSetup.weapons` resolved to
-    /// `WEAPON_*`, by `pd_game` from the menus' table).
-    pub weaponset: Vec<u8>,
-    /// Each simulant's loadout by setup slot (see [`World::bot_give_loadout`]).
+    /// Not PD: the test harness's loadout for the players (the gun tests): every
+    /// weapon listed, with unlimited ammo, on every life. `None` in a match.
+    pub harness_loadout: Option<Vec<u8>>,
+    /// Not PD: the harness's loadout for the simulants by setup slot (the A/B
+    /// probes; see [`World::bot_give_loadout`]). Empty in a match.
     pub bot_loadout: Vec<Option<(u8, bool)>>,
     /// `chr_grunt`'s round-robin indexes.
     pub grunt_next: GruntNext,
@@ -243,8 +254,8 @@ pub struct World {
     pub speedpill: SpeedPill,
     /// `g_MiscSfxActiveTypes`: which misc loops play, by `MISCSFX_*`.
     pub misc_sfx: [bool; 3],
-    /// Shots each player has fired (`mpstats_increment_player_shotcount`).
-    pub shots_fired: Vec<u32>,
+    /// The match: pause, limits, counters, statistics, HUD messages.
+    pub mp: crate::mp::MpMatch,
     /// `player->lookingatprop.prop`: the chr or board under each player's
     /// crosshair (the sight turns red on it).
     pub lookingatprop: Vec<Option<AimedAt>>,
@@ -279,10 +290,9 @@ impl ExpWorld for StageExp<'_> {
 impl World {
     /// Start a match: the simulants are allocated (`setup.c:1961`), every
     /// player spawns in turn, each choosing a pad away from those already
-    /// placed (`player_choose_spawn_location`), with the loadout (see
-    /// [`World::give_loadout`]); the simulants spawn on the first frame
-    /// (`bot_spawn_all`). The weapon set is every weapon until
-    /// [`World::set_weapon_set`].
+    /// placed (`player_choose_spawn_location`), unarmed; the setup's pickups
+    /// are placed from the weapon set (`setup_create_props`); the simulants
+    /// spawn on the first frame (`bot_spawn_all`).
     pub fn new(setup: MatchSetup, stage: Arc<Stage>, level: Arc<TileLevel>, res: Arc<WorldRes>, seed: u64) -> Result<World, String> {
         if stage.spawn_pads.is_empty() {
             return Err(format!("stage {} has no spawn pads", stage.code));
@@ -303,8 +313,18 @@ impl World {
             chrs.push(c);
         }
         let nav = Arc::new(NavGraph::from_stage(&stage, &level));
-        let weaponset = res.gset.order.clone();
+        // Each chr's slot (mp_chrindex_to_chrslot): the players', then the
+        // simulants' by their setup row.
+        for (i, p) in setup.players.iter().enumerate() {
+            chrs[i].mpslot = p.slot as usize;
+        }
+        for c in chrs.iter_mut().skip(n) {
+            if let Some(s) = c.aibot.as_ref().and_then(|a| setup.simulants.get(a.aibotnum)) {
+                c.mpslot = s.slot as usize;
+            }
+        }
         let mut w = World {
+            mp: crate::mp::MpMatch::new(&setup),
             setup,
             lv: Lv::new(),
             rng,
@@ -316,7 +336,7 @@ impl World {
             nav,
             navstats: NavStats::default(),
             record_gotos: false,
-            weaponset,
+            harness_loadout: None,
             bot_loadout: Vec::new(),
             grunt_next: GruntNext::default(),
             bots_spawned: false,
@@ -330,76 +350,50 @@ impl World {
             vi: ViShake::default(),
             speedpill: SpeedPill::default(),
             misc_sfx: [false; 3],
-            shots_fired: vec![0; n],
             lookingatprop: vec![None; n],
             frac20: 0.0,
             events: Vec::new(),
         };
-        w.bot_loadout = w.bot_loadouts();
         for i in 0..n {
             let before: Vec<usize> = (0..i).collect();
             w.spawn_player(i, &before);
-            w.give_loadout(i);
+            w.player_spawn_inventory(i);
         }
+        w.setup_create_mp_pickups();
         Ok(w)
     }
 
-    /// The match's weapon set (`WEAPON_*`, the menu's six slots resolved;
-    /// `WEAPON_NONE` and repeats are fine): the players' loadouts are given
-    /// again and the simulants' chosen from it.
-    pub fn set_weapon_set(&mut self, weapons: &[u8]) {
-        let gset = self.res.gset.clone();
-        let mut set: Vec<u8> = Vec::new();
-        for &w in weapons {
-            if gset.weapon(w).is_some() && w != pd_core::ids::WEAPON_NONE && !set.contains(&w) {
-                set.push(w);
-            }
-        }
-        self.weaponset = set;
-        self.bot_loadout = self.bot_loadouts();
-        for i in 0..self.players.len() {
-            self.players[i].gun.p.inventory.clear();
+    /// A new life's inventory (`player_start_new_life`, `player.c:590`, and
+    /// `player_spawn`, `:934`): nothing but the fists, no ammo, no shield, and
+    /// no gun in hand (`bgun_equip_weapon2(g_DefaultWeapons)`: a Combat
+    /// Simulator setup's intro gives no weapon, so both are `WEAPON_NONE`).
+    pub(crate) fn player_spawn_inventory(&mut self, i: usize) {
+        let gun = &mut self.players[i].gun;
+        gun.p.inventory.inv_clear();
+        gun.p.ammoheldarr = [0; 40];
+        gun.p.inventory.inv_give_single_weapon(pd_core::ids::WEAPON_UNARMED);
+        gun.ctrl.dualwielding = false;
+        gun.bgun_equip_weapon(pd_core::ids::WEAPON_NONE);
+        self.player_set_shield_frac(i, 0.0);
+        if self.harness_loadout.is_some() {
             self.give_loadout(i);
         }
-        if self.bots_spawned {
-            for i in self.players.len()..self.chrs.len() {
-                self.chrs[i].held = [None, None];
-                self.bot_give_loadout(i);
-            }
+    }
+
+    /// Not PD: the test harness arms the players with `weapons` (each twice
+    /// where it dual-wields) and unlimited ammo, now and on every new life.
+    pub fn harness_give_loadout(&mut self, weapons: Vec<u8>) {
+        self.harness_loadout = Some(weapons);
+        for i in 0..self.players.len() {
+            self.give_loadout(i);
         }
     }
 
-    /// `// SUBST:` a simulant picks its weapons up from the arena's pads and
-    /// uses the one it rates highest (`botinv`, M8) / the weapons of the set a
-    /// simulant can fire in M6 (`WEAPONFLAG_AICANUSE`, a third-person model,
-    /// a hitscan primary: no launchers or throwables until M8) are dealt out
-    /// in turn by setup slot, held twice where the weapon dual-wields and
-    /// `g_AibotWeaponPreferences` rates two above one (`dualscore1 > score1`).
-    /// With none in the set, the simulants punch.
-    fn bot_loadouts(&self) -> Vec<Option<(u8, bool)>> {
-        let gset = &self.res.gset;
-        let usable: Vec<(u8, bool)> = self
-            .weaponset
-            .iter()
-            .filter_map(|&w| {
-                let def = gset.weapon(w)?;
-                let pref = def.bot?;
-                def.tp_model.as_ref()?;
-                let f = gset.func(w, pd_core::ids::FUNC_PRIMARY)?;
-                let hitscan = f.ftype == pd_core::ids::INVENTORYFUNCTYPE_SHOOT_SINGLE || f.ftype == pd_core::ids::INVENTORYFUNCTYPE_SHOOT_AUTOMATIC;
-                (gset.has_flag(w, pd_core::ids::WEAPONFLAG_AICANUSE) && hitscan).then(|| (w, gset.has_flag(w, pd_core::ids::WEAPONFLAG_DUALWIELD) && pref.dualscore1 > pref.score1))
-            })
-            .collect();
-        (0..self.setup.simulants.len()).map(|k| (!usable.is_empty()).then(|| usable[k % usable.len()])).collect()
-    }
-
-    /// `// SUBST:` a Combat Simulator player starts unarmed and picks weapons
-    /// up from the arena's pads (M8) / until then every player carries every
-    /// weapon in the set, twice where it dual-wields, with unlimited ammo, and
-    /// starts with the first (the Falcon 2 if the set has it).
+    /// Not PD: [`World::harness_give_loadout`]'s weapons for player `i`, the
+    /// first (the Falcon 2 if listed) in hand.
     pub fn give_loadout(&mut self, i: usize) {
         let gset = self.res.gset.clone();
-        let set = self.weaponset.clone();
+        let set = self.harness_loadout.clone().unwrap_or_else(|| gset.order.clone());
         let gun = &mut self.players[i].gun;
         for &wn in &set {
             let dual = gset.has_flag(wn, pd_core::ids::WEAPONFLAG_DUALWIELD);
@@ -415,13 +409,16 @@ impl World {
         self.chr_perims_except(except)
     }
 
-    /// Spawn player `i`, judging the pads against the chrs in `others` (at the
-    /// match start, the players already spawned; later, every other chr).
+    /// Spawn player `i`, judging the pads against the enemies among the chrs
+    /// in `others` (at the match start, the players already spawned; later,
+    /// every other chr).
     fn spawn_player(&mut self, i: usize, others: &[usize]) {
-        let judged: Vec<SpawnOther> = others.iter().map(|&j| SpawnOther { pos: self.chrs[j].pos, rooms: self.chrs[j].rooms.clone() }).collect();
+        let judged: Vec<SpawnOther> = others.iter().filter(|&&j| self.chr_compare_teams(i, j, crate::mp::Compare::Enemies)).map(|&j| SpawnOther { pos: self.chrs[j].pos, rooms: self.chrs[j].rooms.clone() }).collect();
         let cyls: Vec<PerimCyl> = others.iter().filter_map(|&j| self.chrs[j].perim()).collect();
         let (pos, angle) = player_choose_spawn_location(&self.level, &self.stage, 30.0, &judged, &cyls, &mut self.rng);
         self.players[i].start_new_life(&self.level, pos, angle);
+        self.mp.players[i].killsthislife = 0;
+        self.mp.players[i].lifestarttime60 = self.player_get_mission_time(i);
         self.spawns[i] += 1;
         self.sync_player_chr(i);
     }
@@ -447,27 +444,39 @@ impl World {
         c.fadealpha = p.chrfadefrac * 255.0;
     }
 
-    /// `player_die` (`player.c:4793`): killed by the chr that last shot it
-    /// (M7: `lastshooter`), else by its own hand.
+    /// `player_die` (`player.c:4793`): killed by the chr that last shot it,
+    /// else by its own hand. PD never sets `lastshooter` (it stays -1 from
+    /// `chr_init`), so a fall is always a suicide.
     pub(crate) fn player_die(&mut self, pi: usize) {
-        self.player_die_by_shooter(pi, Some(pi));
+        let c = &self.chrs[pi];
+        let shooter = if c.lastshooter.is_some() && c.timeshooter > 0 { c.lastshooter } else { Some(pi) };
+        self.player_die_by_shooter(pi, shooter);
     }
 
-    /// `player_die_by_shooter` (`player.c:4807`): the death scored, the cloak
-    /// off, the guns thrown (`bgun_handle_player_dead`). `// M8:`
-    /// `current_player_drop_all_items`; `// M7:` the hud messages and the
-    /// shortest-life stat.
+    /// `player_die_by_shooter` (`player.c:4807`): the player's menu closed,
+    /// its HUD messages that need it alive gone, the death scored, the cloak
+    /// off, every weapon dropped (`current_player_drop_all_items`), the guns
+    /// thrown from the view (`bgun_handle_player_dead`), the shortest life.
     pub(crate) fn player_die_by_shooter(&mut self, pi: usize, shooter: Option<usize>) {
         if self.players[pi].isdead {
             return;
         }
-        self.mpstats_record_death(shooter, pi);
+        self.push_event(Event::MpCloseMenus { player: pi as u8 });
+        self.hudmsgs_remove_for_dead_player(pi);
+        self.mpstats_record_death(shooter.map_or(-1, |s| s as i32), pi as i32);
         self.chr_uncloak_chr(pi, true);
+        self.current_player_drop_all_items(pi);
         self.players[pi].player_set_dead();
         let res = self.res.clone();
         let p = &mut self.players[pi];
         let mut g = p.gun_ctx(&res, &mut self.rng, &self.lv);
         g.bgun_handle_player_dead();
+        let now = self.player_get_mission_time(pi);
+        let life = now - self.mp.players[pi].lifestarttime60;
+        if life < self.mp.playerstats[pi].shortestlife {
+            self.mp.playerstats[pi].shortestlife = life;
+        }
+        self.mp.players[pi].lifestarttime60 = now;
     }
 
     /// Every player's camera, as the sound code hears from it.
@@ -497,11 +506,19 @@ impl World {
     /// One PD frame `diffframe240` quarter-ticks long (4 at 60 Hz, 8 at 30,
     /// 12 at 20), with each player's controls (missing inputs are idle).
     pub fn step(&mut self, diffframe240: i32, inputs: &[PlayerInput]) {
-        // lv_tick: a boost caps the frame. M7: smart slow motion's "an enemy is
-        // on screen" (`bg_room_is_on_player_screen`).
-        let tickin = LvTickIn { speedpillon: self.speedpill.on, slowmo: self.setup.slowmotion(), ..LvTickIn::default() };
+        // lv_tick: paused, the match's slow motion, a boost's cap.
+        let paused = self.mp_is_paused();
+        let tickin = LvTickIn { paused, speedpillon: self.speedpill.on, slowmo: self.setup.slowmotion(), enemy_on_screen: self.lv_smart_slowmo_enemy_on_screen() };
         self.lv.frame(diffframe240, tickin);
+        if paused {
+            // Every button but START waits to be released (lv.c:2045).
+            for v in self.mp.players.iter_mut() {
+                v.joybutinhibit = 0xefff_efff;
+            }
+        }
         self.bgun_tick_boost();
+        self.hudmsgs_tick();
+        self.lv_tick_mp();
         // menu_tick_timers (`game_006900.c:42`), from lv_tick's menu_tick.
         self.frac20 += self.lv.diffframe240f / 4800.0;
         if self.frac20 > 1.0 {
@@ -514,14 +531,25 @@ impl World {
         }
         self.lv_update_misc_sfx();
         self.fx.boltbeams.tick(self.lv.lvupdate60freal);
-        self.props_tick();
+        self.scenario_tick();
+        if !self.mp.endscreen {
+            self.props_tick();
+        }
 
         // lv_tick_player: each player's player_tick.
         let idle = PlayerInput::default();
         for i in 0..self.players.len() {
+            // player_tick's mission clock (player.c:3212).
+            if !self.mp.endscreen {
+                self.mp.players[i].bondviewlevtime60 += self.lv.lvupdate60;
+            }
+            let input = self.bmove_process_input_mp(i, inputs.get(i).unwrap_or(&idle));
+            let input = &input;
             let cyls = self.perims_except(i);
-            let env = WalkEnv { level: &self.level, cyls: &cyls };
-            let input = inputs.get(i).unwrap_or(&idle);
+            let fastmovement = self.setup.options & pd_core::ids::MPOPTION_FASTMOVEMENT != 0;
+            let shieldfrac = self.player_get_shield_frac(i);
+            let menuopen = self.mp.menuopen.get(i).copied().unwrap_or(false);
+            let env = WalkEnv { level: &self.level, cyls: &cyls, fastmovement, shieldfrac, menuopen };
             // player.c:3302: a rocket that is gone loses its signal.
             if self.players[i].visionmode == VISIONMODE_SLAYERROCKET && self.players[i].slayerrocket.is_none() {
                 self.players[i].visionmode = VISIONMODE_SLAYERROCKETSTATIC;
@@ -539,6 +567,9 @@ impl World {
                 self.player_die(i);
             }
             self.sync_player_chr(i);
+            // lv_tick_player (lv.c:2371): the distance walked.
+            let (pos, prev) = (self.players[i].pos, self.players[i].prevpos);
+            self.mp.playerstats[i].distance += ((pos.x - prev.x).powi(2) + (pos.z - prev.z).powi(2)).sqrt();
         }
 
         // player_update_shake (`player.c:3012`), then the retraces this frame spans.
@@ -586,6 +617,8 @@ impl World {
             // targets PD lets the sight react to (`MODEL_TARGET` in CI training).
             let aimtrack = self.res.gset.has_flag(self.players[i].gun.bgun_get_weapon_num(HAND_RIGHT), WEAPONFLAG_AIMTRACK) && self.players[i].insightaimmode;
             self.lookingatprop[i] = if self.players.len() == 1 || aimtrack { self.prop_find_aiming_at(i, HAND_RIGHT, false, false) } else { None };
+            // props_test_for_pickup (`lv.c:1304`).
+            self.props_test_for_pickup(i);
             // player_render_hud (`player.c`): in the third person (riding a
             // Slayer rocket) no gun, no HUD, and bgun_tick_gameplay2 doesn't run.
             if self.players[i].cameramode != CAMERAMODE_THIRDPERSON {
@@ -605,18 +638,23 @@ impl World {
                     let mut g = p.gun_ctx(&res, &mut self.rng, &self.lv);
                     g.bgun_tick_hud();
                 }
+                // The end of bgun_tick_gameplay2 (bondgun.c:9229).
+                self.inv_increment_held_time(i);
             }
             self.process_gun_events(i);
             // player_render_hud's death sequence (`player.c:4546`).
-            let input = inputs.get(i).unwrap_or(&idle);
-            self.players[i].player_tick_death(input);
+            let input = if self.mp.players[i].withcontrol { inputs.get(i).unwrap_or(&idle) } else { &idle };
+            let canrestart = !self.mp_is_paused() && self.mp.numreasonstoend == 0;
+            self.players[i].player_tick_death(input, canrestart);
             self.lv_render_fx(i, motion_blur);
+            // SUBST: chr_render counts each chr it draws in the player's view
+            // (chr.c:3570) / the chrs the renderer draws, those on screen.
+            self.mp.playerstats[i].drawplayercount += self.chrs.iter().filter(|c| c.player.is_none() && c.onanyscreen).count() as i32;
             if self.players[i].dostartnewlife {
                 // player_start_new_life (`lv.c:1652`).
                 let others: Vec<usize> = (0..self.chrs.len()).filter(|&j| j != i).collect();
                 self.spawn_player(i, &others);
-                self.players[i].gun.p.inventory.clear();
-                self.give_loadout(i);
+                self.player_spawn_inventory(i);
             }
         }
         if n == 0 {
@@ -693,6 +731,8 @@ impl World {
                 }
             }
         }
+        // obj_tick (`propobj.c:10942`): a taken pickup's respawn, a sentry's beam.
+        self.pickups_tick_regen();
         for o in self.props.objs.iter_mut() {
             if let Some(a) = o.autogun.as_mut() {
                 a.beam.tick(&mut self.rng, &self.lv);
@@ -712,8 +752,9 @@ impl World {
                 Victim { id: VictimId::Chr(i), pos: c.pos, chrbox: Some(chrbox) }
             })
             .chain(self.boards.iter().enumerate().map(|(i, b)| Victim { id: VictimId::Board(i), pos: (b.min + b.max) * 0.5, chrbox: None }))
-            // The guns' objects: a blast sets off the explosives it reaches.
-            .chain(self.props.objs.iter().filter(|o| !o.is_deleting() && o.flags & pd_core::ids::OBJFLAG_HELDROCKET == 0).map(|o| Victim { id: VictimId::Prop(o.id), pos: o.pos, chrbox: None }))
+            // The objects: a blast sets off the explosives it reaches; a
+            // respawning pickup isn't there (`explosions.c:761`).
+            .chain(self.props.objs.iter().filter(|o| !o.is_deleting() && o.timetoregen == 0 && o.flags & pd_core::ids::OBJFLAG_HELDROCKET == 0).map(|o| Victim { id: VictimId::Prop(o.id), pos: o.pos, chrbox: None }))
             .collect();
         let mut out = ExpOut::default();
         // The scorches are coloured by the room at the camera, like the gun.

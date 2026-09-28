@@ -349,7 +349,11 @@ impl Player {
     /// `bwalk_update_horizontal` (`bondwalk.c:1425`).
     pub(super) fn bwalk_update_horizontal(&mut self, lv: &Lv, env: &WalkEnv, res: &WorldRes, rng: &mut Rng) {
         let lv60 = lv.lvupdate60freal;
-        let spc0 = (self.eyeheight - 159.0) / 353.333_3 + 1.0;
+        let mut spc0 = (self.eyeheight - 159.0) / 353.333_3 + 1.0;
+        // (normmplayerisrunning.) `// M10:` a briefcase holder's eye height.
+        if env.fastmovement {
+            spc0 *= 1.25;
+        }
         // bwalk_apply_crouch_speed
         match self.crouchpos {
             CROUCHPOS_DUCK => {

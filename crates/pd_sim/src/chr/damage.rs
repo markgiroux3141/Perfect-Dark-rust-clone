@@ -3,9 +3,16 @@
 //! multipliers, flinches, grunts, blood (`chr_emit_sparks`), `chr_die`, and the
 //! simulant's death animation and fade (`chr_tick_die`, `chr_tick_dead`).
 //!
-//! Not yet: shields (`cshield`, M8), `ONEHITKILLS` and the shot-count stats (M7),
-//! disarming (`FUNCFLAG_DISARM`, `bgun_disarm` / `bot_disarm`, M8), the
-//! solo-only branches (knockouts, argh animations, difficulty scaling).
+//! Also the match's bookkeeping: the shot counts by body region, the damage
+//! each player dealt and took, shots in the back, and `MPOPTION_ONEHITKILLS`.
+//!
+//! Shields (`chr->cshield`, `chr_set_shield`): a hit on a shield takes it
+//! from the shield and none from the chr, whatever the shield had left.
+//!
+//! Not yet: disarming (`FUNCFLAG_DISARM`, `bgun_disarm` / `bot_disarm`), the
+//! shield's glow where it was hit (`shieldhit_create`) and the player's
+//! first-person shield flash (`player_display_shield`, `player_render_shield`),
+//! the solo-only branches (knockouts, argh animations, difficulty scaling).
 //!
 //! Source: the old repo's `pd_spike/chraction.rs` (damage) and
 //! `pd_complex/fight.rs` (`player_damage`), checked against
@@ -119,13 +126,57 @@ impl World {
                 }
             }
         }
-        // The Farsight goes through shields, ×10.
-        let mut _damageshield = damageshield;
+        // The Farsight: damageshield forced on, ×10.
+        let mut damageshield = damageshield;
         if from.weaponnum == WEAPON_FARSIGHT {
-            _damageshield = true;
+            damageshield = true;
             damage *= 10.0;
         }
-        // (Shields, hats and the shot-count stats: M8 / M7.)
+        // The shield (`chraction.c:4539`): it takes the whole hit.
+        let mut usedshield = false;
+        if damageshield {
+            let mut shield = self.chrs[victim].cshield;
+            let armourscale = if self.chrs[victim].aibot.as_ref().is_some_and(|a| a.config.bottype == BOTTYPE_TURTLE) { 4.0 } else { 1.0 };
+            if shield > 0.0 {
+                // Normal multiplayer divides by g_Vars.currentplayerstats's
+                // handicap: the player whose pass the hit is in.
+                let cur = self.currentplayernum_for(from.attacker);
+                let handicap = self.setup.players.get(cur).map_or(128, |p| p.handicap);
+                damage /= mp_handicap_to_value(handicap);
+                self.chrs[victim].shielddamaged = true;
+                if self.setup.options & MPOPTION_ONEHITKILLS != 0 {
+                    damage = 0.0;
+                    self.chr_set_shield(victim, 0.0);
+                } else if shield >= damage / armourscale {
+                    shield -= damage / armourscale;
+                    damage = 0.0;
+                    self.chr_set_shield(victim, shield);
+                } else {
+                    damage = 0.0;
+                    self.chr_set_shield(victim, 0.0);
+                }
+                usedshield = true;
+            }
+        }
+        // (Hats are GoldenEye's.)
+        // Handle incrementing player shot count (chraction.c:4610). ACT_DIE is
+        // not checked, so a dying chr's hits count.
+        if !explosion {
+            if let Some(ap) = from.attacker.and_then(|a| self.chrs[a].player) {
+                let alreadydead = self.chrs[victim].actiontype == Act::Dead || vplayer.is_some_and(|vp| self.players[vp].isdead);
+                if !alreadydead && hitpart != 0 {
+                    let region = match hitpart {
+                        HITPART_HEAD => SHOTREGION_HEAD,
+                        HITPART_GUN => SHOTREGION_GUN,
+                        HITPART_HAT => SHOTREGION_HAT,
+                        HITPART_PELVIS | HITPART_TORSO => SHOTREGION_BODY,
+                        _ => SHOTREGION_LIMB,
+                    };
+                    self.mpstats_increment_player_shotcount(ap, from.weaponnum, region);
+                }
+            }
+        }
+        let onehitkills = self.setup.options & MPOPTION_ONEHITKILLS != 0;
 
         // A dying or dead chr: perhaps a head flinch, then done.
         if self.chr_is_dead(victim) {
@@ -162,7 +213,7 @@ impl World {
         }
         if hitpart == HITPART_HEAD {
             damage *= 4.0;
-            if isshoot {
+            if isshoot && !usedshield {
                 self.chr_flinch_head(victim, angle);
                 // headshotdamagescale is 1 in multiplayer.
                 if from.weaponnum == WEAPON_COMBATKNIFE && from.weaponfunc != FUNC_POISON {
@@ -188,8 +239,20 @@ impl World {
                 }
                 if damage > 0.0 {
                     let amount = damage * 0.125;
+                    let mut statsamount = amount;
+                    if statsamount > self.players[pi].bondhealth {
+                        statsamount = self.players[pi].bondhealth;
+                    }
+                    if onehitkills {
+                        statsamount = self.players[pi].bondhealth;
+                    }
+                    self.player_update_damage_stats(from.attacker, victim, statsamount);
                     let bondhealth = self.players[pi].bondhealth;
-                    self.players[pi].health.player_display_health(bondhealth);
+                    let shieldfrac = self.player_get_shield_frac(pi);
+                    self.players[pi].health.player_display_health(bondhealth, shieldfrac);
+                    if onehitkills {
+                        self.players[pi].bondhealth = 0.0;
+                    }
                     self.players[pi].bondhealth -= amount;
                     let showdamage = true;
                     if self.players[pi].bondhealth <= 0.0 {
@@ -211,6 +274,10 @@ impl World {
                     self.players[pi].shotspeed.x += vector.x * boostscale;
                     self.players[pi].shotspeed.z += vector.z * boostscale;
                 }
+                // A player's shot: was it in the back? (`chraction.c:4851`)
+                if let Some(ap) = from.attacker.and_then(|a| self.chrs[a].player) {
+                    self.player_check_if_shot_in_back(ap, pi, vector.x, vector.z);
+                }
             }
             return;
         }
@@ -231,8 +298,18 @@ impl World {
             let sp80 = if from.weaponnum == WEAPON_UNARMED { 2.0 } else { 0.0 };
             let _ = forceapplydamage;
             if damage > 0.0 {
+                let c = &self.chrs[victim];
+                let mut amount = damage;
+                if c.damage + damage > c.maxdamage {
+                    amount = c.maxdamage - c.damage;
+                }
+                amount *= 0.125;
+                self.player_update_damage_stats(from.attacker, victim, amount);
                 let c = &mut self.chrs[victim];
                 c.damage += damage;
+                if onehitkills {
+                    c.damage = c.maxdamage;
+                }
                 if grunt {
                     self.chr_grunt(victim, choketype);
                 }
@@ -254,6 +331,44 @@ impl World {
             }
         }
         let _ = explosion;
+    }
+
+    /// `g_Vars.currentplayernum` when a hit lands: an attacking player's own
+    /// pass; a simulant's rounds, punches and throws are in the first player's
+    /// (`bot_tick` runs in its `props_tick_player`).
+    /// `// SUBST:` an explosion ticks in `lv_tick`, where PD's current player is
+    /// the one the last frame's render loop ended on / the first player too.
+    pub(crate) fn currentplayernum_for(&self, attacker: Option<usize>) -> usize {
+        attacker.and_then(|a| self.chrs.get(a)).and_then(|c| c.player).unwrap_or(0)
+    }
+
+    /// `chr_get_shield` (`chraction.c:4056`).
+    pub fn chr_get_shield(&self, i: usize) -> f32 {
+        self.chrs[i].cshield
+    }
+
+    /// `chr_set_shield` (`chraction.c:4061`): never below 0; a player's health
+    /// bar opens on it and the match counts it (`armourcount`, the Best
+    /// Protected and Least Shielded awards).
+    pub(crate) fn chr_set_shield(&mut self, i: usize, amount: f32) {
+        let amount = amount.max(0.0);
+        self.chrs[i].cshield = amount;
+        if let Some(pi) = self.chrs[i].player {
+            let bondhealth = self.players[pi].bondhealth;
+            let shieldfrac = self.player_get_shield_frac(pi);
+            self.players[pi].health.player_display_health(bondhealth, shieldfrac);
+            self.mp.playerstats[pi].armourcount += amount * 0.125;
+        }
+    }
+
+    /// `player_get_shield_frac` (`player.c:5218`).
+    pub fn player_get_shield_frac(&self, pi: usize) -> f32 {
+        (self.chrs[pi].cshield * 0.125).clamp(0.0, 1.0)
+    }
+
+    /// `player_set_shield_frac` (`player.c:5233`).
+    pub(crate) fn player_set_shield_frac(&mut self, pi: usize, frac: f32) {
+        self.chr_set_shield(pi, frac.clamp(0.0, 1.0) * 8.0);
     }
 
     /// `chr_damage_by_impact` (`chraction.c:4138`): a shot or a thrown blade.
@@ -412,7 +527,8 @@ impl World {
     }
 
     /// `chr_die` (`chraction.c:5102`), a simulant's: `ACT_DIE`, the kill scored
-    /// (`mpstats_record_death`), uncloaked. `// M8:` `botinv_drop_all`.
+    /// (`mpstats_record_death`), uncloaked, every weapon dropped
+    /// (`botinv_drop_all`).
     pub(crate) fn chr_die(&mut self, victim: usize, attacker: Option<usize>) {
         if self.chrs[victim].actiontype == Act::Die {
             return;
@@ -425,19 +541,9 @@ impl World {
         }
         self.chrs[victim].actiontype = Act::Die;
         self.chrs[victim].blurnumtimesdied += 1;
-        self.mpstats_record_death(attacker, victim);
-    }
-
-    /// `mpstats_record_death` (`mpstats.c`), the counts M6 keeps: the killer's
-    /// kill (a suicide when it's the victim's own or no one's) and the death.
-    /// `// M7:` the full stats and the kill feed.
-    pub(crate) fn mpstats_record_death(&mut self, attacker: Option<usize>, victim: usize) {
-        self.chrs[victim].deaths += 1;
-        match attacker {
-            Some(a) if a != victim => self.chrs[a].kills += 1,
-            _ => self.chrs[victim].suicides += 1,
-        }
-        self.push_event(pd_core::events::Event::Kill { killer: attacker.map(|a| a as u8), victim: victim as u8 });
+        self.mpstats_record_death(attacker.map_or(-1, |a| a as i32), victim as i32);
+        let w = self.ab(victim).weaponnum;
+        self.botinv_drop(victim, w, true);
     }
 
     /// `chr_tick_die` (`chraction.c:8295`): when the death animation reaches its

@@ -113,7 +113,8 @@ pub struct Stage {
     /// (`g_SpawnPoints`, `setup.c`).
     pub spawn_pads: Vec<usize>,
     /// The rest of `intro[]` and `props[]`, one JSON object per setup macro
-    /// (`{type, <param>: value}`), for the pickups (M8) and scenarios (M10).
+    /// (`{type, <param>: value}`), for the pickups (`props::pickup`) and the
+    /// scenarios (M10).
     pub intro: Vec<serde_json::Value>,
     pub props: Vec<serde_json::Value>,
     /// The BG triangles shots hit, with their textures' surface types.

@@ -266,8 +266,8 @@ impl Player {
             }
         } else {
             // B released after a short press: btapcount → bondactivateorreload
-            // (bondmove.c:1303, lv.c:1293). M8: current_player_interact (the
-            // pickups); with nothing to use it falls through to the reload.
+            // (bondmove.c:1303, lv.c:1293). current_player_interact (doors,
+            // lifts, switches: M9) has nothing to use, so the reload.
             if self.usedowntime > 0 {
                 self.gun.bgun_reload_if_possible(&res.gset, HAND_RIGHT);
                 self.gun.bgun_reload_if_possible(&res.gset, HAND_LEFT);

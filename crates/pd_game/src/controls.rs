@@ -10,7 +10,8 @@
 //! (the gun spike's key table):
 //! WASD move · mouse look · RMB (hold) aim · LMB fire · E / MMB use ·
 //! R reload · Q next gun · 1-0 pick a gun (by inventory slot) · Ctrl or C crouch down ·
-//! Space crouch up · ↑/↓ zoom · Esc frees the mouse (a click takes it back).
+//! Space crouch up · ↑/↓ zoom · Enter START (the pause menu) · Esc frees the mouse
+//! (a click takes it back). The pause menu reads the controllers as the menus do.
 //!
 //! Keyboard (menus; it drives controller [`Controls::kb_player`]): arrows / WASD
 //! D-pad · Enter A · Esc B · Space START · Z Z · Q / E L / R · Backspace the name
@@ -83,6 +84,7 @@ fn pad_input(inp: &mut PlayerInput, r: Reading) {
     inp.c_down = b(D_CBUTTONS);
     inp.c_left = b(L_CBUTTONS);
     inp.c_right = b(R_CBUTTONS);
+    inp.start = b(START_BUTTON);
 }
 
 pub struct Controls {
@@ -92,13 +94,11 @@ pub struct Controls {
     pub start_taps: [bool; MAX_PADS],
     /// The mouse is captured for mouse look.
     pub captured: bool,
-    /// Last tick's pad buttons, for START's edge in a match.
-    prev_match_buttons: [u16; MAX_PADS],
 }
 
 impl Controls {
     pub fn new() -> Controls {
-        Controls { kb_player: 0, start_taps: [false; MAX_PADS], captured: false, prev_match_buttons: [0; MAX_PADS] }
+        Controls { kb_player: 0, start_taps: [false; MAX_PADS], captured: false }
     }
 
     /// This tick's four controllers and the keyboard delete, for the menus.
@@ -135,17 +135,15 @@ impl Controls {
         (out, back2)
     }
 
-    /// This tick's controls for `n` players in a match, and whether anyone
-    /// pressed START (a pad's START, or Enter on the keyboard).
-    pub fn read_match(&mut self, input: &Input, n: usize) -> (Vec<PlayerInput>, bool) {
+    /// This tick's controls for `n` players in a match. START is held (the
+    /// sim takes its presses, `bmove_process_input`): a pad's, or Enter on the
+    /// keyboard.
+    pub fn read_match(&mut self, input: &Input, n: usize) -> Vec<PlayerInput> {
         let mut out = vec![PlayerInput::default(); n];
-        let mut start = false;
         for (i, inp) in out.iter_mut().enumerate() {
             let kb = i == self.kb_player;
             if let Some(p) = input.pads.as_ref().and_then(|p| p.pad(i)) {
                 let r = pad_reading(&p);
-                start |= r.buttons & !self.prev_match_buttons[i] & START_BUTTON != 0;
-                self.prev_match_buttons[i] = r.buttons;
                 // The keyboard's player plays the PC way until its pad is touched.
                 if !kb || r.buttons != 0 || r.stick != (0, 0) {
                     pad_input(inp, r);
@@ -153,10 +151,10 @@ impl Controls {
             }
             if kb {
                 self.keyboard_input(input, inp);
+                inp.start |= input.key_down(KeyCode::Enter) || input.key_down(KeyCode::NumpadEnter);
             }
         }
-        start |= input.key_pressed(KeyCode::Enter) || input.key_pressed(KeyCode::NumpadEnter);
-        (out, start)
+        out
     }
 
     /// The keyboard and mouse the PC port's way (`CONTROLMODE_PC`), merged into

@@ -547,6 +547,39 @@ pub fn measure(f: &Font, text: &str, lineheight: i32) -> (i32, i32) {
     (h, w.max(longest))
 }
 
+/// `TIMEPRECISION_*` (`constants.h:4395`).
+pub const TIMEPRECISION_DAYS: usize = 0;
+pub const TIMEPRECISION_HOURS: usize = 1;
+pub const TIMEPRECISION_MINUTES: usize = 2;
+pub const TIMEPRECISION_SECONDS: usize = 3;
+pub const TIMEPRECISION_HUNDREDTHS: usize = 4;
+
+/// `format_time` (`savebuffer.c:610`): `time60` as days:hours:minutes:seconds
+/// :hundredths down to `precision`, leading zero parts left out (minutes on
+/// are always shown): `"4:07"`, `"1:02:03"`.
+pub fn format_time(time60: i32, precision: usize) -> String {
+    let mut parts = [0i32; 5];
+    parts[4] = time60 % 60 * 100 / 60;
+    parts[3] = time60 / 60;
+    parts[2] = parts[3] / 60;
+    parts[1] = parts[2] / 60;
+    parts[0] = parts[1] / 24;
+    parts[3] %= 60;
+    parts[2] %= 60;
+    parts[1] %= 24;
+    let mut out = String::new();
+    let mut donefirst = false;
+    for (i, &p) in parts.iter().enumerate().take(precision + 1) {
+        if donefirst {
+            out.push_str(&format!(":{p:02}"));
+        } else if p != 0 || i >= TIMEPRECISION_MINUTES {
+            out.push_str(&p.to_string());
+            donefirst = true;
+        }
+    }
+    out
+}
+
 /// `text_wrap` (text.c:2397, NTSC).
 pub fn wrap(wrapwidth: i32, src: &str, f: &Font) -> String {
     let src = bytes(src);
@@ -870,6 +903,14 @@ mod tests {
         assert!(lit.iter().any(|p| p[1] / p[3] > 0.5 && p[0] < 0.1), "green core");
         assert!(lit.iter().any(|p| p[1] / p[3] < 0.05 && p[3] > 0.3), "dark halo");
         assert!(x > 4, "the pen moved past the glyph");
+    }
+
+    #[test]
+    fn format_time_leaves_out_leading_zero_parts() {
+        assert_eq!(format_time(0, TIMEPRECISION_SECONDS), "0:00");
+        assert_eq!(format_time((4 * 60 + 7) * 60 + 30, TIMEPRECISION_SECONDS), "4:07");
+        assert_eq!(format_time((62 * 60 + 3) * 60, TIMEPRECISION_SECONDS), "1:02:03");
+        assert_eq!(format_time(90, TIMEPRECISION_HUNDREDTHS), "0:01:50");
     }
 
     #[test]

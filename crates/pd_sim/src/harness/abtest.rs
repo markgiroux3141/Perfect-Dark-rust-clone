@@ -112,7 +112,7 @@ pub fn run_match(mut w: World, seconds: u32) -> MatchMetrics {
             }
         }
     }
-    m.kills = w.chrs[first..].iter().map(|c| c.kills).sum();
+    m.kills = (first..w.chrs.len()).map(|i| w.mp_chr_kills(i)).sum();
     m.repaths = w.navstats.repaths;
     m.gotos = [w.navstats.gotos, w.navstats.goto_no_start, w.navstats.goto_no_end, w.navstats.goto_no_route];
     m.shots = w.navstats.rounds;

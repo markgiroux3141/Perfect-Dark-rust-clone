@@ -1,5 +1,5 @@
-//! Posed PD models on the GPU (guns, hands and casings now; bodies, heads and
-//! props with M5-M8), from the matrices `pd_core::model` computes, through the
+//! Posed PD models on the GPU (guns, hands, casings, bodies, heads, held guns,
+//! the guns' objects and the pickups), from the matrices `pd_core::model` computes, through the
 //! one `n64::gpu` combiner path.
 //!
 //! A model draws the way `model_render` walks it: node by node in the file's

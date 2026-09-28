@@ -46,7 +46,7 @@ impl Walker {
 
     fn frame(&mut self, level: &TileLevel, input: &PlayerInput) {
         self.lv.frame(4, LvTickIn::default());
-        let env = WalkEnv { level, cyls: &[] };
+        let env = WalkEnv { level, cyls: &[], fastmovement: false, shieldfrac: 0.0, menuopen: false };
         self.p.tick(input, &self.lv, &env, &res(), &mut self.rng, &mut self.events);
     }
 }

@@ -522,6 +522,7 @@ impl World {
         let deactivated = o.flags & OBJFLAG_DEACTIVATED != 0;
         let lv = self.lv.clone();
         let level = self.level.clone();
+        let teams = self.setup.teams_enabled();
         let Some(a) = o.autogun.as_mut() else { return };
         a.fireleft = false;
         a.fireright = false;
@@ -560,8 +561,9 @@ impl World {
             let mut struck: Option<(usize, Vec3)> = None;
             if let Some((i, d)) = hitchr {
                 hitpos = gunpos + dir * d;
-                if i == owner {
-                    // A teammate (here, the owner) in the line of fire.
+                if i == owner || (owner < self.chrs.len() && teams && self.chrs[i].team == self.chrs[owner].team) {
+                    // A teammate entered the line of fire (chr_compare_teams
+                    // COMPARE_FRIENDS, propobj.c:9224).
                     makebeam = false;
                     fireleft = false;
                     fireright = false;

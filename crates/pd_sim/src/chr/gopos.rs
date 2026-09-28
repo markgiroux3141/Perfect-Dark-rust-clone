@@ -327,7 +327,8 @@ impl World {
     }
 
     /// `chr_gopos_consider_restart` (`chraction.c:5504`): a leg that takes twice
-    /// its running time plus 5 s restarts (`bot_check_fetch`: route again).
+    /// its running time plus 5 s restarts (`bot_check_fetch`: a simulant
+    /// fetching gives up, else route again).
     fn chr_gopos_consider_restart(&mut self, i: usize) {
         let lv60 = self.lv.lvupdate60 as u16;
         let c = &self.chrs[i];
@@ -340,9 +341,12 @@ impl World {
             let value = (base * 2 + 300).min(0xffff);
             self.chrs[i].act_gopos.restartttl = value as u16;
         } else if c.act_gopos.restartttl <= lv60 {
-            // bot_check_fetch: not fetching (M8), so route again.
-            let end = c.act_gopos.endpos;
-            self.chr_go_to_room_pos(i, end);
+            if c.aibot.is_some() {
+                self.bot_check_fetch(i);
+            } else {
+                let end = c.act_gopos.endpos;
+                self.chr_go_to_room_pos(i, end);
+            }
         } else {
             self.chrs[i].act_gopos.restartttl -= lv60;
         }

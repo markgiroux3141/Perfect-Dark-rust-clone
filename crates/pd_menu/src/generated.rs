@@ -213,47 +213,7 @@ pub static MP_BODIES: &[MpBody] = &[
     MpBody { bodynum: 0, name: tx(B_OPTIONS, 70), headnum: 1000, requirefeature: 64 },
 ];
 
-pub static MP_WEAPONS: &[MpWeapon] = &[
-    MpWeapon { weaponnum: 0, priammotype: 0, priammoqty: 0, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 0, model: 280, extrascale: 256 },
-    MpWeapon { weaponnum: 2, priammotype: 1, priammoqty: 80, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 0, model: 245, extrascale: 256 },
-    MpWeapon { weaponnum: 3, priammotype: 1, priammoqty: 80, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 5, model: 251, extrascale: 256 },
-    MpWeapon { weaponnum: 4, priammotype: 1, priammoqty: 80, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 6, model: 252, extrascale: 256 },
-    MpWeapon { weaponnum: 5, priammotype: 1, priammoqty: 80, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 0, model: 246, extrascale: 256 },
-    MpWeapon { weaponnum: 6, priammotype: 1, priammoqty: 92, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 7, model: 247, extrascale: 256 },
-    MpWeapon { weaponnum: 7, priammotype: 1, priammoqty: 64, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 8, model: 250, extrascale: 256 },
-    MpWeapon { weaponnum: 8, priammotype: 10, priammoqty: 50, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 0, model: 248, extrascale: 256 },
-    MpWeapon { weaponnum: 9, priammotype: 10, priammoqty: 50, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 9, model: 249, extrascale: 256 },
-    MpWeapon { weaponnum: 10, priammotype: 2, priammoqty: 100, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 0, model: 253, extrascale: 256 },
-    MpWeapon { weaponnum: 11, priammotype: 2, priammoqty: 150, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 0, model: 258, extrascale: 256 },
-    MpWeapon { weaponnum: 12, priammotype: 2, priammoqty: 150, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 10, model: 259, extrascale: 256 },
-    MpWeapon { weaponnum: 13, priammotype: 2, priammoqty: 150, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 13, model: 260, extrascale: 256 },
-    MpWeapon { weaponnum: 14, priammotype: 2, priammoqty: 150, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 11, model: 261, extrascale: 256 },
-    MpWeapon { weaponnum: 15, priammotype: 4, priammoqty: 150, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 0, model: 255, extrascale: 256 },
-    MpWeapon { weaponnum: 16, priammotype: 4, priammoqty: 150, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 12, model: 257, extrascale: 256 },
-    MpWeapon { weaponnum: 17, priammotype: 4, priammoqty: 100, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 0, model: 254, extrascale: 256 },
-    MpWeapon { weaponnum: 18, priammotype: 4, priammoqty: 150, secammotype: 11, secammoqty: 16, hasweapon: 1, unlockfeature: 3, model: 256, extrascale: 256 },
-    MpWeapon { weaponnum: 19, priammotype: 5, priammoqty: 16, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 14, model: 262, extrascale: 256 },
-    MpWeapon { weaponnum: 20, priammotype: 15, priammoqty: 200, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 15, model: 263, extrascale: 256 },
-    MpWeapon { weaponnum: 21, priammotype: 4, priammoqty: 50, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 0, model: 268, extrascale: 256 },
-    MpWeapon { weaponnum: 22, priammotype: 6, priammoqty: 10, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 1, model: 267, extrascale: 256 },
-    MpWeapon { weaponnum: 23, priammotype: 11, priammoqty: 16, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 16, model: 265, extrascale: 256 },
-    MpWeapon { weaponnum: 24, priammotype: 8, priammoqty: 3, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 0, model: 264, extrascale: 256 },
-    MpWeapon { weaponnum: 25, priammotype: 8, priammoqty: 3, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 4, model: 266, extrascale: 256 },
-    MpWeapon { weaponnum: 26, priammotype: 9, priammoqty: 5, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 0, model: 271, extrascale: 256 },
-    MpWeapon { weaponnum: 27, priammotype: 3, priammoqty: 10, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 17, model: 269, extrascale: 256 },
-    MpWeapon { weaponnum: 28, priammotype: 19, priammoqty: 50, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 2, model: 270, extrascale: 256 },
-    MpWeapon { weaponnum: 30, priammotype: 7, priammoqty: 5, secammotype: 0, secammoqty: 0, hasweapon: 0, unlockfeature: 0, model: 274, extrascale: 256 },
-    MpWeapon { weaponnum: 31, priammotype: 18, priammoqty: 3, secammotype: 0, secammoqty: 0, hasweapon: 0, unlockfeature: 18, model: 272, extrascale: 256 },
-    MpWeapon { weaponnum: 32, priammotype: 14, priammoqty: 5, secammotype: 0, secammoqty: 0, hasweapon: 0, unlockfeature: 0, model: 275, extrascale: 384 },
-    MpWeapon { weaponnum: 33, priammotype: 13, priammoqty: 5, secammotype: 0, secammoqty: 0, hasweapon: 0, unlockfeature: 19, model: 276, extrascale: 384 },
-    MpWeapon { weaponnum: 34, priammotype: 12, priammoqty: 5, secammotype: 0, secammoqty: 0, hasweapon: 0, unlockfeature: 20, model: 277, extrascale: 384 },
-    MpWeapon { weaponnum: 29, priammotype: 0, priammoqty: 0, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 79, model: 405, extrascale: 512 },
-    MpWeapon { weaponnum: 47, priammotype: 0, priammoqty: 0, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 21, model: 243, extrascale: 256 },
-    MpWeapon { weaponnum: 49, priammotype: 0, priammoqty: 0, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 23, model: 302, extrascale: 256 },
-    MpWeapon { weaponnum: 35, priammotype: 0, priammoqty: 0, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 24, model: 303, extrascale: 256 },
-    MpWeapon { weaponnum: 91, priammotype: 0, priammoqty: 0, secammotype: 0, secammoqty: 0, hasweapon: 1, unlockfeature: 22, model: 244, extrascale: 256 },
-    MpWeapon { weaponnum: 92, priammotype: 0, priammoqty: 0, secammotype: 0, secammoqty: 0, hasweapon: 0, unlockfeature: 0, model: 0, extrascale: 0 },
-];
+pub use pd_core::mpweapons::MP_WEAPONS;
 
 pub static MP_WEAPON_SETS: &[MpWeaponSet] = &[
     MpWeaponSet { name: tx(B_MPWEAPONS, 55), slots: [2, 5, 7, 6, 91, 92], requirefeatures: [8, 7, 0, 0], slotsiflocked: [2, 5, 2, 8, 91, 92] },
@@ -1742,6 +1702,234 @@ pub static G_CI_MENU_VIA_PC_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
     title: P::Text(tx(B_OPTIONS, 116)),
     items: &G_MAIN_MENU_MENU_ITEMS,
     handler: Some(h::menudialog_main_menu),
+    flags: MENUDIALOGFLAG_STARTSELECTS,
+    nextsibling: None,
+};
+
+pub static G_MP_END_GAME_MENU_ITEMS: [MenuItem; 5] = [
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: MENUITEMFLAG_SELECTABLE_CENTRE | MENUITEMFLAG_LESSHEIGHT, param2: P::Text(tx(B_MPMENU, 291)), param3: P::Num(0), handler: H::None },
+    MenuItem { ty: MENUITEMTYPE_SEPARATOR, param: 0, flags: 0, param2: P::Num(130), param3: P::Num(0), handler: H::None },
+    MenuItem { ty: MENUITEMTYPE_SELECTABLE, param: 0, flags: MENUITEMFLAG_SELECTABLE_CLOSESDIALOG | MENUITEMFLAG_SELECTABLE_CENTRE, param2: P::Text(tx(B_MPMENU, 292)), param3: P::Num(0), handler: H::None },
+    MenuItem { ty: MENUITEMTYPE_SELECTABLE, param: 0, flags: MENUITEMFLAG_SELECTABLE_CENTRE, param2: P::Text(tx(B_MPMENU, 293)), param3: P::Num(0), handler: H::Fn(h::menuhandler_mp_end_game) },
+    MenuItem::END,
+];
+
+pub static G_MP_PAUSE_CONTROL_MENU_ITEMS: [MenuItem; 10] = [
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: MENUITEMFLAG_SELECTABLE_CENTRE, param2: P::Fn(h::mp_menu_text_challenge_name), param3: P::Num(0), handler: H::Fn(h::menuhandler00178018) },
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: MENUITEMFLAG_SELECTABLE_CENTRE, param2: P::Fn(h::mp_menu_text_scenario_name), param3: P::Num(0), handler: H::None },
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: MENUITEMFLAG_SMALLFONT, param2: P::Text(tx(B_MPWEAPONS, 162)), param3: P::Fn(h::mp_menu_text_in_game_limit), handler: H::Fn(h::menuhandler_mp_in_game_limit_label) },
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 1, flags: MENUITEMFLAG_SMALLFONT, param2: P::Text(tx(B_MPWEAPONS, 163)), param3: P::Fn(h::mp_menu_text_in_game_limit), handler: H::Fn(h::menuhandler_mp_in_game_limit_label) },
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 2, flags: MENUITEMFLAG_SMALLFONT, param2: P::Text(tx(B_MPWEAPONS, 164)), param3: P::Fn(h::mp_menu_text_in_game_limit), handler: H::Fn(h::menuhandler_mp_in_game_limit_label) },
+    MenuItem { ty: MENUITEMTYPE_SEPARATOR, param: 0, flags: 0, param2: P::Num(130), param3: P::Num(0), handler: H::None },
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: 0, param2: P::Text(tx(B_MPMENU, 286)), param3: P::Fn(h::menutext_match_time), handler: H::None },
+    MenuItem { ty: MENUITEMTYPE_SELECTABLE, param: 1, flags: MENUITEMFLAG_SELECTABLE_CENTRE, param2: P::Fn(h::menutext_pause_or_unpause), param3: P::Num(0), handler: H::Fn(h::menuhandler_mp_pause) },
+    MenuItem { ty: MENUITEMTYPE_SELECTABLE, param: 0, flags: MENUITEMFLAG_SELECTABLE_OPENSDIALOG | MENUITEMFLAG_SELECTABLE_CENTRE, param2: P::Text(tx(B_MPMENU, 287)), param3: P::Num(0), handler: H::Dialog(&G_MP_END_GAME_MENU_DIALOG) },
+    MenuItem::END,
+];
+
+pub static G_MP2_P_MISSION_INVENTORY_MENU_ITEMS: [MenuItem; 3] = [
+    MenuItem { ty: MENUITEMTYPE_LIST, param: 0, flags: 0, param2: P::Num(120), param3: P::Num(66), handler: H::Fn(h::menuhandler_inventory_list) },
+    MenuItem { ty: MENUITEMTYPE_MARQUEE, param: 0, flags: MENUITEMFLAG_SMALLFONT | MENUITEMFLAG_MARQUEE_FADEBOTHSIDES, param2: P::Fn(h::mp_menu_text_weapon_description), param3: P::Num(0), handler: H::None },
+    MenuItem::END,
+];
+
+pub static G_MP_IN_GAME_PLAYER_STATS_MENU_ITEMS: [MenuItem; 2] = [
+    MenuItem { ty: MENUITEMTYPE_PLAYERSTATS, param: 0, flags: 0, param2: P::Num(0), param3: P::Num(0), handler: H::Fn(h::mp_stats_for_player_dropdown_handler) },
+    MenuItem::END,
+];
+
+pub static G_MP_PLAYER_RANKING_MENU_ITEMS: [MenuItem; 2] = [
+    MenuItem { ty: MENUITEMTYPE_RANKING, param: 0, flags: 0, param2: P::Num(0), param3: P::Num(0), handler: H::None },
+    MenuItem::END,
+];
+
+pub static G_MP_TEAM_RANKINGS_MENU_ITEMS: [MenuItem; 2] = [
+    MenuItem { ty: MENUITEMTYPE_RANKING, param: 0, flags: 0, param2: P::Num(1), param3: P::Num(0), handler: H::None },
+    MenuItem::END,
+];
+
+pub static G_MP_GAME_OVER_MENU_ITEMS: [MenuItem; 10] = [
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: MENUITEMFLAG_LESSLEFTPADDING | MENUITEMFLAG_LABEL_CUSTOMCOLOUR, param2: P::Fn(h::mp_get_current_player_name), param3: P::Fn(h::mp_menu_text_placement_with_suffix), handler: H::Fn(h::mp_placement_menu_handler) },
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: MENUITEMFLAG_LABEL_CUSTOMCOLOUR, param2: P::Text(tx(B_MPMENU, 261)), param3: P::Fn(h::mp_menu_text_player_title), handler: H::Fn(h::mp_player_title_menu_handler) },
+    MenuItem { ty: MENUITEMTYPE_SEPARATOR, param: 0, flags: 0, param2: P::Num(0), param3: P::Num(0), handler: H::None },
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: MENUITEMFLAG_LESSLEFTPADDING | MENUITEMFLAG_SMALLFONT, param2: P::Text(tx(B_MPMENU, 262)), param3: P::Num(0), handler: H::None },
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: MENUITEMFLAG_SELECTABLE_CENTRE | MENUITEMFLAG_LABEL_ALTCOLOUR, param2: P::Fn(h::mp_menu_text_weapon_of_choice_name), param3: P::Num(0), handler: H::None },
+    MenuItem { ty: MENUITEMTYPE_SEPARATOR, param: 0, flags: 0, param2: P::Num(0), param3: P::Num(0), handler: H::None },
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: MENUITEMFLAG_LESSLEFTPADDING | MENUITEMFLAG_SMALLFONT | MENUITEMFLAG_LIST_CUSTOMRENDER, param2: P::Text(tx(B_MPMENU, 263)), param3: P::Num(0), handler: H::Fn(h::mp_awards_menu_handler) },
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: MENUITEMFLAG_SELECTABLE_CENTRE | MENUITEMFLAG_LABEL_ALTCOLOUR, param2: P::Fn(h::mp_menu_text_award1), param3: P::Num(0), handler: H::None },
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: MENUITEMFLAG_SELECTABLE_CENTRE | MENUITEMFLAG_LABEL_ALTCOLOUR, param2: P::Fn(h::mp_menu_text_award2), param3: P::Num(0), handler: H::None },
+    MenuItem::END,
+];
+
+pub static G_MP_ENDSCREEN_CONFIRM_NAME_MENU_ITEMS: [MenuItem; 3] = [
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: MENUITEMFLAG_LESSLEFTPADDING, param2: P::Text(tx(B_MPWEAPONS, 250)), param3: P::Num(0), handler: H::None },
+    MenuItem { ty: MENUITEMTYPE_KEYBOARD, param: 0, flags: 0, param2: P::Num(0), param3: P::Num(0), handler: H::Fn(h::mp_confirm_player_name_handler) },
+    MenuItem::END,
+];
+
+pub static G_MP_ENDSCREEN_SAVE_PLAYER_MENU_ITEMS: [MenuItem; 4] = [
+    MenuItem { ty: MENUITEMTYPE_LABEL, param: 0, flags: MENUITEMFLAG_LESSLEFTPADDING, param2: P::Text(tx(B_MPWEAPONS, 247)), param3: P::Num(0), handler: H::None },
+    MenuItem { ty: MENUITEMTYPE_SELECTABLE, param: 0, flags: MENUITEMFLAG_SELECTABLE_OPENSDIALOG | MENUITEMFLAG_SELECTABLE_CLOSESDIALOG | MENUITEMFLAG_SELECTABLE_CENTRE, param2: P::Text(tx(B_MPWEAPONS, 248)), param3: P::Num(0), handler: H::Dialog(&G_MP_ENDSCREEN_CONFIRM_NAME_MENU_DIALOG) },
+    MenuItem { ty: MENUITEMTYPE_SELECTABLE, param: 0, flags: MENUITEMFLAG_SELECTABLE_CLOSESDIALOG | MENUITEMFLAG_SELECTABLE_CENTRE, param2: P::Text(tx(B_MPWEAPONS, 249)), param3: P::Num(0), handler: H::None },
+    MenuItem::END,
+];
+
+pub static G_MP_END_GAME_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpEndGameMenuDialog",
+    ty: MENUDIALOGTYPE_DANGER,
+    title: P::Text(tx(B_MPMENU, 290)),
+    items: &G_MP_END_GAME_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: None,
+};
+
+pub static G_MP_PAUSE_CONTROL_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpPauseControlMenuDialog",
+    ty: MENUDIALOGTYPE_DEFAULT,
+    title: P::Text(tx(B_MPMENU, 285)),
+    items: &G_MP_PAUSE_CONTROL_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: None,
+};
+
+pub static G_MP_PAUSE_INVENTORY_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpPauseInventoryMenuDialog",
+    ty: MENUDIALOGTYPE_DEFAULT,
+    title: P::Text(tx(B_MPMENU, 284)),
+    items: &G_MP2_P_MISSION_INVENTORY_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: Some(&G_MP_PAUSE_CONTROL_MENU_DIALOG),
+};
+
+pub static G_MP_PAUSE_PLAYER_STATS_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpPausePlayerStatsMenuDialog",
+    ty: MENUDIALOGTYPE_DEFAULT,
+    title: P::DFn(h::title_mp_menu_title_stats_for),
+    items: &G_MP_IN_GAME_PLAYER_STATS_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: Some(&G_MP_PAUSE_INVENTORY_MENU_DIALOG),
+};
+
+pub static G_MP_ENDSCREEN_PLAYER_STATS_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpEndscreenPlayerStatsMenuDialog",
+    ty: MENUDIALOGTYPE_DEFAULT,
+    title: P::DFn(h::title_mp_menu_title_stats_for),
+    items: &G_MP_IN_GAME_PLAYER_STATS_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: None,
+};
+
+pub static G_MP_PAUSE_PLAYER_RANKING_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpPausePlayerRankingMenuDialog",
+    ty: MENUDIALOGTYPE_DEFAULT,
+    title: P::Text(tx(B_MPMENU, 276)),
+    items: &G_MP_PLAYER_RANKING_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: Some(&G_MP_PAUSE_PLAYER_STATS_MENU_DIALOG),
+};
+
+pub static G_MP_ENDSCREEN_PLAYER_RANKING_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpEndscreenPlayerRankingMenuDialog",
+    ty: MENUDIALOGTYPE_DEFAULT,
+    title: P::Text(tx(B_MPMENU, 276)),
+    items: &G_MP_PLAYER_RANKING_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: Some(&G_MP_ENDSCREEN_PLAYER_STATS_MENU_DIALOG),
+};
+
+pub static G_MP_PAUSE_TEAM_RANKINGS_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpPauseTeamRankingsMenuDialog",
+    ty: MENUDIALOGTYPE_DEFAULT,
+    title: P::Text(tx(B_MPMENU, 279)),
+    items: &G_MP_TEAM_RANKINGS_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: Some(&G_MP_PAUSE_PLAYER_RANKING_MENU_DIALOG),
+};
+
+pub static G_MP_ENDSCREEN_TEAM_RANKING_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpEndscreenTeamRankingMenuDialog",
+    ty: MENUDIALOGTYPE_DEFAULT,
+    title: P::Text(tx(B_MPMENU, 279)),
+    items: &G_MP_TEAM_RANKINGS_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: Some(&G_MP_ENDSCREEN_PLAYER_RANKING_MENU_DIALOG),
+};
+
+pub static G_MP_ENDSCREEN_IND_GAME_OVER_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpEndscreenIndGameOverMenuDialog",
+    ty: MENUDIALOGTYPE_DEFAULT,
+    title: P::Text(tx(B_MPMENU, 260)),
+    items: &G_MP_GAME_OVER_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: Some(&G_MP_ENDSCREEN_PLAYER_RANKING_MENU_DIALOG),
+};
+
+pub static G_MP_ENDSCREEN_TEAM_GAME_OVER_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpEndscreenTeamGameOverMenuDialog",
+    ty: MENUDIALOGTYPE_DEFAULT,
+    title: P::Text(tx(B_MPMENU, 260)),
+    items: &G_MP_GAME_OVER_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: Some(&G_MP_ENDSCREEN_TEAM_RANKING_MENU_DIALOG),
+};
+
+pub static G_MP_ENDSCREEN_CHALLENGE_COMPLETED_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpEndscreenChallengeCompletedMenuDialog",
+    ty: MENUDIALOGTYPE_SUCCESS,
+    title: P::Text(tx(B_MPWEAPONS, 165)),
+    items: &G_MP_TEAM_RANKINGS_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: Some(&G_MP_ENDSCREEN_IND_GAME_OVER_MENU_DIALOG),
+};
+
+pub static G_MP_ENDSCREEN_CHALLENGE_CHEATED_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpEndscreenChallengeCheatedMenuDialog",
+    ty: MENUDIALOGTYPE_DANGER,
+    title: P::Text(tx(B_MPWEAPONS, 167)),
+    items: &G_MP_TEAM_RANKINGS_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: Some(&G_MP_ENDSCREEN_IND_GAME_OVER_MENU_DIALOG),
+};
+
+pub static G_MP_ENDSCREEN_CHALLENGE_FAILED_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpEndscreenChallengeFailedMenuDialog",
+    ty: MENUDIALOGTYPE_DANGER,
+    title: P::Text(tx(B_MPWEAPONS, 166)),
+    items: &G_MP_TEAM_RANKINGS_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: Some(&G_MP_ENDSCREEN_IND_GAME_OVER_MENU_DIALOG),
+};
+
+pub static G_MP_ENDSCREEN_CONFIRM_NAME_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpEndscreenConfirmNameMenuDialog",
+    ty: MENUDIALOGTYPE_DEFAULT,
+    title: P::Text(tx(B_MPMENU, 142)),
+    items: &G_MP_ENDSCREEN_CONFIRM_NAME_MENU_ITEMS,
+    handler: None,
+    flags: 0,
+    nextsibling: None,
+};
+
+pub static G_MP_ENDSCREEN_SAVE_PLAYER_MENU_DIALOG: MenuDialogDef = MenuDialogDef {
+    name: "g_MpEndscreenSavePlayerMenuDialog",
+    ty: MENUDIALOGTYPE_DEFAULT,
+    title: P::Text(tx(B_MPWEAPONS, 246)),
+    items: &G_MP_ENDSCREEN_SAVE_PLAYER_MENU_ITEMS,
+    handler: None,
     flags: MENUDIALOGFLAG_STARTSELECTS,
     nextsibling: None,
 };

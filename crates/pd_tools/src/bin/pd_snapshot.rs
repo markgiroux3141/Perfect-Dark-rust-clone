@@ -14,7 +14,13 @@
 //! * `match [<code>] [--bots n] [--diff d] [--seed s] [--at s,s,...] [--duel]`:
 //!   a Combat match with simulants, the player's whole frame (M6);
 //! * `lab [<code>] [--bots n] [--diff d] [--seed s] [--at s] [--ours]`: `pd_lab`'s
-//!   top-down map of a simulants-only match (M6).
+//!   top-down map of a simulants-only match (M6);
+//! * `flow [--score n] [--minutes m] [--seed s] <steps...>`: a match with the
+//!   menus over it under a scripted controller: the pause menu, the kill feed,
+//!   the end screens, back to the menus (M7; the steps are in
+//!   `pd_tools::snapshot::flow`);
+//! * `pickups [<code>] [--weapons w,...] [--bots n] [--highlight]`: a match as
+//!   PD starts it, each weapon location's pickup, a pickup and its respawn (M8).
 
 use std::path::Path;
 
@@ -34,7 +40,9 @@ fn main() {
         "guns" => pd_tools::snapshot::guns::run(outdir, rest),
         "match" => pd_tools::snapshot::matchsnap::run(outdir, rest),
         "lab" => pd_tools::snapshot::matchsnap::run_lab(outdir, rest),
-        other => Err(format!("unknown target {other:?} (model, menu, stage, guns, match, lab)")),
+        "flow" => pd_tools::snapshot::flow::run(outdir, rest),
+        "pickups" => pd_tools::snapshot::pickups::run(outdir, rest),
+        other => Err(format!("unknown target {other:?} (model, menu, stage, guns, match, lab, flow, pickups)")),
     };
     match result {
         Ok(paths) => {

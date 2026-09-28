@@ -32,29 +32,50 @@ pub enum NavChoice {
 }
 
 /// A match setup: `players` humans in slots 0.., `bots` simulants of
-/// `difficulty` in slots 4.., bodies in turn from the MP list.
+/// `difficulty` in slots 4.., bodies in turn from the MP list, and no time or
+/// score limits (the harness measures behaviour, and a match that ends stops
+/// everything).
 pub fn setup(players: usize, bots: usize, difficulty: u8) -> MatchSetup {
     let players = (0..players).map(|i| MatchPlayer { slot: i as u8, handicap: 128, chr: MatchChr { name: format!("Player {}", i + 1), mpbodynum: MPBODY_DARK_COMBAT, ..Default::default() }, ..Default::default() }).collect();
     let simulants = (0..bots)
         .map(|k| MatchSimulant {
             slot: 4 + k as u8,
-            chr: MatchChr { name: format!("Sim {}", k + 1), mpbodynum: (k as u8 * 3) % 60, mpheadnum: (k as u8 * 5) % 40, team: 0 },
+            chr: MatchChr { name: format!("Sim {}", k + 1), mpbodynum: (k as u8 * 3) % 60, mpheadnum: (k as u8 * 5) % 40, team: 0, displayoptions: 0 },
             bottype: BOTTYPE_GENERAL,
             difficulty,
         })
         .collect();
-    MatchSetup { players, simulants, ..MatchSetup::default() }
+    MatchSetup { players, simulants, timelimit: 60, scorelimit: 100, teamscorelimit: 400, ..MatchSetup::default() }
 }
 
-/// A world on `stage` from `setup`, routing on `nav`, the simulants carrying
-/// [`SPIKE_MIX`] (single-wielded) unless `mix` is false.
+/// The Combat Simulator weapon set the tools start with when not handing out
+/// the spike's mix: the Falcon 2, CMP150, shotgun, grenades, rocket launcher
+/// and shield (`WEAPON_*`).
+pub const DEFAULT_SET: [u8; 6] = [WEAPON_FALCON2, WEAPON_CMP150, WEAPON_SHOTGUN, WEAPON_GRENADE, WEAPON_ROCKETLAUNCHER, WEAPON_MPSHIELD];
+
+/// `setup` with the weapon slots holding `weapons` (`WEAPON_*`, as the menus'
+/// `MPWEAPON_*` indexes).
+pub fn with_weapons(mut setup: MatchSetup, weapons: &[u8; 6]) -> MatchSetup {
+    for (s, &w) in weapons.iter().enumerate() {
+        setup.weapons[s] = pd_core::mp::mpweapon_index(w).unwrap_or(0);
+    }
+    setup
+}
+
+/// A world on `stage` from `setup`, routing on `nav`. With `mix` the harness
+/// arms everyone (not PD, which starts them unarmed): the simulants with
+/// [`SPIKE_MIX`] (single-wielded), the players with every weapon.
 pub fn world(stage: Arc<Stage>, level: Arc<TileLevel>, res: Arc<WorldRes>, setup: MatchSetup, nav: NavChoice, seed: u64, mix: bool) -> Result<World, String> {
+    let order = res.gset.order.clone();
     let mut w = World::new(setup, stage, level.clone(), res, seed)?;
     if nav == NavChoice::Ours {
         w.nav = Arc::new(generate(&level, &GenParams::default()).graph);
     }
     if mix {
         w.bot_loadout = (0..w.setup.simulants.len()).map(|k| Some((SPIKE_MIX[k % SPIKE_MIX.len()], false))).collect();
+        if !w.players.is_empty() {
+            w.harness_give_loadout(order);
+        }
     }
     Ok(w)
 }

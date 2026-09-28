@@ -208,7 +208,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
 
     if names.is_empty() {
         let mut world = range(res.clone(), n64)?;
-        let inv = world.players[0].gun.p.inventory.clone();
+        let inv = world.players[0].gun.p.inventory.weapons();
         for (weaponnum, dual) in inv {
             for d in [false, true] {
                 if d && !dual {

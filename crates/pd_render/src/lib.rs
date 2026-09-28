@@ -24,6 +24,7 @@ pub mod bg;
 pub mod fx;
 pub mod health;
 pub mod hud;
+pub mod hudmsg;
 pub mod models;
 pub mod post;
 pub mod view;
@@ -65,6 +66,10 @@ pub struct Renderer {
     pub three_point: bool,
     pub world_depth_copy: Option<wgpu::Texture>,
     pub hud_in_frame: bool,
+    /// The menus' frame to lay over the HUD (premultiplied, the player's
+    /// screen size; empty for none): `lv_render` draws `menu_render` after
+    /// the HUD, then the modal text over it.
+    pub menu_layer: Vec<[f32; 4]>,
 }
 
 /// `lights_set_for_room`'s light from a room's brightness (`dlights.c:303`),
@@ -85,6 +90,7 @@ fn lit_frame(proj: Mat4, look: Vec3, up: Vec3, lights: (f32, f32, Vec3), envcol:
     f.diffuse = [dif, dif, dif, 0.0];
     f.light_dir = (dir / 127.0).extend(0.0).to_array();
     f.envcol = envcol;
+    f.fogcol = envcol;
     f
 }
 
@@ -105,6 +111,7 @@ impl Renderer {
             three_point: false,
             world_depth_copy: None,
             hud_in_frame: true,
+            menu_layer: Vec::new(),
         }
     }
 
@@ -212,8 +219,22 @@ impl Renderer {
             if p.visionmode == VISIONMODE_SLAYERROCKET && p.slayerrocket == Some(o.id) {
                 continue;
             }
+            // A taken pickup is disabled until its last second (`obj_tick`).
+            if o.is_gone() {
+                continue;
+            }
             let mut frame = lit_frame(world_proj, p.look, p.up, obj_lights, env);
             let mut xlu = false;
+            // obj_render (`propobj.c:12701`): the last second of a respawn fades in.
+            if o.timetoregen > 0 && o.timetoregen < 60 {
+                frame.misc[0] = (60 - o.timetoregen) as f32 * 0.016_666_668;
+                xlu = true;
+            }
+            // The fog colour: the pickup highlight (scenario_highlight_prop,
+            // propobj.c:12839).
+            if let Some(h) = world.scenario_highlight_obj(pi, o) {
+                frame.fogcol = h.map(|v| v as f32 / 255.0);
+            }
             if let Some(e) = xray {
                 // In x-ray: the flat eraser colour through the fog at full
                 // weight, alpha 0..128 as the env alpha (BONDGUN_OBJ_XLU).
@@ -223,7 +244,7 @@ impl Renderer {
                 xlu = true;
             }
             let joints = o.init_matrices().iter().map(|m| w2e * *m).collect();
-            objdraws.push((o.def.clone(), Vec::new(), joints, frame, None, xlu));
+            objdraws.push((o.def.clone(), o.vis.clone(), joints, frame, None, xlu));
         }
 
         // The simulants (`chr_render`, `chr.c:3378`): the body, its head and the
@@ -233,7 +254,7 @@ impl Renderer {
         // SUBST: PD lights a chr by its room (`chr_render`'s shade colour) /
         // lit as the objects are, from the chr's floor room's brightness.
         // Another human's body is not posed in M6 (see `pd_sim::gun::shot`).
-        for c in world.chrs.iter().filter(|c| c.player.is_none() && c.onanyscreen) {
+        for (ci, c) in world.chrs.iter().enumerate().filter(|(_, c)| c.player.is_none() && c.onanyscreen) {
             let mut alpha = if c.fadealpha < 0.0 { 255.0 } else { c.fadealpha };
             if let Some(a) = c.aibot.as_ref().filter(|a| a.fadeintimer60 > 0) {
                 alpha = alpha * (120 - a.fadeintimer60) as f32 * (1.0 / 120.0);
@@ -243,6 +264,11 @@ impl Renderer {
             }
             let lights = gun_lights(world.lights.brightness(c.floorroom), false);
             let mut frame = lit_frame(world_proj, p.look, p.up, lights, env);
+            // The fog colour: the highlight (scenario_highlight_prop,
+            // chr.c:3482) in place of the shade colour.
+            if let Some(h) = world.scenario_highlight_chr(pi, ci) {
+                frame.fogcol = h.map(|v| v as f32 / 255.0);
+            }
             let mut xlu = alpha < 255.0;
             if xlu {
                 frame.misc[0] = alpha / 255.0;
@@ -345,12 +371,21 @@ impl Renderer {
                 speedpilltime: world.speedpill.time,
                 options: world.setup.players.get(pi).map_or(pd_core::mp::MatchPlayer::DEFAULT_OPTIONS, |m| m.options),
                 zoominfovy: p.zoominfovy,
-                health: p.health.player_is_health_visible().then(|| (p.health.apparenthealth, p.health.player_get_health_bar_height_frac())),
+                health: p.health.player_is_health_visible().then(|| (p.health.apparenthealth, p.health.apparentarmour, p.health.player_get_health_bar_height_frac())),
                 fovy: view.fovy,
                 fade: (p.health.colourscreen, p.health.colourscreenfrac),
+                hudmsgs: world.mp.hudmsgs.msgs.iter().filter(|m| m.playernum == pi).collect(),
             };
             let mut t = TextCtx { gfx: &mut self.hud_gfx, ts: &mut self.text, fonts, frac20: world.frac20 };
             hud::draw(&mut t, &hin);
+        }
+        // lv_render: menu_render (the pause and end-of-match menus), then
+        // mp_render_modal_text (`lv.c:1643`).
+        hud::composite_over(&mut self.hud_gfx, &self.menu_layer);
+        if let Some(fonts) = self.fonts.as_ref() {
+            let view = [p.cam.c_screenleft as i32, p.cam.c_screentop as i32, p.cam.c_screenwidth as i32, p.cam.c_screenheight as i32];
+            let mut t = TextCtx { gfx: &mut self.hud_gfx, ts: &mut self.text, fonts, frac20: world.frac20 };
+            hudmsg::mp_render_modal_text(&mut t, &world.res.lang, view, world.mp_modal_text(pi));
         }
         self.overlay.prepare(device, queue, &self.hud_gfx);
 
@@ -457,6 +492,8 @@ mod tests {
         let setup = MatchSetup { players: vec![MatchPlayer::default()], ..Default::default() };
         let mut w = World::new(setup, Arc::new(stage), Arc::new(level), Arc::new(WorldRes::load(&a).unwrap()), 1).unwrap();
         w.boards = fixtures::firing_range_boards();
+        // Not PD: armed as the gun tests are (a match starts unarmed).
+        w.harness_give_loadout(w.res.gset.order.clone());
         for _ in 0..200 {
             w.step(4, &[PlayerInput::default()]);
         }

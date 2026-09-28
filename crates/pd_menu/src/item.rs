@@ -2,8 +2,8 @@
 //!
 //! Item data blocks (`union menuitemdata *data`) are indices into the current
 //! player's `menu.blocks`; the item's dialog is an index into `menu.dialogs`.
-//! Ranking, controller and objectives items are not ported (the Combat
-//! Simulator setup never shows them).
+//! Controller and objectives items are not ported (the Combat Simulator never
+//! shows them).
 
 use pd_core::lang::tx;
 use super::menu::Ctx;
@@ -1419,7 +1419,7 @@ impl MenuSystem {
         let tw = self.measure_f(&suicides, FontId::Xs).1;
         let (mut x, mut y) = (ctx.x - tw + 121, ctx.y + 1);
         self.tc().render_v2(&mut x, &mut y, &suicides, FontId::Xs, main, ctx.width, ctx.height, 0, 0);
-        let buffer = format!("{}\n", mpchr.killcounts[playernum]);
+        let buffer = format!("{}\n", mpchr.stats.killcounts[playernum]);
         let tw2 = self.measure_f(&buffer, FontId::Sm).1;
         let (mut x, mut y) = (ctx.x - tw + 119 - tw2, ctx.y + 1);
         self.tc().render_v2(&mut x, &mut y, &buffer, FontId::Sm, 0xffff00ff, ctx.width, ctx.height, 0, 0);
@@ -1446,11 +1446,11 @@ impl MenuSystem {
                     let Some(other) = self.mpchr(i) else { continue };
                     let (mut x, mut y) = (ctx.x + 29, ctx.y + ypos);
                     self.tc().render_v2(&mut x, &mut y, &other.name, FontId::Sm, 0x00ffffff, ctx.width, ctx.height, 0, 0);
-                    let buffer = format!("{}\n", other.killcounts[playernum]);
+                    let buffer = format!("{}\n", other.stats.killcounts[playernum]);
                     let tw = self.measure_f(&buffer, FontId::Sm).1;
                     let (mut x, mut y) = (ctx.x - tw + 120, ctx.y + ypos);
                     self.tc().render_v2(&mut x, &mut y, &buffer, FontId::Sm, 0xff4040ff, ctx.width, ctx.height, 0, 0);
-                    let buffer = format!("{}\n", mpchr.killcounts[i]);
+                    let buffer = format!("{}\n", mpchr.stats.killcounts[i]);
                     let tw = self.measure_f(&buffer, FontId::Sm).1;
                     let (mut x, mut y) = (ctx.x - tw + 25, ctx.y + ypos);
                     self.tc().render_v2(&mut x, &mut y, &buffer, FontId::Sm, 0x00ff00ff, ctx.width, ctx.height, 0, 0);
@@ -1459,6 +1459,87 @@ impl MenuSystem {
             }
             self.menu_apply_scissor();
         }
+    }
+
+    // ---- ranking (menuitem.c:3236) ----
+
+    /// `menuitem_ranking_render` (menuitem.c:3236): the chrs (or, with
+    /// `param2` 1, the teams) best first, with their deaths (chrs only) and
+    /// scores, scrolling under a header line.
+    fn menuitem_ranking_render(&mut self, ctx: &Ctx) {
+        let Some(b) = ctx.data else { return };
+        let di = ctx.dialog;
+        let team = ctx.item.param2.num() == 1;
+        let rankings = if team { self.mp_get_team_rankings() } else { self.mp_get_player_rankings() };
+        let numrows = rankings.len() as i32;
+        // Gap from last item to bottom of dialog + header height.
+        let gap = (numrows * (LINEHEIGHT - 1) - ctx.height + 18).max(0);
+        if self.blk(b).scrolloffset as i32 > gap {
+            self.blk(b).scrolloffset = gap as i16;
+        }
+        let dimmed = self.dimmed(di);
+        let textcolour = dim(self.mix(di, Pal::ItemUnfocused), dimmed);
+        if !team {
+            let deaths = self.lang(tx(gd::B_MPMENU, 277));
+            let tw = self.measure_f(&deaths, FontId::Xs).1;
+            let (mut x, mut y) = (ctx.x - tw + 91, ctx.y + 1);
+            self.tc().render_v2(&mut x, &mut y, &deaths, FontId::Xs, textcolour, ctx.width, ctx.height, 0, 0);
+        }
+        let score = self.lang(tx(gd::B_MPMENU, 278));
+        let tw = self.measure_f(&score, FontId::Xs).1;
+        let (mut x, mut y) = (ctx.x - tw + 120, ctx.y + 1);
+        self.tc().render_v2(&mut x, &mut y, &score, FontId::Xs, textcolour, ctx.width, ctx.height, 0, 0);
+        let mut linecolour1 = self.mix(di, Pal::DialogBorder1);
+        if dimmed {
+            linecolour1 = (colour_blend(linecolour1, 0, 44) & 0xffffff00) | (linecolour1 & 0xff);
+        }
+        linecolour1 = (self.draw.text.apply_projection_colour(ctx.x, ctx.y + 2, -129i32 as u32) & 0xff) | (linecolour1 & 0xffffff00);
+        // Horizontal line between header and body
+        self.menugfx_draw_filled_rect(ctx.x, ctx.y + 9, ctx.x + ctx.width, ctx.y + 10, linecolour1, linecolour1);
+        self.set_scissor_clamped(ctx.x, ctx.y + 10, ctx.x + ctx.width, ctx.y + ctx.height - 1);
+        let scroll = self.blk(b).scrolloffset as i32;
+        for (i, r) in rankings.iter().enumerate() {
+            let i = i as i32;
+            let weight = if numrows >= 2 { (i as f32 / (numrows - 1) as f32 * 255.0) as u32 } else { 0 };
+            let y0 = ctx.y + i * 10 - scroll + 14;
+            let name = if team {
+                self.mp.bossfile.teamnames.get(r.teamnum).cloned().unwrap_or_default()
+            } else {
+                r.mpchr.and_then(|s| self.mpchr(s)).map(|c| c.name).unwrap_or_default()
+            };
+            let (mut x, mut y) = (ctx.x + 5, y0);
+            self.tc().render_v2(&mut x, &mut y, &name, FontId::Sm, colour_blend(0x008888ff, 0x00ffffff, weight), ctx.width, ctx.height, 0, 0);
+            if !team {
+                // Deaths value (red)
+                let deaths = r.mpchr.and_then(|s| self.mpchr(s)).map_or(0, |c| c.stats.numdeaths);
+                let v = format!("{deaths}\n");
+                let tw = self.measure_f(&v, FontId::Sm).1;
+                let (mut x, mut y) = (ctx.x - tw + 91, y0);
+                self.tc().render_v2(&mut x, &mut y, &v, FontId::Sm, colour_blend(0xcf0000ff, 0xff4040ff, weight), ctx.width, ctx.height, 0, 0);
+            }
+            // Score value (green)
+            let v = format!("{}\n", r.score);
+            let tw = self.measure_f(&v, FontId::Sm).1;
+            let (mut x, mut y) = (ctx.x - tw + 120, y0);
+            self.tc().render_v2(&mut x, &mut y, &v, FontId::Sm, colour_blend(0x009f00ff, 0x00ff00ff, weight), ctx.width, ctx.height, 0, 0);
+        }
+        self.menu_apply_scissor();
+    }
+
+    /// `menuitem_ranking_tick` (menuitem.c:3465): the stick or the D-pad scrolls.
+    fn menuitem_ranking_tick(&mut self, inputs: &MenuInputs, tickflags: u32, b: usize) -> bool {
+        if tickflags & MENUTICKFLAG_ITEMISFOCUSED != 0 {
+            let mut intval = 0;
+            let mut f = (inputs.yaxis as f32).abs();
+            if f > 20.0 {
+                f = (f - 20.0) / 5.0 * self.lv.diffframe60f;
+                intval = if inputs.yaxis < 0 { f as i32 } else { -(f as i32) };
+            }
+            intval += inputs.updownheld as i32 * 2 * self.lv.diffframe60;
+            let d = self.blk(b);
+            d.scrolloffset = (d.scrolloffset as i32 + intval).max(0) as i16;
+        }
+        true
     }
 
     // ---- model (menuitem.c:1824) ----
@@ -1491,6 +1572,7 @@ impl MenuSystem {
             MENUITEMTYPE_DROPDOWN => self.menuitem_dropdown_render(ctx),
             MENUITEMTYPE_KEYBOARD => self.menuitem_keyboard_render(ctx),
             MENUITEMTYPE_PLAYERSTATS => self.menuitem_player_stats_render(ctx),
+            MENUITEMTYPE_RANKING => self.menuitem_ranking_render(ctx),
             MENUITEMTYPE_CAROUSEL => self.menuitem_carousel_render(ctx),
             MENUITEMTYPE_MODEL => self.menuitem_model_render(ctx),
             _ => {}
@@ -1509,6 +1591,7 @@ impl MenuSystem {
             (MENUITEMTYPE_DROPDOWN, Some(b)) => self.menuitem_dropdown_tick(item, di, inputs, tickflags, b),
             (MENUITEMTYPE_KEYBOARD, Some(b)) => self.menuitem_keyboard_tick(item, inputs, tickflags, b),
             (MENUITEMTYPE_CAROUSEL, _) => self.menuitem_carousel_tick(item, inputs, tickflags),
+            (MENUITEMTYPE_RANKING, Some(b)) => self.menuitem_ranking_tick(inputs, tickflags, b),
             (MENUITEMTYPE_PLAYERSTATS, Some(b)) => {
                 if tickflags & MENUTICKFLAG_ITEMISFOCUSED != 0 && !self.dimmed(di) {
                     let mut intval = 0;
@@ -1543,6 +1626,8 @@ impl MenuSystem {
                 d.viewwidth = 50;
             }
             MENUITEMTYPE_SLIDER => self.blk(b).multiplier = 0,
+            // menuitem_ranking_init (menuitem.c:3500)
+            MENUITEMTYPE_RANKING => self.blk(b).scrolloffset = 0,
             MENUITEMTYPE_PLAYERSTATS => {
                 self.blk(b).scrolloffset = 0;
                 let p = self.mpplayernum;

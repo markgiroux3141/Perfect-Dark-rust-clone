@@ -17,7 +17,7 @@ use crate::world::World;
 
 /// A match on Complex with `players` humans and `bots` simulants of
 /// `difficulty`, carrying the spike's mix, routing on PD's graph.
-fn complex_world(players: usize, bots: usize, difficulty: u8, seed: u64) -> World {
+pub(crate) fn complex_world(players: usize, bots: usize, difficulty: u8, seed: u64) -> World {
     let (stage, level) = complex_arc();
     harness::world(stage, level, res(), harness::setup(players, bots, difficulty), NavChoice::Pd, seed, true).unwrap()
 }
@@ -28,7 +28,7 @@ fn ground(level: &TileLevel, p: Vec3) -> Vec3 {
 }
 
 /// `vv_theta` (degrees; forward = (−sin, 0, cos)) that faces from `a` to `b`.
-fn theta_towards(a: Vec3, b: Vec3) -> f32 {
+pub(crate) fn theta_towards(a: Vec3, b: Vec3) -> f32 {
     let t = (-(b.x - a.x)).atan2(b.z - a.z).to_degrees();
     if t < 0.0 {
         t + 360.0
@@ -39,7 +39,7 @@ fn theta_towards(a: Vec3, b: Vec3) -> f32 {
 
 /// A spawn pad with `ahead` cm of level floor in front of it, clear to see
 /// across at 60 and 150 cm: (the pad's floor, the floor ahead).
-fn open_spot(level: &TileLevel, stage: &Stage, ahead: f32) -> (Vec3, Vec3) {
+pub(crate) fn open_spot(level: &TileLevel, stage: &Stage, ahead: f32) -> (Vec3, Vec3) {
     for &p in &stage.spawn_pads {
         let pad = &stage.pads[p];
         let a = ground(level, pad.pos);
@@ -54,7 +54,7 @@ fn open_spot(level: &TileLevel, stage: &Stage, ahead: f32) -> (Vec3, Vec3) {
 
 /// One player and one simulant (its brain off, standing at `b`), after the
 /// first frames: the player at `a` facing it.
-fn duel(weapon: Option<u8>) -> (World, Vec3, Vec3) {
+pub(crate) fn duel(weapon: Option<u8>) -> (World, Vec3, Vec3) {
     let (stage, level) = complex();
     let mut w = complex_world(1, 1, BOTDIFF_NORMAL, SPIKE_SEED);
     w.bot_loadout = vec![weapon.map(|wn| (wn, false))];
@@ -68,7 +68,7 @@ fn duel(weapon: Option<u8>) -> (World, Vec3, Vec3) {
     (w, a, b)
 }
 
-fn step(w: &mut World, input: &PlayerInput) {
+pub(crate) fn step(w: &mut World, input: &PlayerInput) {
     w.step(4, std::slice::from_ref(input));
 }
 
@@ -153,8 +153,8 @@ fn a_seeded_match_is_reproducible_bit_for_bit() {
         for f in 0..60 * 40 {
             let input = if f % 90 < 60 { walk.clone() } else { PlayerInput { a_held: true, ..PlayerInput::default() } };
             step(&mut w, &input);
-            for c in &w.chrs {
-                trace.extend([c.pos.x.to_bits(), c.pos.y.to_bits(), c.pos.z.to_bits(), c.damage.to_bits(), c.kills, c.deaths, c.anim.frame.to_bits()]);
+            for (i, c) in w.chrs.iter().enumerate() {
+                trace.extend([c.pos.x.to_bits(), c.pos.y.to_bits(), c.pos.z.to_bits(), c.damage.to_bits(), w.mp_chr_kills(i), w.mp_chr_deaths(i), c.anim.frame.to_bits()]);
             }
             trace.push(w.players[0].bondhealth.to_bits());
             trace.push(w.take_events().len() as u32);
@@ -217,15 +217,16 @@ fn probe_complex_match() {
             let line: Vec<String> = w
                 .chrs
                 .iter()
-                .map(|c| {
+                .enumerate()
+                .map(|(i, c)| {
                     let a = c.aibot.as_ref().unwrap();
-                    format!("{:>6} y{:>4.0} {:?} {:?} K{}D{} t{:?}", c.name, c.manground, c.actiontype, a.distmode.map(|d| d.label()), c.kills, c.deaths, c.target)
+                    format!("{:>6} y{:>4.0} {:?} {:?} K{}D{} t{:?}", c.name, c.manground, c.actiontype, a.distmode.map(|d| d.label()), w.mp_chr_kills(i), w.mp_chr_deaths(i), c.target)
                 })
                 .collect();
             println!("t={:>3}s | {}", f / 60, line.join(" | "));
         }
     }
-    let kills: u32 = w.chrs.iter().map(|c| c.kills).sum();
+    let kills: u32 = (0..w.chrs.len()).map(|i| w.mp_chr_kills(i)).sum();
     println!("kills {kills} in 3 min; gotos {} (no start {}, no end {}, no route {}), repaths {}", w.navstats.gotos, w.navstats.goto_no_start, w.navstats.goto_no_end, w.navstats.goto_no_route, w.navstats.repaths);
 }
 
@@ -248,8 +249,8 @@ fn the_players_falcon_kills_a_simulant() {
         }
     }
     assert!(died_at.is_some(), "the simulant survived: damage {:.2}", w.chrs[1].damage);
-    assert_eq!(w.chrs[0].kills, 1);
-    assert_eq!(w.chrs[1].deaths, 1);
+    assert_eq!(w.mp_chr_kills(0), 1);
+    assert_eq!(w.mp_chr_deaths(1), 1);
     // chr_tick_die, then the 90-tick fade and bot_spawn.
     let mut faded = false;
     for _ in 0..60 * 10 {
@@ -343,8 +344,8 @@ fn a_simulant_kills_the_player_who_respawns() {
     assert!(died, "the player never died");
     assert!(respawned && w.spawns[0] >= 2, "no respawn (spawns {})", w.spawns[0]);
     assert_eq!(w.players[0].bondhealth, 1.0);
-    assert_eq!(w.chrs[0].deaths, 1);
-    assert_eq!(w.chrs[1].kills, 1);
+    assert_eq!(w.mp_chr_deaths(0), 1);
+    assert_eq!(w.mp_chr_kills(1), 1);
 }
 
 /// A deployed Laptop sentry shoots a simulant standing in front of it.
@@ -387,26 +388,43 @@ fn simulants_and_the_player_make_metal_footsteps() {
     let metal = &crate::chr::FOOTSTEP_SOUNDS[FLOORTYPE_METAL as usize * 8..FLOORTYPE_METAL as usize * 8 + 8];
     let mut w = complex_world(1, 2, BOTDIFF_NORMAL, SPIKE_SEED);
     w.bot_loadout = vec![Some((WEAPON_FALCON2, false)); 2];
-    let (mut bot_steps, mut my_steps) = (0, 0);
-    for _ in 0..60 * 20 {
+    // The player walks from the spawn: its own steps are centred, at full volume.
+    let (mut footfalls, mut bot_steps, mut my_steps) = (0, 0, 0);
+    for _ in 0..60 * 5 {
         step(&mut w, &PlayerInput { walk_y: 127, ..PlayerInput::default() });
         for e in w.take_events() {
             if let pd_core::events::Event::Sound { sound, volume, pan, .. } = e {
-                if metal.contains(&sound) {
-                    if pan == 0.0 && volume == 1.0 {
-                        my_steps += 1;
-                    } else {
-                        bot_steps += 1;
-                    }
+                if metal.contains(&sound) && pan == 0.0 && volume == 1.0 {
+                    my_steps += 1;
                 }
             }
         }
-        if w.players[0].isdead {
-            break;
+    }
+    // Then it stands beside a simulant: their footfalls, and the sounds it hears.
+    let c = &w.chrs[1];
+    let feet = (0..8)
+        .find_map(|k| {
+            let a = k as f32 * std::f32::consts::FRAC_PI_4;
+            let p = Vec3::new(c.pos.x + 150.0 * a.sin(), c.manground + 40.0, c.pos.z + 150.0 * a.cos());
+            let (y, poly) = w.level.cd_find_ground_at_cyl(p, 30.0);
+            (poly.is_some() && (y - c.manground).abs() < 30.0).then_some(Vec3::new(p.x, y, p.z))
+        })
+        .expect("floor beside the simulant");
+    harness::place_player(&mut w, 0, feet, 0.0);
+    for _ in 0..60 * 10 {
+        step(&mut w, &PlayerInput::default());
+        footfalls += w.chrs.iter().skip(1).filter(|c| c.footstep != 0 && c.floortype == FLOORTYPE_METAL).count();
+        for e in w.take_events() {
+            if let pd_core::events::Event::Sound { sound, .. } = e {
+                if metal.contains(&sound) {
+                    bot_steps += 1;
+                }
+            }
         }
     }
-    assert!(bot_steps > 10, "simulant footsteps: {bot_steps}");
     assert!(my_steps > 3, "player footsteps: {my_steps}");
+    assert!(footfalls > 10, "simulant footfalls on metal: {footfalls}");
+    assert!(bot_steps > 0, "none heard from the simulants");
 }
 
 /// The RC-P120's cloak hides the player from a simulant that isn't already
@@ -486,7 +504,7 @@ fn probe_duel() {
             let p = &w.players[0];
             let on = crate::chr::body::pos_is_onscreen(&p.cam, c.pos, c.effective_scale());
             let root = c.model.matrices.first().map(|m| m.w_axis.truncate());
-            println!("t{t} a{a} b{b} chr{} root{root:?} on{on} anyscreen{} p{} theta{} shots{} wn{} dmg{} hitpos{:?}", c.pos, c.onanyscreen, p.pos, p.theta, w.shots_fired[0], p.gun.bgun_get_weapon_num(0), c.damage, p.gun.hands[0].hitpos);
+            println!("t{t} a{a} b{b} chr{} root{root:?} on{on} anyscreen{} p{} theta{} shots{} wn{} dmg{} hitpos{:?}", c.pos, c.onanyscreen, p.pos, p.theta, w.shots_fired(0), p.gun.bgun_get_weapon_num(0), c.damage, p.gun.hands[0].hitpos);
         }
     }
 }
@@ -516,4 +534,74 @@ fn probe_hit_boxes() {
             println!("box {n} part {hitpart} {bbox:?} at {:?}", m.map(|m| m.w_axis.truncate()));
         }
     }
+}
+
+
+/// A duel with the simulant's brain on, 8 m apart, until `until` holds or 20 s.
+fn armed_duel(weapon: u8, until: &mut dyn FnMut(&World) -> bool) -> World {
+    let (mut w, _, _) = duel(Some(weapon));
+    w.bot_brains = true;
+    for _ in 0..60 * 20 {
+        step(&mut w, &PlayerInput::default());
+        if until(&w) {
+            break;
+        }
+    }
+    w
+}
+
+/// A simulant fires what it holds: rockets (here the launcher's homing ones,
+/// at its target) that blow up by the player.
+#[test]
+fn a_simulant_fires_rockets_that_explode_by_the_player() {
+    let mut rocket_seen = false;
+    let w = armed_duel(WEAPON_ROCKETLAUNCHER, &mut |w| {
+        rocket_seen |= w.props.objs.iter().any(|o| matches!(o.weaponnum, WEAPON_ROCKET | WEAPON_HOMINGROCKET) && o.projectile.is_some() && o.owner() == 1);
+        w.players[0].bondhealth < 1.0 || w.players[0].isdead
+    });
+    assert!(rocket_seen, "a rocket in flight from the simulant");
+    assert!(w.players[0].bondhealth < 1.0 || w.players[0].isdead, "the player was hurt");
+}
+
+/// A simulant throws its grenades (`botact_throw`) with the throw's woosh.
+#[test]
+fn a_simulant_throws_grenades() {
+    let mut thrown = false;
+    let w = armed_duel(WEAPON_GRENADE, &mut |w| {
+        thrown |= w.props.objs.iter().any(|o| o.weaponnum == WEAPON_GRENADE && o.projectile.is_some() && o.owner() == 1);
+        thrown
+    });
+    assert!(thrown, "a grenade in the air");
+    assert!(w.ab(1).throwtimer60 > 0, "the next throw waits");
+}
+
+/// A player's thrown knife meets a simulant (`projectile_0f06c28c`): the
+/// throw's damage, and the knife falls to the floor.
+#[test]
+fn a_thrown_knife_hurts_a_simulant() {
+    let (mut w, a, b) = duel(None);
+    w.harness_give_loadout(vec![WEAPON_COMBATKNIFE]);
+    step(&mut w, &PlayerInput { select: Some((WEAPON_COMBATKNIFE, false)), ..Default::default() });
+    for _ in 0..120 {
+        step(&mut w, &PlayerInput::default());
+    }
+    // The secondary (throw), aimed at the chest.
+    step(&mut w, &PlayerInput { use_held: true, ..Default::default() });
+    for _ in 0..40 {
+        step(&mut w, &PlayerInput { use_held: true, ..Default::default() });
+    }
+    for _ in 0..80 {
+        step(&mut w, &PlayerInput::default());
+    }
+    let d = b + Vec3::Y * 110.0 - w.players[0].pos;
+    w.players[0].verta = d.y.atan2((d.x * d.x + d.z * d.z).sqrt()).to_degrees();
+    let _ = a;
+    let before = w.chrs[1].damage;
+    for _ in 0..3 {
+        step(&mut w, &PlayerInput { fire: true, ..Default::default() });
+    }
+    for _ in 0..60 {
+        step(&mut w, &PlayerInput::default());
+    }
+    assert!(w.chrs[1].damage > before, "the knife hurt it: {} -> {}", before, w.chrs[1].damage);
 }

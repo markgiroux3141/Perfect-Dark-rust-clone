@@ -486,7 +486,7 @@ fn laptop_deploys_as_a_sentry_and_shoots_the_other_player() {
     for _ in 0..200 {
         setup(&mut w, PlayerInput::default());
     }
-    assert!(!w.players[0].gun.p.inventory.iter().any(|(wn, _)| *wn == WEAPON_LAPTOPGUN), "the Laptop left the inventory");
+    assert!(!w.players[0].gun.p.inventory.inv_has_single_weapon_exc_all_guns(WEAPON_LAPTOPGUN), "the Laptop left the inventory");
     let sentry = w.props.objs.iter().find(|o| o.ty == OBJTYPE_AUTOGUN).expect("no sentry");
     assert_eq!(sentry.owner(), 0);
     assert!(sentry.projectile.is_none(), "it landed");
@@ -499,7 +499,7 @@ fn laptop_deploys_as_a_sentry_and_shoots_the_other_player() {
     assert!(w.players[1].isdead, "player 1 died");
     let a = w.props.objs.iter().find(|o| o.ty == OBJTYPE_AUTOGUN).unwrap().autogun.as_ref().unwrap();
     assert!(a.ammoquantity > 0, "it stopped once its target died");
-    // A second deploy (M8: the pickup; here the loadout again).
+    // A second deploy (the harness's loadout again; a match picks one up).
     w.give_loadout(0);
     setup(&mut w, PlayerInput { select: Some((WEAPON_LAPTOPGUN, false)), ..Default::default() });
     for _ in 0..200 {
@@ -682,6 +682,7 @@ fn on_complex_a_grenade_settles_on_the_floor_and_a_mine_sticks_to_a_wall() {
     let level = Arc::new(crate::stage::TileLevel::new(stage.geom.clone()));
     let setup = pd_core::mp::MatchSetup { stagenum: STAGE_MP_COMPLEX, players: vec![pd_core::mp::MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
     let mut w = World::new(setup.clone(), stage.clone(), level.clone(), res(), 7).unwrap();
+    w.harness_give_loadout(res().gset.order.clone());
     run(&mut w, &PlayerInput { select: Some((WEAPON_GRENADE, false)), ..Default::default() }, 1);
     idle(&mut w, 200);
     w.players[0].verta = -30.0;
@@ -702,6 +703,7 @@ fn on_complex_a_grenade_settles_on_the_floor_and_a_mine_sticks_to_a_wall() {
 
     // A timed mine at the nearest wall straight ahead.
     let mut w = World::new(setup, stage.clone(), level, res(), 7).unwrap();
+    w.harness_give_loadout(res().gset.order.clone());
     run(&mut w, &PlayerInput { select: Some((WEAPON_TIMEDMINE, false)), ..Default::default() }, 1);
     idle(&mut w, 200);
     let eye = w.players[0].pos;

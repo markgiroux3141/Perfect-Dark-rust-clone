@@ -86,6 +86,25 @@ GROUPS = [
     ("VISIONMODE_", "i32", False, "`player->visionmode`."),
     ("CAMERAMODE_", "i32", False, "`player->cameramode`."),
     ("MISCSFX_", "usize", False, "`g_MiscSfxSounds` rows (`lv.c:175`)."),
+    # The match (mplayer.c, mpstats.c, hudmsg.c).
+    ("MPPAUSEMODE_", "u8", False, "`g_MpSetup.paused`."),
+    ("SHOTREGION_", "usize", False, "`playerstats.shotcount[]` indexes (`mpstats.c`)."),
+    ("AWARD_", "u32", True, "`mp_calculate_awards`' award bits (`g_AwardNames` order)."),
+    ("MEDAL_", "u8", True, "`mpplayerconfig.medals`."),
+    ("MPPLAYERTITLE_", "u8", False, "`mpplayerconfig.title`."),
+    ("MPDISPLAYOPTION_", "u8", True, "`mpchrconfig.displayoptions`."),
+    ("HUDMSGTYPE_", "usize", False, "`g_HudmsgTypes` rows."),
+    ("HUDMSGFLAG_", "u32", True, "`hudmessage.flags`."),
+    ("HUDMSGSTATE_", "u8", False, "`hudmessage.state`."),
+    ("HUDMSGALIGN_", "u8", False, "`hudmessage.alignh` / `alignv`."),
+    # Pickups and inventories (inv.c, botinv.c, propobj.c, prop.c).
+    ("OBJH2FLAG_", "u32", True, "`obj->hidden2`."),
+    ("INVITEMTYPE_", "i32", False, "`invitem.type`."),
+    ("NUM_CYCLEABLE_WEAPONS", "u8", False, "The weapons `inv_choose_cycle_*_weapon` can land on."),
+    ("TICKOP_", "i32", False, "What a prop's tick asks `prop_execute_tick_operation` to do."),
+    ("DROPTYPE_", "u8", False, "`projectile->droptype`: how `obj_drop` throws a dropped object."),
+    ("BOTFLAG_", "u32", True, "`aibot->flags`."),
+    ("MA_AIBOT", "i32", False, "A simulant's `chr->myaction`."),
 ]
 
 

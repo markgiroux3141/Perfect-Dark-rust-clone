@@ -23,6 +23,7 @@ mod bgun;
 pub mod boost;
 pub mod gset;
 pub mod hud;
+pub mod inv;
 mod pose;
 pub mod shot;
 mod state;
@@ -42,6 +43,7 @@ use crate::player::camera::Camera;
 pub use gset::Gset;
 use gset::{CmdPtr, FuncDef, WeaponDef};
 pub use hud::HudState;
+pub use inv::{InvItem, Inventory};
 
 /// `MAX_PITCH` (`bondgun.c:70`): how far a gun tips down when lowered.
 pub(crate) fn max_pitch() -> f32 {
@@ -449,9 +451,8 @@ pub struct GunPlayer {
     pub gunzoomfovs: [f32; 3],
     /// `g_PlayerConfigsArray[].gunfuncs`: per-weapon "use the secondary" bits.
     pub gunfuncs: [u8; 8],
-    /// Inventory (`inv.c`): the weapons held, and whether twice. M8's pickups
-    /// fill it; until then the world hands out a loadout.
-    pub inventory: Vec<(u8, bool)>,
+    /// `player->weapons`: the inventory (`inv.c`).
+    pub inventory: Inventory,
     /// `CHEAT_UNLIMITEDAMMO`'s `bgun_give_max_ammo` every frame.
     pub unlimited_ammo: bool,
 }
@@ -521,7 +522,7 @@ impl Bgun {
                 ammoheldarr: [0; 40],
                 gunzoomfovs: [15.0, 60.0, 30.0],
                 gunfuncs: [0; 8],
-                inventory: Vec::new(),
+                inventory: Inventory::default(),
                 unlimited_ammo: false,
             },
             hud: HudState::default(),
@@ -570,6 +571,82 @@ impl Bgun {
         self.p.ammoheldarr.get(ammotype as usize).copied().unwrap_or(0)
     }
 
+    /// `bgun_get_ammo_type_for_weapon` (`bondgun.c`): the function's ammo type, 0
+    /// for none.
+    pub fn bgun_get_ammo_type_for_weapon(gset: &Gset, weaponnum: u8, func: usize) -> i32 {
+        gset.weapon(weaponnum).and_then(|w| w.ammos.get(func).and_then(|a| a.as_ref())).map_or(0, |a| a.ammotype)
+    }
+
+    /// `bgun_get_capacity_by_ammotype`: `g_AmmoTypes[ammotype].capacity`.
+    pub fn bgun_get_capacity_by_ammotype(ammotype: i32) -> i32 {
+        if ammotype < 0 {
+            return 0;
+        }
+        AMMO_CAPACITY.get(ammotype as usize).copied().unwrap_or(0)
+    }
+
+    fn has_ammo_flag(gset: &Gset, weaponnum: u8, func: usize, flag: u32) -> bool {
+        gset.weapon(weaponnum).and_then(|w| w.ammos.get(func).and_then(|a| a.as_ref())).is_some_and(|a| a.flags & flag != 0)
+    }
+
+    /// `bgun_get_reserved_ammo_count` (`bondgun.c`): the reserve, plus what a
+    /// `AMMOFLAG_NORESERVE` weapon in hand holds loaded (the cloak, the boost).
+    pub fn bgun_get_reserved_ammo_count(&self, gset: &Gset, ammotype: i32) -> i32 {
+        let mut total = self.ammoheld(ammotype);
+        for h in 0..2 {
+            if self.hands[h].inuse {
+                for j in 0..2 {
+                    if self.ctrl.ammotypes[j] == ammotype && Self::has_ammo_flag(gset, self.hands[h].weaponnum, j, AMMOFLAG_NORESERVE) {
+                        total += self.hands[h].loadedammo[j];
+                    }
+                }
+            }
+        }
+        total
+    }
+
+    /// `bgun_set_ammo_quantity` (`bondgun.c`): the reserve set, capped at the
+    /// type's capacity less what a throwable in hand holds; a no-reserve weapon
+    /// in hand loads it straight into its clip.
+    pub fn bgun_set_ammo_quantity(&mut self, gset: &Gset, ammotype: i32, quantity: i32) {
+        if ammotype <= 0 || ammotype as usize >= self.p.ammoheldarr.len() {
+            return;
+        }
+        let weaponnum = self.bgun_get_weapon_num(HAND_RIGHT);
+        let mut funcnum = None;
+        if Self::bgun_get_ammo_type_for_weapon(gset, weaponnum, FUNC_PRIMARY) == ammotype {
+            funcnum = Some(FUNC_PRIMARY);
+        }
+        if Self::bgun_get_ammo_type_for_weapon(gset, weaponnum, FUNC_SECONDARY) == ammotype {
+            funcnum = Some(FUNC_SECONDARY);
+        }
+        if let Some(f) = funcnum.filter(|&f| Self::has_ammo_flag(gset, weaponnum, f, AMMOFLAG_NORESERVE)) {
+            let h = &mut self.hands[0];
+            h.loadedammo[f] = (h.loadedammo[f] + quantity).min(h.clipsizes[f]);
+            self.p.ammoheldarr[ammotype as usize] = 0;
+            return;
+        }
+        let mut magamount = 0;
+        if let Some(f) = funcnum.filter(|&f| Self::has_ammo_flag(gset, weaponnum, f, AMMOFLAG_EQUIPPEDISRESERVE)) {
+            magamount = self.hands[0].loadedammo[f] + self.hands[1].loadedammo[f];
+        }
+        let cap = Self::bgun_get_capacity_by_ammotype(ammotype);
+        self.p.ammoheldarr[ammotype as usize] = if quantity > cap - magamount { cap - magamount } else { quantity };
+    }
+
+    /// `bgun_get_ammo_qty_for_weapon` (`bondgun.c`).
+    pub fn bgun_get_ammo_qty_for_weapon(&self, gset: &Gset, weaponnum: u8, func: usize) -> i32 {
+        match gset.weapon(weaponnum).and_then(|w| w.ammos.get(func).and_then(|a| a.as_ref())) {
+            Some(a) => self.bgun_get_reserved_ammo_count(gset, a.ammotype),
+            None => 0,
+        }
+    }
+
+    /// `bgun_get_ammo_capacity_for_weapon` (`bondgun.c`).
+    pub fn bgun_get_ammo_capacity_for_weapon(gset: &Gset, weaponnum: u8, func: usize) -> i32 {
+        gset.weapon(weaponnum).and_then(|w| w.ammos.get(func).and_then(|a| a.as_ref())).map_or(0, |a| Self::bgun_get_capacity_by_ammotype(a.ammotype))
+    }
+
     /// `bgun_get_ammo_count` (`:9415`): the reserve plus both loaded clips.
     pub fn bgun_get_ammo_count(&self, ammotype: i32) -> i32 {
         let mut total = self.ammoheld(ammotype);
@@ -592,13 +669,13 @@ impl Bgun {
         }
     }
 
-    /// `inv_give_single_weapon` / `inv_give_double_weapon` plus the MP starting
-    /// ammo (`g_MpWeapons`), capped at each type's capacity.
+    /// Not PD: the test harness's loadout (the gun tests, the A/B probes):
+    /// `weaponnum` (twice with `double`) and the MP starting ammo of
+    /// `g_MpWeapons`, capped at each type's capacity.
     pub fn give_weapon(&mut self, gset: &Gset, weaponnum: u8, double: bool) {
-        if let Some(e) = self.p.inventory.iter_mut().find(|(w, _)| *w == weaponnum) {
-            e.1 |= double;
-        } else {
-            self.p.inventory.push((weaponnum, double));
+        self.p.inventory.inv_give_single_weapon(weaponnum);
+        if double {
+            self.p.inventory.inv_give_double_weapon(gset, weaponnum, weaponnum);
         }
         if let Some(w) = gset.weapon(weaponnum) {
             for (t, q) in w.mp_ammo {
@@ -619,24 +696,26 @@ impl Bgun {
         self.ctrl.wantammo = false;
     }
 
+    /// `inv_has_single_weapon_inc_all_guns` (`inv.c:332`).
     pub(crate) fn inv_has_single(&self, weaponnum: u8) -> bool {
-        weaponnum == WEAPON_UNARMED || self.p.inventory.iter().any(|(w, _)| *w == weaponnum)
+        self.p.inventory.inv_has_single_weapon_exc_all_guns(weaponnum)
     }
 
+    /// `inv_has_double_weapon_inc_all_guns(w, w)` (`inv.c:343`).
     pub(crate) fn inv_has_double(&self, weaponnum: u8) -> bool {
-        self.p.inventory.iter().any(|(w, d)| *w == weaponnum && *d)
+        self.p.inventory.inv_has_double_weapon_exc_all_guns(weaponnum, weaponnum)
     }
 
-    /// Select a weapon (the keyboard's number keys, a pickup), two of them if
-    /// held twice and `dual`.
+    /// Select a weapon (the keyboard's number keys, the pause menu's
+    /// inventory), two of them if held twice and `dual`.
     pub fn select_weapon(&mut self, weaponnum: u8, dual: bool) {
         self.ctrl.dualwielding = dual && self.inv_has_double(weaponnum);
         self.bgun_equip_weapon(weaponnum);
     }
 
-    /// `inv_remove_item_by_num` (`inv.c`).
+    /// `inv_remove_item_by_num` (`inv.c:412`).
     pub fn inv_remove_item_by_num(&mut self, weaponnum: u8) {
-        self.p.inventory.retain(|(w, _)| *w != weaponnum);
+        self.p.inventory.inv_remove_item_by_num(weaponnum);
     }
 
     /// `bgun_reload_if_possible` (`:5850`).
@@ -666,6 +745,16 @@ impl Bgun {
     pub fn bgun_set_hit_pos(&mut self, pos: Vec3) {
         self.hands[0].hitpos = pos;
         self.hands[1].hitpos = pos;
+    }
+}
+
+/// `bgun_get_min_clip_qty` (`bondgun.c:2205`): the tranquilizer's lethal
+/// dose takes four darts.
+pub fn bgun_get_min_clip_qty(_gset: &Gset, weaponnum: u8, funcnum: usize) -> i32 {
+    if weaponnum == WEAPON_TRANQUILIZER && funcnum == FUNC_SECONDARY {
+        4
+    } else {
+        1
     }
 }
 

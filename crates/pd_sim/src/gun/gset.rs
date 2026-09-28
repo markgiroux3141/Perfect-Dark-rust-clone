@@ -221,6 +221,8 @@ pub struct WeaponDef {
     pub weaponnum: u8,
     pub name: String,
     pub short_name: String,
+    /// `weapondef.description`: the pause menu's inventory marquee.
+    pub description: String,
     /// The first-person model's stem under `models/` (`hi_model`).
     pub model: Option<String>,
     /// The held (third-person) model's stem, a `P*` file (`lo_model`, what
@@ -278,6 +280,7 @@ struct RawWeapon {
     weaponnum: u8,
     name_text: Option<String>,
     short_text: Option<String>,
+    description_text: Option<String>,
     muzzlez: f32,
     posx: f32,
     posy: f32,
@@ -467,6 +470,7 @@ impl Gset {
                 weaponnum: rw.weaponnum,
                 name: rw.name_text.clone().unwrap_or_else(|| rw.weapon.clone()),
                 short_name: rw.short_text.clone().unwrap_or_else(|| rw.weapon.clone()),
+                description: rw.description_text.clone().unwrap_or_default(),
                 model,
                 tp_model,
                 bot: rw.bot,
@@ -503,9 +507,16 @@ impl Gset {
         self.weapons.get(&weaponnum)
     }
 
-    /// `gset_get_funcdef_by_weaponnum_funcnum`.
+    /// `gset_get_funcdef_by_weaponnum_funcnum`. The weapons that are only a
+    /// gun's projectile share its functions in `g_Weapons` (`invitem_bolt`: the
+    /// crossbow's; `invitem_grenaderound`: the Devastator's, `invitems.c`).
     pub fn func(&self, weaponnum: u8, which: usize) -> Option<&FuncDef> {
-        self.weapon(weaponnum).and_then(|w| w.functions.get(which)).and_then(|f| f.as_ref())
+        let w = match weaponnum {
+            WEAPON_BOLT => WEAPON_CROSSBOW,
+            WEAPON_GRENADEROUND => WEAPON_DEVASTATOR,
+            w => w,
+        };
+        self.weapon(w).and_then(|w| w.functions.get(which)).and_then(|f| f.as_ref())
     }
 
     /// `gset_has_weapon_flag`.

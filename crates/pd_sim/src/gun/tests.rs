@@ -92,7 +92,7 @@ fn falcon_fires_down_the_range_and_hits_the_board() {
         fire_once(&mut w);
         heard.extend(sounds(&w.take_events()));
     }
-    assert!(w.shots_fired[0] > 0, "no shot left the gun");
+    assert!(w.shots_fired(0) > 0, "no shot left the gun");
     assert!(w.boards[0].hits >= 1, "the first board took no hits: hitpos {}", w.players[0].gun.hands[0].hitpos);
     assert!(!w.fx.wallhits.is_empty(), "no bullet hole");
     assert!(heard.contains(&0x804d), "no Falcon shot sound: {heard:x?}");
@@ -291,7 +291,8 @@ fn a_shot_at_complexs_floor_sounds_like_its_surface() {
     let stage = Arc::new(Stage::load(&assets(), "ref").unwrap());
     let level = Arc::new(TileLevel::new(stage.geom.clone()));
     let setup = MatchSetup { stagenum: STAGE_MP_COMPLEX, players: vec![MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
-    let mut w = World::new(setup, stage.clone(), level, r, 7).unwrap();
+    let mut w = World::new(setup, stage.clone(), level, r.clone(), 7).unwrap();
+    w.harness_give_loadout(r.gset.order.clone());
     idle(&mut w, 200);
     w.players[0].verta = -60.0;
     idle(&mut w, 2);
@@ -494,7 +495,7 @@ fn pad_a_cycles_guns_and_b_taps_reload_or_holds_the_function() {
     idle(&mut w, 200);
     // The next entry after one Falcon is two (bgun_cycle_forward).
     assert_eq!(held(&w), (w0.0, true), "A tap: the next entry, the dual Falcons");
-    let shots = w.shots_fired[0];
+    let shots = w.shots_fired(0);
     run(&mut w, &pad(|i| i.a_held = true), 3);
     run(
         &mut w,
@@ -507,7 +508,7 @@ fn pad_a_cycles_guns_and_b_taps_reload_or_holds_the_function() {
     run(&mut w, &pad(|_| {}), 1);
     idle(&mut w, 200);
     assert_eq!(held(&w), w0, "A + Z: back to one Falcon");
-    assert_eq!(w.shots_fired[0], shots, "Z with A held doesn't fire");
+    assert_eq!(w.shots_fired(0), shots, "Z with A held doesn't fire");
 
     for _ in 0..3 {
         run(&mut w, &pad(|i| i.fire = true), 1);
@@ -543,5 +544,5 @@ fn a_seeded_fight_is_reproducible() {
         (w.players[0].pos, h.muzzlepos, h.hitpos, h.loadedammo, w.fx.wallhits.len(), w.fx.sparks.live(), w.rng.clone().random())
     };
     assert_eq!(format!("{:?}", key(&a)), format!("{:?}", key(&b)));
-    assert!(a.shots_fired[0] > 10);
+    assert!(a.shots_fired(0) > 10);
 }

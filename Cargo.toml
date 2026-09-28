@@ -58,6 +58,7 @@ pd_core = { path = "crates/pd_core" }
 pd_sim = { path = "crates/pd_sim" }
 pd_menu = { path = "crates/pd_menu" }
 pd_render = { path = "crates/pd_render" }
+pd_game = { path = "crates/pd_game" }
 
 # Day-to-day build: optimised but no fat LTO, so incremental relinks stay ~1-2 s.
 [profile.release]

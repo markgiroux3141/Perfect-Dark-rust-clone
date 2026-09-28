@@ -22,6 +22,7 @@ pd_core = { workspace = true }
 pd_sim = { workspace = true }
 pd_menu = { workspace = true }
 pd_render = { workspace = true }
+pd_game = { workspace = true }
 image = { workspace = true }
 glam = { workspace = true }
 serde_json = { workspace = true }

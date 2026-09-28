@@ -637,6 +637,12 @@ POOL_SFXNUM = [
     # and the poisoned knife's coughs (male 0x5af/0x5b0, female 0x5ab..0x5ae).
     0x002F, 0x0030, 0x0031, 0x05F6, 0x0064, 0x034E, 0x05B1, 0x05B2,
     0x05AB, 0x05AC, 0x05AD, 0x05AE, 0x05AF, 0x05B0,
+    # The match: a HUD message's swish (SFXNUM_003E_HUDMSG, hudmsg.c:1215) and
+    # the time limit's last-ten-seconds alarm (SFXNUM_00A3_ALARM_DEFAULT, lv.c:2211).
+    0x003E, 0x00A3,
+    # Pickups: the shield's (SFXNUM_01CD_PICKUP_SHIELD, propobj.c:16466) and the
+    # chime of a pickup coming back (SFXNUM_0052_REGEN, propobj.c:11023).
+    0x01CD, 0x0052,
     # Reached through the weapon set already; requested so their SFXNUM names
     # are manifest keys too.
     0x0005, 0x0006, 0x00AF, 0x00B0, 0x018B, 0x018C, 0x018D, 0x018E, 0x018F,

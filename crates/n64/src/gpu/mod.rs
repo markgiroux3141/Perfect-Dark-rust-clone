@@ -73,6 +73,10 @@ pub struct FrameUniform {
     pub flat: [f32; 4],
     /// x: env-alpha override (0 = off); y: 1 = the RDP's 3-point filter.
     pub misc: [f32; 4],
+    /// The render context's fog colour (0..1), for fog-tinted materials
+    /// without their own: PD sets it apart from the env colour
+    /// (`renderdata.fogcolour`).
+    pub fogcol: [f32; 4],
 }
 
 impl FrameUniform {
@@ -88,6 +92,7 @@ impl FrameUniform {
             envcol: [1.0; 4],
             flat: [0.0; 4],
             misc: [0.0; 4],
+            fogcol: [1.0; 4],
         }
     }
 
@@ -463,8 +468,8 @@ mod tests {
 
     #[test]
     fn the_uniforms_match_the_shaders_layout() {
-        // 4x4 matrix + 8 vec4s; 11 vec4s.
-        assert_eq!(std::mem::size_of::<FrameUniform>(), 64 + 8 * 16);
+        // 4x4 matrix + 9 vec4s (M7 added the fog colour); 11 vec4s.
+        assert_eq!(std::mem::size_of::<FrameUniform>(), 64 + 9 * 16);
         assert_eq!(std::mem::size_of::<MaterialUniform>(), 11 * 16);
         assert_eq!(std::mem::size_of::<Vertex>(), 44);
     }

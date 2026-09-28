@@ -167,6 +167,10 @@ pub struct Chr {
 
     pub damage: f32,
     pub maxdamage: f32,
+    /// `chr->cshield`: 0 to 8 (a full shield); a player's is `player_get_shield_frac` × 8.
+    pub cshield: f32,
+    /// `CHRCFLAG_SHIELDDAMAGED`: a hit met the shield (`chr_damage`).
+    pub shielddamaged: bool,
     /// `chr->flinchcnt` (-1 idle) and `(hidden2 >> 13) & 7`, and
     /// `CHRH2FLAG_HEADSHOTTED`.
     pub flinchcnt: i32,
@@ -203,7 +207,9 @@ pub struct Chr {
     /// `PROPFLAG_ONTHISSCREENTHISTICK` for the pass that fully ticked it
     /// (player 0's): `chr_get_gun_pos` needs a drawn gun.
     pub onscreen: bool,
-    /// `chr->lastshooter` / `timeshooter`: who gets a fall death.
+    /// `chr->lastshooter` / `timeshooter`: who gets a fall death. `chr_init`
+    /// sets -1 and 0 (`chr.c:1289`) and nothing in NTSC final ever writes them
+    /// (a GoldenEye leftover), so a fall is always the faller's own.
     pub lastshooter: Option<usize>,
     pub timeshooter: i32,
     /// `chr->aibot`: a simulant's brain.
@@ -236,10 +242,9 @@ pub struct Chr {
 
     /// `chr->team`: `1 << mpchrconfig.team`.
     pub team: u8,
-    /// `mpstats` (M7 keeps them properly): kills, deaths and suicides.
-    pub kills: u32,
-    pub deaths: u32,
-    pub suicides: u32,
+    /// The chr's slot (`mp_chrindex_to_chrslot`): 0..3 a player's, 4..11 a
+    /// simulant's; the match's counters are kept by it.
+    pub mpslot: usize,
 }
 
 impl Chr {

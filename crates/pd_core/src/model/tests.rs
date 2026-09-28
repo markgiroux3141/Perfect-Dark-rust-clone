@@ -43,7 +43,8 @@ fn anim_at(num: u16, frame: f32, speed: f32) -> Anim {
 #[test]
 fn every_model_loads_in_preorder_with_its_parts_and_textures() {
     let s = store();
-    assert_eq!(s.index.len(), 225);
+    // 225 through M7; M8 adds the MP ammo crate (multi_ammo_crate).
+    assert_eq!(s.index.len(), 226);
     for stem in s.index.keys() {
         let d = s.get(stem).unwrap_or_else(|e| panic!("{e}"));
         for (i, n) in d.nodes.iter().enumerate() {

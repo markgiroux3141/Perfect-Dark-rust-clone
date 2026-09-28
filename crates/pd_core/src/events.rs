@@ -32,4 +32,14 @@ pub enum Event {
     /// `mpstats_record_death`: chr `victim` died, killed by `killer` (both
     /// indexes into the world's chr list; `None`, or the victim, a suicide).
     Kill { killer: Option<u8>, victim: u8 },
+    /// `sndp_stop_all`: every sound stops (the end of a match).
+    StopAllSounds,
+    /// `mp_push_pause_dialog` for player `player` (START in a match): the
+    /// menus open its pause menu.
+    MpPushPauseDialog { player: u8 },
+    /// `menu_save_and_close_all` for player `player`'s menu (it died).
+    MpCloseMenus { player: u8 },
+    /// `mp_end_match` has run (`main_end_stage`): the match is over and paused
+    /// for good; the menus open the end screens (`MENUROOT_END_MP_MATCH`).
+    MpEndMatch,
 }

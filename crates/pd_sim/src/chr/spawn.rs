@@ -99,10 +99,16 @@ pub fn footstep_choose_sound(rng: &mut Rng, floortype: u8, lastfootsample: &mut 
 impl crate::world::World {
     /// `scenario_choose_spawn_location` → `player_choose_general_spawn_location`
     /// → `player_choose_spawn_location` (`player.c:225`) for chr `i`, judged
-    /// against every other chr (dead ones too, as PD does).
+    /// against every other chr that is an enemy (`chr_compare_teams`; dead
+    /// ones too, as PD does).
     pub(crate) fn chr_choose_spawn_location(&mut self, i: usize) -> (Vec3, f32) {
-        let others: Vec<crate::player::SpawnOther> =
-            self.chrs.iter().enumerate().filter(|&(j, _)| j != i).map(|(_, c)| crate::player::SpawnOther { pos: c.pos, rooms: c.rooms.clone() }).collect();
+        let others: Vec<crate::player::SpawnOther> = self
+            .chrs
+            .iter()
+            .enumerate()
+            .filter(|&(j, _)| j != i && self.chr_compare_teams(i, j, crate::mp::Compare::Enemies))
+            .map(|(_, c)| crate::player::SpawnOther { pos: c.pos, rooms: c.rooms.clone() })
+            .collect();
         let cyls = self.chr_perims_except(i);
         let radius = self.chrs[i].radius;
         crate::player::player_choose_spawn_location(&self.level, &self.stage, radius, &others, &cyls, &mut self.rng)

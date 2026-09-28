@@ -25,6 +25,7 @@ struct Frame {
     envcol: vec4<f32>,    // the render context's env colour (0..1)
     flat: vec4<f32>,      // flat colour override + alpha (alpha 0 = off)
     misc: vec4<f32>,      // x: env-alpha override (0 = off), y: 3-point filter
+    fogcol: vec4<f32>,    // the render context's fog colour (0..1)
 };
 
 struct Material {
@@ -37,7 +38,7 @@ struct Material {
     fog: vec4<f32>,
     tex: vec4<f32>,      // width, height, uls, ult
     shift: vec4<f32>,    // shift scale s, t, has_texture, two_cycle
-    flags: vec4<u32>,    // alpha_test (0 none, 1 edge, 2 threshold), fog_tint, env_from_frame, fog_from_frame
+    flags: vec4<u32>,    // alpha_test (0 none, 1 edge, 2 threshold), fog_tint, env_from_frame, fog_from_frame (the frame's fogcol)
     flags2: vec4<u32>,   // texgen_linear, unused, translucent material, bilerp (G_TF_BILERP)
 };
 
@@ -262,7 +263,7 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     }
     // Cycle-1 blender G_RM_FOG_PRIM_A: CLR_FOG·A_FOG + CLR_IN·(1−A_FOG).
     if (mat.flags.y != 0u) {
-        let fog = select(mat.fog, frame.envcol, mat.flags.w != 0u);
+        let fog = select(mat.fog, frame.fogcol, mat.flags.w != 0u);
         c = vec4<f32>(mix(c.rgb, fog.rgb, fog.a), c.a);
     }
     // Env-alpha override: a render context that swaps every combiner's alpha

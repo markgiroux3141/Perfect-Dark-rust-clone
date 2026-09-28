@@ -146,8 +146,14 @@ pub const MENUROOT_MPSETUP: i32 = 3;
 pub const MENUROOT_MPPAUSE: i32 = 4;
 pub const MENUROOT_MPENDSCREEN: i32 = 5;
 pub const MENUROOT_FILEMGR: i32 = 6;
+pub const MENUROOT_PICKTARGET: i32 = 8;
 pub const MENUROOT_TRAINING: i32 = 13;
 pub const MENUROOT_START_MP_MATCH: i32 = -5;
+pub const MENUROOT_END_MP_MATCH: i32 = -6;
+
+/// `SCREENSPLIT_*` (constants.h:3686).
+pub const SCREENSPLIT_HORIZONTAL: u8 = 0;
+pub const SCREENSPLIT_VERTICAL: u8 = 1;
 
 pub const MENUREPEATMODE_RELEASED: i16 = -1;
 pub const MENUREPEATMODE_SLOW: i16 = 0;
@@ -414,18 +420,7 @@ pub struct MpBody {
     pub requirefeature: i32,
 }
 
-#[derive(Clone, Copy)]
-pub struct MpWeapon {
-    pub weaponnum: i32,
-    pub priammotype: i32,
-    pub priammoqty: i32,
-    pub secammotype: i32,
-    pub secammoqty: i32,
-    pub hasweapon: i32,
-    pub unlockfeature: i32,
-    pub model: i32,
-    pub extrascale: i32,
-}
+pub use pd_core::mp::MpWeapon;
 
 #[derive(Clone, Copy)]
 pub struct MpWeaponSet {

@@ -39,9 +39,32 @@ pub struct Held {
 
 impl Held {
     /// `chr_give_weapon` (`propobj.c:17852`): the weapon's held model
-    /// (`lo_model`). `extrascale` is 256 for every MP weapon (a scale of 1).
+    /// (`lo_model`), its gunfire hidden (`weapon_create_for_chr` →
+    /// `weapon_set_gunfire_visible(prop, false)`, `propobj.c:17356`).
+    /// `extrascale` is 256 for every MP weapon (a scale of 1).
     pub fn new(store: &ModelStore, weaponnum: u8, stem: &str) -> Result<Held, String> {
-        Ok(Held { weaponnum, model: Model::new(store.get(stem)?), gunfire: false })
+        let mut h = Held { weaponnum, model: Model::new(store.get(stem)?), gunfire: false };
+        h.weapon_set_gunfire_visible(false);
+        Ok(h)
+    }
+
+    /// `weapon_set_gunfire_visible` (`propobj.c:17867`): the `CHRGUNFIRE`
+    /// billboard (`gunfire`) and the `MODELPART_CHRGUN_0002` toggle's flash.
+    /// True if a flash shows (the caller lights the room).
+    pub fn weapon_set_gunfire_visible(&mut self, visible: bool) -> bool {
+        if self.model.def.skel != pd_core::model::SKEL_CHRGUN {
+            return false;
+        }
+        let mut flash = false;
+        if self.model.def.get_part(pd_core::ids::MODELPART_CHRGUN_GUNFIRE).is_some() {
+            self.gunfire = visible;
+            flash |= visible;
+        }
+        if self.model.def.get_part(pd_core::ids::MODELPART_CHRGUN_0002).is_some() {
+            self.model.set_toggle(false, pd_core::ids::MODELPART_CHRGUN_0002, visible);
+            flash |= visible;
+        }
+        flash
     }
 }
 
@@ -434,13 +457,17 @@ impl Chr {
     }
 
     /// `chr_get_hit_radius` (`chr.c:4471`): the model's radius plus the
-    /// biggest held gun's. No shields (M8).
+    /// biggest held gun's, 10 cm more with a shield.
     pub fn chr_get_hit_radius(&self) -> f32 {
         let mut highest = 0.0f32;
         for h in self.held.iter().flatten() {
             highest = highest.max(h.model.def.scale * h.model.scale * self.model.scale);
         }
-        self.effective_scale() + highest
+        let mut result = self.effective_scale() + highest;
+        if self.cshield > 0.0 {
+            result += 10.0;
+        }
+        result
     }
 
     /// What the joint callback reads now.

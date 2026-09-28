@@ -49,7 +49,8 @@ impl Lab {
         let stage = Arc::new(Stage::load(assets, code)?);
         let level = Arc::new(TileLevel::new(stage.geom.clone()));
         let res = Arc::new(WorldRes::load(assets)?);
-        let world = harness::world(stage.clone(), level.clone(), res.clone(), harness::setup(0, 4, 2), NavChoice::Pd, harness::SPIKE_SEED, true)?;
+        let setup = harness::with_weapons(harness::setup(0, 4, 2), &harness::DEFAULT_SET);
+        let world = harness::world(stage.clone(), level.clone(), res.clone(), setup, NavChoice::Pd, harness::SPIKE_SEED, false)?;
         let (lo, hi) = lab::bounds(&level);
         Ok(Lab {
             stage,
@@ -60,7 +61,7 @@ impl Lab {
             diff: 2,
             nav: NavChoice::Pd,
             seed: harness::SPIKE_SEED,
-            mix: true,
+            mix: false,
             paused: false,
             speed: 1,
             step_once: false,
@@ -72,7 +73,7 @@ impl Lab {
     }
 
     fn restart(&mut self) {
-        let setup = harness::setup(0, self.bots, self.diff);
+        let setup = harness::with_weapons(harness::setup(0, self.bots, self.diff), &harness::DEFAULT_SET);
         match harness::world(self.stage.clone(), self.level.clone(), self.res.clone(), setup, self.nav, self.seed, self.mix) {
             Ok(w) => {
                 self.world = w;
@@ -111,7 +112,7 @@ impl Lab {
             ui.radio_value(&mut self.nav, NavChoice::Pd, "PD's graph");
             ui.radio_value(&mut self.nav, NavChoice::Ours, "ours");
         });
-        ui.checkbox(&mut self.mix, "the spike's weapon mix (else the set's)");
+        ui.checkbox(&mut self.mix, "the spike's weapon mix (else PD's start: unarmed, the pads hold the set)");
         let mut seed = format!("{:#x}", self.seed);
         if ui.add(egui::TextEdit::singleline(&mut seed).desired_width(160.0)).changed() {
             if let Ok(s) = u64::from_str_radix(seed.trim_start_matches("0x"), 16) {
@@ -136,7 +137,7 @@ impl Lab {
         for (i, c) in w.chrs.iter().enumerate() {
             let a = c.aibot.as_ref().unwrap();
             let weapon = w.res.gset.weapon(a.weaponnum).map_or("unarmed".to_string(), |g| g.name.clone());
-            let text = format!("{}: K{} D{} · {:?} · {}", c.name, c.kills, c.deaths, c.actiontype, weapon);
+            let text = format!("{}: K{} D{} · {:?} · {}", c.name, w.mp_chr_kills(i), w.mp_chr_deaths(i), c.actiontype, weapon);
             if ui.selectable_label(self.opts.selected == Some(i), text).clicked() {
                 self.opts.selected = Some(i);
             }

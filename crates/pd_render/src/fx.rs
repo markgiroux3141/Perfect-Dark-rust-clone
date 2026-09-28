@@ -681,7 +681,7 @@ fn box_tris(out: &mut Vec<FxVert>, mn: Vec3, mx: Vec3, col: [f32; 4]) {
 }
 
 /// The firing range's boards: a white face with a bullseye, flashing red on a
-/// hit, on a dark frame. They are not PD objects (props arrive with M8).
+/// hit, on a dark frame (the firing range's stand-ins for PD's targets).
 pub fn board_geometry(boards: &[Board]) -> Option<FxBatch> {
     let mut flat = Vec::new();
     for t in boards {

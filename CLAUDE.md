@@ -13,7 +13,9 @@ cargo test -p pd_sim --release -- --ignored --nocapture   # long probes
 cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # offscreen PNGs (e.g. `out model dark_combat --gun chrfalcon2`,
                                             #   `out menu --combat w40 down down down a w50 shot:setup` (script format in pd_menu::script),
                                             #   `out stage ref` (the 8 spawn-pad views, on the GPU),
-                                            #   `out match --duel`, `out lab` (a match with simulants; the pd_lab map))
+                                            #   `out match --duel`, `out lab` (a match with simulants; the pd_lab map), `out pickups [--bots]`,
+                                            #   `out flow start w30 shot:pause kill wend shot:end` (the pause menu and
+                                            #   end screens over a match; steps in pd_tools::snapshot::flow))
 cargo run --release -p pd_tools --bin pd_lab # the simulant/route viewer (a window: for the user, not for Claude to drive)
 python tools/check_boundaries.py            # headless crates stay headless
 python tools/pd-assets/build_assets.py      # regenerate assets/ (and crates/pd_core/src/ids.rs) from the decomp

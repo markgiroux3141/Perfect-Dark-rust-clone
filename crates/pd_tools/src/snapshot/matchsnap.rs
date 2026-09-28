@@ -11,7 +11,8 @@
 //! * `--duel`: one simulant, its brain off, 4 m in front of the player: it
 //!   standing, the player's Falcon hitting it (blood, flinch), it dying, and
 //!   its corpse fading, as `duel_<code>_<n>_<what>.png`; `--dist` cm apart
-//!   (default 400).
+//!   (default 400), `--gun` the simulant's weapon by `WEAPON_*` number
+//!   (default the CMP150).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -59,6 +60,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let mut at: Vec<f32> = vec![4.0, 8.0, 12.0, 16.0, 20.0, 30.0];
     let mut duel = false;
     let mut dist = 400.0f32;
+    let mut gun = pd_core::ids::WEAPON_CMP150;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let mut val = |name: &str| it.next().cloned().ok_or(format!("{name} needs a value"));
@@ -75,6 +77,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             "--at" => at = val("--at")?.split(',').map(|s| s.parse::<f32>().map_err(|e| format!("--at: {e}"))).collect::<Result<_, _>>()?,
             "--duel" => duel = true,
             "--dist" => dist = val("--dist")?.parse().map_err(|e| format!("--dist: {e}"))?,
+            "--gun" => gun = val("--gun")?.parse().map_err(|e| format!("--gun: {e}"))?,
             s if !s.starts_with("--") => code = s.to_owned(),
             s => return Err(format!("match: unknown argument {s:?}")),
         }
@@ -90,7 +93,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let target = RenderTarget::on_device(&gpu.device, w, h, format, true);
     let mut g = Gpu { gpu, renderer, target, w, h };
     if duel {
-        return run_duel(outdir, &code, stage, level, res, &mut g, seed, dist);
+        return run_duel(outdir, &code, stage, level, res, &mut g, seed, dist, gun);
     }
 
     let setup = harness::setup(1, bots, diff);
@@ -149,9 +152,9 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run_duel(outdir: &Path, code: &str, stage: Arc<Stage>, level: Arc<TileLevel>, res: Arc<WorldRes>, g: &mut Gpu, seed: u64, dist: f32) -> Result<Vec<PathBuf>, String> {
+fn run_duel(outdir: &Path, code: &str, stage: Arc<Stage>, level: Arc<TileLevel>, res: Arc<WorldRes>, g: &mut Gpu, seed: u64, dist: f32, gun: u8) -> Result<Vec<PathBuf>, String> {
     let mut world = harness::world(stage.clone(), level.clone(), res, harness::setup(1, 1, 2), NavChoice::Pd, seed, true)?;
-    world.bot_loadout = vec![Some((pd_core::ids::WEAPON_CMP150, false))];
+    world.bot_loadout = vec![Some((gun, false))];
     world.bot_brains = false;
     // A spawn pad with 4 m of level floor ahead.
     let ground = |p: Vec3| Vec3::new(p.x, level.cd_find_ground_at_cyl(p, 30.0).0, p.z);
@@ -215,12 +218,15 @@ fn run_duel(outdir: &Path, code: &str, stage: Arc<Stage>, level: Arc<TileLevel>,
 }
 
 /// `pd_snapshot <outdir> lab [<code>] [--bots n] [--diff d] [--seed s]
-/// [--at s] [--ours] [--size WxH]`: `pd_lab`'s top-down map of a simulants-only
-/// match after `--at` seconds (default 20), as `lab_<code>_<s>s.png`.
+/// [--at s] [--ours] [--mix] [--size WxH]`: `pd_lab`'s top-down map of a
+/// simulants-only match after `--at` seconds (default 20), as
+/// `lab_<code>_<s>s.png`: as PD starts it (unarmed, the pads holding
+/// [`harness::DEFAULT_SET`]), or with `--mix` the spike's loadout.
 pub fn run_lab(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let mut code = "ref".to_owned();
     let (mut w, mut h) = (1200usize, 1000usize);
     let (mut bots, mut diff, mut seed, mut at, mut nav) = (4usize, 2u8, harness::SPIKE_SEED, 20.0f32, NavChoice::Pd);
+    let mut mix = false;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let mut val = |name: &str| it.next().cloned().ok_or(format!("{name} needs a value"));
@@ -236,6 +242,7 @@ pub fn run_lab(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             "--seed" => seed = val("--seed")?.parse().map_err(|e| format!("--seed: {e}"))?,
             "--at" => at = val("--at")?.parse().map_err(|e| format!("--at: {e}"))?,
             "--ours" => nav = NavChoice::Ours,
+            "--mix" => mix = true,
             s if !s.starts_with("--") => code = s.to_owned(),
             s => return Err(format!("lab: unknown argument {s:?}")),
         }
@@ -244,7 +251,8 @@ pub fn run_lab(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let stage = Arc::new(Stage::load(&assets, &code)?);
     let level = Arc::new(TileLevel::new(stage.geom.clone()));
     let res = Arc::new(WorldRes::load(&assets)?);
-    let mut world = harness::world(stage, level.clone(), res, harness::setup(0, bots, diff), nav, seed, true)?;
+    let setup = harness::with_weapons(harness::setup(0, bots, diff), &harness::DEFAULT_SET);
+    let mut world = harness::world(stage, level.clone(), res, setup, nav, seed, mix)?;
     for _ in 0..(at * 60.0) as usize {
         harness::step_idle(&mut world);
     }

@@ -114,17 +114,9 @@ impl MenuSystem {
         SV { x, y, z: 0.0, inv_w: 1.0, s: 0.0, t: 0.0, c: rgba(c) }
     }
 
-    /// `menugfx_draw_tri2` (menugfx.c:739): a quad, left→right (`arg7` false)
-    /// or top→bottom (`arg7` true) gradient.
+    /// `menugfx_draw_tri2` (menugfx.c:739): `pd_core::menugfx`'s.
     pub fn menugfx_draw_tri2(&mut self, x1: i32, y1: i32, x2: i32, y2: i32, colour1: u32, colour2: u32, vertical: bool) {
-        // Vertex colours: !arg7 → 0, 4, 4, 0; arg7 → 0, 0, 4, 4.
-        let v = [
-            self.uv(x1 * 10, y1 * 10, colour1),
-            self.uv(x2 * 10, y1 * 10, if vertical { colour1 } else { colour2 }),
-            self.uv(x2 * 10, y2 * 10, colour2),
-            self.uv(x1 * 10, y2 * 10, if vertical { colour2 } else { colour1 }),
-        ];
-        self.draw.gfx.quad(v, &st_shade());
+        pd_core::menugfx::menugfx_draw_tri2(&mut self.draw.gfx, x1, y1, x2, y2, colour1, colour2, vertical);
     }
 
     /// `menugfx_draw_line` (menugfx.c:785).
@@ -132,117 +124,15 @@ impl MenuSystem {
         self.menugfx_draw_tri2(x1, y1, x2, y2, colour1, colour2, false);
     }
 
-    /// `menugfx_draw_projected_line` (menugfx.c:793).
+    /// `menugfx_draw_projected_line` (menugfx.c:793): `pd_core::menugfx`'s.
     pub fn menugfx_draw_projected_line(&mut self, x1: i32, y1: i32, x2: i32, y2: i32, colour1: u32, colour2: u32) {
-        if self.draw.text.has_diagonal_blend() {
-            if x2 - x1 < y2 - y1 {
-                // Portrait
-                let numfullblocks = (y2 - y1) / 15;
-                let mut parttop = y1;
-                let mut partcolourtop = self.draw.text.apply_projection_colour(x1, y1, colour1);
-                for i in 0..numfullblocks {
-                    let mut partbottom = y1 + i * 15;
-                    let partcolourbottom;
-                    if y2 - partbottom < 3 {
-                        partbottom = y2;
-                        partcolourbottom = self.draw.text.apply_projection_colour(x2, partbottom, colour2);
-                    } else {
-                        let c = colour_blend(colour2, colour1, ((partbottom - y1) * 255 / (y2 - y1)) as u32);
-                        // @bug: y1 should be x1
-                        partcolourbottom = self.draw.text.apply_projection_colour(y1, partbottom, c);
-                    }
-                    self.menugfx_draw_tri2(x1, parttop, x2, partbottom, partcolourtop, partcolourbottom, false);
-                    parttop = partbottom;
-                    partcolourtop = partcolourbottom;
-                }
-                let partcolourbottom = self.draw.text.apply_projection_colour(x2, y2, colour2);
-                self.menugfx_draw_tri2(x1, parttop, x2, y2, partcolourtop, partcolourbottom, false);
-            } else {
-                // Landscape
-                let numfullblocks = (x2 - x1) / 15;
-                let mut partleft = x1;
-                let mut partcolourleft = self.draw.text.apply_projection_colour(x1, y1, colour1);
-                for i in 0..numfullblocks {
-                    let mut partright = x1 + i * 15;
-                    let partcolourright;
-                    if x2 - partright < 3 {
-                        partright = x2;
-                        partcolourright = self.draw.text.apply_projection_colour(x2, y2, colour2);
-                    } else {
-                        let c = colour_blend(colour2, colour1, ((partright - x1) * 255 / (x2 - x1)) as u32);
-                        partcolourright = self.draw.text.apply_projection_colour(partright, y1, c);
-                    }
-                    self.menugfx_draw_tri2(partleft, y1, partright, y2, partcolourleft, partcolourright, false);
-                    partleft = partright;
-                    partcolourleft = partcolourright;
-                }
-                let partcolourright = self.draw.text.apply_projection_colour(x2, y2, colour2);
-                self.menugfx_draw_tri2(partleft, y1, x2, y2, partcolourleft, partcolourright, false);
-            }
-        } else {
-            self.menugfx_draw_tri2(x1, y1, x2, y2, colour1, colour2, false);
-        }
+        pd_core::menugfx::menugfx_draw_projected_line(&mut self.draw.gfx, &self.draw.text, x1, y1, x2, y2, colour1, colour2);
     }
 
-    /// `menugfx_draw_shimmer` (menugfx.c:885): the white comet travelling along a line.
+    /// `menugfx_draw_shimmer` (menugfx.c:885): `pd_core::menugfx`'s.
     #[allow(clippy::too_many_arguments)]
-    pub fn menugfx_draw_shimmer(&mut self, x1: i32, y1: i32, x2: i32, y2: i32, colour: u32, _arg6: bool, arg7: i32, reverse: bool) {
-        let mut alpha;
-        let mut minalpha = 0;
-        let mut v0: i32 = if reverse { (6.0 * self.frac20 * 600.0) as i32 } else { ((1.0 - self.frac20) * 6.0 * 600.0) as i32 };
-        if y2 - y1 < x2 - x1 {
-            v0 = v0.wrapping_add((y1 + x1) as u32 as i32);
-            v0 = v0.rem_euclid(600);
-            let mut shimmerleft = x1 + v0 - arg7;
-            let mut shimmerright = shimmerleft + arg7;
-            alpha = 0;
-            if shimmerleft < x1 {
-                alpha = x1 - shimmerleft;
-                shimmerleft = x1;
-            }
-            if shimmerright > x2 {
-                minalpha = shimmerright - x2;
-                shimmerright = x2;
-            }
-            if alpha < minalpha {
-                alpha = minalpha;
-            }
-            alpha = (alpha * 255 / arg7).min(255);
-            if x1 <= shimmerright && x2 >= shimmerleft {
-                let tail = ((((colour & 0xff) * (0xff - alpha as u32)) / 255) & 0xff) | 0xffffff00;
-                if reverse {
-                    self.menugfx_draw_tri2(shimmerleft, y1, shimmerright, y2, 0xffffff00, tail, false);
-                } else {
-                    self.menugfx_draw_tri2(shimmerleft, y1, shimmerright, y2, tail, 0xffffff00, false);
-                }
-            }
-        } else {
-            v0 = v0.wrapping_add((y1 + x1) as u32 as i32);
-            v0 = v0.rem_euclid(600);
-            let mut shimmertop = y1 + v0 - arg7;
-            let mut shimmerbottom = shimmertop + arg7;
-            alpha = 0;
-            if shimmertop < y1 {
-                alpha = y1 - shimmertop;
-                shimmertop = y1;
-            }
-            if shimmerbottom > y2 {
-                minalpha = shimmerbottom - y2;
-                shimmerbottom = y2;
-            }
-            if alpha < minalpha {
-                alpha = minalpha;
-            }
-            alpha = (alpha * 255 / arg7).min(255);
-            if y1 <= shimmerbottom && y2 >= shimmertop {
-                let tail = ((((colour & 0xff) * (0xff - alpha as u32)) / 255) & 0xff) | 0xffffff00;
-                if reverse {
-                    self.menugfx_draw_tri2(x1, shimmertop, x2, shimmerbottom, 0xffffff00, tail, true);
-                } else {
-                    self.menugfx_draw_tri2(x1, shimmertop, x2, shimmerbottom, tail, 0xffffff00, true);
-                }
-            }
-        }
+    pub fn menugfx_draw_shimmer(&mut self, x1: i32, y1: i32, x2: i32, y2: i32, colour: u32, arg6: bool, arg7: i32, reverse: bool) {
+        pd_core::menugfx::menugfx_draw_shimmer(&mut self.draw.gfx, self.frac20, x1, y1, x2, y2, colour, arg6, arg7, reverse);
     }
 
     /// `menugfx_draw_dialog_border_line` (menugfx.c:994).
@@ -251,10 +141,9 @@ impl MenuSystem {
         self.menugfx_draw_shimmer(x1, y1, x2, y2, colour1, false, 10, false);
     }
 
-    /// `menugfx_draw_filled_rect` (menugfx.c:1002).
+    /// `menugfx_draw_filled_rect` (menugfx.c:1002): `pd_core::menugfx`'s.
     pub fn menugfx_draw_filled_rect(&mut self, x1: i32, y1: i32, x2: i32, y2: i32, colour1: u32, colour2: u32) {
-        self.menugfx_draw_projected_line(x1, y1, x2, y2, colour1, colour2);
-        self.menugfx_draw_shimmer(x1, y1, x2, y2, colour1, false, 10, false);
+        pd_core::menugfx::menugfx_draw_filled_rect(&mut self.draw.gfx, &self.draw.text, self.frac20, x1, y1, x2, y2, colour1, colour2);
     }
 
     /// `menugfx_render_gradient` (menugfx.c:555).

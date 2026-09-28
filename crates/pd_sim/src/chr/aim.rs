@@ -160,7 +160,9 @@ impl crate::world::World {
     /// invisible to it, a clear sight line from the chr's eye (`ground +
     /// height − 20`) to the target's `prop->pos` through the sight-blocking BG
     /// (the two perimeters are off, and no other chr blocks sight).
-    /// `// M8:` doors, objects and path blockers.
+    /// `// SUBST:` PD's sight line also meets doors, objects and path
+    /// blockers (`CDTYPE_DOORS | CDTYPE_OBJS`) / not yet: Complex has none that
+    /// block it; the arenas' doors and objects are M9's.
     pub(crate) fn chr_has_los_to_chr(&self, i: usize, target: usize) -> bool {
         if self.bot_is_target_invisible(i, target) {
             return false;

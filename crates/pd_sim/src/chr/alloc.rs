@@ -103,9 +103,9 @@ impl Chr {
             onanyscreen: false,
             onanyscreenprev: false,
             team: 1,
-            kills: 0,
-            deaths: 0,
-            suicides: 0,
+            mpslot: 0,
+            cshield: 0.0,
+            shielddamaged: false,
         }
     }
 }

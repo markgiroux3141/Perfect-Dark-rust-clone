@@ -1610,6 +1610,166 @@ pub const MISCSFX_BOOSTHEARTBEAT: usize = 0;
 pub const MISCSFX_SLAYERROCKETHUM: usize = 1;
 pub const MISCSFX_SLAYERROCKETBEEP: usize = 2;
 
+// `g_MpSetup.paused`.
+pub const MPPAUSEMODE_UNPAUSED: u8 = 0;
+pub const MPPAUSEMODE_PAUSED: u8 = 1;
+pub const MPPAUSEMODE_GAMEOVER: u8 = 2;
+
+// `playerstats.shotcount[]` indexes (`mpstats.c`).
+pub const SHOTREGION_TOTAL: usize = 0;
+pub const SHOTREGION_HEAD: usize = 1;
+pub const SHOTREGION_BODY: usize = 2;
+pub const SHOTREGION_LIMB: usize = 3;
+pub const SHOTREGION_GUN: usize = 4;
+pub const SHOTREGION_HAT: usize = 5;
+pub const SHOTREGION_OBJECT: usize = 6;
+
+// `mp_calculate_awards`' award bits (`g_AwardNames` order).
+pub const AWARD_MOSTSUICIDAL: u32 = 0x1;
+pub const AWARD_WHONEEDSAMMO: u32 = 0x2;
+pub const AWARD_LEASTSHIELDED: u32 = 0x4;
+pub const AWARD_BESTPROTECTED: u32 = 0x8;
+pub const AWARD_MARKSMANSHIP: u32 = 0x10;
+pub const AWARD_MOSTPROFESSIONAL: u32 = 0x20;
+pub const AWARD_MOSTDEADLY: u32 = 0x40;
+pub const AWARD_MOSTHARMLESS: u32 = 0x80;
+pub const AWARD_MOSTCOWARDLY: u32 = 0x100;
+pub const AWARD_MOSTFRANTIC: u32 = 0x200;
+pub const AWARD_MOSTHONORABLE: u32 = 0x400;
+pub const AWARD_MOSTDISHONORABLE: u32 = 0x800;
+pub const AWARD_SHORTESTLIFE: u32 = 0x1000;
+pub const AWARD_LONGESTLIFE: u32 = 0x2000;
+pub const AWARD_DOUBLEKILL: u32 = 0x4000;
+pub const AWARD_TRIPLEKILL: u32 = 0x8000;
+pub const AWARD_QUADKILL: u32 = 0x10000;
+
+// `mpplayerconfig.medals`.
+pub const MEDAL_KILLMASTER: u8 = 0x1;
+pub const MEDAL_HEADSHOT: u8 = 0x2;
+pub const MEDAL_ACCURACY: u8 = 0x4;
+pub const MEDAL_SURVIVOR: u8 = 0x8;
+
+// `mpplayerconfig.title`.
+pub const MPPLAYERTITLE_BEGINNER: u8 = 0;
+pub const MPPLAYERTITLE_TRAINEE: u8 = 1;
+pub const MPPLAYERTITLE_AMATEUR: u8 = 2;
+pub const MPPLAYERTITLE_ROOKIE: u8 = 3;
+pub const MPPLAYERTITLE_NOVICE: u8 = 4;
+pub const MPPLAYERTITLE_TROOPER: u8 = 5;
+pub const MPPLAYERTITLE_AGENT: u8 = 6;
+pub const MPPLAYERTITLE_STARAGENT: u8 = 7;
+pub const MPPLAYERTITLE_SPECIALAGENT: u8 = 8;
+pub const MPPLAYERTITLE_EXPERT: u8 = 9;
+pub const MPPLAYERTITLE_VETERAN: u8 = 10;
+pub const MPPLAYERTITLE_PROFESSIONAL: u8 = 11;
+pub const MPPLAYERTITLE_DANGEROUS: u8 = 12;
+pub const MPPLAYERTITLE_DEADLY: u8 = 13;
+pub const MPPLAYERTITLE_KILLER: u8 = 14;
+pub const MPPLAYERTITLE_ASSASSIN: u8 = 15;
+pub const MPPLAYERTITLE_LETHAL: u8 = 16;
+pub const MPPLAYERTITLE_ELITE: u8 = 17;
+pub const MPPLAYERTITLE_INVINCIBLE: u8 = 18;
+pub const MPPLAYERTITLE_NEARPERFECT: u8 = 19;
+pub const MPPLAYERTITLE_PERFECT: u8 = 20;
+
+// `mpchrconfig.displayoptions`.
+pub const MPDISPLAYOPTION_HIGHLIGHTPLAYERS: u8 = 0x1;
+pub const MPDISPLAYOPTION_HIGHLIGHTPICKUPS: u8 = 0x2;
+pub const MPDISPLAYOPTION_RADAR: u8 = 0x4;
+pub const MPDISPLAYOPTION_HIGHLIGHTTEAMS: u8 = 0x8;
+
+// `g_HudmsgTypes` rows.
+pub const HUDMSGTYPE_DEFAULT: usize = 0;
+pub const HUDMSGTYPE_OBJECTIVECOMPLETE: usize = 1;
+pub const HUDMSGTYPE_OBJECTIVEFAILED: usize = 2;
+pub const HUDMSGTYPE_3: usize = 3;
+pub const HUDMSGTYPE_4: usize = 4;
+pub const HUDMSGTYPE_5: usize = 5;
+pub const HUDMSGTYPE_INGAMESUBTITLE: usize = 6;
+pub const HUDMSGTYPE_7: usize = 7;
+pub const HUDMSGTYPE_8: usize = 8;
+pub const HUDMSGTYPE_MPSCENARIO: usize = 9;
+pub const HUDMSGTYPE_TRAINING: usize = 10;
+pub const HUDMSGTYPE_CUTSCENESUBTITLE: usize = 11;
+
+// `hudmessage.flags`.
+pub const HUDMSGFLAG_ONLYIFALIVE: u32 = 0x1;
+pub const HUDMSGFLAG_FORCEOFF: u32 = 0x2;
+pub const HUDMSGFLAG_NOCHANNEL: u32 = 0x4;
+pub const HUDMSGFLAG_ALLOWDUPES: u32 = 0x8;
+pub const HUDMSGFLAG_DELAY: u32 = 0x10;
+pub const HUDMSGFLAG_NOWRAP: u32 = 0x20;
+
+// `hudmessage.state`.
+pub const HUDMSGSTATE_FREE: u8 = 0;
+pub const HUDMSGSTATE_QUEUED: u8 = 1;
+pub const HUDMSGSTATE_CHOOSETRANSITION: u8 = 2;
+pub const HUDMSGSTATE_FADINGIN: u8 = 3;
+pub const HUDMSGSTATE_ONSCREEN: u8 = 4;
+pub const HUDMSGSTATE_FADINGOUT: u8 = 5;
+
+// `hudmessage.alignh` / `alignv`.
+pub const HUDMSGALIGN_SCREENLEFT: u8 = 0;
+pub const HUDMSGALIGN_LEFT: u8 = 1;
+pub const HUDMSGALIGN_RIGHT: u8 = 2;
+pub const HUDMSGALIGN_XMIDDLE: u8 = 3;
+pub const HUDMSGALIGN_SCREENTOP: u8 = 4;
+pub const HUDMSGALIGN_TOP: u8 = 5;
+pub const HUDMSGALIGN_BOTTOM: u8 = 6;
+pub const HUDMSGALIGN_YMIDDLE: u8 = 7;
+pub const HUDMSGALIGN_BELOWVIEWPORT: u8 = 8;
+
+// `obj->hidden2`.
+pub const OBJH2FLAG_HASOPA: u32 = 0x1;
+pub const OBJH2FLAG_HASXLU: u32 = 0x2;
+pub const OBJH2FLAG_CANREGEN: u32 = 0x4;
+pub const OBJH2FLAG_CORE_GEO_EXISTS: u32 = 0x8;
+pub const OBJH2FLAG_10: u32 = 0x10;
+pub const OBJH2FLAG_DESTROYED: u32 = 0x40;
+pub const OBJH2FLAG_DEFORMED: u32 = 0x80;
+
+// `invitem.type`.
+pub const INVITEMTYPE_WEAP: i32 = 1;
+pub const INVITEMTYPE_PROP: i32 = 2;
+pub const INVITEMTYPE_DUAL: i32 = 3;
+
+// The weapons `inv_choose_cycle_*_weapon` can land on.
+pub const NUM_CYCLEABLE_WEAPONS: u8 = 45;
+
+// What a prop's tick asks `prop_execute_tick_operation` to do.
+pub const TICKOP_NONE: i32 = 0;
+pub const TICKOP_FREE: i32 = 1;
+pub const TICKOP_DISABLE: i32 = 2;
+pub const TICKOP_RETICK: i32 = 3;
+pub const TICKOP_GIVETOPLAYER: i32 = 4;
+pub const TICKOP_CHANGEDLIST: i32 = 5;
+
+// `projectile->droptype`: how `obj_drop` throws a dropped object.
+pub const DROPTYPE_DEFAULT: u8 = 1;
+pub const DROPTYPE_SURRENDER: u8 = 2;
+pub const DROPTYPE_THROWGRENADE: u8 = 3;
+pub const DROPTYPE_HAT: u8 = 4;
+pub const DROPTYPE_DEBRIS: u8 = 5;
+pub const DROPTYPE_OWNERREAP: u8 = 6;
+
+// `aibot->flags`.
+pub const BOTFLAG_UNLIMITEDAMMO: u32 = 0x1;
+pub const BOTFLAG_AVOIDINGDANGEROUSPROP: u32 = 0x4;
+pub const BOTFLAG_THREWREMOTEMINE: u32 = 0x1000;
+
+// A simulant's `chr->myaction`.
+pub const MA_AIBOTDEADLIST: i32 = 39;
+pub const MA_AIBOTINIT: i32 = 40;
+pub const MA_AIBOTMAINLOOP: i32 = 41;
+pub const MA_AIBOTGETITEM: i32 = 42;
+pub const MA_AIBOTGOTOPOS: i32 = 43;
+pub const MA_AIBOTGOTOPROP: i32 = 44;
+pub const MA_AIBOTRUNAWAY: i32 = 45;
+pub const MA_AIBOTDOWNLOAD: i32 = 46;
+pub const MA_AIBOTATTACK: i32 = 47;
+pub const MA_AIBOTFOLLOW: i32 = 50;
+pub const MA_AIBOTDEFEND: i32 = 51;
+
 /// Each `g_Stages` row's stage and code (its BG file, `stagetable.c`): the
 /// name of `assets/stages/<code>/`.
 pub const STAGE_CODES: &[(u8, &str)] = &[

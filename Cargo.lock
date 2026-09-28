@@ -2285,6 +2285,7 @@ dependencies = [
  "log",
  "n64",
  "pd_core",
+ "pd_game",
  "pd_menu",
  "pd_render",
  "pd_sim",

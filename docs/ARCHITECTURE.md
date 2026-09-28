@@ -35,8 +35,8 @@ Arrows point at what a crate may use. Nothing points back up.
 | **`pd_sim`** | the world: stage collision (`TileLevel`), pads, nav (PD's routing + our generator), chrs, the player (`bondmove`/`bondwalk`), guns (`gset`, `bondgun`, shots), simulants (`bot`, `botcmd`), props (projectiles, mines, explosions, sentry, N-Bomb, pickups), effect state, match rules, events | draw, play sound, read devices |
 | **`pd_menu`** | `menu.c`, `menuitem.c`, every Combat Simulator dialog and handler, MP state (presets, locks, challenges, profile), menu graphics and 3D models via the CPU RDP. Output: a framebuffer, sound events, and outcomes such as `StartMatch(MatchSetup)` | depend on `pd_sim` |
 | **`pd_render`** | PD on the GPU: BG, every model through the one combiner path, effects, HUD canvas, x-ray, framebuffer post, per-player `View` (split-screen ready) | write to the world |
-| **`pd_game`** | the `perfect_dark` binary: state machine (Menus → Match → Results), device → N64 controller mapping, event → voice routing, presentation settings | contain game rules |
-| **`pd_tools`** | `pd_snapshot` (offscreen PNGs of menus, guns, stages, matches), probes, offline audio renders, the bot/nav debug viewer | ship in the game |
+| **`pd_game`** | the `perfect_dark` binary: state machine (Menus → Match → Results), device → N64 controller mapping, event → voice routing, presentation settings; its library half, `session`, couples a match with the menus over it (pause, end screens) for the binary and `pd_snapshot` | contain game rules |
+| **`pd_tools`** | `pd_snapshot` (offscreen PNGs of menus, guns, stages, matches, pickups), probes, offline audio renders, the bot/nav debug viewer | ship in the game |
 
 ### Why these boundaries
 
@@ -98,7 +98,7 @@ assets/
   models/<stem>.json + .bin  one format for every model file (guns G*, props/held guns P*, chr bodies and heads, hudpiece);
                              the format is documented in pd_core::model
   models/tex/<stem>_<i>.png  textures stored inside a model file (a51guard, dd_shock, elvis, the casings)
-  models/index.json          stem -> FILE_* number and name, kind, source
+  models/index.json          stem -> FILE_* number and name, kind, source, MODEL_* number and g_ModelStates scale (modelnum, statescale)
   anims/<num>.bin + index.json  the whole animation bank, as PD's bit-packed data, by ANIM_* number
   fonts/<name>.bin           handelgothic xs/sm/md/lg, numeric (one copy)
   lang/en.json               every bank, keyed by name with its LANGBANK_* number; lang/mpstringsE.bin
@@ -118,7 +118,7 @@ assets/
   music/                     later: sequences + soundbank
 ```
 
-Generated Rust sits beside the code that uses it: `crates/pd_core/src/ids.rs` (`pd_ids.py`: `WEAPON_*`, `STAGE_*` with stage codes, `BODY_*`/`HEAD_*`, `MP*`, `BOT*`, `HITPART_*`) and `crates/pd_menu/src/generated.rs` (`pd_menu_gen.py` `write_rust`: the menu dialogs and item arrays, the MP tables). `build_assets.py` regenerates both.
+Generated Rust sits beside the code that uses it: `crates/pd_core/src/ids.rs` (`pd_ids.py`: `WEAPON_*`, `STAGE_*` with stage codes, `BODY_*`/`HEAD_*`, `MP*`, `BOT*`, `HITPART_*`) `crates/pd_menu/src/generated.rs` (`pd_menu_gen.py` `write_rust`: the menu dialogs and item arrays, the MP tables) and `crates/pd_core/src/mpweapons.rs` (`pd_menu_gen.py`: `g_MpWeapons`, which the sim's pickups and the menus share). `build_assets.py` regenerates both.
 
 Nothing reads the decomp or the ROM at run time. In the spikes, the Complex match read `tiles/ref.json`, `pads/ref.json` and `mp_setupref.c` from `reference/pd-decomp` on every launch; the stage exporter (`pd_stage.py`) owns that now.
 

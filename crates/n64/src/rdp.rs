@@ -282,6 +282,13 @@ impl Gfx {
         self.zb.fill(f32::INFINITY);
     }
 
+    /// Clear to transparent black: a frame another picture shows through
+    /// (premultiplied, so composited with "over").
+    pub fn clear_transparent(&mut self) {
+        self.fb.fill([0.0; 4]);
+        self.zb.fill(f32::INFINITY);
+    }
+
     /// Draw into a fresh transparent layer until [`Gfx::swap_to_base`].
     pub fn push_layer(&mut self) {
         let fresh = vec![[0.0; 4]; self.w * self.h];

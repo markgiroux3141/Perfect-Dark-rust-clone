@@ -598,8 +598,8 @@ impl GunCtx<'_> {
             self.b.hands[h].lastdirvalid = false;
             self.b.hands[h].shotremainder = 0.0;
             if self.bgun_is_ready_to_switch(h) && self.bgun_set_state(h, HANDSTATE_CHANGEGUN) {
-                // M8: playermgr_delete_weapon(handnum) (multiplayer: the
-                // empty throwable leaves the inventory).
+                // playermgr_delete_weapon(handnum): the player chr's held
+                // model, which only another player would see (M12).
                 self.b.events.push(super::GunEvent::FreeHeldRocket { hand: h });
                 self.b.hands[h].mode = HANDMODE_6;
                 self.b.hands[h].stateminor = HANDSTATEMINOR_AUTOSWITCH_2;

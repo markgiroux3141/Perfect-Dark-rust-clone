@@ -10,8 +10,8 @@
 //!
 //! What a shot can hit: the BG, the firing range's boards, the objects the
 //! guns put in the world (`obj_test_hit`: a shot mine or grenade goes off, a
-//! shot sentry breaks) and the simulants, by part box (`chr_test_hit`,
-//! `chr_hit`). `// M8:` weapons on pads.
+//! shot sentry breaks; the pickups on the pads, sparks and a thump) and the
+//! simulants, by part box (`chr_test_hit`, `chr_hit`).
 //!
 //! `// SUBST:` PD's shots and punches also test another human's body / a
 //! player's chr isn't posed (M6 draws no third-person player body), so only
@@ -126,7 +126,7 @@ impl World {
                 // firing this tick (no two guns on one tick).
                 if h == HAND_RIGHT || !self.players[pi].gun.hands[HAND_RIGHT].firing {
                     self.chr_uncloak_temporarily(pi);
-                    self.shots_fired[pi] += 1;
+                    self.mpstats_increment_player_shotcount(pi, gsetnum, SHOTREGION_TOTAL);
                     if weaponnum == WEAPON_SHOTGUN {
                         for _ in 0..6 {
                             self.shot_create(pi, h, true, true, 1);
@@ -135,6 +135,7 @@ impl World {
                         let n = self.players[pi].gun.hands[h].shotstotake;
                         self.shot_create(pi, h, true, true, n);
                     }
+                    self.mpstats_end_shot();
                 }
             }
             HANDATTACKTYPE_MELEE => {
@@ -172,7 +173,7 @@ impl World {
     /// (`obj_is_any_node_in_range`), with a clear line from the eye, takes the
     /// blow in the torso (ducking: general; squatting: half). If none did (and
     /// not `arg2`, the no-uncloak attacks), the BG is tried on the next tick.
-    /// `// M8:` glass. `arg2`'s `CHRCFLAG_AVOIDING` has no reader in a match.
+    /// (Glass: M9's arenas.) `arg2`'s `CHRCFLAG_AVOIDING` has no reader in a match.
     fn hand_inflict_melee_damage(&mut self, pi: usize, h: usize, arg2: bool) {
         let mut skipthething = false;
         let (gsetnum, gsetfunc) = (self.players[pi].gun.hands[h].weaponnum, self.players[pi].gun.hands[h].weaponfunc);
@@ -358,7 +359,8 @@ impl World {
         }
         let lodscale = self.players[pi].cam.c_lodscalez;
         let dir2n = gundir2d.normalize_or_zero();
-        for o in self.props.objs.iter().filter(|o| !o.is_deleting() && o.flags & OBJFLAG_HELDROCKET == 0) {
+        // A taken pickup is disabled (`prop_disable`) until it fades back in.
+        for o in self.props.objs.iter().filter(|o| !o.is_deleting() && !o.is_gone() && o.flags & OBJFLAG_HELDROCKET == 0) {
             // The shooter's own held rocket and a THROWTHROUGH object are skipped
             // by the object test's own flags (OBJFLAG2_SHOOTTHROUGH is unset).
             if let Some((depth, p, n)) = o.test_hit(&w2s, lodscale, gunpos2d, dir2n, distance) {
@@ -439,7 +441,7 @@ impl World {
     /// `obj_hit` (`propobj.c:14765`) on one of the guns' objects: sparks, the
     /// prop hit sound and `obj_damage_by_gunfire`, which sets an explosive off
     /// or breaks a sentry. `// SUBST:` PD also leaves a bullet hole on the
-    /// object's model / none (M8: wallhits riding props).
+    /// object's model / none (wallhits riding props: M12).
     fn obj_hit(&mut self, pi: usize, id: u32, hit: &PropHit, func: &Option<super::gset::FuncDef>) {
         let ismelee = func.as_ref().is_some_and(|f| f.kind() == INVENTORYFUNCTYPE_MELEE);
         self.players[pi].gun.bgun_set_hit_pos(hit.pos);

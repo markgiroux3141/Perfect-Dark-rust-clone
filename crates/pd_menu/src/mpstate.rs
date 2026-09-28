@@ -27,9 +27,9 @@ pub struct MpChrConfig {
     pub unk18: u16,
     pub unk1a: u16,
     pub unk1c: u16,
-    pub killcounts: [i16; 12],
-    pub numdeaths: i16,
-    pub numpoints: i16,
+    /// The match's counters (`killcounts`, `numdeaths`, `numpoints`,
+    /// `placement`, `rankablescore`), as the match left them.
+    pub stats: pd_core::mp::MpChrStats,
 }
 
 /// `struct mpplayerconfig` (types.h:4029).
@@ -39,22 +39,10 @@ pub struct MpPlayerConfig {
     pub controlmode: u8,
     pub options: u32,
     pub fileid: u32,
-    pub kills: u32,
-    pub deaths: u32,
-    pub gamesplayed: u32,
-    pub gameswon: u32,
-    pub gameslost: u32,
-    pub time: u32,
-    pub distance: u32,
-    pub accuracy: u32,
-    pub damagedealt: u32,
-    pub painreceived: u32,
-    pub headshots: u32,
-    pub ammoused: u32,
-    pub accuracymedals: u32,
-    pub headshotmedals: u32,
-    pub killmastermedals: u32,
-    pub survivormedals: u32,
+    /// `kills` .. `survivormedals`: the player file's statistics.
+    pub career: pd_core::mp::MpCareer,
+    /// `MEDAL_*` won in the last match (`mp_calculate_awards`).
+    pub medals: u8,
     pub title: u8,
     pub newtitle: u8,
     pub handicap: u16,
@@ -669,22 +657,7 @@ impl MenuSystem {
         pl.base.displayoptions = (MPDISPLAYOPTION_RADAR | MPDISPLAYOPTION_HIGHLIGHTTEAMS) as u32;
         pl.fileid = 0;
         pl.base.name = name;
-        pl.kills = 0;
-        pl.deaths = 0;
-        pl.gamesplayed = 0;
-        pl.gameswon = 0;
-        pl.gameslost = 0;
-        pl.time = 0;
-        pl.distance = 0;
-        pl.accuracy = 1000;
-        pl.damagedealt = 0;
-        pl.painreceived = 0;
-        pl.headshots = 0;
-        pl.ammoused = 0;
-        pl.accuracymedals = 0;
-        pl.headshotmedals = 0;
-        pl.killmastermedals = 0;
-        pl.survivormedals = 0;
+        pl.career = pd_core::mp::MpCareer::default();
         pl.title = MPPLAYERTITLE_BEGINNER as u8;
     }
 
@@ -751,19 +724,54 @@ impl MenuSystem {
         self.challenge_force_unlock_bot_features();
     }
 
+    /// Each chr slot's `mpchrconfig.team`.
+    pub fn mp_teams(&self) -> [u8; pd_core::mp::MAX_MPCHRS] {
+        std::array::from_fn(|i| self.mpchr(i).map_or(0, |c| c.team))
+    }
+
+    fn mp_chr_stats(&self) -> [pd_core::mp::MpChrStats; pd_core::mp::MAX_MPCHRS] {
+        std::array::from_fn(|i| self.mpchr(i).map_or_else(Default::default, |c| c.stats))
+    }
+
+    /// `mp_get_team_rankings` (mplayer.c:810) over the mpchrconfigs.
+    pub fn mp_get_team_rankings(&self) -> Vec<pd_core::mp::Ranking> {
+        let (teams, stats) = (self.mp_teams(), self.mp_chr_stats());
+        let teams_enabled = self.mp.setup.options & MPOPTION_TEAMSENABLED as u32 != 0;
+        pd_core::mp::MpScoring { chrslots: self.mp.setup.chrslots, teams_enabled, teams: &teams, stats: &stats }.mp_get_team_rankings()
+    }
+
+    /// `mp_get_player_rankings` (mplayer.c:640) over the mpchrconfigs: it also
+    /// writes their placements and the lock's last winner and loser.
+    pub fn mp_get_player_rankings(&mut self) -> Vec<pd_core::mp::Ranking> {
+        let (teams, mut stats) = (self.mp_teams(), self.mp_chr_stats());
+        let teams_enabled = self.mp.setup.options & MPOPTION_TEAMSENABLED as u32 != 0;
+        let r = pd_core::mp::mp_get_player_rankings(self.mp.setup.chrslots, teams_enabled, &teams, &mut stats);
+        for (i, s) in stats.iter().enumerate() {
+            if let Some(c) = self.mpchr_mut(i) {
+                c.stats = *s;
+            }
+        }
+        self.mp.lockinfo.lastwinner = r.lastwinner;
+        self.mp.lockinfo.lastloser = r.lastloser;
+        if self.mp.bossfile.locktype == MPLOCKTYPE_RANDOM as u8 {
+            self.mp.lockinfo.lockedplayernum = self.mp_choose_random_lock_player();
+        }
+        r.rankings
+    }
+
+    /// `challenge_is_complete_for_endscreen` (challenge.c:784): no player
+    /// aborted and team 0 (the players' side) came first.
+    pub fn challenge_is_complete_for_endscreen(&self) -> bool {
+        if self.matchview.players.iter().any(|p| p.aborted) {
+            return false;
+        }
+        self.mp_get_team_rankings().first().is_some_and(|r| r.teamnum == 0)
+    }
+
     /// `mp_calculate_team_score_limit` (mplayer.c:578).
     pub fn mp_calculate_team_score_limit(&self) -> i32 {
-        let mut limit = self.mp.setup.teamscorelimit as i32;
-        if self.mp.bossfile.locktype == MPLOCKTYPE_CHALLENGE as u8 && limit != 400 && (self.mp.setup.scenario as i32 == MPSCENARIO_COMBAT || self.mp.setup.scenario as i32 == MPSCENARIO_KINGOFTHEHILL) {
-            let numchrs = (0..4).filter(|i| self.mp.setup.chrslots & (1 << i) != 0).count();
-            limit = match numchrs {
-                2 => limit * 2 + 1,
-                3 => (limit * 5 + 5) / 2 - 1,
-                4 => limit * 3 + 2,
-                _ => limit,
-            };
-        }
-        limit
+        let numchrs = (0..4).filter(|i| self.mp.setup.chrslots & (1 << i) != 0).count();
+        pd_core::mp::mp_calculate_team_score_limit(self.mp.setup.teamscorelimit, self.mp.bossfile.locktype == MPLOCKTYPE_CHALLENGE as u8, self.mp.setup.scenario, numchrs)
     }
 
     // ---- weapons (mplayer.c:859-1165) ----

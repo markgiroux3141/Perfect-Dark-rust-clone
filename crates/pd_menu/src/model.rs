@@ -448,6 +448,16 @@ impl MenuSystem {
     /// `tex_select(TEX_GENERAL_ENVSTAR)` + `gSPTextureRectangle` with
     /// `TEXEL0 × ENVIRONMENT` and `G_TF_POINT` (setup.c:740): the challenge /
     /// medal star, flipped vertically as PD's `t = 0x160, dtdy = -1` draws it.
+    /// `TEX_GENERAL_ENVSTAR` in the env colour over `x1..x2 × y1..y2`
+    /// (`gSPTextureRectangle` from texel `s0, t0`, `dtdy` per line; `x` is
+    /// scaled by `g_UiScaleX`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_envstar_rect(&mut self, x1: i32, y1: i32, x2: i32, y2: i32, env: u32, s0: f32, t0: f32, dtdy: f32) {
+        let us = self.draw.gfx.uiscale;
+        let tex: &Texture = &self.draw.res.envstar;
+        self.draw.gfx.tex_rect(x1 * us, y1, x2 * us, y2, tex, s0, t0, 1.0 / us as f32, dtdy, Cc::TexEnv, rgba(env), Filter::Point);
+    }
+
     pub fn draw_star(&mut self, x: i32, y: i32, size: i32, env: u32, flip: bool) {
         let us = self.draw.gfx.uiscale;
         let (t0, dtdy) = if flip { (11.0, -1.0) } else { (0.0, 1.0) };

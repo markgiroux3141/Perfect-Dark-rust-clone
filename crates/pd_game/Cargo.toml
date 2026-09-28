@@ -7,6 +7,10 @@ version.workspace = true
 publish.workspace = true
 default-run = "perfect_dark"
 
+[lib]
+name = "pd_game"
+path = "src/lib.rs"
+
 [[bin]]
 name = "perfect_dark"
 path = "src/main.rs"

@@ -36,7 +36,8 @@ of 28 bytes (`f32 x,y,z; u16 mtx; f32 u,v; u8 c0,c1,c2,c3; u8 flags; u8 pad`,
 flags 1 = lit, 2 = texgen; c0..c2 are a normal when lit), then `nidx` u16
 indices into that batch's vertices.
 
-`models/index.json`: {stem: {filenum, file, kind, source, tris}}.
+`models/index.json`: {stem: {filenum, file, kind, source, tris, [modelnum, statescale]}} (the
+`g_ModelStates` row naming the file, if any).
 
 # The texture pool
 
@@ -101,6 +102,17 @@ FX_TEXTURES = [
 # ---------------------------------------------------------------------------
 # FILE_* numbers
 # ---------------------------------------------------------------------------
+
+
+def model_states() -> dict[str, tuple[int, int]]:
+    """FILE_ name -> (MODEL_ number, scale) from `g_ModelStates`
+    (`modeldata/general.c`), the first row naming the file. An object's model
+    scale is `scale / 4096` (`obj_init`, `propobj.c:2098`)."""
+    text = gen.read(src("game", "modeldata", "general.c"))
+    states: dict[str, tuple[int, int]] = {}
+    for m in re.finditer(r"/\*0x([0-9a-f]+)\*/\s*\{\s*NULL,\s*(FILE_\w+),\s*(\w+)\s*\}", text):
+        states.setdefault(m.group(2), (int(m.group(1), 16), int(m.group(3), 0)))
+    return states
 
 
 def file_table() -> dict[str, tuple[int, str]]:
@@ -182,6 +194,9 @@ def model_list(weapons: dict, c: gen.Consts) -> list[tuple[str, str]]:
         add((w.get("assets") or {}).get("tp_model"), "held")
     for f in pd_fpgun.PROP_FILES:
         add(f"props/{f}", "prop")
+    # The MP ammo crate beside each weapon pad (MODEL_MULTI_AMMO_CRATE,
+    # modeldata/general.c:599; ammocratemulti() in the setups).
+    add("props/multi_ammo_crate.bin", "prop")
     table = file_table()
     by_num = {num: rel for rel, (num, _) in table.items()}
     for n in sorted(chr_filenums(c)):
@@ -361,6 +376,7 @@ def export_all(weapons: dict) -> tuple[dict, "TexturePool"]:
     writes `textures/index.json` (`TexturePool.write_index`)."""
     c = consts()
     table = file_table()
+    states = model_states()
     pool = TexturePool()
     index: dict[str, dict] = {}
     warned = 0
@@ -375,6 +391,8 @@ def export_all(weapons: dict) -> tuple[dict, "TexturePool"]:
         nbytes, tris = write_model(d, stem, filenum, filename)
         total += nbytes
         index[stem] = {"filenum": filenum, "file": filename, "kind": kind, "source": decomp_rel(path), "tris": tris}
+        if filename in states:
+            index[stem]["modelnum"], index[stem]["statescale"] = states[filename]
         for w in warnings:
             warned += 1
             print(f"  {stem}: {w}", file=sys.stderr)

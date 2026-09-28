@@ -1,6 +1,7 @@
 //! The guns' test harness, shared by the gun and prop tests: the firing range
-//! with one player (`stage::fixtures::firing_range`), stepping it, and the
-//! spike's input helpers.
+//! with one player (`stage::fixtures::firing_range`) carrying every weapon
+//! (the harness loadout, not PD's unarmed start), stepping it, and the spike's
+//! input helpers.
 
 use std::sync::{Arc, OnceLock};
 
@@ -50,6 +51,7 @@ pub fn range_with(geom: crate::stage::LevelGeom) -> World {
     let setup = MatchSetup { players: vec![MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
     let mut w = World::new(setup, Arc::new(stage), Arc::new(level), res(), 0x1234_5678).unwrap();
     w.boards = fixtures::firing_range_boards();
+    w.harness_give_loadout(res().gset.order.clone());
     w
 }
 
@@ -100,6 +102,7 @@ pub fn range_players(n: usize) -> World {
     let setup = MatchSetup { players, ..Default::default() };
     let mut w = World::new(setup, Arc::new(stage), Arc::new(level), res(), 0x1234_5678).unwrap();
     w.boards = fixtures::firing_range_boards();
+    w.harness_give_loadout(res().gset.order.clone());
     w
 }
 

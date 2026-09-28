@@ -1,7 +1,8 @@
 //! The objects the guns put into the world (`propobj.c`, `projectile.c`): thrown
 //! and fired weapons in flight ([`projectile`]), the fuses, mines, rockets and
 //! bolts they become ([`weapon`]), the Laptop sentry ([`autogun`]), the N-Bomb
-//! storm ([`nbomb`]) and the [`explosions`]. M8 adds the weapon and ammo pickups.
+//! storm ([`nbomb`]), the [`explosions`], and the Combat Simulator's pickups
+//! ([`pickup`]: the pads' weapons, crates and shields, and what dead chrs drop).
 //!
 //! An object is PD's `defaultobj` with the `weaponobj` / `autogunobj` fields it
 //! needs ([`Obj`]); in flight it carries a `struct projectile` ([`Projectile`],
@@ -12,9 +13,9 @@
 //! Collision is PD's own on the stage: a sticky projectile's segment against the
 //! BG's display-list triangles (`bg_test_hit_in_room`, [`crate::stage::BgHitMesh`])
 //! then the props, a non-sticky one's cylinder against the wall tiles
-//! (`cd_test_cylmove_*`, `cd_test_volume_fromdir`), and floors by `cd_find_y`.
-//! Until chrs exist (M6) the props a projectile can meet are the firing range's
-//! boards; see `// M6:` for the chr branches.
+//! (`cd_test_cylmove_*`, `cd_test_volume_fromdir`) and the chrs' perimeters,
+//! and floors by `cd_find_y`. The props a sticky projectile meets are the
+//! firing range's boards and the chrs (their part boxes when drawn).
 //!
 //! Sources: the old repo's `pd_guns/props.rs`, `throw.rs`, `autogun.rs` and
 //! `nbomb.rs`, re-checked against the decomp: where the spike stood in for PD's
@@ -23,6 +24,7 @@
 pub mod autogun;
 pub mod explosions;
 pub mod nbomb;
+pub mod pickup;
 pub mod projectile;
 #[cfg(test)]
 mod tests;
@@ -87,8 +89,9 @@ pub struct Projectile {
     pub accel: Vec3,
     /// The spin applied once per quarter-tick (`projectile->mtx`), a rotation.
     pub mtx: Mat3,
-    /// `ownerprop`: the player who threw or fired it, whose perimeter the
-    /// flight ignores and whose pass ticks it. M6: a simulant owner.
+    /// `ownerprop`: the chr (a player's chr index is the player's) who threw,
+    /// fired or dropped it, whose perimeter the flight ignores; a player's
+    /// pass ticks a player's.
     pub ownerprop: Option<usize>,
     pub bouncecount: i32,
     pub bounceframe: i32,
@@ -187,6 +190,21 @@ pub struct Obj {
     pub autogun: Option<Autogun>,
     /// `PROPFLAG_NOTYETTICKED`: not ticked yet this frame.
     pub notyetticked: bool,
+    /// `obj->pad`: the pad a setup object stands on (-1 none).
+    pub pad: i32,
+    /// `obj->hidden2`: `OBJH2FLAG_*` (`CANREGEN` for the setup's pickups).
+    pub hidden2: u32,
+    /// `prop->timetoregen`: while positive the pickup is gone, the last 60
+    /// ticks fading back in (`obj_tick`).
+    pub timetoregen: i32,
+    /// A multi ammo crate's `slots[ammotype - 1].quantity`.
+    pub ammoslots: [i32; 19],
+    /// A shield's `amount` and `initialamount` (fractions of a full shield).
+    pub shieldamount: f32,
+    pub shieldinitialamount: f32,
+    /// The model's toggle and LOD visibility (`Model::vis`); empty draws every
+    /// toggle and the nearest LOD.
+    pub vis: Vec<bool>,
 }
 
 impl Obj {
@@ -194,7 +212,7 @@ impl Obj {
     /// (`propobj.c:17632`): `OBJFLAG_FALL`, `timer240` -1, the owner in `hidden`.
     pub fn weapon(id: u32, def: Arc<ModelDef>, modelscale: f32, weaponnum: u8, gunfunc: usize, owner: usize) -> Obj {
         let bbox = Bbox::from_def(&def);
-        Obj {
+        let mut o = Obj {
             id,
             ty: OBJTYPE_WEAPON,
             weaponnum,
@@ -214,7 +232,36 @@ impl Obj {
             embedded: None,
             autogun: None,
             notyetticked: false,
+            pad: -1,
+            hidden2: 0,
+            timetoregen: 0,
+            ammoslots: [0; 19],
+            shieldamount: 0.0,
+            shieldinitialamount: 0.0,
+            vis: Vec::new(),
+        };
+        // weapon_init (`propobj.c:17353`): the gunfire hidden.
+        o.weapon_set_gunfire_visible(false);
+        o
+    }
+
+    /// `weapon_set_gunfire_visible` (`propobj.c:17867`) for the object's own
+    /// model: a chr gun's `CHRGUNFIRE` flash (drawn only while `gunfire`) and its
+    /// `MODELPART_CHRGUN_0002` toggle. Every weapon object starts with both off
+    /// (`weapon_init`, `:17353`). True if the model has either.
+    pub fn weapon_set_gunfire_visible(&mut self, visible: bool) -> bool {
+        if self.def.skel != pd_core::model::SKEL_CHRGUN {
+            return false;
         }
+        let mut flash = self.def.get_part(MODELPART_CHRGUN_GUNFIRE).is_some();
+        if let Some(n) = self.def.get_part(MODELPART_CHRGUN_0002) {
+            if self.vis.is_empty() {
+                self.vis = pd_core::model::near_lod_vis(&self.def);
+            }
+            self.vis[n] = visible;
+            flash = true;
+        }
+        flash && visible
     }
 
     /// `(obj->hidden & 0xf0000000) >> 28`: the player (MP chr) who owns it.
@@ -280,14 +327,10 @@ impl Obj {
         }
     }
 
-    /// `gset_has_function_flags(&weapon->gset, flag)`: the grenade round borrows
-    /// the Devastator's functions (`invitems.c`), a rocket the launcher's.
+    /// `gset_has_function_flags(&weapon->gset, flag)` (the grenade round and
+    /// the bolt borrow their guns' functions, [`crate::gun::Gset::func`]).
     pub fn gset_flags(&self, gset: &crate::gun::Gset) -> u32 {
-        let w = match self.weaponnum {
-            WEAPON_GRENADEROUND => WEAPON_DEVASTATOR,
-            w => w,
-        };
-        gset.func(w, self.gunfunc).map_or(0, |f| f.flags)
+        gset.func(self.weaponnum, self.gunfunc).map_or(0, |f| f.flags)
     }
 }
 
@@ -302,6 +345,8 @@ pub struct Props {
     pub thrown_laptops: [Option<u32>; MAX_THROWN_LAPTOPS],
     /// The storms (`g_Nbombs`).
     pub nbombs: Nbombs,
+    /// `var80069bc4`: the homing rockets' controller memory, one static.
+    pub homing_prevangle: f32,
 }
 
 impl Props {

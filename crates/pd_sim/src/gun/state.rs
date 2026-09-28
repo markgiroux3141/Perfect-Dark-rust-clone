@@ -859,32 +859,27 @@ impl GunCtx<'_> {
         w
     }
 
-    /// `inv_choose_cycle_forward_weapon`'s order over the inventory: unarmed,
-    /// then each weapon once, a weapon held twice offered single then dual
-    /// (`inv.c`).
-    fn cycle_list(&self) -> Vec<(u8, bool)> {
-        let mut out = vec![(WEAPON_UNARMED, false)];
-        for (w, dual) in &self.b.p.inventory {
-            if *w == WEAPON_UNARMED {
-                continue;
-            }
-            out.push((*w, false));
-            if *dual {
-                out.push((*w, true));
-            }
-        }
-        out
-    }
-
-    /// `bgun_cycle_forward` / `bgun_cycle_back` (`:5494`, `:5521`).
+    /// `bgun_cycle_forward` / `bgun_cycle_back` (`:5494`, `:5521`): the next
+    /// (or previous) inventory item after the one being switched to, a pair
+    /// wielded twice; past the last cyclable weapon, the previous weapon.
     pub fn bgun_cycle(&mut self, forward: bool) {
-        let cur = (self.bgun_get_switch_to_weapon(HAND_RIGHT), self.bgun_get_switch_to_weapon(HAND_LEFT) != WEAPON_NONE);
-        let list = self.cycle_list();
-        let idx = list.iter().position(|e| *e == cur).unwrap_or(0) as i32;
-        let n = list.len() as i32;
-        let next = list[((idx + if forward { 1 } else { -1 }).rem_euclid(n)) as usize];
-        self.b.ctrl.dualwielding = next.1;
-        self.b.bgun_equip_weapon(next.0);
+        let mut w1 = self.bgun_get_switch_to_weapon(HAND_RIGHT) as i32;
+        let mut w2 = self.bgun_get_switch_to_weapon(HAND_LEFT) as i32;
+        if !forward && w2 == WEAPON_REMOTEMINE as i32 {
+            w2 = WEAPON_NONE as i32;
+        }
+        if w1 > WEAPON_PSYCHOSISGUN as i32 || w2 > WEAPON_PSYCHOSISGUN as i32 {
+            w1 = self.b.ctrl.prevweaponnum as i32;
+            w2 = self.b.ctrl.prevweaponnum as i32 * self.b.ctrl.prevwasdualwielding as i32;
+        } else {
+            let any = |_| true;
+            let inv = &self.b.p.inventory;
+            (w1, w2) = if forward { inv.inv_choose_cycle_forward_weapon(w1, w2, false, &any) } else { inv.inv_choose_cycle_back_weapon(w1, w2, false, &any) };
+        }
+        self.b.ctrl.dualwielding = if forward { w2 == w1 } else { w2 != WEAPON_NONE as i32 };
+        if (0..=255).contains(&w1) {
+            self.b.bgun_equip_weapon(w1 as u8);
+        }
     }
 
     /// `bgun_auto_switch_weapon` (`:5669`).
@@ -1112,6 +1107,26 @@ impl GunCtx<'_> {
     pub fn bgun_tick_gameplay(&mut self, triggeron: bool) {
         let lv240 = self.lv.lvupdate240;
         let mut gunsfiring = [false, false];
+        // (Passive mode is solo.) Throwables leave the inventory once none are
+        // left (`bondgun.c:9102`), the next item coming up if it was in hand.
+        let mut i = 0;
+        while i < self.b.p.inventory.inv_get_count() {
+            let weaponnum = self.b.p.inventory.inv_get_weapon_num_by_index(i);
+            if matches!(weaponnum, WEAPON_COMBATKNIFE | WEAPON_GRENADE | WEAPON_NBOMB | WEAPON_COMBATBOOST | WEAPON_CLOAKINGDEVICE | WEAPON_ECMMINE | WEAPON_COMMSRIDER | WEAPON_TRACERBUG | WEAPON_TARGETAMPLIFIER) {
+                let ammotype = self.weapon(weaponnum).and_then(|w| w.ammos[0].as_ref()).map(|a| a.ammotype);
+                if let Some(t) = ammotype.filter(|&t| self.bgun_get_ammo_count(t) == 0) {
+                    let _ = t;
+                    let equipped = self.bgun_get_weapon_num(HAND_RIGHT);
+                    self.b.p.inventory.inv_remove_item_by_num(weaponnum);
+                    if weaponnum == equipped && !self.b.inv_has_single(weaponnum) {
+                        self.b.p.inventory.inv_calculate_current_index(equipped);
+                        let next = self.b.p.inventory.inv_get_weapon_num_by_index(self.b.p.inventory.equipcuritem);
+                        self.b.bgun_equip_weapon(next);
+                    }
+                }
+            }
+            i += 1;
+        }
         let p = &mut self.b.p;
         p.playertriggerprev = p.playertriggeron;
         p.playertriggeron = triggeron;

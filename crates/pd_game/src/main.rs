@@ -1,7 +1,8 @@
 //! `perfect_dark`: the game.
 //!
-//! A small state machine over the engine runner: Menus -> Match -> (pause menu,
-//! end-of-match scores, M7) -> Menus. It owns the glue and nothing else:
+//! A small state machine over the engine runner: Menus -> Match (the pause
+//! menu and the end-of-match dialogs over it) -> Menus. It owns the glue and
+//! nothing else:
 //! - `controls`: keyboard, mouse and gamepads to N64 controllers (menus) and to
 //!   each player's `PlayerInput` (a match);
 //! - `audio`: `pd_menu`/`pd_sim` sound events to engine voices, with PD's pitch;
@@ -27,6 +28,7 @@ use engine::wgpu;
 use n64::pad::{A_BUTTON, MAX_PADS, START_BUTTON};
 use n64::rdp::Gfx;
 use pd_core::assets::AssetDir;
+use pd_core::events::Event;
 use pd_core::ids::stage_code;
 use pd_core::lv::Lv;
 use pd_core::mp::MatchSetup;
@@ -93,6 +95,11 @@ struct PdGame {
     n64v: Option<N64Video>,
     /// Seeds the next match's `random()`.
     next_seed: u64,
+    /// The end screen's blurred backdrop is taken from the next match frame
+    /// (`menu_set_background(MENUBG_BLUR)`'s screenshot).
+    blur_pending: bool,
+    /// A menu was open over the match last tick.
+    menu_was_open: bool,
 }
 
 impl PdGame {
@@ -127,6 +134,8 @@ impl PdGame {
             video: VideoSettings::default(),
             n64v: None,
             next_seed,
+            blur_pending: false,
+            menu_was_open: false,
         })
     }
 
@@ -146,7 +155,8 @@ impl PdGame {
         std::array::from_fn(|i| self.menu.mp.setup.chrslots & (1 << i) != 0 || self.menu.vars.waitingtojoin[i])
     }
 
-    /// Leave a match (or its stand-in) for the menus, as PD does at the end.
+    /// Leave a match (or its stand-in) for the menus, as PD does once the end
+    /// screens close (or at once, from the panel).
     fn end_match(&mut self, ctx: &mut Ctx) {
         if let Some(sfx) = &mut self.sfx {
             sfx.stop_all(ctx.audio.as_deref_mut());
@@ -154,6 +164,10 @@ impl PdGame {
         self.menu.return_from_match();
         self.screen = Screen::Menus;
         self.controls.captured = ctx.set_cursor_captured(false);
+        if let Some(r) = self.renderer.as_mut() {
+            r.menu_layer.clear();
+        }
+        self.blur_pending = false;
     }
 
     /// The menus handed over a match: play it if its arena is exported.
@@ -187,34 +201,47 @@ impl PdGame {
             renderer.load_stage(&ctx.gpu.device, &ctx.gpu.queue, &self.assets, code)?;
             self.loaded_stage = Some(code.to_owned());
         }
-        let mut world = self.match_assets.start(setup.clone(), code, seed)?;
-        world.set_weapon_set(&pd_menu::MenuSystem::weapon_set_weaponnums(&setup.weapons));
-        Ok(world)
+        // The setup's weapon slots are the pads' (`World::new`).
+        self.match_assets.start(setup.clone(), code, seed)
     }
 
-    /// One tick of a match. Returns false when the match ended.
+    /// One tick of a match: the world, then the menus over it (the pause menu
+    /// and the end-of-match dialogs, which `lv_tick` runs as `menu_tick`).
+    /// Returns false when the match is over and the menus are to come back.
     fn tick_match(&mut self, ctx: &mut Ctx) -> bool {
         let Screen::Match(world) = &mut self.screen else { return false };
-        if ctx.input.key_pressed(KeyCode::Escape) {
+        // The mouse looks around only while no menu is open, and is taken
+        // back when the pause menu closes.
+        let menu_open = self.menu.menudata.count > 0;
+        if menu_open {
+            if self.controls.captured {
+                self.controls.captured = ctx.set_cursor_captured(false);
+            }
+        } else if std::mem::take(&mut self.menu_was_open) && !world.mp.endscreen {
+            self.controls.captured = ctx.set_cursor_captured(true);
+        } else if ctx.input.key_pressed(KeyCode::Escape) {
             self.controls.captured = ctx.set_cursor_captured(false);
-        } else if !self.controls.captured && ctx.input.mouse_pressed(MouseButton::Left) {
+        } else if !self.controls.captured && ctx.input.mouse_pressed(MouseButton::Left) && !world.mp.endscreen {
             self.controls.captured = ctx.set_cursor_captured(true);
         }
-        let (mut inputs, start) = self.controls.read_match(ctx.input, world.players.len());
+        // The controllers as the menus read them (every tick, so a press the
+        // match saw is not a new one to the menu it opens).
+        self.menu_was_open = menu_open;
+        let joined: [bool; MAX_PADS] = std::array::from_fn(|i| self.menu.mp.setup.chrslots & (1 << i) != 0);
+        let (readings, back2) = self.controls.read(ctx.input, joined);
+        for (pad, r) in self.menu.pads.iter_mut().zip(readings) {
+            pad.next_frame(r.buttons, r.stick.0, r.stick.1);
+            pad.connected = r.connected;
+        }
+        self.menu.back2 = back2;
+        let mut inputs = self.controls.read_match(ctx.input, world.players.len());
         let kb = self.controls.kb_player;
         if let (Some(slot), Some(p)) = (self.controls.slot_pressed(ctx.input), world.players.get(kb)) {
-            inputs[kb].select = p.gun.p.inventory.get(slot).copied();
+            inputs[kb].select = p.gun.p.inventory.weapons().get(slot).copied();
         }
-        // SUBST: START opens PD's pause menu, whose End Game leaves the match /
-        // there is no pause menu until M7, so START ends the match.
-        if start {
-            return false;
-        }
-        world.step(4 * self.rate as i32, &inputs);
-        let events = world.take_events();
-        for e in &events {
-            // M7: the kill feed and the scores.
-            if let pd_core::events::Event::Kill { killer, victim } = *e {
+        let out = pd_game::session::step(world, &mut self.menu, &self.lv, 4 * self.rate as i32, &inputs);
+        for e in &out.events {
+            if let Event::Kill { killer, victim } = *e {
                 let name = |i: u8| world.chrs.get(i as usize).map_or("?".to_string(), |c| c.name.clone());
                 match killer {
                     Some(k) if k != victim => log::info!("{} killed {}", name(k), name(victim)),
@@ -223,9 +250,20 @@ impl PdGame {
             }
         }
         if let Some(sfx) = &mut self.sfx {
-            sfx.play(ctx.audio.as_deref_mut(), &events);
+            sfx.play(ctx.audio.as_deref_mut(), &out.events);
+            sfx.play(ctx.audio.as_deref_mut(), &out.menu_events);
         }
-        true
+        self.blur_pending |= out.ended;
+        // The menus' frame is laid over the HUD while they show anything (not
+        // on the frame the end screen's blur is taken from).
+        let showing = pd_game::session::menu_showing(&self.menu) && !self.blur_pending;
+        if let Some(r) = self.renderer.as_mut() {
+            r.menu_layer.clear();
+            if showing {
+                r.menu_layer.extend_from_slice(&self.menu.draw.gfx.fb);
+            }
+        }
+        !out.over
     }
 
     fn ensure_match_target(&mut self, ctx: &mut Ctx) {
@@ -253,17 +291,17 @@ impl PdGame {
             ui.label(format!("   speed fwd {:.2} side {:.2} · {crouch}{state}", p.speedforwards, p.speedsideways));
             ui.label(format!("   health {:.2}{}", p.bondhealth, if p.isdead { " · dead (fire/A to respawn once black)" } else { "" }));
         }
-        for c in &world.chrs {
+        for (i, c) in world.chrs.iter().enumerate() {
             let Some(a) = c.aibot.as_ref() else {
-                ui.label(format!("{}: K{} D{}", c.name, c.kills, c.deaths));
+                ui.label(format!("{}: K{} D{}", c.name, world.mp_chr_kills(i), world.mp_chr_deaths(i)));
                 continue;
             };
             let weapon = world.res.gset.weapon(a.weaponnum).map_or("unarmed".to_string(), |w| w.name.clone());
             ui.label(format!(
                 "{}: K{} D{} · {:?} · dmg {:.1}/{:.0} · {} · target {:?} {}",
                 c.name,
-                c.kills,
-                c.deaths,
+                world.mp_chr_kills(i),
+                world.mp_chr_deaths(i),
                 c.actiontype,
                 c.damage,
                 c.maxdamage,
@@ -272,8 +310,18 @@ impl PdGame {
                 a.distmode.map_or("", |d| d.label())
             ));
         }
+        let m = &world.mp;
+        let limit = |v: i32| if v > 0 { v.to_string() } else { "none".into() };
+        ui.label(format!(
+            "time {} / {} · score limit {} · team limit {} · {}",
+            pd_core::text::format_time(m.stagetime60, pd_core::text::TIMEPRECISION_SECONDS),
+            if m.timelimit60 > 0 { pd_core::text::format_time(m.timelimit60, pd_core::text::TIMEPRECISION_SECONDS) } else { "no limit".into() },
+            limit(m.scorelimit),
+            limit(m.teamscorelimit),
+            if m.endscreen { "over" } else if world.mp_is_paused() { "paused" } else { "playing" }
+        ));
         ui.label(
-            egui::RichText::new("WASD move · mouse look (click to capture, Esc frees it) · LMB fire · RMB aim · E/MMB use (hold: gun function) · R reload · Q next gun · 1-0 pick a gun · ↑/↓ zoom · Ctrl/C crouch down · Space crouch up · Enter or pad START: back to the menus (no pause menu until M7)")
+            egui::RichText::new("WASD move · mouse look (click to capture, Esc frees it) · LMB fire · RMB aim · E/MMB use (hold: gun function) · R reload · Q next gun · 1-0 pick a gun · ↑/↓ zoom · Ctrl/C crouch down · Space crouch up · Enter or pad START: the pause menu (arrows, Enter A, Esc B, Space START)")
                 .weak(),
         );
         let mut scale = self.render_scale;
@@ -283,7 +331,7 @@ impl PdGame {
             }
         }));
         self.render_scale = scale;
-        ui.button("End the match").clicked()
+        ui.button("End the match (PD's results, then the menus)").clicked()
     }
 }
 
@@ -412,7 +460,12 @@ impl Game for PdGame {
             self.restart();
         }
         if end {
-            self.end_match(ctx);
+            // In a match, main_end_stage: the results, then the menus; the
+            // stand-in has none.
+            match &mut self.screen {
+                Screen::Match(world) => world.main_end_stage(),
+                _ => self.end_match(ctx),
+            }
         }
     }
 
@@ -428,6 +481,13 @@ impl Game for PdGame {
             renderer.world_depth_copy = (n64 && video.aa).then(|| nv.world_depth(device, target.width, target.height));
             // M12: split screen. The first player's view fills the window.
             renderer.render_player(device, queue, &mut frame.encoder, target, world, 0);
+            if std::mem::take(&mut self.blur_pending) {
+                // menugfx_create_blur's screenshot: this frame, as it stands.
+                let enc = std::mem::replace(&mut frame.encoder, device.create_command_encoder(&Default::default()));
+                queue.submit(Some(enc.finish()));
+                let px = target.read_rgba8(device, queue);
+                self.menu.draw.res.blur_from_image(Some((target.width as usize, target.height as usize, &px)));
+            }
             if n64 {
                 // SUBST: PD draws lv_render's framebuffer effects over the HUD /
                 // the chain lays the HUD on after them, in its RDP pass.

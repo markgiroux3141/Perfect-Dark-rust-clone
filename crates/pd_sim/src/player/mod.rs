@@ -66,6 +66,12 @@ pub const PLAYER_DEFAULT_FOV: f32 = 60.0;
 pub struct WalkEnv<'a> {
     pub level: &'a TileLevel,
     pub cyls: &'a [PerimCyl],
+    /// `MPOPTION_FASTMOVEMENT`: the walk speed × 1.25 (`bondwalk.c:1478`).
+    pub fastmovement: bool,
+    /// `player_get_shield_frac`: the player's chr's shield / 8.
+    pub shieldfrac: f32,
+    /// `current_player_is_menu_open_in_solo_or_mp`.
+    pub menuopen: bool,
 }
 
 /// The collision results PD keeps in globals after a test that collided
@@ -125,7 +131,8 @@ pub struct PlayerInput {
     pub c_right: bool,
     /// A held (`invbuttons`): tap = next gun, A+Z = previous gun.
     pub a_held: bool,
-    /// START held (the pause menu is M10's; a dead player presses it to respawn).
+    /// START held: a press opens the pause menu (`bondmove.c:691`); a dead
+    /// player holds it to respawn.
     pub start: bool,
 }
 
@@ -537,7 +544,7 @@ impl Player {
         self.cam.cam_set_screen_position(0.0, 0.0);
         self.health.player_update_colour_screen_properties(lv.lvupdate60freal);
         self.player_tick_chr_fade(lv.lvupdate60freal);
-        self.health.player_tick_damage_and_health(self.bondhealth, self.isdead, lv.lvupdate60freal, lv.diffframe60freal);
+        self.health.player_tick_damage_and_health(self.bondhealth, env.shieldfrac, self.isdead, env.menuopen, lv.lvupdate60freal, lv.diffframe60freal);
         // bmove_process_input reads no controls while dead (`bondmove.c:717`).
         let idle = PlayerInput::default();
         let input = if self.isdead { &idle } else { input };

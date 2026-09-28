@@ -63,7 +63,7 @@ impl World {
     /// times the model's scale), make it airborne and sticky with its spin, owned
     /// by `owner`. A bolt's trail starts at `beampos` (PD's `pos`).
     #[allow(clippy::too_many_arguments)]
-    fn bgun_configure_projectile(&mut self, o: &mut Obj, pos: Vec3, matrix1: &Mat4, velocity: Vec3, spin: Mat3, owner: usize, beampos: Vec3) {
+    pub(crate) fn bgun_configure_projectile(&mut self, o: &mut Obj, pos: Vec3, matrix1: &Mat4, velocity: Vec3, spin: Mat3, owner: usize, beampos: Vec3) {
         let mut m = *matrix1;
         math::scale3(&mut m, o.scale);
         o.realrot = Mat3::from_mat4(m);
@@ -88,7 +88,7 @@ impl World {
 
     /// A new weapon object for `projectilemodelnum`'s model
     /// (`weapon_create_projectile_from_gset`, `propobj.c:17632`).
-    fn weapon_create_projectile(&mut self, weaponnum: u8, weaponfunc: usize, projweapon: u8, projfunc: usize, owner: usize) -> Option<Obj> {
+    pub(crate) fn weapon_create_projectile(&mut self, weaponnum: u8, weaponfunc: usize, projweapon: u8, projfunc: usize, owner: usize) -> Option<Obj> {
         let proj = self.res.gset.func(weaponnum, weaponfunc)?.proj.clone()?;
         let def = self.res.models.get(proj.model.as_deref()?).ok()?;
         self.props.make_room_for_weapon();
@@ -187,10 +187,11 @@ impl World {
         self.props.objs.push(o);
     }
 
-    /// `bgun_create_thrown_projectile2` (`bondgun.c:4199`): the object for a
-    /// throw: a weapon with its fuse in quarter-ticks, or for the Laptop a
-    /// sentry; the throw's woosh (`SFXMAP_80A9_THROW`).
-    fn bgun_create_thrown_projectile2(&mut self, pi: usize, weaponnum: u8, weaponfunc: usize, pos: Vec3, arg4: &Mat4, velocity: Vec3) -> Option<Obj> {
+    /// `bgun_create_thrown_projectile2` (`bondgun.c:4199`): chr `pi`'s throw (a
+    /// player's chr index is the player's): a weapon with its fuse in
+    /// quarter-ticks, or for a player's Laptop a sentry; the throw's woosh
+    /// (`SFXMAP_80A9_THROW`).
+    pub(crate) fn bgun_create_thrown_projectile2(&mut self, pi: usize, weaponnum: u8, weaponfunc: usize, pos: Vec3, arg4: &Mat4, velocity: Vec3) -> Option<Obj> {
         let func = self.res.gset.func(weaponnum, weaponfunc)?.clone();
         let proj = func.proj.clone()?;
         let spin = if weaponnum == WEAPON_COMBATKNIFE {
@@ -201,6 +202,10 @@ impl World {
             crate::props::projectile_load_random_rotation(&mut self.rng)
         };
         let mut o = if weaponnum == WEAPON_LAPTOPGUN {
+            // (A simulant never deploys one: botinv scores it 0.)
+            if pi >= self.players.len() {
+                return None;
+            }
             self.laptop_deploy(pi, &proj)?
         } else {
             let mut o = self.weapon_create_projectile(weaponnum, weaponfunc, weaponnum, weaponfunc, pi)?;
