@@ -47,6 +47,10 @@ pub struct GeomPoly {
     /// PD's `GEOFLAG_*` bits, all of them (the booleans above are some); 0 for
     /// a polygon from another source.
     pub geoflags: u32,
+    /// A floor tile's colour, `r << 8 | g << 4 | b` (`geotilei.floorcol`),
+    /// what `prop_calculate_shade_colour` shades a prop standing on it by
+    /// (`propobj.c:1623`); 0 for a polygon from another source.
+    pub floorcol: u16,
 }
 
 /// How a floor polygon should be treated.
@@ -61,7 +65,7 @@ pub enum FloorKind {
 impl GeomPoly {
     pub fn new(verts: Vec<Vec3>, floor: bool, wall: bool, blocks_sight: bool, blocks_shot: bool, room: Option<u16>) -> Self {
         let normal = newell_normal(&verts);
-        GeomPoly { verts, normal, floor, wall, blocks_sight, blocks_shot, room, ladder: false, crouch: false, duck: false, floortype: 0, geoflags: 0 }
+        GeomPoly { verts, normal, floor, wall, blocks_sight, blocks_shot, room, ladder: false, crouch: false, duck: false, floortype: 0, geoflags: 0, floorcol: 0 }
     }
 
     /// The ladder bits it has, `GEOFLAG_LADDER` and `GEOFLAG_LADDER_PLAYERONLY`

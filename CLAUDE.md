@@ -26,7 +26,8 @@ cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # off
                                             #   `out match --duel --lock --dist 900` (the rocket launcher's lock),
                                             #   `out flow --stage kokiri --mates 3 start w300 shot:m` (a match on any arena, custom too))
 cargo run --release -p pd_import --bin pd_import -- kokiri   # convert a custom level (crates/pd_import/levels/<code>.json) into custom/
-                                            #   (gitignored); `--check <code>`, `--explain <code> x z`, `--probe <code> x0 z0 x1 z1`
+                                            #   (gitignored); `--check <code>`, `--explain <code> x z`, `--probe <code> x0 z0 x1 z1`;
+                                            #   `facility` is GoldenEye's, from the GE ROM via tools/ge-extract (Python, ~1 min)
 cargo run --release -p pd_tools --bin pd_music -- <out.wav> <tune|--flow> [secs]   # offline music renders (MUSIC_* name or number; --list)
 cargo run --release -p pd_tools --bin pd_lab # the simulant/route viewer (a window: for the user, not for Claude to drive)
 python tools/check_boundaries.py            # headless crates stay headless
@@ -55,6 +56,7 @@ python tools/pd-assets/check_against_spikes.py   # assets/ against the old repo'
 - `custom/`: converted levels (gitignored; another game's data), laid over `assets/` at run time (ARCHITECTURE.md § Custom levels).
 - `assets/`: generated, committed; layout in ARCHITECTURE.md § Assets.
 - `tools/pd-assets/`: Python exporters (stdlib only; `pd_bg_preview.py` needs numpy + Pillow).
+- `tools/ge-extract/`: the GoldenEye level extractor (stdlib only, reuses `tools/pd-assets`): a GE level from the ROM into PD's stage formats, run by `pd_import` (M16). **Read [docs/GOLDENEYE.md](docs/GOLDENEYE.md) before porting another GE level**: the format mapping and every lesson Facility cost.
 - `reference/`: gitignored. `pd-decomp` and `pd-pcport` are junctions to the old repo's clones, and `pd_bot_port_sheet.md` holds the verbatim C for the bot port. See [reference/README.md](reference/README.md).
 - Old repo (the migration source): `D:\Claude Code Projects\Hide and Seek Level Builder`, branch `main` (it has merged every spike: `spike/pd-combat-sim-menu` and the Complex fight), code under `native/crates/game/src/pd_{menu,guns,spike,complex}/`. Read it; don't modify it. To run one of its snapshot tools, build it with `CARGO_TARGET_DIR` in your scratchpad (see MILESTONES.md, M3 notes).
 - ROM (only for the decomp's one-time `tools/extract`): `D:\GoldenPerfectModding\Perfect Dark (U) (V1.1) USE THIS ONE\`. The `[!]` in the file name breaks PowerShell wildcards, so use `-LiteralPath`.

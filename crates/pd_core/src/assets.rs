@@ -8,8 +8,11 @@
 //! **Custom levels** live in a second tree with the same layout, laid over
 //! `assets/` ([`AssetDir::with_custom_levels`]): `custom/levels.json` lists
 //! them ([`CustomLevel`]) and `custom/stages/<code>/` holds each one's four
-//! stage files, exactly as an arena's. `pd_import` writes it; it is never
-//! committed (a level converted from another game is that game's data).
+//! stage files, exactly as an arena's. A level's own models (GoldenEye's
+//! doors) are `custom/models/<stem>.json + .bin`, listed in
+//! `custom/models/index.json` beside `assets/`' index, with `MODEL_*` numbers
+//! from [`CUSTOM_MODELNUMS`]. `pd_import` writes it; it is never committed (a
+//! level converted from another game is that game's data).
 
 use std::path::{Path, PathBuf};
 
@@ -28,6 +31,10 @@ pub struct AssetDir {
 /// The stage numbers custom levels take: past PD's last (`STAGE_TEST_OLD`,
 /// 0x5d), within the 7 bits an MP setup file keeps the stage in.
 pub const CUSTOM_STAGENUMS: std::ops::RangeInclusive<u8> = 0x60..=0x7f;
+
+/// The `MODEL_*` numbers custom models take: past PD's last (`MODEL_*` runs to
+/// 0x1bd), so a setup row names one as it names PD's.
+pub const CUSTOM_MODELNUMS: std::ops::RangeInclusive<i32> = 0x1000..=0x1fff;
 
 /// One entry of `custom/levels.json`: a converted level, playable as an arena.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -135,18 +142,24 @@ impl AssetDir {
         self.root.join("textures").join("index.json")
     }
 
-    /// `models/<stem>.json`: a model's header.
+    /// `models/<stem>.json`: a model's header (a custom level's own models
+    /// are in the custom tree).
     pub fn model_json(&self, stem: &str) -> PathBuf {
-        self.root.join("models").join(format!("{stem}.json"))
+        self.overlaid(&Path::new("models").join(format!("{stem}.json")))
     }
 
     /// `models/<stem>.bin`: a model's vertices and indices.
     pub fn model_bin(&self, stem: &str) -> PathBuf {
-        self.root.join("models").join(format!("{stem}.bin"))
+        self.overlaid(&Path::new("models").join(format!("{stem}.bin")))
     }
 
     pub fn model_index(&self) -> PathBuf {
         self.root.join("models").join("index.json")
+    }
+
+    /// `custom/models/index.json`, the custom levels' models, if there is one.
+    pub fn custom_model_index(&self) -> Option<PathBuf> {
+        self.custom.as_ref().map(|c| c.join("models").join("index.json")).filter(|p| p.exists())
     }
 
     /// `anims/<num>.bin`: one animation of the bank, raw.
@@ -242,6 +255,35 @@ mod tests {
         assert_eq!(a.stage_code(96).as_deref(), Some("kok"));
         assert_eq!(a.stage_code(crate::ids::STAGE_MP_COMPLEX).as_deref(), Some("ref"));
         assert_eq!(a.stage_code(97), None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A custom tree's models are listed beside PD's: one with a custom
+    /// `MODEL_*` number is found by it and loads from the custom tree; one
+    /// named as a PD model, or numbered as one, is refused.
+    #[test]
+    fn custom_models_join_the_model_store() {
+        let dir = std::env::temp_dir().join(format!("pd_custom_models_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("models")).unwrap();
+        let a = AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR"));
+        // A PD model's files, under a custom stem.
+        std::fs::copy(a.model_json("tdoor"), dir.join("models").join("ge_door.json")).unwrap();
+        std::fs::copy(a.model_bin("tdoor"), dir.join("models").join("ge_door.bin")).unwrap();
+        let row = |modelnum: i32| format!(r#"{{"filenum":{},"file":"GE_X","kind":"prop","source":"test","tris":12,"modelnum":{modelnum},"statescale":4096}}"#, 0x10000 + modelnum);
+        std::fs::write(
+            dir.join("models").join("index.json"),
+            format!(r#"{{"ge_door":{},"tdoor":{},"ge_bad":{}}}"#, row(0x109b), row(0x109c), row(195)),
+        )
+        .unwrap();
+        let a = a.with_custom_dir(&dir);
+        let store = crate::model::ModelStore::load(&a).unwrap();
+        assert_eq!(store.stem_of_modelnum(0x109b), Some("ge_door"));
+        assert_eq!(a.model_json("ge_door"), dir.join("models").join("ge_door.json"));
+        assert!(store.get("ge_door").is_ok());
+        assert_eq!(store.stem_of_modelnum(0x109c), None, "a PD stem is not replaced");
+        assert_eq!(store.stem_of_modelnum(195), Some("tdoor"), "a PD MODEL number stays PD's");
+        assert!(!store.index.contains_key("ge_bad"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

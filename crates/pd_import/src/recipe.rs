@@ -16,13 +16,25 @@ pub struct Recipe {
     /// Source units to PD centimetres.
     pub scale: f32,
     pub source: Source,
-    /// How many rooms to split the level into (PD's arenas have 25-118).
+    /// How many rooms to split the level into (PD's arenas have 25-118): a
+    /// source without rooms of its own. GoldenEye's levels bring theirs.
+    #[serde(default)]
     pub rooms: usize,
     /// How many of each to place (PD's arenas: 10-21 spawns, 10 weapon
     /// locations with two ammo crates each, 4-7 hills).
     pub spawns: usize,
     pub weapons: usize,
     pub hills: usize,
+    /// At most this share of the spawns and of the weapons stand on the
+    /// source's own spots (its player starts, its pickups); the rest spread
+    /// over the whole level. A source whose spots cover only part of it takes
+    /// less (Facility's MP setup marks only the half GoldenEye's arena uses).
+    #[serde(default = "one")]
+    pub marker_share: f32,
+}
+
+fn one() -> f32 {
+    1.0
 }
 
 /// Which importer reads the source, with its own settings.
@@ -30,6 +42,24 @@ pub struct Recipe {
 #[serde(tag = "game", rename_all = "lowercase")]
 pub enum Source {
     Oot(OotSource),
+    Ge(GeSource),
+}
+
+/// A GoldenEye 007 level, from the NTSC ROM by `tools/ge-extract` (the BG, the
+/// clipping, the setup's doors and their models, already in PD's formats).
+#[derive(Clone, Debug, Deserialize)]
+pub struct GeSource {
+    /// The ROM (`ge007.u`, any byte order); `--src` overrides it.
+    pub rom: String,
+    /// The GoldenEye decomp (n64decomp/007), relative to the repo root.
+    pub decomp: String,
+    /// Its `levelinfotable` row (`bg.c:184`), e.g. `LEVELID_FACILITY`.
+    pub level: String,
+    /// The setup whose doors are kept (the solo one for the whole level).
+    pub setup: String,
+    /// Other setups whose spots placement prefers (the MP one).
+    #[serde(default)]
+    pub markers: Vec<String>,
 }
 
 /// An Ocarina of Time scene as the OoT Clone repo's extractor writes it

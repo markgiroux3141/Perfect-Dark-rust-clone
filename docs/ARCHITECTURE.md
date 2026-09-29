@@ -38,7 +38,7 @@ Arrows point at what a crate may use. Nothing points back up.
 | **`pd_render`** | PD on the GPU: BG, every model through the one combiner path, effects, HUD canvas (radar, sights, shields), x-ray, framebuffer post, a `View` per player laid into the frame (`Renderer::render_views`: split screen) | write to the world |
 | **`pd_game`** | the `perfect_dark` binary: state machine (Menus → Match → Results), device → N64 controller mapping, event → voice routing, the music's frames onto an engine stream, the Game Pak's EEPROM kept in a file (`save`), presentation settings; its library half, `session`, couples a match with the menus over it (pause, end screens) for the binary and `pd_snapshot` | contain game rules |
 | **`pd_tools`** | `pd_snapshot` (offscreen PNGs of menus, guns, stages, matches, pickups), probes, offline audio renders (`pd_music`: a tune, or a menu → match → death → end flow, to a WAV), the bot/nav debug viewer | ship in the game |
-| **`pd_import`** | the custom level importer: a recipe (`levels/<code>.json`), the source importers (`oot`: Ocarina of Time scenes from the OoT Clone repo's extractor) into one `LevelSource`, the collision preprocessing (step risers, ledges as ladders, water), rooms and portals by a k-d split, the four stage files, the gameplay data (`nav::gen`'s waypoints baked in, spawns, weapons and ammo, hills, bases, cover), a check match; headless | ship in the game; be needed at run time |
+| **`pd_import`** | the custom level importer: a recipe (`levels/<code>.json`), the source importers (`oot`: Ocarina of Time scenes from the OoT Clone repo's extractor; `ge`: GoldenEye 007 levels, which `tools/ge-extract` converts from the ROM straight into PD's stage formats, rooms, portals, tiles, doors and door models included) into one `LevelSource`, the collision preprocessing (step risers, ledges as ladders, water), rooms and portals by a k-d split, the four stage files, the gameplay data (`nav::gen`'s waypoints baked in, spawns, weapons and ammo, hills, bases, cover), a check match; headless | ship in the game; be needed at run time |
 
 ### Why these boundaries
 
@@ -141,9 +141,15 @@ custom/
   stages/<code>/             the four stage files, in pd_stage.py's formats, plus
                              tex/<n>.png  the level's own textures (ids 0x10000 | material in bg.json)
                              report.txt   the import's report
+                             ge.json      a GoldenEye level's hand-off from tools/ge-extract to pd_import
+  models/<stem>.json + .bin  a level's own models (GoldenEye's doors), in the one model format
+  models/index.json          their rows, beside assets/' index (MODEL_* from CUSTOM_MODELNUMS, 0x1000-0x1fff)
+  ge/tex/<nnnn>.png          GoldenEye images by image number (ids 0x10000 | n), shared by GE levels and models
 ```
 
-A custom stage is an arena to everything that loads one: the menus list it in a "Custom" group, `AssetDir::stage_code` resolves its number, `Stage::load` and `StageBg::load` read it like any other.
+A custom stage is an arena to everything that loads one: the menus list it in a "Custom" group, `AssetDir::stage_code` resolves its number, `Stage::load` and `StageBg::load` read it like any other, and `ModelStore` takes the custom models' rows beside PD's (never replacing one of PD's).
+
+**GoldenEye levels** (`tools/ge-extract`, run by `pd_import`) need no made-up structure: GoldenEye is PD's ancestor in every part PD's game runs on (rooms and portals, floor tiles, pads, doors, the display-list dialect, the image format), so a GE level is converted through PD's own exporters (`pd_tex`, `pd_fpgun.Interp`, `pd_models.write_model`) and only what an arena needs besides (spawns, weapons, waypoints) is generated. The differences are made up for there, in data: the walls GE implies at unlinked tile edges, the portals moved onto their doors' planes, the blender's `FORCE_BL` rule (`ge_gbi`), PD's own fog rewrite of the rooms' combiners. The porting guide, with every lesson learned, is [GOLDENEYE.md](GOLDENEYE.md).
 ### Pipeline
 
 `tools/pd-assets/` holds the Python exporters from the spikes: stdlib only, except the numpy/Pillow preview tool. They read `reference/pd-decomp` (the decomp's own `tools/extract` must have run once against the ROM; see [reference/README.md](../reference/README.md)). One driver, `build_assets.py`, runs them all into `assets/` and writes `MANIFEST.json`; every path comes from `pd_paths.py`. Individual exporters stay runnable on their own. `check_against_spikes.py` compares `assets/` with the old repo's per-feature exports and names every intended difference.

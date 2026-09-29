@@ -8,15 +8,18 @@
 //!
 //! ```text
 //! recipe (levels/<code>.json)
-//!   └─ source importer (oot) ──► LevelSource: triangles + materials + textures,
-//!                                 collision polygons, markers, environment
-//!        └─ rooms ──► boxes over the floor area, every polygon cut to them, portals
-//!             └─ write ──► bg.json + bg.bin + tex/, tiles.json   (the geometry)
-//!                  └─ Stage::load, TileLevel::for_stage          (as the game loads it)
-//!                       └─ place ──► waypoints (nav::gen), spawns, weapons + ammo,
-//!                                    hills, bases, cover
-//!                            └─ write ──► pads.json, setup.json, custom/levels.json
-//!                                 └─ check: the stage loads, a simulant match plays
+//!   ├─ source importer (oot) ──► LevelSource: triangles + materials + textures,
+//!   │                             collision polygons, markers, environment
+//!   │    └─ rooms ──► boxes over the floor area, every polygon cut to them, portals
+//!   │         └─ write ──► bg.json + bg.bin + tex/, tiles.json   (the geometry)
+//!   ├─ ge (GoldenEye) ──► tools/ge-extract: the level already in PD's formats
+//!   │                     (its rooms, portals, tiles; its doors, their pads
+//!   │                     and models), and the spots its setups mark
+//!   └─ Stage::load, TileLevel::for_stage          (as the game loads it)
+//!        └─ place ──► waypoints (nav::gen), spawns, weapons + ammo,
+//!                     hills, bases, cover (after the source's own pads and props)
+//!             └─ write ──► pads.json, setup.json, custom/levels.json
+//!                  └─ check: the stage loads, a simulant match plays
 //! ```
 //!
 //! Output goes to `custom/` (gitignored: a converted level is its game's data),
@@ -24,8 +27,10 @@
 //! the arena menu lists it under "Custom".
 //!
 //! Importers: [`oot`] (Ocarina of Time scenes, from the OoT Clone repo's
-//! extractor).
+//! extractor), [`ge`] (GoldenEye 007 levels, from the ROM by
+//! `tools/ge-extract`).
 
+pub mod ge;
 pub mod glb;
 pub mod oot;
 pub mod place;
@@ -45,7 +50,7 @@ use pd_core::ids::BOTDIFF_NORMAL;
 use pd_sim::stage::{Stage, TileLevel};
 
 use recipe::{Recipe, Source};
-use source::LevelSource;
+use source::{LevelSource, Marker};
 
 /// Where to read and write.
 pub struct Paths {
@@ -57,25 +62,41 @@ pub struct Paths {
     pub src: Option<PathBuf>,
 }
 
-/// Read the recipe's source into a [`LevelSource`].
-pub fn load_source(r: &Recipe, src_dir: Option<&Path>) -> Result<LevelSource, String> {
+/// Convert `r` into `custom/stages/<code>/` and list it. Returns the report.
+pub fn import(r: &Recipe, paths: &Paths) -> Result<Vec<String>, String> {
     match &r.source {
         Source::Oot(o) => {
-            let dir = src_dir.map_or_else(|| PathBuf::from(&o.scene_dir), Path::to_path_buf);
-            oot::load(r, o, &dir)
+            let dir = paths.src.clone().unwrap_or_else(|| PathBuf::from(&o.scene_dir));
+            build(r, oot::load(r, o, &dir)?, paths)
+        }
+        Source::Ge(g) => {
+            let mut report = vec![title(r)];
+            let dir = fresh_stage_dir(paths, r)?;
+            let (fixed, markers, lines) = ge::extract(r, g, paths, &dir)?;
+            report.extend(lines);
+            finish(r, paths, &dir, report, fixed, &markers)
         }
     }
 }
 
-/// Convert `r` into `custom/stages/<code>/` and list it. Returns the report.
-pub fn import(r: &Recipe, paths: &Paths) -> Result<Vec<String>, String> {
-    build(r, load_source(r, paths.src.as_deref())?, paths)
+fn title(r: &Recipe) -> String {
+    format!("{} ({}, stage {:#x}), scale {}", r.name, r.code, r.stagenum, r.scale)
+}
+
+/// `custom/stages/<code>/`, emptied: the importer writes a stage from scratch.
+fn fresh_stage_dir(paths: &Paths, r: &Recipe) -> Result<PathBuf, String> {
+    let dir = paths.custom.join("stages").join(&r.code);
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    Ok(dir)
 }
 
 /// Everything after the source importer: `src` into the stage files, placed,
 /// listed and checked.
 pub fn build(r: &Recipe, mut src: LevelSource, paths: &Paths) -> Result<Vec<String>, String> {
-    let mut report = vec![format!("{} ({}, stage {:#x}), scale {}", r.name, r.code, r.stagenum, r.scale)];
+    let mut report = vec![title(r)];
     let risers = src.drop_step_risers();
     let ledges = src.mark_ledges();
     let (lo, hi) = src.bounds();
@@ -93,26 +114,27 @@ pub fn build(r: &Recipe, mut src: LevelSource, paths: &Paths) -> Result<Vec<Stri
         (hi.y - lo.y) / 100.0
     ));
     let part = rooms::Partition::build(&src, r.rooms);
-    let dir = paths.custom.join("stages").join(&r.code);
-    if dir.exists() {
-        std::fs::remove_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    }
-    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let dir = fresh_stage_dir(paths, r)?;
     let ntris = write::write_bg(&dir, r, &src, &part)?;
     let ntiles = write::write_tiles(&dir, r, &src, &part)?;
     report.push(format!("geometry: {} rooms, {} portals, {} BG triangles, {} tiles", part.rooms(), part.portals().len(), ntris, ntiles));
+    finish(r, paths, &dir, report, write::Gameplay::default(), &src.markers)
+}
 
-    // The stage as the game loads it, without its gameplay data yet.
-    let empty = write::Gameplay::default();
-    write::write_pads(&dir, r, &empty)?;
-    write::write_setup(&dir, r, &empty)?;
+/// The stage's geometry is written: load it as the game does, place the
+/// gameplay data after `fixed` (what the source brings), write the pads and
+/// the setup, list the level and check it.
+fn finish(r: &Recipe, paths: &Paths, dir: &Path, mut report: Vec<String>, fixed: write::Gameplay, markers: &[Marker]) -> Result<Vec<String>, String> {
+    // The stage as the game loads it, with only the source's gameplay data.
+    write::write_pads(dir, r, &fixed)?;
+    write::write_setup(dir, r, &fixed)?;
     let assets = AssetDir::new(&paths.assets).with_custom_dir(&paths.custom);
     let stage = Stage::load(&assets, &r.code)?;
     let level = TileLevel::for_stage(&stage);
-    let placed = place::place(r, &src, &stage, &level)?;
+    let placed = place::place(r, markers, &stage, &level, fixed)?;
     report.extend(placed.report);
-    write::write_pads(&dir, r, &placed.gameplay)?;
-    write::write_setup(&dir, r, &placed.gameplay)?;
+    write::write_pads(dir, r, &placed.gameplay)?;
+    write::write_setup(dir, r, &placed.gameplay)?;
     write::register(&paths.custom, r)?;
 
     report.extend(check(&assets, &r.code)?);

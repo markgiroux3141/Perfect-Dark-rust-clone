@@ -242,11 +242,22 @@ pub fn write_tiles(dir: &Path, r: &Recipe, src: &LevelSource, part: &Partition) 
 pub struct PadRow {
     pub pos: Vec3,
     pub look: Vec3,
+    pub up: Vec3,
     pub flags: u32,
+    /// `[xmin, xmax, ymin, ymax, zmin, zmax]`, read with `PADFLAG_HASBBOXDATA`.
+    pub bbox: [f32; 6],
+}
+
+impl PadRow {
+    /// A pad standing at `pos` facing `look`, with the default box.
+    pub fn at(pos: Vec3, look: Vec3, flags: u32) -> PadRow {
+        PadRow { pos, look, up: Vec3::Y, flags, bbox: [-100.0, 100.0, -100.0, 100.0, -100.0, 100.0] }
+    }
 }
 
 /// The gameplay half: pads (waypoints' and items'), the waypoint graph, cover,
-/// and the setup's `intro[]` and `props[]`.
+/// and the setup's `intro[]` and `props[]`. A source that brings its own
+/// (GoldenEye's doors) hands them to placement first, which adds to them.
 #[derive(Default)]
 pub struct Gameplay {
     pub pads: Vec<PadRow>,
@@ -260,7 +271,7 @@ pub struct Gameplay {
 }
 
 pub fn write_pads(dir: &Path, r: &Recipe, g: &Gameplay) -> Result<(), String> {
-    let pads: Vec<Value> = g.pads.iter().map(|p| json!({"pos": v3(p.pos), "look": v3(p.look), "up": [0, 1, 0], "flags": p.flags, "bbox": [-100, 100, -100, 100, -100, 100], "liftnum": 0})).collect();
+    let pads: Vec<Value> = g.pads.iter().map(|p| json!({"pos": v3(p.pos), "look": v3(p.look), "up": v3(p.up), "flags": p.flags, "bbox": p.bbox, "liftnum": 0})).collect();
     let waypoints: Vec<Value> = g.waypoints.iter().map(|(pad, group, n)| json!({"pad": pad, "group": group, "neighbours": n})).collect();
     let waygroups: Vec<Value> = g.waygroups.iter().map(|n| json!({"neighbours": n})).collect();
     let cover: Vec<Value> = g.cover.iter().map(|(p, l)| json!({"pos": v3(*p), "look": v3(*l), "special": 0})).collect();

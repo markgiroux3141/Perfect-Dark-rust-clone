@@ -1,11 +1,12 @@
 # reference/: read-only third-party material (gitignored)
 
-Nothing here is on the build path, and nothing reads it at run time. Only the asset exporters in `tools/pd-assets/` read it, offline.
+Nothing here is on the build path, and nothing reads it at run time. Only the asset exporters in `tools/pd-assets/` and the GoldenEye extractor in `tools/ge-extract/` read it, offline.
 
 | Entry | What | How to get it |
 |---|---|---|
 | `pd-decomp/` | Perfect Dark decomp, the spec. Cite it as `file.c:line`, NTSC final. | On this machine it is a junction to the old repo's clone. Elsewhere: `git clone --depth 1 https://github.com/n64decomp/perfect_dark reference/pd-decomp` (the spikes used commit `169ed48`) |
 | `pd-pcport/` | The PC port (mouse aim, fast3d). Cited, never read by tools. | Junction here. Elsewhere: `git clone --depth 1 https://github.com/fgsfdsfgs/perfect_dark reference/pd-pcport` |
+| `ge-decomp/` | GoldenEye 007 decomp (n64decomp/007): the level table, image table, prop models' headers and the setups as C, read by `tools/ge-extract` (the GoldenEye level importer). Cite it as `file.c:line`, NTSC (`ge007.u`). | `git clone --depth 1 https://github.com/n64decomp/007 reference/ge-decomp`. The binaries (BGs, clipping, models, images) come from the user's ROM, `D:\GoldenPerfectModding\007 - GoldenEye (USA)\007 - GoldenEye (USA).n64` (a v64 dump; its z64 order must match `ge007.u.sha1`), at `scripts/filelist.u.csv`'s and `imagelist.u.csv`'s offsets: no extraction step. |
 | `pd_bot_port_sheet.md` | Our notes quoting the decomp's bot code verbatim, the working sheet for the simulant port. Gitignored because it quotes the decomp. | Copied from the old repo's `reference/`. Back it up by hand. |
 
 ## One-time extraction

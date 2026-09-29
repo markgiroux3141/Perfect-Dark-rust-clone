@@ -233,6 +233,12 @@ fn three_point_level(uv: vec2<f32>, level: u32) -> vec4<f32> {
     return c0 + abs(off.x) * (c1 - c0) + abs(off.y) * (c2 - c0);
 }
 
+// Whether this pipeline blends (its material or its instance is translucent).
+// An opaque one writes full alpha: the RDP stores an opaque surface's
+// coverage in the framebuffer's alpha, not the combiner's alpha (which with
+// `G_FOG` on is the vertex's fog), so a frame read back is opaque where it is.
+override BLENDED: bool = true;
+
 @fragment
 fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     var t0 = vec4<f32>(1.0);
@@ -296,6 +302,9 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     // the colour, and its alpha scales the coverage.
     if (frame.flat.a > 0.0) {
         c = vec4<f32>(frame.flat.rgb, c.a * frame.flat.a);
+    }
+    if (!BLENDED) {
+        c.a = 1.0;
     }
     return c;
 }

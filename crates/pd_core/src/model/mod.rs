@@ -695,8 +695,21 @@ pub struct ModelStore {
 }
 
 impl ModelStore {
+    /// `models/index.json`, and the custom tree's beside it (a custom model's
+    /// `MODEL_*` number is in `CUSTOM_MODELNUMS`; a stem already in PD's index
+    /// is refused, so a custom tree never replaces one of PD's models).
     pub fn load(assets: &AssetDir) -> Result<ModelStore, String> {
-        let index: HashMap<String, ModelIndexEntry> = assets.read_json(&assets.model_index())?;
+        let mut index: HashMap<String, ModelIndexEntry> = assets.read_json(&assets.model_index())?;
+        if let Some(path) = assets.custom_model_index() {
+            let custom: HashMap<String, ModelIndexEntry> = assets.read_json(&path)?;
+            for (stem, e) in custom {
+                if index.contains_key(&stem) || !e.modelnum.is_some_and(|n| crate::assets::CUSTOM_MODELNUMS.contains(&n)) {
+                    log::warn!("{}: {stem} is one of PD's models or has no custom MODEL number; skipped", path.display());
+                    continue;
+                }
+                index.insert(stem, e);
+            }
+        }
         let by_filenum = index.iter().map(|(stem, e)| (e.filenum, stem.clone())).collect();
         Ok(ModelStore { assets: assets.clone(), index, by_filenum, defs: Mutex::new(HashMap::new()) })
     }

@@ -31,7 +31,7 @@ use pd_sim::stage::{directed_links, Stage, TileLevel};
 use serde_json::json;
 
 use crate::recipe::Recipe;
-use crate::source::{LevelSource, MarkerKind};
+use crate::source::{Marker, MarkerKind};
 use crate::write::{pad_flags, Gameplay, PadRow};
 
 /// PD's pads sit this far above their floor (waypoints and item pads alike).
@@ -128,16 +128,21 @@ fn farthest(cands: &[Vec3], chosen: &mut Vec<Vec3>, count: usize, gap: f32, keep
     }
 }
 
+/// How far (of a few steps, cm) the view from `pos` (a pad) reaches facing `a`.
+fn reach(level: &TileLevel, pos: Vec3, a: f32) -> f32 {
+    let eye = pos + Vec3::Y * 100.0;
+    let d = Vec3::new(a.sin(), 0.0, a.cos());
+    [3000.0, 2000.0, 1200.0, 600.0, 300.0].into_iter().find(|&l| level.los(eye, eye + d * l)).unwrap_or(0.0)
+}
+
 /// The way from `pos` (a pad) that looks furthest before a wall, of eight.
 fn open_facing(level: &TileLevel, pos: Vec3) -> f32 {
-    let eye = pos + Vec3::Y * 100.0;
     let mut best = (0.0, 0.0);
     for k in 0..8 {
         let a = k as f32 * std::f32::consts::FRAC_PI_4;
-        let d = Vec3::new(a.sin(), 0.0, a.cos());
-        let reach = [3000.0, 2000.0, 1200.0, 600.0, 300.0].into_iter().find(|&l| level.los(eye, eye + d * l)).unwrap_or(0.0);
-        if reach > best.1 {
-            best = (a, reach);
+        let r = reach(level, pos, a);
+        if r > best.1 {
+            best = (a, r);
         }
     }
     best.0
@@ -147,7 +152,9 @@ fn look(facing: f32) -> Vec3 {
     Vec3::new(facing.sin(), 0.0, facing.cos())
 }
 
-pub fn place(r: &Recipe, src: &LevelSource, stage: &Stage, level: &TileLevel) -> Result<Placed, String> {
+/// Place the gameplay data on `stage`, preferring `markers`, after what the
+/// source brings in `fixed` (its pads and props keep their numbers).
+pub fn place(r: &Recipe, markers: &[Marker], stage: &Stage, level: &TileLevel, fixed: Gameplay) -> Result<Placed, String> {
     let mut report = Vec::new();
     let t0 = std::time::Instant::now();
     let gen = generate(level, &GenParams::default());
@@ -196,13 +203,15 @@ pub fn place(r: &Recipe, src: &LevelSource, stage: &Stage, level: &TileLevel) ->
 
     // ── Spawns ─────────────────────────────────────────────────────────────
     // Not on the source's treasures: those are for the weapons.
-    let prizes: Vec<Vec3> = src.markers.iter().filter(|m| m.kind == MarkerKind::Prize).filter_map(|m| snap(m.pos)).collect();
+    let prizes: Vec<Vec3> = markers.iter().filter(|m| m.kind == MarkerKind::Prize).filter_map(|m| snap(m.pos)).collect();
+    // At most this many of each on the source's spots (`Recipe::marker_share`).
+    let share = |n: usize| (n as f32 * r.marker_share.clamp(0.0, 1.0)).round() as usize;
     let mut spawns: Vec<Vec3> = Vec::new();
     let mut spawn_facing: Vec<Option<f32>> = Vec::new();
     for kind in [MarkerKind::Spawn, MarkerKind::Person] {
-        for m in src.markers.iter().filter(|m| m.kind == kind) {
+        for m in markers.iter().filter(|m| m.kind == kind) {
             if let Some(p) = snap(m.pos) {
-                if spawns.len() < r.spawns && spawns.iter().chain(&prizes).all(|s| s.distance(p) >= 500.0) {
+                if spawns.len() < share(r.spawns) && spawns.iter().chain(&prizes).all(|s| s.distance(p) >= 500.0) {
                     spawns.push(p);
                     spawn_facing.push(Some(m.facing));
                 }
@@ -218,9 +227,9 @@ pub fn place(r: &Recipe, src: &LevelSource, stage: &Stage, level: &TileLevel) ->
     let mut weapons: Vec<Vec3> = Vec::new();
     let mut prize = None;
     for kind in [MarkerKind::Prize, MarkerKind::Item] {
-        for m in src.markers.iter().filter(|m| m.kind == kind) {
+        for m in markers.iter().filter(|m| m.kind == kind) {
             if let Some(p) = snap(m.pos) {
-                if weapons.len() < r.weapons && weapons.iter().all(|w| w.distance(p) >= 700.0) && spawns.iter().all(|s| s.distance(p) >= 500.0) {
+                if weapons.len() < share(r.weapons) && weapons.iter().all(|w| w.distance(p) >= 700.0) && spawns.iter().all(|s| s.distance(p) >= 500.0) {
                     if kind == MarkerKind::Prize && prize.is_none() {
                         prize = Some(weapons.len());
                     }
@@ -316,14 +325,16 @@ pub fn place(r: &Recipe, src: &LevelSource, stage: &Stage, level: &TileLevel) ->
     report.push(format!("cover: {} spots", cover.len()));
 
     // ── The pads and the setup ─────────────────────────────────────────────
-    let mut g = Gameplay::default();
+    let mut g = fixed;
     let mut pad = |pos: Vec3, look: Vec3| -> usize {
-        g.pads.push(PadRow { pos, look, flags: 0 });
+        g.pads.push(PadRow::at(pos, look, 0));
         g.pads.len() - 1
     };
     let mut intro = Vec::new();
     for (i, s) in spawns.iter().enumerate() {
-        let f = spawn_facing[i].unwrap_or_else(|| open_facing(level, *s));
+        // The source's facing, unless a wall stands in it (a marker snapped to
+        // a waypoint beside where the source put it can face one).
+        let f = spawn_facing[i].filter(|&f| reach(level, *s, f) >= 300.0).unwrap_or_else(|| open_facing(level, *s));
         intro.push(json!({"type": "spawn", "pad": pad(*s, look(f))}));
     }
     for (id, b) in bases.iter().enumerate() {
@@ -347,12 +358,12 @@ pub fn place(r: &Recipe, src: &LevelSource, stage: &Stage, level: &TileLevel) ->
     }
     let base = g.pads.len();
     for p in &graph.pads {
-        g.pads.push(PadRow { pos: p.pos, look: Vec3::Z, flags: pad_flags(&p.flags) });
+        g.pads.push(PadRow::at(p.pos, Vec3::Z, pad_flags(&p.flags)));
     }
     g.waypoints = graph.waypoints.iter().map(|w| (base + w.padnum, w.groupnum, w.neighbours.clone())).collect();
     g.waygroups = graph.waygroups.iter().map(|wg| wg.neighbours.clone()).collect();
     g.cover = cover;
-    g.intro = intro;
-    g.props = props;
+    g.intro.extend(intro);
+    g.props.extend(props);
     Ok(Placed { gameplay: g, report })
 }

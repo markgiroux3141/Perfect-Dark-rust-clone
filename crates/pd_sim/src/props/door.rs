@@ -93,6 +93,9 @@ pub struct Door {
     pub portalnum: Option<usize>,
     pub soundtype: u8,
     pub fadetime60: i32,
+    /// A `DOORFLAG_WINDOWED` door's glass opacity from the last player pass
+    /// (`door_update_portal_if_windowed`), 0..255.
+    pub fadealpha: i32,
     pub lastcalc60: i32,
     /// `lastcalc60` doubles as the frac before a blocked move (`doors_calc_frac`).
     savedfrac: f32,
@@ -440,6 +443,7 @@ impl World {
             portalnum: None,
             soundtype: ((unkc4 >> 8) & 0xff) as u8,
             fadetime60: (unkc4 & 0xff) as i8 as i32,
+            fadealpha: 255,
             lastcalc60: 0xff00_0000u32 as i32,
             savedfrac: 0.0,
             geo: PropGeo::default(),
@@ -483,6 +487,31 @@ impl World {
             self.bg_set_portal_open_state(pn.unwrap(), false);
         }
         Some(id)
+    }
+
+    /// `door_update_portal_if_windowed` (`propobj.c:7803`) for player `pi`'s
+    /// pass: a windowed door's glass opacity from the player's camera
+    /// (`glass_calculate_opacity`, clear within `xludist`, opaque past
+    /// `opadist`), and its portal open while the glass can be seen through,
+    /// the door is open, its glass is gone, or more than one player plays;
+    /// shut otherwise.
+    pub(crate) fn doors_update_portals_if_windowed(&mut self, pi: usize) {
+        let campos = self.players[pi].cam.pos();
+        let multi = self.players.len() >= 2;
+        for i in 0..self.props.objs.len() {
+            let o = &mut self.props.objs[i];
+            let Some(d) = o.door.as_mut() else { continue };
+            if d.doorflags & DOORFLAG_WINDOWED == 0 {
+                continue;
+            }
+            d.fadealpha = super::glass::glass_calculate_opacity(o.pos, campos, d.xludist as f32, d.opadist as f32, 0.0);
+            // The glass's toggle (MODELPART_WINDOWEDDOOR_0001) is never hidden:
+            // no arena's glass breaks (its shot handling isn't ported).
+            let canhide = d.fadealpha == 255 && d.frac <= 0.0 && !multi;
+            if let Some(p) = d.portalnum {
+                self.bg_set_portal_open_state(p, !canhide);
+            }
+        }
     }
 
     /// `bg_set_portal_open_state` (`bg.c:6144`).

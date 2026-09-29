@@ -1,0 +1,19 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "facility",
+  "name": "Facility",
+  "stagenum": 97,
+  "scale": 1.0,
+  "source": {
+    "game": "ge",
+    "rom": "D:/GoldenPerfectModding/007 - GoldenEye (USA)/007 - GoldenEye (USA).n64",
+    "decomp": "reference/ge-decomp",
+    "level": "LEVELID_FACILITY",
+    "setup": "UsetuparkZ",
+    "markers": ["Ump_setuparkZ"]
+  },
+  "spawns": 20,
+  "weapons": 12,
+  "hills": 6,
+  "marker_share": 0.5
+}

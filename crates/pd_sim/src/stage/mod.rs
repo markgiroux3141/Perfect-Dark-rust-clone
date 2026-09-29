@@ -178,6 +178,8 @@ struct TileRow {
     room: u16,
     flags: u32,
     floortype: u8,
+    #[serde(default)]
+    floorcol: u16,
     verts: Vec<[f32; 3]>,
 }
 
@@ -241,7 +243,9 @@ fn tile_poly(t: &TileRow) -> Result<GeomPoly, String> {
     if t.verts.len() < 3 {
         return Err(format!("tiles: room {:#x} has a tile with {} vertices", t.room, t.verts.len()));
     }
-    Ok(GeomPoly::from_tile(t.room, t.flags, t.floortype, t.verts.iter().map(|&v| Vec3::from(v)).collect()))
+    let mut p = GeomPoly::from_tile(t.room, t.flags, t.floortype, t.verts.iter().map(|&v| Vec3::from(v)).collect());
+    p.floorcol = t.floorcol;
+    Ok(p)
 }
 
 impl GeomPoly {

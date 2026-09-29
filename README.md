@@ -166,6 +166,13 @@ Saves go to `save/perfect_dark.eep`. Set `PD_SAVE` to use another file.
 
 **Gamepads** drive players 1 to 4 with PD's control style 1.1. Buttons are read as a USB N64 controller adapter reports them, so other pads may map oddly.
 
+## Optional: levels from other games
+
+`pd_import` converts levels from other games into Combat Simulator arenas, listed under **Arena → Custom**. They're made from your own copies of those games and never committed (they land in `custom/`, which is gitignored).
+
+- **GoldenEye 007's Facility**, the whole solo level with its doors: needs your GoldenEye (USA) ROM and the [GoldenEye decomp](https://github.com/n64decomp/007) cloned to `reference/ge-decomp`. Set the ROM's path in `crates/pd_import/levels/facility.json`, then run `cargo run --release -p pd_import --bin pd_import -- facility`. [docs/GOLDENEYE.md](docs/GOLDENEYE.md) explains how it works.
+- **Ocarina of Time's Kokiri Forest** (`... -- kokiri`): needs the scene extracted by a separate OoT tool; see M15 in [docs/MILESTONES.md](docs/MILESTONES.md).
+
 ## For developers
 
 [CLAUDE.md](CLAUDE.md) has the full command list: the headless snapshot tool (`pd_snapshot`, which renders menus, stages, matches and flows to PNG), long probes, offline music renders and the simulant route viewer. The rules the code follows are:
@@ -177,4 +184,4 @@ Saves go to `save/perfect_dark.eep`. Set `PD_SAVE` to use another file.
 
 ## Credits
 
-This is built on the [n64decomp Perfect Dark decompilation](https://github.com/n64decomp/perfect_dark), with the [PC port](https://github.com/fgsfdsfgs/perfect_dark) as a reference for mouse aim and the audio microcode. Perfect Dark is © Rare Ltd. / Microsoft. This is an unofficial fan project, not affiliated with or endorsed by them.
+This is built on the [n64decomp Perfect Dark decompilation](https://github.com/n64decomp/perfect_dark) (and, for the GoldenEye levels, the [n64decomp GoldenEye decompilation](https://github.com/n64decomp/007)), with the [PC port](https://github.com/fgsfdsfgs/perfect_dark) as a reference for mouse aim and the audio microcode. Perfect Dark is © Rare Ltd. / Microsoft; GoldenEye 007 is © its rights holders (Rare, Nintendo, MGM / Danjaq). This is an unofficial fan project, not affiliated with or endorsed by them.

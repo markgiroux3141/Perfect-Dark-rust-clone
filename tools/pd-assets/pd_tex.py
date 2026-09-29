@@ -181,10 +181,19 @@ def rzip_inflate(data: bytes, off: int) -> tuple[bytes, int]:
     """Inflate one PD rzip stream at `off`; returns `(bytes, next offset)`.
 
     `lib/rzip.s:223`: PD's format is `0x11 0x73`, then a 3-byte uncompressed
-    length, then raw DEFLATE. (GoldenEye's `0x11 0x72` omits the length.) The
-    consumed length is recovered from the decompressor rather than stored, which
-    is what lets the caller walk on to the next mip image.
+    length, then raw DEFLATE. GoldenEye's `0x11 0x72` omits the length and
+    inflates to the stream's end block (ge-decomp `decompress.c:53-66`); no PD
+    file starts with it, so accepting it here serves the GoldenEye extractor
+    (`tools/ge-extract`) without touching PD's assets. The consumed length is
+    recovered from the decompressor rather than stored, which is what lets the
+    caller walk on to the next mip image.
     """
+    if data[off] == 0x11 and data[off + 1] == 0x72:
+        d = zlib.decompressobj(-15)
+        out = d.decompress(data[off + 2 :])
+        if not d.eof:
+            raise UnsupportedTexture(f"rzip 1172 stream at {off} is truncated")
+        return out, len(data) - len(d.unused_data)
     if data[off] != 0x11 or data[off + 1] != 0x73:
         raise UnsupportedTexture(
             f"expected an rzip 1173 stream at {off}, found {data[off]:#04x} {data[off+1]:#04x}"

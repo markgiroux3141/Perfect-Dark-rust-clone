@@ -44,6 +44,7 @@ impl World {
             self.props_tick_machines();
         }
         self.tinted_glass_update_portals(pi);
+        self.doors_update_portals_if_windowed(pi);
         let mut objs = std::mem::take(&mut self.props.objs);
         if pi == 0 {
             for o in objs.iter_mut() {

@@ -314,6 +314,20 @@ class RspState:
 class Interp:
     """Walk one model's drawable nodes in `model_render` order."""
 
+    #: The vertex G_VTX loads: PD's 12-byte `struct gfxvtx`, its colour an
+    #: index into the G_COL table (segment 6). A subclass for GoldenEye's
+    #: display lists (`tools/ge-extract`) sets 16: fast3d's own `Vtx_t`, the
+    #: colour inline (ge-decomp `include/PR/gbi.h:1112`).
+    vtx_size = VTX_SIZE
+
+    def hasloddata(self, texnum: int) -> bool | None:
+        """Does texture `texnum` store its own mip images (the C0 half-texel offset)?"""
+        return pool_hasloddata(texnum)
+
+    def blend_state(self, oml: int, two_cycle: bool) -> dict:
+        """The blender and z state a batch is drawn with (`blend_from_othermode`)."""
+        return blend_from_othermode(oml, two_cycle)
+
     def __init__(self, m: pd_model.ModelDef, texconfigs: dict, name: str):
         self.m = m
         self.d = m.data
@@ -372,7 +386,7 @@ class Interp:
             "prim": list(st.prim),
             "env": st.env,
             "fog": st.fog,
-            **blend_from_othermode(st.oml, two),
+            **self.blend_state(st.oml, two),
         }
         key = json.dumps(mat, sort_keys=True)
         idx = self.material_index.get(key)
@@ -436,23 +450,28 @@ class Interp:
                     st.colours_count = (w0 & 0xFFFF) // 4
                     continue
                 if op == G_VTX:
-                    n = (w0 & 0xFFFF) // VTX_SIZE
+                    vsize = self.vtx_size
+                    n = (w0 & 0xFFFF) // vsize
                     dest = (w0 >> 16) & 0xF
                     src = self.resolve(w1, segs)
                     if src is None:
                         continue
                     vtxbase = segs.get(0x04)
                     for i in range(n):
-                        vo = src + i * VTX_SIZE
-                        if vo + VTX_SIZE > len(self.d) or dest + i >= 16:
+                        vo = src + i * vsize
+                        if vo + vsize > len(self.d) or dest + i >= 16:
                             break
-                        x, y, z, flags, colour, s, t = struct.unpack_from(">hhhBBhh", self.d, vo)
-                        ci = colour >> 2
-                        if st.colours_off is not None:
-                            co = st.colours_off + ci * 4
+                        if vsize == 16:
+                            x, y, z, _flag, s, t = struct.unpack_from(">hhhHhh", self.d, vo)
+                            cbytes = list(self.d[vo + 12 : vo + 16])
                         else:
-                            co = segs[6] + ci * 4
-                        cbytes = list(self.d[co : co + 4]) if co + 4 <= len(self.d) else [255, 255, 255, 255]
+                            x, y, z, flags, colour, s, t = struct.unpack_from(">hhhBBhh", self.d, vo)
+                            ci = colour >> 2
+                            if st.colours_off is not None:
+                                co = st.colours_off + ci * 4
+                            else:
+                                co = segs[6] + ci * 4
+                            cbytes = list(self.d[co : co + 4]) if co + 4 <= len(self.d) else [255, 255, 255, 255]
                         lit = bool(st.geom & GM_LIGHTING)
                         texgen = lit and bool(st.geom & GM_TEXTURE_GEN)
                         # fast3d gfx_sp_vertex: U = s * scale >> 16, in S10.5 texels.
@@ -478,7 +497,7 @@ class Interp:
                             # redoes U = s * scale >> 16 every frame).
                             "texscale": (st.tex_s, st.tex_t),
                             # The vertex's index in the node's vertex table, and its raw s/t.
-                            "vsrc": (vo - vtxbase) // VTX_SIZE if vtxbase is not None and vo >= vtxbase else -1,
+                            "vsrc": (vo - vtxbase) // vsize if vtxbase is not None and vo >= vtxbase else -1,
                             "st_raw": (s, t),
                         }
                     continue
@@ -606,7 +625,7 @@ class Interp:
         t.texkey = texnum
         t.cms = smode
         t.cmt = tmode
-        hasloddata = pool_hasloddata(texnum)
+        hasloddata = self.hasloddata(texnum)
         half = 0.5 if (offset == 2 and not hasloddata) else 0.0
         if subcmd in (0, 1):
             # type0/1: tile 0 comes from `tex_write_tile_from_definition` — always

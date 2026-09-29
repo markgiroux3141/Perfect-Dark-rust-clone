@@ -375,10 +375,42 @@ impl Renderer {
             }
             // The fog colour: the pickup highlight (scenario_highlight_prop,
             // propobj.c:12839).
-            if let Some(h) = world.scenario_highlight_obj(pi, o) {
+            let highlight = world.scenario_highlight_obj(pi, o);
+            if let Some(h) = highlight {
                 frame.fogcol = h.map(|v| v as f32 / 255.0);
             }
             if let (ShadeMode::Frac(a), Some(bg)) = (shade, self.bg.as_ref()) {
+                // PD merges `obj->shadecol` toward the sky: the colour of the floor
+                // under the object reduced to its tint, the lowest component 0,
+                // the highest the spread (`prop_calculate_shade_colour`,
+                // `propobj.c:1623-1690`), so a grey or white floor's is black.
+                // SUBST: the rest of `shadecol` (the room's light, the brightness
+                // in its alpha, the halving it eases in by) waits for the objects'
+                // lighting port (above) / the floor's tint with the frame's alpha.
+                if highlight.is_none() {
+                    if let (_, Some(poly)) = world.level.cd_find_ground_at_cyl(o.pos, 1.0) {
+                        let c = world.level.geom.polys[poly].floorcol;
+                        let mut n = [8, 4, 0].map(|s| (((c >> s) & 0xf) * 17) as i32);
+                        let (mut max, mut min) = if n[1] > n[0] { (1, 0) } else { (0, 1) };
+                        let med;
+                        if n[2] > n[max] {
+                            med = max;
+                            max = 2;
+                        } else if n[2] > n[min] {
+                            med = 2;
+                        } else {
+                            med = min;
+                            min = 2;
+                        }
+                        if n[max] > 0 {
+                            let (hi, lo) = (n[max], n[min]);
+                            n[med] = n[med] * (hi - lo) / hi;
+                            n[min] = 0;
+                            n[max] = hi - lo;
+                        }
+                        frame.fogcol = [n[0] as f32 / 255.0, n[1] as f32 / 255.0, n[2] as f32 / 255.0, frame.fogcol[3]];
+                    }
+                }
                 frame.fogcol = bg::obj_merge_colour_fracs(frame.fogcol, sky_f32(bg), a);
             }
             if let Some(e) = xray {

@@ -227,20 +227,28 @@ def combine_words(mode1: list[str], mode2: list[str]) -> tuple[int, int]:
     return w0 & 0xFFFFFFFF, w1 & 0xFFFFFFFF
 
 
-def replace_group(n: int) -> list[tuple[tuple[int, int], tuple[int, int]]]:
-    """`g_GfxGroupNN` (gfxreplace.c) as find/replace word pairs, in order."""
+def replace_group(n: int, combines_only: bool = False) -> list[tuple[tuple[int, int], tuple[int, int]]]:
+    """`g_GfxGroupNN` (gfxreplace.c) as find/replace word pairs, in order.
+
+    The fog groups (1, 5) also swap render modes (`G_RM_PASS` for
+    `G_RM_FOG_SHADE_A` in cycle 1); with `combines_only` their render-mode
+    pairs are left out (the caller applies the fog blend itself, as the
+    GoldenEye extractor does with `Material.fog_shade`), else refused."""
     text = _strip_comments(_read("game", "gfxreplace.c"))
     body = re.search(rf"Gfx\s+g_GfxGroup{n:02d}\[\]\s*=\s*\{{(.*?)\n\}};", text, re.S).group(1)
     macros = cc_macros()
     cmds = []
     for m in re.finditer(r"gs(DPSetCombineMode|DPSetRenderMode|DPSetCycleType)\s*\(([^()]*)\)", body):
+        if m.group(1) == "DPSetRenderMode" and combines_only:
+            cmds.append(None)
+            continue
         if m.group(1) != "DPSetCombineMode":
             raise NotImplementedError(f"g_GfxGroup{n:02d} uses {m.group(1)} (fog stages are not ported)")
         x, y = [t.strip() for t in m.group(2).split(",")]
         cmds.append(combine_words(macros[x], macros[y]))
     if len(cmds) % 2:
         raise SystemExit(f"g_GfxGroup{n:02d}: odd command count")
-    return [(cmds[i], cmds[i + 1]) for i in range(0, len(cmds), 2)]
+    return [(cmds[i], cmds[i + 1]) for i in range(0, len(cmds), 2) if cmds[i] is not None and cmds[i + 1] is not None]
 
 
 def tiles_bbox(stem: str):

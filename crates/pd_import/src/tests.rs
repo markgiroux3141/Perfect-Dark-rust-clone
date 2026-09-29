@@ -91,6 +91,7 @@ fn recipe() -> Recipe {
         spawns: 6,
         weapons: 4,
         hills: 2,
+        marker_share: 1.0,
     }
 }
 
@@ -190,5 +191,80 @@ fn a_level_becomes_a_stage_the_game_plays() {
     let bg = std::fs::read_to_string(dir.join("stages/test_yard/bg.json")).unwrap();
     assert!(bg.contains("\"fogenvironment\"") && bg.contains("\"fog_shade\":true"));
     assert!(report.iter().any(|l| l.starts_with("check: a minute")), "{report:?}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// GoldenEye's Facility, the whole solo level, from the ROM through
+/// `tools/ge-extract` (`#[ignore]`: it needs the ROM the recipe names and
+/// Python, and the waypoint generator takes about a minute; without the ROM it
+/// says so and passes). The stage loads with GE's own 77 rooms and portals;
+/// its 46 doors are made shut, each on GE's own model; the level is one piece
+/// to the simulants; and a player's use opens a swinging door (the toilets')
+/// and a sliding one, PD's door code driving GE's doors.
+#[test]
+#[ignore]
+fn facility_comes_from_the_goldeneye_rom() {
+    use pd_sim::props::door::{DOORTYPE_SLIDING, DOORTYPE_SWINGING};
+    use pd_sim::player::PlayerInput;
+    use std::sync::Arc;
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let r = Recipe::load(&manifest.join("levels").join("facility.json")).unwrap();
+    let Source::Ge(g) = &r.source else { panic!("facility.json is not a GoldenEye recipe") };
+    if !std::path::Path::new(&g.rom).exists() {
+        eprintln!("skipped: no GoldenEye ROM at {}", g.rom);
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("pd_import_ge_test_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let assets = manifest.join("..").join("..").join("assets");
+    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None };
+    let report = crate::import(&r, &paths).unwrap();
+    let a = pd_core::assets::AssetDir::new(&assets).with_custom_dir(&dir);
+    let stage = Arc::new(pd_sim::stage::Stage::load(&a, "facility").unwrap());
+    assert_eq!(stage.rooms.roomcount(), 78, "GE's rooms 1..77 and PD's room 0");
+    assert_eq!(stage.rooms.portals.len(), 109);
+    let reach = report.iter().find(|l| l.starts_with("reachable:")).unwrap();
+    let (main, all): (usize, usize) = {
+        let w: Vec<&str> = reach.split_whitespace().collect();
+        (w[1].parse().unwrap(), w[3].parse().unwrap())
+    };
+    assert!(main * 100 >= all * 95, "the level is in pieces: {reach}");
+
+    let level = Arc::new(pd_sim::stage::TileLevel::for_stage(&stage));
+    let res = Arc::new(pd_sim::world::WorldRes::load(&a).unwrap());
+    let setup = pd_core::mp::MatchSetup { stagenum: stage.stagenum, players: vec![pd_core::mp::MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
+    let mut w = pd_sim::world::World::new(setup, stage.clone(), level.clone(), res, 1).unwrap();
+    let doors: Vec<usize> = (0..w.props.objs.len()).filter(|&i| w.props.objs[i].door.is_some()).collect();
+    assert_eq!(doors.len(), 46);
+    for &i in &doors {
+        let o = &w.props.objs[i];
+        assert!(pd_core::assets::CUSTOM_MODELNUMS.contains(&o.modelnum), "door {i} is on model {}", o.modelnum);
+        assert!(o.door.as_ref().unwrap().is_closed(), "door {i} starts open");
+    }
+    for ty in [DOORTYPE_SWINGING, DOORTYPE_SLIDING] {
+        let i = doors
+            .iter()
+            .copied()
+            .find(|&i| {
+                let d = w.props.objs[i].door.as_ref().unwrap();
+                d.doortype == ty && d.portalnum.is_some() && d.sibling.is_none()
+            })
+            .unwrap_or_else(|| panic!("no lone door of type {ty} with a portal"));
+        let pad = w.props.objs[i].door.as_ref().unwrap().pad.clone();
+        let (n, centre) = (pad.normal(), pad.centre());
+        let side = [1.0f32, -1.0].into_iter().find(|s| level.cd_find_room_at_pos_ycnp(centre + n * 120.0 * *s).is_some()).unwrap();
+        let face = -n * side;
+        w.players[0].start_new_life(&level, &[], centre + n * 120.0 * side, pd_core::math::atan2f(face.x, face.z));
+        for f in 0..34 {
+            w.step(4, &[PlayerInput { use_held: (30..33).contains(&f), ..Default::default() }]);
+        }
+        let opened = (0..600).any(|f| {
+            w.step(4, &[PlayerInput::default()]);
+            let d = w.props.objs[i].door.as_ref().unwrap();
+
+            d.is_open()
+        });
+        assert!(opened, "door {i} (type {ty}) never opened for a use");
+    }
     std::fs::remove_dir_all(&dir).unwrap();
 }

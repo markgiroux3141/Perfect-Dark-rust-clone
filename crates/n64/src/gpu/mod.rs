@@ -402,6 +402,7 @@ impl Combiner {
             return;
         }
         let attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x4, 3 => Uint32, 4 => Uint32];
+        let constants = std::collections::HashMap::from([("BLENDED".to_owned(), if key.alpha { 1.0 } else { 0.0 })]);
         let p = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("n64-combiner"),
             layout: Some(&self.layout),
@@ -419,7 +420,10 @@ impl Combiner {
                     blend: if key.alpha { Some(wgpu::BlendState::ALPHA_BLENDING) } else { None },
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions {
+                    constants: &constants,
+                    ..Default::default()
+                },
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
