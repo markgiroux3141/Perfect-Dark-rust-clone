@@ -17,3 +17,6 @@ out/
 # Python bytecode from the asset tools.
 __pycache__/
 *.pyc
+
+# The Game Pak EEPROM the game keeps between runs (pd_game::save).
+save/

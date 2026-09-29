@@ -259,6 +259,7 @@ impl World {
         for i in 0..n {
             let mut p = Player::new(&res, Vec3::ZERO, 0.0, n, &mut rng)?;
             p.set_viewport(i, n, setup.screensplit);
+            p.gun.p.gunfuncs = setup.players[i].gunfuncs;
             players.push(p);
         }
         let mut chrs = Vec::with_capacity(n + setup.simulants.len());

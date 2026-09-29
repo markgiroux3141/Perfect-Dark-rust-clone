@@ -295,7 +295,7 @@ impl World {
 
         // Recalculate title for all players
         self.mp.results = (0..playercount)
-            .map(|i| MpPlayerResult { slot: self.setup.players[i].slot as usize, career: careers[i], medals: medals[i], title: mp_calculate_player_title(&careers[i]) })
+            .map(|i| MpPlayerResult { slot: self.setup.players[i].slot as usize, career: careers[i], medals: medals[i], title: mp_calculate_player_title(&careers[i]), gunfuncs: self.players[i].gun.p.gunfuncs })
             .collect();
     }
 }

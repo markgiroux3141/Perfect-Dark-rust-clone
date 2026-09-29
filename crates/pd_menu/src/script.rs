@@ -5,9 +5,11 @@
 //! A script is whitespace-separated words, the old repo's
 //! `pd_combat_sim_snapshot` format:
 //!
-//! * `--fresh`: a new save file (challenges and unlockables locked); else
-//!   every challenge is done ([`Profile`]);
-//! * `--combat`: start in the Combat Simulator; else on the Perfect Menu;
+//! * `--fresh`: the save files decide, on a blank Game Pak (a new file:
+//!   challenges and unlockables locked); else every challenge counts as done
+//!   ([`Profile::Complete`]);
+//! * `--combat`: start in the Combat Simulator; `--boot`: at power on's agent
+//!   select; else on the Perfect Menu;
 //! * `w<N>`: run N frames with nothing held (`w30`);
 //! * `a` `b` `z` `start` `up` `down` `left` `right` `l` `r` `cu` `cd` `cl` `cr`:
 //!   tap that button on controller 1 (held one frame, released the next, then
@@ -42,6 +44,7 @@ pub enum Step {
 pub struct Script {
     pub profile: Profile,
     pub combat: bool,
+    pub boot: bool,
     pub steps: Vec<Step>,
 }
 
@@ -70,15 +73,18 @@ fn button(word: &str) -> Option<(usize, u16)> {
 
 impl Script {
     pub fn parse<S: AsRef<str>>(words: &[S]) -> Result<Script, String> {
-        let mut s = Script { profile: Profile::Complete, combat: false, steps: Vec::new() };
+        let mut s = Script { profile: Profile::Complete, combat: false, boot: false, steps: Vec::new() };
         for w in words {
             let w = w.as_ref();
             let stick = |v: &str| v.parse::<i8>().map_err(|_| format!("bad stick {w}"));
             let step = if w == "--fresh" {
-                s.profile = Profile::Fresh;
+                s.profile = Profile::Files;
                 continue;
             } else if w == "--combat" {
                 s.combat = true;
+                continue;
+            } else if w == "--boot" {
+                s.boot = true;
                 continue;
             } else if let Some((pad, button)) = button(w) {
                 Step::Tap { pad, button }
@@ -103,7 +109,9 @@ impl Script {
     /// A fresh menu system, opened where the script starts.
     pub fn start(&self, assets: &AssetDir) -> Result<MenuSystem, String> {
         let mut pd = MenuSystem::new(assets, self.profile)?;
-        if self.combat {
+        if self.boot {
+            pd.open_file_select();
+        } else if self.combat {
             pd.open_combat_simulator();
         } else {
             pd.open_main_menu();

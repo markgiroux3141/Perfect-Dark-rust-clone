@@ -123,6 +123,22 @@ GROUPS = [
     ("MUSICEVENTTYPE_", "i32", False, "`g_MusicEventQueue[].eventtype`."),
     ("SOUNDMODE_", "i32", False, "`g_SoundMode`: the Sound option (`snd_set_sound_mode`)."),
     ("SPEAKERMODE_", "i32", False, "`alSurround_OutputType`'s modes."),
+    # The save files (pak.c, filemgr.c, gamefile.c, options.c).
+    ("SAVEDEVICE_", "i8", False, "A save device: Controller Paks 1-4, then the Game Pak (the cartridge's EEPROM)."),
+    ("PAKFILETYPE_", "u32", True, "`pakfileheader.filetype`: a file on a pak."),
+    ("PAKTYPE_", "u8", False, "`g_Paks[].type`: what is plugged into a controller."),
+    ("PAKSTATE_", "u8", False, "`g_Paks[].state`."),
+    ("PAK_ERR2_", "i32", False, "`pak_read_header_at_offset`'s results."),
+    ("FILETYPE_", "i32", False, "A file list's type (`filelist.filetype`, `filemgr.c`)."),
+    ("FILEOP_", "i32", False, "`fm.fileop`: the file manager's operation (saves below 100, loads from 100)."),
+    ("FILEERROR_", "u16", False, "`fm.errno`: the file manager's error dialog's reason."),
+    ("FILESTATE_", "u8", False, "`g_FileState`: whether an agent has been chosen since power on."),
+    ("MODFILE_", "u32", True, "`g_Vars.modifiedfiles`: files with unsaved changes."),
+    ("GAMEFILEFLAG_", "u32", True, "`g_GameFile.flags` bits (`pak_set_bitflag`)."),
+    ("SCREENSIZE_", "u8", False, "`g_ScreenSize`."),
+    ("SCREENRATIO_", "u8", False, "`g_ScreenRatio`."),
+    ("SOLOSTAGEINDEX_", "i32", False, "`g_SoloStages` indexes (the agent file's best times)."),
+    ("DIFF_", "i32", False, "Solo difficulties."),
 ]
 
 

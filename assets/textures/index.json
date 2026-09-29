@@ -4113,6 +4113,17 @@
   "soundsurfacetype": 0,
   "surfacetype": 0
  },
+ "0385": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
  "0386": {
   "w": 32,
   "h": 32,
@@ -11076,6 +11087,182 @@
   "soundsurfacetype": 0,
   "surfacetype": 0
  },
+ "0617": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0618": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0619": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "061a": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "061b": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "061c": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "061d": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "061e": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "061f": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0620": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0621": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0622": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0623": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0624": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0625": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0626": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
  "0627": {
   "w": 64,
   "h": 32,
@@ -11303,6 +11490,17 @@
   "codec": "non-zlib",
   "numcolours": 0,
   "numlods": 1,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "063c": {
+  "w": 56,
+  "h": 36,
+  "format": "RGBA16_CI8",
+  "codec": "zlib",
+  "numcolours": 256,
+  "numlods": 0,
   "hasloddata": false,
   "soundsurfacetype": 0,
   "surfacetype": 0

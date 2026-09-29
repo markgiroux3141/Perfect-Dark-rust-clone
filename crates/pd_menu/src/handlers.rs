@@ -1,14 +1,16 @@
 //! The menu handlers and text functions the generated tables name, ported
 //! from `mplayer/setup.c`, `mplayer/scenarios.c` (+ the scenario `.inc`
 //! files), `mainmenu.c` and `mplayer/ingame.c`, one function each under PD's
-//! name. File-manager calls (saving/loading players and setups to a
-//! Controller Pak) push [`super::stubs::STUB_PAK_DIALOG`] instead — there is
-//! no pak here.
+//! name. The file manager's (`filemgr.c`) are [`super::filemgr`]'s, re-exported
+//! here for the tables.
 
 #![allow(clippy::too_many_arguments)]
 
+pub use super::filemgr::*;
 use super::stubs;
 use super::generated::*;
+use pd_core::ids::{FILEOP_LOAD_MPPLAYER, FILEOP_LOAD_MPSETUP, FILEOP_SAVE_MPPLAYER, FILEOP_SAVE_MPSETUP, FILETYPE_MPPLAYER, FILETYPE_MPSETUP, MODFILE_GAME, MODFILE_MPSETUP};
+use pd_core::savebuffer::{cstr_to_string, savebuffer_bitstring_to_cstring, FileGuid};
 use pd_core::lang::tx;
 use super::types::*;
 use super::MenuSystem;
@@ -232,12 +234,12 @@ pub fn menuhandler_mp_display_option_checkbox(pd: &mut MenuSystem, op: i32, item
     ok()
 }
 
-/// `menuhandler_mp_confirm_save_chr` (setup.c:441): pops, then PD opens the
-/// file manager's "select location" dialog — here the pak stub.
+/// `menuhandler_mp_confirm_save_chr` (setup.c:441): where to save a new
+/// player file.
 pub fn menuhandler_mp_confirm_save_chr(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, _data: &mut HandlerData) -> R {
     if op == MENUOP_CONFIRM {
         pd.menu_pop_dialog();
-        pd.menu_push_dialog(&stubs::STUB_PAK_DIALOG);
+        pd.filemgr_push_select_location_dialog(6, FILETYPE_MPPLAYER);
     }
     ok()
 }
@@ -260,16 +262,18 @@ pub fn menuhandler_mp_setup_name(pd: &mut MenuSystem, op: i32, _item: &'static M
     match op {
         MENUOP_GET_KEYBOARD_STRING => data.string = kb_from(&pd.mp.setup.name),
         MENUOP_SET_KEYBOARD_STRING => pd.mp.setup.name = kb_to(&data.string),
-        MENUOP_CONFIRM => pd.menu_push_dialog(&stubs::STUB_PAK_DIALOG),
+        MENUOP_CONFIRM => pd.filemgr_push_select_location_dialog(7, FILETYPE_MPSETUP),
         _ => {}
     }
     ok()
 }
 
+/// `menuhandler_mp_save_setup_overwrite` (setup.c:467).
 pub fn menuhandler_mp_save_setup_overwrite(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, _data: &mut HandlerData) -> R {
     if op == MENUOP_CONFIRM {
         pd.menu_pop_dialog();
-        pd.menu_push_dialog(&stubs::STUB_PAK_DIALOG);
+        let guid = pd.mp.setup.fileguid;
+        pd.filemgr_save_or_load(guid, FILEOP_SAVE_MPSETUP, 0);
     }
     ok()
 }
@@ -284,11 +288,6 @@ pub fn menuhandler_mp_save_setup_copy(pd: &mut MenuSystem, op: i32, _item: &'sta
 
 pub fn mp_menu_text_setup_name(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
     pd.mp.setup.name.clone()
-}
-
-/// `filemgr_menu_text_device_name` (filemgr.c): the pak's name.
-pub fn filemgr_menu_text_device_name(_pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
-    "Controller Pak 1\n".into()
 }
 
 // ---------------------------------------------------------------------------
@@ -624,48 +623,124 @@ pub fn mp_player_name_menu_handler(pd: &mut MenuSystem, op: i32, _item: &'static
     ok()
 }
 
-/// `mp_load_settings_menu_handler` (setup.c:2022). There are no pak files, so
-/// the list is the presets group only (`g_FileLists[1]` is NULL).
+/// `mp_load_settings_menu_handler` (setup.c:2022): the presets, then the
+/// setup files on each device (`g_FileLists[1]`).
 pub fn mp_load_settings_menu_handler(pd: &mut MenuSystem, op: i32, item: &'static MenuItem, data: &mut HandlerData) -> R {
+    let presets = pd.mp_get_num_unlocked_presets();
+    let list = pd.filelists.lists[1].clone();
     match op {
-        MENUOP_GET_OPTION_COUNT => data.value = pd.mp_get_num_unlocked_presets(),
+        MENUOP_GET_OPTION_COUNT => data.value = presets + list.as_ref().map_or(0, |l| l.numfiles()),
         MENUOP_GET_OPTION_TEXT => {
-            if data.value < pd.mp_get_num_unlocked_presets() {
+            if data.value < presets {
                 return pd.mp_get_preset_name_by_slot(data.value).into();
+            }
+            if let Some(f) = list.as_ref().and_then(|l| l.files.get((data.value - presets) as usize)) {
+                let mut c = [0u8; 12];
+                savebuffer_bitstring_to_cstring(&f.name, &mut c, false);
+                return cstr_to_string(&c).into();
             }
         }
         MENUOP_CONFIRM => {
             mp_close_dialogs_for_new_setup(pd);
-            if data.value < pd.mp_get_num_unlocked_presets() {
+            if data.value < presets {
                 pd.mp_load_preset_by_slotnum(data.value);
+            } else if let Some(f) = list.as_ref().and_then(|l| l.files.get((data.value - presets) as usize)) {
+                let guid = FileGuid { fileid: f.fileid, deviceserial: f.deviceserial };
+                pd.filemgr_save_or_load(guid, FILEOP_LOAD_MPSETUP, 0);
             }
             if item.param == 1 {
                 pd.menu_save_and_push_root_dialog(Some(&G_MP_QUICK_GO_MENU_DIALOG), MENUROOT_MPSETUP);
             }
         }
         MENUOP_GET_SELECTED_INDEX => data.value = 0xfffff,
-        MENUOP_GET_OPTGROUP_COUNT => data.value = 1,
+        MENUOP_GET_OPTGROUP_COUNT => data.value = 1 + list.as_ref().map_or(0, |l| l.numdevices as i32),
         MENUOP_GET_OPTGROUP_TEXT => {
             if data.value == 0 {
                 return pd.lang(tx(B_MPMENU, 141)).into();
             }
+            if list.is_some() {
+                return pd.filemgr_group_text(1, data.value - 1);
+            }
         }
-        MENUOP_GET_OPTGROUP_START_INDEX => data.groupstartindex = if data.value == 0 { 0 } else { pd.mp_get_num_unlocked_presets() },
-        MENUOP_ON_OPTION_FOCUS => pd.m().mpsetup.slotindex = 0xffff,
+        MENUOP_GET_OPTGROUP_START_INDEX => {
+            data.groupstartindex = if data.value == 0 {
+                0
+            } else {
+                presets + if list.is_some() { pd.filemgr_group_start(1, data.value - 1) } else { 0 }
+            };
+        }
+        MENUOP_ON_OPTION_FOCUS => pd.m().mpsetup.slotindex = if data.value < presets { 0xffff } else { data.value - presets },
         _ => {}
     }
     ok()
 }
 
-/// `mp_menu_text_mpconfig_marquee` (setup.c:2105): only pak files have an
-/// overview, so this is always empty here.
-pub fn mp_menu_text_mpconfig_marquee(_pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
+/// `mp_menu_text_mpconfig_marquee` (setup.c:2105): a setup file's overview
+/// ("Name:  Scenario: ...   Arena: ...    Simulants: n").
+pub fn mp_menu_text_mpconfig_marquee(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
+    let slot = pd.mr().mpsetup.slotindex;
+    let Some(f) = pd.filelists.lists[1].as_ref().and_then(|l| l.files.get(slot.max(0) as usize)).copied() else { return String::new() };
+    if slot >= 0xffff {
+        return String::new();
+    }
+    let (filename, numsims, stagenum, scenarionum) = MenuSystem::mpsetupfile_get_overview(&f.name);
+    let mut arenanum = -1;
+    for (i, a) in MP_ARENAS.iter().enumerate() {
+        if a.stagenum == stagenum as i32 {
+            arenanum = i as i32;
+        }
+    }
+    if scenarionum <= 5 && arenanum != -1 && !filename.is_empty() && numsims as i32 <= MAX_BOTS {
+        let fmt = pd.lang(tx(B_MPMENU, 140));
+        let scen = pd.lang(MP_SCENARIO_OVERVIEWS[scenarionum as usize].name);
+        let arena = pd.lang(MP_ARENAS[arenanum as usize].name);
+        return fmt.replacen("%s", &filename, 1).replacen("%s", &scen, 1).replacen("%s", &arena, 1).replacen("%d", &numsims.to_string(), 1);
+    }
     String::new()
 }
 
-/// `mp_load_player_menu_handler` (setup.c:2156): `g_FileLists[0]` is NULL, so
-/// it returns early and the list shows "< Empty >".
-pub fn mp_load_player_menu_handler(_pd: &mut MenuSystem, _op: i32, _item: &'static MenuItem, _data: &mut HandlerData) -> R {
+/// `mp_load_player_menu_handler` (setup.c:2156): the player files on each
+/// device (`g_FileLists[0]`); a file another joined player has loaded can't
+/// be loaded twice.
+pub fn mp_load_player_menu_handler(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, data: &mut HandlerData) -> R {
+    let Some(list) = pd.filelists.lists[0].clone() else { return ok() };
+    match op {
+        MENUOP_GET_OPTION_COUNT => data.value = list.numfiles(),
+        MENUOP_GET_OPTION_TEXT => {
+            if let Some(f) = list.files.get(data.value.max(0) as usize) {
+                return pd.filemgr_get_select_name(f, FILETYPE_MPPLAYER).into();
+            }
+        }
+        MENUOP_CONFIRM => {
+            let Some(file) = list.files.get(data.value.max(0) as usize).copied() else { return ok() };
+            let mut available = true;
+            for i in 0..4 {
+                if file.fileid == pd.mp.players[i].fileguid.fileid && file.deviceserial == pd.mp.players[i].fileguid.deviceserial {
+                    if pd.mp.setup.chrslots & (1 << i) == 0 {
+                        pd.mp_player_set_defaults(i, true);
+                    } else {
+                        available = false;
+                    }
+                }
+            }
+            if available {
+                let guid = FileGuid { fileid: file.fileid, deviceserial: file.deviceserial };
+                pd.menu_pop_dialog();
+                let p = pd.mpplayernum as u32;
+                pd.filemgr_save_or_load(guid, FILEOP_LOAD_MPPLAYER, p);
+            } else {
+                pd.filemgr_push_error_dialog(pd_core::ids::FILEERROR_ALREADYLOADED);
+            }
+        }
+        MENUOP_GET_SELECTED_INDEX => data.value = 0xfffff,
+        MENUOP_GET_OPTGROUP_COUNT => data.value = list.numdevices as i32,
+        MENUOP_GET_OPTGROUP_TEXT => return pd.filemgr_group_text(0, data.value),
+        MENUOP_GET_OPTGROUP_START_INDEX => {
+            data.groupstartindex = pd.filemgr_group_start(0, data.value);
+            return ok();
+        }
+        _ => {}
+    }
     ok()
 }
 
@@ -750,8 +825,16 @@ pub fn menuhandler_mp_restore_handicap_defaults(pd: &mut MenuSystem, op: i32, _i
     ok()
 }
 
-/// `menudialog_mp_ready` (setup.c:2326): saves the player file (no pak here).
-pub fn menudialog_mp_ready(_pd: &mut MenuSystem, _op: i32, _def: &'static MenuDialogDef, _data: &mut HandlerData) -> i32 {
+/// `menudialog_mp_ready` (setup.c:2326): a player with a file saves it as
+/// they get ready.
+pub fn menudialog_mp_ready(pd: &mut MenuSystem, op: i32, _def: &'static MenuDialogDef, _data: &mut HandlerData) -> i32 {
+    if op == MENUOP_ON_OPEN {
+        let g = pd.mp.players[cur_player(pd)].fileguid;
+        if g.fileid != 0 && g.deviceserial != 0 {
+            let p = cur_player(pd) as u32;
+            pd.filemgr_save_or_load(g, FILEOP_SAVE_MPPLAYER, p);
+        }
+    }
     0
 }
 
@@ -1204,15 +1287,26 @@ pub fn mp_select_tune_list_handler(pd: &mut MenuSystem, op: i32, _item: &'static
                 if data.unk04 == 0 {
                     pd.mp_set_track_slot_enabled(data.value);
                 }
+                pd.vars.modifiedfiles |= MODFILE_MPSETUP;
             } else if multi {
                 match data.value - numtracks {
-                    0 => pd.mp_enable_all_multi_tracks(),
-                    1 => pd.mp_disable_all_multi_tracks(),
-                    2 => pd.mp_randomise_multi_tracks(),
+                    0 => {
+                        pd.mp_enable_all_multi_tracks();
+                        pd.vars.modifiedfiles |= MODFILE_MPSETUP;
+                    }
+                    1 => {
+                        pd.mp_disable_all_multi_tracks();
+                        pd.vars.modifiedfiles |= MODFILE_MPSETUP;
+                    }
+                    2 => {
+                        pd.mp_randomise_multi_tracks();
+                        pd.vars.modifiedfiles |= MODFILE_MPSETUP;
+                    }
                     _ => {}
                 }
             } else {
                 pd.mp.bossfile.tracknum = -1;
+                pd.vars.modifiedfiles |= MODFILE_MPSETUP;
             }
         }
         MENUOP_GET_SELECTED_INDEX => {
@@ -1266,7 +1360,10 @@ pub fn mp_menu_text_current_track(pd: &mut MenuSystem, _item: &'static MenuItem)
 pub fn menuhandler_mp_multiple_tunes(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, data: &mut HandlerData) -> R {
     match op {
         MENUOP_IS_CHECKED => return pd.mp.bossfile.usingmultipletunes.into(),
-        MENUOP_CONFIRM => pd.mp.bossfile.usingmultipletunes = data.value != 0,
+        MENUOP_CONFIRM => {
+            pd.mp.bossfile.usingmultipletunes = data.value != 0;
+            pd.vars.modifiedfiles |= MODFILE_MPSETUP;
+        }
         _ => {}
     }
     ok()
@@ -1277,7 +1374,10 @@ pub fn mp_team_name_menu_handler(pd: &mut MenuSystem, op: i32, _item: &'static M
     let s = pd.mr().mpsetup.slotindex.clamp(0, 7) as usize;
     match op {
         MENUOP_GET_KEYBOARD_STRING => data.string = kb_from(&pd.mp.bossfile.teamnames[s]),
-        MENUOP_SET_KEYBOARD_STRING => pd.mp.bossfile.teamnames[s] = format!("{}\n", kb_to(&data.string)),
+        MENUOP_SET_KEYBOARD_STRING => {
+            pd.mp.bossfile.teamnames[s] = format!("{}\n", kb_to(&data.string));
+            pd.vars.modifiedfiles |= MODFILE_MPSETUP;
+        }
         _ => {}
     }
     ok()
@@ -1463,6 +1563,7 @@ pub fn menuhandler_mp_lock(pd: &mut MenuSystem, op: i32, item: &'static MenuItem
                 let p = pd.mpplayernum as i32;
                 pd.mp_set_lock(data.value, p);
             }
+            pd.vars.modifiedfiles |= MODFILE_MPSETUP;
         }
         MENUOP_GET_SELECTED_INDEX => data.value = if challenge { 0 } else { pd.mp_get_lock_type() },
         _ => {}
@@ -1473,8 +1574,8 @@ pub fn menuhandler_mp_lock(pd: &mut MenuSystem, op: i32, item: &'static MenuItem
 /// `menuhandler_mp_save_player` (setup.c:4738).
 pub fn menuhandler_mp_save_player(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, _data: &mut HandlerData) -> R {
     if op == MENUOP_CONFIRM {
-        if pd.mp.players[cur_player(pd)].fileid == 0 {
-            pd.menu_push_dialog(&stubs::STUB_PAK_DIALOG);
+        if pd.mp.players[cur_player(pd)].fileguid.fileid == 0 {
+            pd.filemgr_push_select_location_dialog(6, FILETYPE_MPPLAYER);
         } else {
             pd.menu_push_dialog(&G_MP_SAVE_PLAYER_MENU_DIALOG);
         }
@@ -1483,7 +1584,7 @@ pub fn menuhandler_mp_save_player(pd: &mut MenuSystem, op: i32, _item: &'static 
 }
 
 pub fn mp_menu_text_save_player_or_copy(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
-    if pd.mp.players[cur_player(pd)].fileid == 0 {
+    if pd.mp.players[cur_player(pd)].fileguid.fileid == 0 {
         pd.lang(tx(B_MPMENU, 38))
     } else {
         pd.lang(tx(B_MPMENU, 39))
@@ -1501,7 +1602,7 @@ pub fn menuhandler_mp_abort_setup(pd: &mut MenuSystem, op: i32, _item: &'static 
 /// `menuhandler_mp_save_settings` (setup.c:4777).
 pub fn menuhandler_mp_save_settings(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, _data: &mut HandlerData) -> R {
     if op == MENUOP_CONFIRM {
-        if pd.mp.setup.fileid == 0 {
+        if pd.mp.setup.fileguid.fileid == 0 {
             pd.menu_push_dialog(&G_MP_SAVE_SETUP_NAME_MENU_DIALOG);
         } else {
             pd.menu_push_dialog(&G_MP_SAVE_SETUP_EXISTS_MENU_DIALOG);
@@ -1945,7 +2046,10 @@ pub fn menuhandler_screen_ratio(pd: &mut MenuSystem, op: i32, _item: &'static Me
     match op {
         MENUOP_GET_OPTION_COUNT => data.value = 2,
         MENUOP_GET_OPTION_TEXT => return pd.lang(tx(B_OPTIONS, options[data.value.clamp(0, 1) as usize])).into(),
-        MENUOP_CONFIRM => pd.vars.screenratio = data.value as u8,
+        MENUOP_CONFIRM => {
+            pd.vars.screenratio = data.value as u8;
+            pd.vars.modifiedfiles |= MODFILE_GAME;
+        }
         MENUOP_GET_SELECTED_INDEX => data.value = pd.vars.screenratio as i32,
         _ => {}
     }
@@ -1957,7 +2061,14 @@ pub fn menuhandler_screen_split(pd: &mut MenuSystem, op: i32, _item: &'static Me
     match op {
         MENUOP_GET_OPTION_COUNT => data.value = 2,
         MENUOP_GET_OPTION_TEXT => return pd.lang(tx(B_OPTIONS, options[data.value.clamp(0, 1) as usize])).into(),
-        MENUOP_CONFIRM => pd.vars.screensplit = data.value as u8,
+        MENUOP_CONFIRM => {
+            // (PD closes both players' menus when two are in a game: the
+            // menus here run one player at CI.)
+            if data.value as u8 != pd.vars.screensplit {
+                pd.vars.screensplit = data.value as u8;
+                pd.vars.modifiedfiles |= MODFILE_GAME;
+            }
+        }
         MENUOP_GET_SELECTED_INDEX => data.value = pd.vars.screensplit as i32,
         _ => {}
     }
@@ -2242,14 +2353,13 @@ pub fn mp_player_title_menu_handler(pd: &mut MenuSystem, op: i32, _item: &'stati
 }
 
 /// `mp_confirm_player_name_handler` (ingame.c:724): the new player's name,
-/// then where to save it (the file manager: no pak here).
+/// then where to save it.
 pub fn mp_confirm_player_name_handler(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, data: &mut HandlerData) -> R {
     let p = cur_player(pd);
     match op {
         MENUOP_GET_KEYBOARD_STRING => data.string = kb_from(&pd.mp.players[p].base.name),
         MENUOP_SET_KEYBOARD_STRING => pd.mp.players[p].base.name = format!("{}\n", kb_to(&data.string)),
-        // filemgr_push_select_location_dialog(6, FILETYPE_MPPLAYER)
-        MENUOP_CONFIRM => pd.menu_push_dialog(&stubs::STUB_PAK_DIALOG),
+        MENUOP_CONFIRM => pd.filemgr_push_select_location_dialog(6, FILETYPE_MPPLAYER),
         _ => {}
     }
     ok()

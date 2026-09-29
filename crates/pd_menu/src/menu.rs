@@ -180,6 +180,8 @@ pub struct Menu {
     /// `mppause.weaponnum`: the inventory row in focus (its description scrolls
     /// in the marquee).
     pub mppause_weaponnum: i32,
+    /// `fm`: the file manager's state (`menudata_filemgr`).
+    pub fm: super::filemgr::FilemgrMenuData,
 }
 
 impl Default for Menu {
@@ -214,6 +216,7 @@ impl Default for Menu {
             training_slot: 0,
             training_config: None,
             mppause_weaponnum: 0,
+            fm: Default::default(),
         }
     }
 }
@@ -236,6 +239,13 @@ pub struct MenuData {
     pub triggerhudpiece: bool,
     pub usezbuf: bool,
     pub checkroots: bool,
+    /// The saves waiting for the dialogs to settle (`menu_queue_save`): 0-3 a
+    /// player's file, 4 the agent's; 0xff unused.
+    pub pendingsaves: [u8; 5],
+    pub numpendingsaves: i32,
+    pub savetimer: i32,
+    /// `var8009dfc0`: a menu background has faded in (and not out again).
+    pub bgsettled: bool,
 }
 
 impl Default for MenuData {
@@ -256,6 +266,10 @@ impl Default for MenuData {
             triggerhudpiece: false,
             usezbuf: false,
             checkroots: false,
+            pendingsaves: [0xff; 5],
+            numpendingsaves: 0,
+            savetimer: 0,
+            bgsettled: false,
         }
     }
 }
@@ -1097,6 +1111,13 @@ impl MenuSystem {
             m.depth -= 1;
             self.menu_play_sound(MENUSOUND_0B);
         }
+        if self.menudata.numpendingsaves > 0 && self.mr().depth == 0 {
+            let mut value = self.menudata.numpendingsaves;
+            while value >= 0 {
+                self.menu_save_file(value);
+                value -= 1;
+            }
+        }
         let m = self.m();
         if m.depth == 0 {
             m.curdialog = None;
@@ -1107,7 +1128,7 @@ impl MenuSystem {
     }
 
     /// `menu_update_cur_frame` (menu.c:1625).
-    fn menu_update_cur_frame(&mut self) {
+    pub fn menu_update_cur_frame(&mut self) {
         let depth = self.mr().depth;
         if depth == 0 {
             self.menu_close();
@@ -1332,10 +1353,16 @@ impl MenuSystem {
         self.menudata.count -= 1;
     }
 
-    /// `menu_save_and_close_all` (menu.c:3405). There are no pak saves here.
+    /// `menu_save_and_close_all` (menu.c:3405): the queued saves, then every
+    /// dialog closed (unless a save's error dialog opened).
     pub fn menu_save_and_close_all(&mut self) {
-        while self.mr().depth > 0 {
-            self.menu_pop_dialog();
+        let prev = self.mr().curdialog.map(|d| (d, self.mr().dialogs[d].def() as *const MenuDialogDef));
+        self.menu_save_all_pending();
+        let now = self.mr().curdialog.map(|d| (d, self.mr().dialogs[d].def() as *const MenuDialogDef));
+        if now == prev {
+            while self.mr().depth > 0 {
+                self.menu_pop_dialog();
+            }
         }
     }
 
@@ -2662,6 +2689,7 @@ impl MenuSystem {
         if !anyopen && self.menudata.bg != 0 && self.menudata.nextbg == 255 {
             self.menudata.nextbg = 0;
         }
+        self.menu_tick_pending_saves(anyopen);
         if self.menudata.nextbg != 255 {
             if self.menudata.nextbg == self.menudata.bg {
                 self.menudata.nextbg = 255;
@@ -2673,11 +2701,17 @@ impl MenuSystem {
                 if self.menudata.nextbg == 0 {
                     mult += mult;
                 }
+                if self.menudata.nextbg == 0 {
+                    self.menudata.bgsettled = false;
+                }
                 if self.menudata.screenshottimer == 0 || self.menudata.bg != 0 {
                     let diffframe = self.lv.diffframe60f.min(4.0);
                     self.menudata.bgopacityfrac += mult * diffframe;
                 }
                 if self.menudata.bgopacityfrac > 1.0 {
+                    if self.menudata.nextbg != 0 {
+                        self.menudata.bgsettled = true;
+                    }
                     self.menudata.bgopacityfrac = 0.0;
                     self.menudata.bg = self.menudata.nextbg;
                     self.menudata.nextbg = 255;
@@ -2770,6 +2804,21 @@ impl MenuSystem {
             if allready && self.menudata.root == MENUROOT_MPSETUP {
                 self.menu_save_and_push_root_dialog(None, MENUROOT_START_MP_MATCH);
             }
+            self.menus_were_open = true;
+        } else {
+            self.menus_were_open = false;
+        }
+        if self.menus_were_open {
+            if !self.mpsetup_filelists_made && self.menudata.root == MENUROOT_MPSETUP {
+                self.mpsetup_filelists_made = true;
+                self.filelist_create(0, pd_core::ids::FILETYPE_MPPLAYER as u8);
+                self.filelist_create(1, pd_core::ids::FILETYPE_MPSETUP as u8);
+            }
+            if self.filelists_active {
+                self.filelists_tick();
+            }
+        } else if self.filelists_active {
+            self.menu_stop();
         }
         self.mpplayernum = 0;
         let anyopen2 = self.menus.iter().any(|m| m.curdialog.is_some());
@@ -2787,19 +2836,29 @@ impl MenuSystem {
             if self.menudata.nextroot != -1 {
                 if self.menudata.nextroot == MENUROOT_START_MP_MATCH {
                     // Match is beginning: mp_start_match + menu_stop, which hand
-                    // the setup to the game (`MenuSystem::start_match`).
+                    // the setup to the game (`MenuSystem::start_match`), and the
+                    // boss file saved if the setup changed it.
                     self.start_match();
                 } else if self.menudata.nextroot == MENUROOT_END_MP_MATCH {
-                    // Match is ending: each player's end screen, by chr slot
-                    // (menu_queue_save: no pak).
+                    // Match is ending: the agent's save queued, then each
+                    // player's end screen by chr slot, and the save of each
+                    // player who has a file.
+                    self.menu_queue_save(4);
                     let mut playernum = 0;
                     for i in 0..4 {
                         if self.mp.setup.chrslots & (1 << i) != 0 {
                             self.mp_push_endscreen_dialog(playernum, i);
                             anyopen2 = true;
+                            let g = self.mp.players[i].fileguid;
+                            if g.fileid != 0 && g.deviceserial != 0 {
+                                self.menu_queue_save(i as u8);
+                            }
                             playernum += 1;
                         }
                     }
+                } else if self.menudata.nextroot == MENUROOT_CHANGE_AGENT {
+                    self.change_agent();
+                    anyopen2 = true;
                 } else if let Some(def) = self.menudata.nextdialog {
                     let root = self.menudata.nextroot;
                     self.menu_push_root_dialog(def, root);

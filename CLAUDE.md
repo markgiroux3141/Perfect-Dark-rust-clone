@@ -7,11 +7,13 @@ A faithful recreation of Perfect Dark's Combat Simulator (NTSC final): the menus
 ## Build, test, run
 
 ```
-cargo build --release                       # the game: target/release/perfect_dark.exe (--combat, --fresh)
+cargo build --release                       # the game: target/release/perfect_dark.exe (--combat, --fresh, --unlock-all;
+                                            #   the Game Pak's EEPROM is save/perfect_dark.eep, or $PD_SAVE)
 cargo test --workspace --release            # all tests (incl. the menu goldens, crates/pd_menu/tests/golden/)
 cargo test -p pd_sim --release -- --ignored --nocapture   # long probes
 cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # offscreen PNGs (e.g. `out model dark_combat --gun chrfalcon2`,
-                                            #   `out menu --combat w40 down down down a w50 shot:setup` (script format in pd_menu::script),
+                                            #   `out menu --combat w40 down down down a w50 shot:setup` (script format in pd_menu::script;
+                                            #   `--fresh --boot` starts at power on's agent select on a blank Game Pak),
                                             #   `out stage ref` (the 8 spawn-pad views, on the GPU; `--full` adds objects, sky, HUD),
                                             #   `out match --duel`, `out lab` (a match with simulants; the pd_lab map), `out pickups [--bots]`,
                                             #   `out scenario htb` (htm, pac, koh, ctc: a scenario's props, HUD, highlights, room tints),
@@ -19,6 +21,7 @@ cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # off
                                             #   end screens over a match; steps in pd_tools::snapshot::flow),
                                             #   `out flow --teams --mates 2 hold:a:50 shot:am` (the active menu; `hold:a+z:1` next screen),
                                             #   `out flow --players 4 [--vsplit] [--shield] w60 shot:split` (split screen),
+                                            #   `out flow --challenge 1 w40 win wend shot:verdict` (a challenge, won),
                                             #   `out match --duel --lock --dist 900` (the rocket launcher's lock))
 cargo run --release -p pd_tools --bin pd_music -- <out.wav> <tune|--flow> [secs]   # offline music renders (MUSIC_* name or number; --list)
 cargo run --release -p pd_tools --bin pd_lab # the simulant/route viewer (a window: for the user, not for Claude to drive)

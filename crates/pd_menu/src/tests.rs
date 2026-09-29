@@ -231,7 +231,7 @@ fn start_game_hands_back_the_match_setup() {
 /// dialog shows.
 #[test]
 fn the_match_summary_names_the_weapons_the_dialog_shows() {
-    let mut pd = MenuSystem::new(&AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR")), Profile::Fresh).unwrap();
+    let mut pd = MenuSystem::new(&AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR")), Profile::Files).unwrap();
     pd.challenge_determine_unlocked_features();
     let shown: Vec<String> = (0..6).map(|s| pd.mp_get_weapon_label(pd.mp_get_weapon_slot(s)).trim().to_string()).collect();
     let m = pd.match_setup(pd.mp.setup.stagenum);
@@ -239,7 +239,7 @@ fn the_match_summary_names_the_weapons_the_dialog_shows() {
     assert!(shown.iter().all(|w| !w.is_empty()), "{shown:?}");
 }
 
-/// The menus ask for PD's tunes: the Perfect Menu `MUSIC_MAINMENU`, the
+/// The menus ask for PD's tunes (after power on's volumes): the Perfect Menu `MUSIC_MAINMENU`, the
 /// Combat Simulator `MUSIC_COMBATSIM_MENU`; the Soundtrack dialog slows the
 /// queue to 80 and previews each tune the cursor rests on (it opens on
 /// Random, the default; down wraps to Dark Combat, then Skedar Mystery),
@@ -251,6 +251,8 @@ fn the_menus_ask_for_their_music() {
     use pd_core::music::MusicCall;
     let music = |pd: &mut MenuSystem| -> Vec<MusicCall> { pd.take_events().into_iter().filter_map(|e| if let Event::Music(c) = e { Some(c) } else { None }).collect() };
     let mut pd = pd();
+    // Power on: gamefile_load_defaults' volumes.
+    assert_eq!(music(&mut pd), [MusicCall::SetSfxVolume(0x5000), MusicCall::SetVolume(0x5000)]);
     pd.open_main_menu();
     assert_eq!(music(&mut pd), [MusicCall::StartTrackAsMenu(MUSIC_MAINMENU)]);
     pd.open_combat_simulator();

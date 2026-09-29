@@ -1,7 +1,11 @@
 //! `pd_snapshot <outdir> flow [--score n] [--minutes m] [--teams] [--mates n] [--seed s]
-//! [--players n] [--vsplit] [--size WxH] <steps...>`: a Combat match on Complex with the
-//! menus over it, as the game plays it (`pd_game::session`), under a scripted N64
-//! controller 1 that drives both the match and the menus.
+//! [--players n] [--vsplit] [--challenge n] [--size WxH] <steps...>`: a Combat match on
+//! Complex with the menus over it, as the game plays it (`pd_game::session`), under a
+//! scripted N64 controller 1 that drives both the match and the menus.
+//!
+//! `--challenge n`: the match is challenge n instead, as the Combat Simulator's
+//! challenge list loads it (its arena, scenario, simulants and teams), played by a
+//! new agent on a blank Game Pak (the unlocks the save files' own).
 //!
 //! `--players n` (2-4): players 2.. join too (split screen; `--vsplit` puts two
 //! side by side), standing idle beside Sim 1, facing player 1. `--shield`:
@@ -27,6 +31,8 @@
 //! * `kill`: tap the trigger (Z, 6 frames down, 6 up) until the simulant dies
 //!   (at most 12 s);
 //! * `wend`: run until the end screens are up (at most 20 s), then 30 frames;
+//! * `win`: not PD: player 1's team wins now (the match's counters as if
+//!   player 1 had killed Sim 1 50 times), and the match ends (`main_end_stage`);
 //! * `shot:<name>`: the frame as `flow_<name>.png`: the player's view with the
 //!   menus over it, or once the end screens have closed, the menus alone.
 
@@ -163,6 +169,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let (mut w, mut h) = (640u32, 440u32);
     let (mut score, mut minutes, mut seed, mut teams, mut mates) = (1u8, None::<u8>, harness::SPIKE_SEED, false, 0usize);
     let (mut players, mut vsplit, mut shield) = (1usize, false, false);
+    let mut challenge = None::<i32>;
     let mut words: Vec<String> = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -182,14 +189,22 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             "--players" => players = val("--players")?.parse::<usize>().map_err(|e| format!("--players: {e}"))?.clamp(1, 4),
             "--vsplit" => vsplit = true,
             "--shield" => shield = true,
+            "--challenge" => challenge = Some(val("--challenge")?.parse().map_err(|e| format!("--challenge: {e}"))?),
             s => words.push(s.to_owned()),
         }
     }
     let assets = crate::assets();
     // The menus' setup: player 1 and "Sim 1" on Complex, then mp_start_match.
-    let mut menu = MenuSystem::new(&assets, Profile::Complete)?;
+    let mut menu = MenuSystem::new(&assets, if challenge.is_some() { Profile::Files } else { Profile::Complete })?;
+    menu.load_agent_without_select();
     menu.open_combat_simulator();
-    {
+    if let Some(n) = challenge {
+        // challenge_set_current_by_slot, then menu_tick's sanity checks for
+        // player 1 alone.
+        menu.challenge_set_current_by_slot(n - 1);
+        menu.mp.setup.chrslots |= 1;
+        menu.challenge_perform_sanity_checks();
+    } else {
         let mp = &mut menu.mp;
         mp.setup.stagenum = STAGE_MP_COMPLEX;
         mp.setup.scorelimit = score.saturating_sub(1).min(100);
@@ -214,7 +229,8 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     menu.vars.screensplit = if vsplit { SCREENSPLIT_VERTICAL } else { SCREENSPLIT_HORIZONTAL };
     menu.start_match();
     let Some(Outcome::StartMatch(setup)) = menu.take_outcome() else { return Err("the menus started no match".into()) };
-    let stage = Arc::new(Stage::load(&assets, "ref")?);
+    let code = stage_code(setup.stagenum).ok_or("no stage code")?;
+    let stage = Arc::new(Stage::load(&assets, code)?);
     let level = Arc::new(TileLevel::for_stage(&stage));
     let res = Arc::new(WorldRes::load(&assets)?);
     let weapons = MenuSystem::weapon_set_weaponnums(&setup.weapons);
@@ -271,7 +287,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let gpu = HeadlessGpu::new()?;
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut renderer = Renderer::new(&gpu.device, &gpu.queue, format);
-    renderer.load_stage(&gpu.device, &gpu.queue, &assets, "ref")?;
+    renderer.load_stage(&gpu.device, &gpu.queue, &assets, code)?;
     let target = RenderTarget::on_device(&gpu.device, w, h, format, true);
     let mut f = Flow { world, menu, lv: Lv::new(), gpu, renderer, target, over: false };
 
@@ -315,6 +331,11 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             if !f.world.chr_is_dead(enemy) {
                 return Err("kill: the simulant survived".into());
             }
+        } else if word == "win" {
+            let s = f.world.setup.simulants.first().map_or(4, |s| s.slot as usize);
+            f.world.mp.chrs[0].killcounts[s] = 50;
+            f.world.mp.chrs[0].numpoints = 50;
+            f.world.main_end_stage();
         } else if word == "wend" {
             let mut n = 0;
             while f.menu.menudata.root != pd_menu::types::MENUROOT_MPENDSCREEN || f.menu.menudata.count == 0 {

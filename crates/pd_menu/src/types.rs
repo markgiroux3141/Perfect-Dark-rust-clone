@@ -150,6 +150,7 @@ pub const MENUROOT_PICKTARGET: i32 = 8;
 pub const MENUROOT_TRAINING: i32 = 13;
 pub const MENUROOT_START_MP_MATCH: i32 = -5;
 pub const MENUROOT_END_MP_MATCH: i32 = -6;
+pub const MENUROOT_CHANGE_AGENT: i32 = -7;
 
 /// `SCREENSPLIT_*` (constants.h:3686).
 pub use pd_core::ids::{SCREENSPLIT_HORIZONTAL, SCREENSPLIT_VERTICAL};

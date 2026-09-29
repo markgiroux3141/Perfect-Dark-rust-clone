@@ -9,15 +9,21 @@
 //! - `music`: PD's music (the synth and its queue) on an engine stream;
 //! - `tvaudio`: the `n64::audio` N64 output + TV speaker chain on a DSP track;
 //! - `presentation`: the panel's video and audio options;
+//! - `save`: the Game Pak's EEPROM, kept in a file;
 //! - `states`: the menu and match states.
 //!
-//! `perfect_dark [--combat] [--fresh]`: start in the Combat Simulator rather than
-//! the Perfect Menu; start on a new save file. F1 toggles the developer panel.
+//! `perfect_dark [--combat] [--fresh] [--unlock-all]`: power on opens the agent
+//! select, as PD's does; `--combat` goes straight to the Combat Simulator with
+//! the last agent (or a new one); `--fresh` starts on a blank Game Pak and
+//! doesn't keep it; `--unlock-all` pretends every challenge is done and every
+//! weapon found (and doesn't keep the Game Pak either). F1 toggles the
+//! developer panel.
 
 mod audio;
 mod controls;
 mod music;
 mod presentation;
+mod save;
 mod states;
 mod tvaudio;
 
@@ -25,6 +31,7 @@ use engine::app::{AppConfig, Ctx, Game};
 use engine::assets::AssetRoot;
 use engine::egui;
 use engine::gpu::{Filter, Frame, Presenter, RenderTarget};
+use std::path::PathBuf;
 use engine::input::{KeyCode, MouseButton};
 use engine::wgpu;
 use n64::pad::{A_BUTTON, MAX_PADS, START_BUTTON};
@@ -83,6 +90,10 @@ struct PdGame {
     music_on: bool,
     music_gain: f32,
     profile: Profile,
+    /// Where the Game Pak's EEPROM is kept (`None`: not kept, `--fresh`).
+    save_path: Option<PathBuf>,
+    /// Start in the Combat Simulator (`--combat`).
+    combat: bool,
     /// The match stand-in's frame.
     stand_in: Gfx,
     target: Option<RenderTarget>,
@@ -113,13 +124,8 @@ struct PdGame {
 }
 
 impl PdGame {
-    fn new(assets: AssetDir, profile: Profile, combat: bool) -> Result<PdGame, String> {
-        let mut menu = MenuSystem::new(&assets, profile)?;
-        if combat {
-            menu.open_combat_simulator();
-        } else {
-            menu.open_main_menu();
-        }
+    fn new(assets: AssetDir, profile: Profile, combat: bool, save_path: Option<PathBuf>) -> Result<PdGame, String> {
+        let menu = Self::power_on(&assets, profile, combat, save_path.as_deref())?;
         let sfx = SfxBank::load(&assets).map_err(|e| log::warn!("sfx: {e}; running silent")).ok();
         let music = MusicPlayer::load(&assets).map_err(|e| log::warn!("music: {e}; no music")).ok();
         let next_seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
@@ -136,6 +142,8 @@ impl PdGame {
             music_on: true,
             music_gain: 1.0,
             profile,
+            save_path,
+            combat,
             stand_in: Gfx::new(FB_W, FB_H),
             target: None,
             presenter: None,
@@ -154,17 +162,49 @@ impl PdGame {
         })
     }
 
+    /// The menus at power on: the Game Pak's image from `save_path` (a blank
+    /// chip without one), then the agent select, or with `combat` an agent
+    /// loaded and the Combat Simulator.
+    fn power_on(assets: &AssetDir, profile: Profile, combat: bool, save_path: Option<&std::path::Path>) -> Result<MenuSystem, String> {
+        let eeprom = save_path.and_then(save::load);
+        if let Some(p) = save_path {
+            log::info!("save: the Game Pak is {}{}", p.display(), if profile == Profile::Complete { " (not written while everything is unlocked)" } else { "" });
+        }
+        let mut menu = MenuSystem::new_with_eeprom(assets, profile, eeprom)?;
+        if combat {
+            let agent = menu.load_agent_without_select();
+            log::info!("save: agent {agent}");
+            menu.open_combat_simulator();
+        } else {
+            menu.open_file_select();
+        }
+        Ok(menu)
+    }
+
+    /// Power on again, from the saved Game Pak.
     fn restart(&mut self) {
-        match MenuSystem::new(&self.assets, self.profile) {
-            Ok(mut m) => {
+        match Self::power_on(&self.assets, self.profile, self.combat, self.save_path.as_deref()) {
+            Ok(m) => {
                 if let Some(music) = &mut self.music {
                     music.stage_change();
                 }
-                m.open_main_menu();
                 self.menu = m;
                 self.screen = Screen::Menus;
             }
             Err(e) => log::error!("restart: {e}"),
+        }
+    }
+
+    /// Write the Game Pak's EEPROM back to its file when the game wrote it
+    /// (never while everything is pretend-unlocked).
+    fn keep_save(&mut self) {
+        if !self.menu.paks.take_written() || self.profile == Profile::Complete {
+            return;
+        }
+        if let Some(p) = &self.save_path {
+            if let Err(e) = save::store(p, &self.menu.paks.eeprom) {
+                log::error!("save: {e}");
+            }
         }
     }
 
@@ -410,6 +450,7 @@ impl Game for PdGame {
             if !self.tick_match(ctx) {
                 self.end_match(ctx);
             }
+            self.keep_save();
             self.pump_music(ctx);
             return;
         }
@@ -441,6 +482,7 @@ impl Game for PdGame {
             music.apply(&events);
             music.tick(self.lv.diffframe240);
         }
+        self.keep_save();
         self.pump_music(ctx);
     }
 
@@ -478,10 +520,14 @@ impl Game for PdGame {
                 ui.checkbox(&mut self.n64_colour, "RGBA5551 framebuffer (menus)");
                 ui.checkbox(&mut self.rumble, "Rumble Pak (pads with force feedback)");
                 ui.separator();
-                ui.label("Save file (unlocks)");
-                ui.radio_value(&mut profile, Profile::Complete, "Complete (everything unlocked)");
-                ui.radio_value(&mut profile, Profile::Fresh, "Fresh (new file)");
-                if ui.button("Restart at the Perfect Menu").clicked() {
+                ui.label("Unlocks");
+                ui.radio_value(&mut profile, Profile::Files, "The save files (PD's)");
+                ui.radio_value(&mut profile, Profile::Complete, "Everything unlocked (not saved)");
+                match &self.save_path {
+                    Some(p) => ui.label(egui::RichText::new(format!("Game Pak: {}", p.display())).weak()),
+                    None => ui.label(egui::RichText::new("Game Pak: blank, not kept (--fresh)").weak()),
+                };
+                if ui.button("Power on again").clicked() {
                     restart = true;
                 }
                 ui.separator();
@@ -533,9 +579,11 @@ impl Game for PdGame {
             ctx.clock.set_tick_hz(60.0 / rate as i32 as f64);
         }
         self.controls.kb_player = kb;
+        // A change of unlocks powers on again from the saved Game Pak (the
+        // pretend unlocks must not reach it).
         if profile != self.profile {
             self.profile = profile;
-            self.menu.set_profile(profile);
+            restart = true;
         }
         if restart {
             self.restart();
@@ -617,12 +665,14 @@ fn clear(encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,perfect_dark=info,pd_menu=info,engine=info")).init();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let profile = if args.iter().any(|a| a == "--fresh") { Profile::Fresh } else { Profile::Complete };
+    let profile = if args.iter().any(|a| a == "--unlock-all") { Profile::Complete } else { Profile::Files };
     let combat = args.iter().any(|a| a == "--combat");
+    let fresh = args.iter().any(|a| a == "--fresh");
     let run = || -> Result<(), String> {
         let root = AssetRoot::discover("PD_ASSETS", "assets", "MANIFEST.json")?;
         log::info!("assets: {}", root.root().display());
-        let game = PdGame::new(AssetDir::new(root.root()), profile, combat)?;
+        let save_path = (!fresh).then(|| save::locate(root.root()));
+        let game = PdGame::new(AssetDir::new(root.root()), profile, combat, save_path)?;
         let config = AppConfig { title: "Perfect Dark".into(), size: (1280, 960), tick_hz: 60.0, ..AppConfig::default() };
         engine::app::run(config, game)
     };
@@ -638,18 +688,19 @@ mod tests {
     use super::*;
 
     /// Everything `main` builds before the window: the asset root found from the
-    /// test binary under `target/`, the menus on the Perfect Menu, the sounds.
+    /// test binary under `target/`, the menus on the agent select (a blank Game
+    /// Pak, not kept), the sounds.
     #[test]
     fn the_game_starts_from_the_repo_assets() {
         let root = AssetRoot::discover("PD_ASSETS", "assets", "MANIFEST.json").unwrap();
-        let mut game = PdGame::new(AssetDir::new(root.root()), Profile::Complete, false).unwrap();
+        let mut game = PdGame::new(AssetDir::new(root.root()), Profile::Files, false, None).unwrap();
         assert!(game.sfx.is_some());
         let mut lv = Lv::new();
         for _ in 0..30 {
             lv.frametime_apply(1, 4);
             game.menu.frame(&lv);
         }
-        assert_eq!(game.menu.menus[0].curdialog.map(|d| game.menu.menus[0].dialogs[d].def().name), Some("g_CiMenuViaPcMenuDialog"));
+        assert_eq!(game.menu.menus[0].curdialog.map(|d| game.menu.menus[0].dialogs[d].def().name), Some("g_FilemgrFileSelectMenuDialog"));
         assert!(game.menu.draw.error.is_none(), "{:?}", game.menu.draw.error);
         let mut stand_in = Gfx::new(FB_W, FB_H);
         states::draw_match_stand_in(&mut stand_in, &game.menu.draw.res.fonts, &["Arena: Skedar".into()]);

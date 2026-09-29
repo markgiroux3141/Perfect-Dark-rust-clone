@@ -1,10 +1,11 @@
-//! Dialogs the menus reach that this recreation leaves out: the Controller Pak
-//! file manager (`filemgr.c`) and the solo, co-op and counter-op menus. Each is
-//! a one-screen danger dialog in PD's own dialog machinery, so the flow around
-//! it (open → B / "OK" → back) behaves like a real dialog.
+//! Dialogs the menus reach that this recreation leaves out: the Controller
+//! Pak's game notes (Game Files' "Delete Game Notes...", `g_PakChoosePakMenuDialog`)
+//! and the solo, co-op and counter-op menus. Each is a one-screen danger
+//! dialog in PD's own dialog machinery, so the flow around it (open → B /
+//! "OK" → back) behaves like a real dialog.
 //!
-//! SUBST: PD opens the real dialogs / there is no Controller Pak and no solo
-//! game here (CLAUDE.md), so these say so.
+//! SUBST: PD opens the real dialogs / no Controller Pak is ever plugged in
+//! and there is no solo game here (CLAUDE.md), so these say so.
 
 use super::types::*;
 use super::MenuSystem;

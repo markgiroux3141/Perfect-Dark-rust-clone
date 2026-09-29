@@ -83,8 +83,12 @@ VERTEX_LAYOUT = {
 
 #: Textures the menus draw from C rather than through a model: `menugfx.c`'s
 #: menu rays and background (TEX_GENERAL_*), as the menu spike loads them
-#: (old repo `pd_menu/mod.rs:147`).
-MENU_TEXTURES = [0x0001, 0x01E5, 0x084E, 0x0858, 0x08F4, 0x0C9A]
+#: (old repo `pd_menu/mod.rs:147`), and the agent select's pictures
+#: (`filemgr_choose_agent_list_menu_handler`: TEX_GENERAL_NEWAGENT and each
+#: solo stage's, g_TcGeneralConfigs[12..29], textureconfig.c:277).
+MENU_TEXTURES = [0x0001, 0x01E5, 0x084E, 0x0858, 0x08F4, 0x0C9A,
+                 0x063C, 0x0385, 0x0617, 0x0618, 0x0619, 0x061A, 0x061B, 0x061C, 0x061D,
+                 0x061E, 0x061F, 0x0620, 0x0621, 0x0622, 0x0623, 0x0624, 0x0625, 0x0626]
 
 #: Textures the gun code draws directly: beams and lasers (`beam.c`, old repo
 #: `pd_guns/fx.rs:76`), sparks, wall hits (`wallhit.c`, `fx.rs:523`), smoke

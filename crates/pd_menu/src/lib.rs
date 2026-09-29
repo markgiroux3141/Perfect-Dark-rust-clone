@@ -21,13 +21,16 @@
 //! * **The data is PD's.** The menu and MP tables are generated from the decomp
 //!   by `tools/pd-assets/pd_menu_gen.py` ([`generated`]); fonts, strings,
 //!   textures, presets and challenges come from `assets/`.
-//! * **Where we must substitute, say so at the call site** (`SUBST:`). There is
-//!   no Controller Pak and no solo game file ([`mpstate::Profile`]). The music
-//!   the menus ask for goes out as `Event::Music` (`pd_core::music`).
+//! * **Where we must substitute, say so at the call site** (`SUBST:`). The
+//!   save files live on the Game Pak's EEPROM (`pd_core::pak`, [`files`],
+//!   [`filemgr`]), whose bytes the game keeps in a file; no Controller Pak is
+//!   ever plugged in. The music the menus ask for goes out as `Event::Music`
+//!   (`pd_core::music`).
 //!
 //! Module map: [`types`] (the C structs), [`generated`] (the tables),
 //! [`gfx`] (`menugfx.c`), [`menu`], [`item`] (`menuitem.c`), [`mpstate`]
-//! (`mplayer.c`, `challenge.c`), [`handlers`], [`stubs`] (dialogs outside the
+//! (`mplayer.c`, `challenge.c`), [`files`] (the save files), [`filemgr`]
+//! (`filemgr.c`, `filelist.c`), [`handlers`], [`stubs`] (dialogs outside the
 //! Combat Simulator), [`model`] (menu models), [`script`] (the scripted
 //! controller the snapshots and goldens use).
 //!
@@ -53,6 +56,8 @@
 )]
 
 pub mod activemenu;
+pub mod filemgr;
+pub mod files;
 pub mod generated;
 pub mod gfx;
 pub mod handlers;
@@ -64,6 +69,8 @@ pub mod script;
 pub mod stubs;
 pub mod types;
 
+#[cfg(test)]
+mod files_tests;
 #[cfg(test)]
 mod tests;
 
@@ -103,8 +110,17 @@ pub struct Vars {
     pub mpplayerteams: [u8; 4],
     pub mphilltime: u8,
     pub unk000498: i32,
+    /// `g_ScreenRatio`, `g_ScreenSplit` (`options.c`).
     pub screenratio: u8,
     pub screensplit: u8,
+    /// `MODFILE_*`: files with unsaved changes.
+    pub modifiedfiles: u32,
+    /// The agent last loaded, as the boss file keeps it (the agent select
+    /// focuses it).
+    pub bossfileid: i32,
+    pub bossdeviceserial: u16,
+    /// `g_Vars.language` (0 on NTSC).
+    pub language: u8,
 }
 
 impl Default for Vars {
@@ -122,6 +138,10 @@ impl Default for Vars {
             unk000498: 0,
             screenratio: 0,
             screensplit: 0,
+            modifiedfiles: 0,
+            bossfileid: 0,
+            bossdeviceserial: 0,
+            language: 0,
         }
     }
 }
@@ -138,7 +158,14 @@ pub struct Resources {
     /// behind the menu. See [`Resources::blur_from_image`].
     pub blur: Option<Texture>,
     pub mpconfigs: Vec<MpConfig>,
+    /// `g_TexGeneralConfigs[TEX_GENERAL_NEWAGENT + stage]`: the agent
+    /// select's pictures (56×36 RGBA16), a new agent's then each stage's.
+    pub agent_pictures: Vec<Texture>,
 }
+
+/// `g_TcGeneralConfigs[12..=29]` (`textureconfig.c:277`): TEXTURE_063C (a new
+/// agent) and each solo stage's picture.
+const AGENT_PICTURES: [u16; 18] = [0x063c, 0x0385, 0x0617, 0x0618, 0x0619, 0x061a, 0x061b, 0x061c, 0x061d, 0x061e, 0x061f, 0x0620, 0x0621, 0x0622, 0x0623, 0x0624, 0x0625, 0x0626];
 
 fn pool_texture(assets: &AssetDir, num: u16, s: Addr, t: Addr) -> Result<Texture, String> {
     let (w, h, rgba) = assets.read_png(&assets.texture(num))?;
@@ -154,6 +181,7 @@ impl Resources {
             envstar: pool_texture(assets, 0x084e, Addr::Clamp, Addr::Clamp)?,
             blur: None,
             mpconfigs: mpstate::load_mpconfigs(assets)?,
+            agent_pictures: AGENT_PICTURES.iter().map(|&n| pool_texture(assets, n, Addr::Clamp, Addr::Clamp)).collect::<Result<_, _>>()?,
         })
     }
 
@@ -333,10 +361,38 @@ pub struct MenuSystem {
     pub matchview: MatchView,
     /// The Pick Target rows the match listed, by player number.
     pub picktargets: Vec<Vec<(u8, u8)>>,
+    /// `g_Paks`: the Game Pak's EEPROM and its file system.
+    pub paks: pd_core::pak::Paks,
+    /// `g_GameFile` and `g_GameFileGuid`: the agent (serial 0 until one is
+    /// chosen).
+    pub gamefile: files::GameFile,
+    pub gamefileguid: pd_core::savebuffer::FileGuid,
+    /// The options the agent file keeps.
+    pub options: files::Options,
+    /// `g_FileLists` and `filelist.c`'s state.
+    pub filelists: filemgr::FileLists,
+    /// `filemgr.c`'s globals.
+    pub filemgr: filemgr::Filemgr,
+    /// `g_FileState` (`FILESTATE_*`).
+    pub filestate: u8,
+    /// `var80062944`: file lists are in use (`menu_stop` frees them).
+    pub filelists_active: bool,
+    /// `var80062948`: the Combat Simulator's player and setup lists exist.
+    pub mpsetup_filelists_made: bool,
+    /// `var8006294c`: a dialog was open at the last `menu_tick`.
+    pub menus_were_open: bool,
 }
 
 impl MenuSystem {
+    /// The menus on a blank Game Pak (see [`MenuSystem::new_with_eeprom`]).
     pub fn new(assets: &AssetDir, profile: Profile) -> Result<MenuSystem, String> {
+        Self::new_with_eeprom(assets, profile, None)
+    }
+
+    /// The menus as power on leaves them, over the Game Pak's EEPROM image
+    /// (`None`: a blank chip): the save files are read (and made, on a
+    /// blank one), no agent is chosen yet.
+    pub fn new_with_eeprom(assets: &AssetDir, profile: Profile, eeprom: Option<Vec<u8>>) -> Result<MenuSystem, String> {
         let mut res = Resources::load(assets)?;
         res.blur_from_image(None);
         let draw = Draw {
@@ -372,6 +428,16 @@ impl MenuSystem {
             in_match: false,
             matchview: MatchView::default(),
             picktargets: Vec::new(),
+            paks: pd_core::pak::Paks::new(eeprom),
+            gamefile: files::GameFile::default(),
+            gamefileguid: Default::default(),
+            options: files::Options::default(),
+            filelists: Default::default(),
+            filemgr: Default::default(),
+            filestate: pd_core::ids::FILESTATE_UNSELECTED,
+            filelists_active: false,
+            mpsetup_filelists_made: false,
+            menus_were_open: false,
         };
         pd.pads[0].connected = true;
         for m in pd.menus.iter_mut() {
@@ -393,8 +459,18 @@ impl MenuSystem {
         hp.zoom = -1.0;
         hp.headnum = -1;
         hp.bodynum = -1;
-        pd.mp_init();
+        pd.boot();
         Ok(pd)
+    }
+
+    /// `main_init`'s menu half (`main.c:643-667`): `challenges_init`,
+    /// `mp_init`, `paks_init` (the boss file, a default agent), then the
+    /// first stage load's `mp_set_default_names_if_empty` (`lv.c:367`).
+    fn boot(&mut self) {
+        self.challenges_init();
+        self.mp_init();
+        self.paks_init();
+        self.mp_set_default_names_if_empty();
     }
 
     /// Open the Perfect Menu (the CI main menu) as PD does after file select.
@@ -547,7 +623,11 @@ impl MenuSystem {
                 p.career = r.career;
                 p.medals = r.medals;
                 p.title = r.title;
+                p.gunfuncs = r.gunfuncs;
             }
+        }
+        if self.mp.bossfile.locktype == generated::MPLOCKTYPE_CHALLENGE as u8 {
+            self.challenge_consider_marking_complete();
         }
         self.menu_save_and_push_root_dialog(None, MENUROOT_END_MP_MATCH);
     }
@@ -573,11 +653,9 @@ impl MenuSystem {
         } else {
             self.menu_push_root_dialog(&generated::G_MP_ENDSCREEN_IND_GAME_OVER_MENU_DIALOG, MENUROOT_MPENDSCREEN);
         }
-        // SUBST: PD asks once whether to save a new player (it has no file
-        // yet, `fileguid` 0) / there are no player files here, so the offer
-        // always comes once per player per run; saving shows the pak stub.
+        // A player without a file is asked once to save one.
         let pl = &mut self.mp.players[slot];
-        if pl.options & pd_core::ids::OPTION_ASKEDSAVEPLAYER as u32 == 0 && pl.fileid == 0 {
+        if pl.options & pd_core::ids::OPTION_ASKEDSAVEPLAYER as u32 == 0 && pl.fileguid.fileid == 0 && pl.fileguid.deviceserial == 0 {
             pl.options |= pd_core::ids::OPTION_ASKEDSAVEPLAYER as u32;
             self.menu_push_dialog(&generated::G_MP_ENDSCREEN_SAVE_PLAYER_MENU_DIALOG);
         }
@@ -605,6 +683,10 @@ impl MenuSystem {
         self.menudata.bg = 0;
         self.menudata.checkroots = false;
         self.menudata.nextbg = 255;
+        self.menudata.bgsettled = false;
+        self.menudata.pendingsaves = [0xff; 5];
+        self.menudata.numpendingsaves = 0;
+        self.menudata.savetimer = 0;
     }
 
     /// `MENUROOT_START_MP_MATCH` (menutick.c:521): `mp_start_match`
@@ -630,6 +712,11 @@ impl MenuSystem {
             self.menu_save_and_close_all();
         }
         self.mpplayernum = 0;
+        self.menu_stop();
+        if self.vars.modifiedfiles & pd_core::ids::MODFILE_MPSETUP != 0 {
+            self.bossfile_save();
+            self.vars.modifiedfiles &= !pd_core::ids::MODFILE_MPSETUP;
+        }
         // The arena loads (menu_reset); the match's mpchrconfig counters start
         // at zero (mp_reset_mpchrconfig_for_match, mp_reset).
         self.menu_reset();
@@ -679,7 +766,7 @@ impl MenuSystem {
             .filter(|&i| s.chrslots & (1 << i) != 0)
             .map(|i| {
                 let p = &self.mp.players[i];
-                MatchPlayer { slot: i as u8, chr: chr(&p.base), controlmode: p.controlmode, options: p.options as u16, handicap: p.handicap as u8, career: p.career }
+                MatchPlayer { slot: i as u8, chr: chr(&p.base), controlmode: p.controlmode, options: p.options as u16, handicap: p.handicap as u8, career: p.career, gunfuncs: p.gunfuncs }
             })
             .collect();
         let simulants = (0..8)
@@ -787,9 +874,9 @@ impl MenuSystem {
         self.music_start_menu();
     }
 
-    /// Switch the pretend save file and re-derive the unlocks.
+    /// Switch between the files' unlocks and the pretend-complete ones.
     pub fn set_profile(&mut self, profile: Profile) {
         self.mp.profile = profile;
-        self.challenges_init();
+        self.challenge_determine_unlocked_features();
     }
 }

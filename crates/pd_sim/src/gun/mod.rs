@@ -458,8 +458,9 @@ pub struct GunPlayer {
     pub gunshadecol: [u8; 4],
     pub ammoheldarr: [i32; 40],
     pub gunzoomfovs: [f32; 3],
-    /// `g_PlayerConfigsArray[].gunfuncs`: per-weapon "use the secondary" bits.
-    pub gunfuncs: [u8; 8],
+    /// `g_PlayerConfigsArray[].gunfuncs`: per-weapon "use the secondary" bits
+    /// (the setup's, handed back at the end: `MpPlayerResult::gunfuncs`).
+    pub gunfuncs: [u8; 6],
     /// `player->weapons`: the inventory (`inv.c`).
     pub inventory: Inventory,
     /// `CHEAT_UNLIMITEDAMMO`'s `bgun_give_max_ammo` every frame.
@@ -530,7 +531,7 @@ impl Bgun {
                 gunshadecol: [0xff, 0xff, 0xff, 0],
                 ammoheldarr: [0; 40],
                 gunzoomfovs: [15.0, 60.0, 30.0],
-                gunfuncs: [0; 8],
+                gunfuncs: [0; 6],
                 inventory: Inventory::default(),
                 unlimited_ammo: false,
             },

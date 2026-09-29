@@ -166,6 +166,11 @@ pub enum MusicCall {
     Reset,
     /// `music_tick`'s `music_tick_events()`, with the frame's `diffframe240`.
     Tick { diffframe240: i32 },
+    /// `options_set_music_volume(volume)` (`music_set_volume`): the agent
+    /// file's music volume.
+    SetVolume(u16),
+    /// `snd_set_sfx_volume(volume)`: the agent file's sound volume.
+    SetSfxVolume(u16),
 }
 
 /// `struct musicevent`.
@@ -299,6 +304,8 @@ impl Music {
             MusicCall::StartTrackAsMenu(t) => self.music_start_track_as_menu(t),
             MusicCall::Reset => self.music_reset(),
             MusicCall::Tick { diffframe240 } => self.tick_events(diffframe240),
+            MusicCall::SetVolume(v) => self.music_set_volume(v),
+            MusicCall::SetSfxVolume(v) => self.sfx_volume = v.min(0x5000),
         }
     }
 

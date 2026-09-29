@@ -2287,6 +2287,230 @@ pub const SPEAKERMODE_STEREO: i32 = 2;
 pub const SPEAKERMODE_HEADPHONE: i32 = 3;
 pub const SPEAKERMODE_SURROUND: i32 = 4;
 
+// A save device: Controller Paks 1-4, then the Game Pak (the cartridge's EEPROM).
+pub const SAVEDEVICE_CONTROLLERPAK1: i8 = 0;
+pub const SAVEDEVICE_CONTROLLERPAK2: i8 = 1;
+pub const SAVEDEVICE_CONTROLLERPAK3: i8 = 2;
+pub const SAVEDEVICE_CONTROLLERPAK4: i8 = 3;
+pub const SAVEDEVICE_GAMEPAK: i8 = 4;
+pub const SAVEDEVICE_INVALID: i8 = 5;
+
+// `pakfileheader.filetype`: a file on a pak.
+pub const PAKFILETYPE_001: u32 = 0x1;
+pub const PAKFILETYPE_BLANK: u32 = 0x2;
+pub const PAKFILETYPE_TERMINATOR: u32 = 0x4;
+pub const PAKFILETYPE_CAMERA: u32 = 0x8;
+pub const PAKFILETYPE_BOSS: u32 = 0x10;
+pub const PAKFILETYPE_MPPLAYER: u32 = 0x20;
+pub const PAKFILETYPE_MPSETUP: u32 = 0x40;
+pub const PAKFILETYPE_GAME: u32 = 0x80;
+pub const PAKFILETYPE_ALL: u32 = 0x100;
+
+// `g_Paks[].type`: what is plugged into a controller.
+pub const PAKTYPE_NONE: u8 = 0;
+pub const PAKTYPE_RUMBLE: u8 = 1;
+pub const PAKTYPE_MEMORY: u8 = 2;
+pub const PAKTYPE_GAMEBOY: u8 = 3;
+pub const PAKTYPE_GAMEBOY_ERROR: u8 = 4;
+
+// `g_Paks[].state`.
+pub const PAKSTATE_NOPAK: u8 = 0;
+pub const PAKSTATE_UNPLUGGING: u8 = 1;
+pub const PAKSTATE_PROBE: u8 = 2;
+pub const PAKSTATE_MEM_DISPATCH: u8 = 3;
+pub const PAKSTATE_MEM_PRE_PREPARE: u8 = 4;
+pub const PAKSTATE_MEM_PREPARE: u8 = 5;
+pub const PAKSTATE_MEM_POST_PREPARE: u8 = 6;
+pub const PAKSTATE_07: u8 = 7;
+pub const PAKSTATE_GB_PRE_PREPARE: u8 = 8;
+pub const PAKSTATE_GB_PREPARE: u8 = 9;
+pub const PAKSTATE_GB_POST_PREPARE1: u8 = 10;
+pub const PAKSTATE_READY: u8 = 11;
+pub const PAKSTATE_12: u8 = 12;
+pub const PAKSTATE_13: u8 = 13;
+pub const PAKSTATE_MEM_ENTER_DEVICEERROR: u8 = 14;
+pub const PAKSTATE_MEM_ENTER_CORRUPT: u8 = 15;
+pub const PAKSTATE_MEM_ENTER_FULL: u8 = 16;
+pub const PAKSTATE_17: u8 = 17;
+pub const PAKSTATE_18: u8 = 18;
+pub const PAKSTATE_MEM_DEVICEERROR: u8 = 19;
+pub const PAKSTATE_MEM_CORRUPT: u8 = 20;
+pub const PAKSTATE_MEM_FULL: u8 = 21;
+pub const PAKSTATE_22: u8 = 22;
+pub const PAKSTATE_GB_POST_PREPARE2: u8 = 24;
+pub const PAKSTATE_GB_POST_PREPARE3: u8 = 25;
+pub const PAKSTATE_GB_OPEN_UNREADABLE: u8 = 26;
+pub const PAKSTATE_GB_IDLE_UNREADABLE: u8 = 27;
+
+// `pak_read_header_at_offset`'s results.
+pub const PAK_ERR2_OK: i32 = 0;
+pub const PAK_ERR2_NOPAK: i32 = 1;
+pub const PAK_ERR2_BADOFFSET: i32 = 4;
+pub const PAK_ERR2_CHECKSUM: i32 = 7;
+pub const PAK_ERR2_VERSION: i32 = 9;
+pub const PAK_ERR2_CORRUPT: i32 = 11;
+pub const PAK_ERR2_INCOMPLETE: i32 = 15;
+
+// A file list's type (`filelist.filetype`, `filemgr.c`).
+pub const FILETYPE_GAME: i32 = 0;
+pub const FILETYPE_MPSETUP: i32 = 1;
+pub const FILETYPE_MPPLAYER: i32 = 2;
+pub const FILETYPE_CAMERA: i32 = 3;
+
+// `fm.fileop`: the file manager's operation (saves below 100, loads from 100).
+pub const FILEOP_SAVE_GAME_000: i32 = 0;
+pub const FILEOP_SAVE_GAME_001: i32 = 1;
+pub const FILEOP_SAVE_GAME_002: i32 = 2;
+pub const FILEOP_SAVE_MPPLAYER: i32 = 3;
+pub const FILEOP_SAVE_MPSETUP: i32 = 4;
+pub const FILEOP_005: i32 = 5;
+pub const FILEOP_WRITE_GAME: i32 = 6;
+pub const FILEOP_WRITE_MPSETUP: i32 = 7;
+pub const FILEOP_WRITE_MPPLAYER: i32 = 8;
+pub const FILEOP_LOAD_GAME: i32 = 100;
+pub const FILEOP_LOAD_MPPLAYER: i32 = 101;
+pub const FILEOP_LOAD_MPSETUP: i32 = 102;
+pub const FILEOP_103: i32 = 103;
+pub const FILEOP_READ_GAME: i32 = 104;
+pub const FILEOP_READ_MPSETUP: i32 = 105;
+pub const FILEOP_READ_MPPLAYER: i32 = 106;
+
+// `fm.errno`: the file manager's error dialog's reason.
+pub const FILEERROR_NOPAK: u16 = 0;
+pub const FILEERROR_SAVEFAILED: u16 = 1;
+pub const FILEERROR_LOADFAILED: u16 = 2;
+pub const FILEERROR_DELETEFAILED: u16 = 3;
+pub const FILEERROR_OUTOFMEMORY: u16 = 4;
+pub const FILEERROR_ALREADYLOADED: u16 = 5;
+pub const FILEERROR_PAKREMOVED: u16 = 6;
+pub const FILEERROR_PAKDAMAGED: u16 = 7;
+pub const FILEERROR_DELETENOTEFAILED: u16 = 8;
+
+// `g_FileState`: whether an agent has been chosen since power on.
+pub const FILESTATE_UNSELECTED: u8 = 0;
+pub const FILESTATE_SELECTED: u8 = 1;
+pub const FILESTATE_CHANGINGAGENT: u8 = 2;
+
+// `g_Vars.modifiedfiles`: files with unsaved changes.
+pub const MODFILE_GAME: u32 = 0x1;
+pub const MODFILE_MPSETUP: u32 = 0x2;
+pub const MODFILE_BOSS: u32 = 0x4;
+
+// `g_GameFile.flags` bits (`pak_set_bitflag`).
+pub const GAMEFILEFLAG_P1_FORWARDPITCH: u32 = 0x0;
+pub const GAMEFILEFLAG_P1_AUTOAIM: u32 = 0x1;
+pub const GAMEFILEFLAG_P1_AIMCONTROL: u32 = 0x2;
+pub const GAMEFILEFLAG_P1_SIGHTONSCREEN: u32 = 0x3;
+pub const GAMEFILEFLAG_P1_LOOKAHEAD: u32 = 0x4;
+pub const GAMEFILEFLAG_P1_AMMOONSCREEN: u32 = 0x5;
+pub const GAMEFILEFLAG_SCREENSIZE_WIDE: u32 = 0x6;
+pub const GAMEFILEFLAG_SCREENRATIO: u32 = 0x7;
+pub const GAMEFILEFLAG_SCREENSIZE_CINEMA: u32 = 0x8;
+pub const GAMEFILEFLAG_P1_HEADROLL: u32 = 0x9;
+pub const GAMEFILEFLAG_P1_SHOWGUNFUNCTION: u32 = 0xa;
+pub const GAMEFILEFLAG_INGAMESUBTITLES: u32 = 0xb;
+pub const GAMEFILEFLAG_P2_FORWARDPITCH: u32 = 0xc;
+pub const GAMEFILEFLAG_P2_AUTOAIM: u32 = 0xd;
+pub const GAMEFILEFLAG_P2_AIMCONTROL: u32 = 0xe;
+pub const GAMEFILEFLAG_P2_SIGHTONSCREEN: u32 = 0xf;
+pub const GAMEFILEFLAG_P2_LOOKAHEAD: u32 = 0x10;
+pub const GAMEFILEFLAG_P2_AMMOONSCREEN: u32 = 0x11;
+pub const GAMEFILEFLAG_P2_HEADROLL: u32 = 0x12;
+pub const GAMEFILEFLAG_P2_SHOWGUNFUNCTION: u32 = 0x13;
+pub const GAMEFILEFLAG_CUTSCENESUBTITLES: u32 = 0x14;
+pub const GAMEFILEFLAG_P1_ALWAYSSHOWTARGET: u32 = 0x15;
+pub const GAMEFILEFLAG_P2_ALWAYSSHOWTARGET: u32 = 0x16;
+pub const GAMEFILEFLAG_P1_SHOWZOOMRANGE: u32 = 0x17;
+pub const GAMEFILEFLAG_P2_SHOWZOOMRANGE: u32 = 0x18;
+pub const GAMEFILEFLAG_SCREENSPLIT: u32 = 0x19;
+pub const GAMEFILEFLAG_P1_SHOWMISSIONTIME: u32 = 0x1a;
+pub const GAMEFILEFLAG_P2_SHOWMISSIONTIME: u32 = 0x1b;
+pub const GAMEFILEFLAG_COOPRADARON: u32 = 0x1c;
+pub const GAMEFILEFLAG_COOPFRIENDLYFIRE: u32 = 0x1d;
+pub const GAMEFILEFLAG_ANTIRADARON: u32 = 0x1e;
+pub const GAMEFILEFLAG_ANTIPLAYERNUM: u32 = 0x1f;
+pub const GAMEFILEFLAG_P1_PAINTBALL: u32 = 0x20;
+pub const GAMEFILEFLAG_P2_PAINTBALL: u32 = 0x21;
+pub const GAMEFILEFLAG_HIRES: u32 = 0x22;
+pub const GAMEFILEFLAG_USED_TRANSFERPAK: u32 = 0x23;
+pub const GAMEFILEFLAG_CI_TOUR_DONE: u32 = 0x24;
+pub const GAMEFILEFLAG_CI_HOLO7_DONE: u32 = 0x29;
+pub const GAMEFILEFLAG_CI_HOLO6_DONE: u32 = 0x2a;
+pub const GAMEFILEFLAG_CI_HOLO5_DONE: u32 = 0x2b;
+pub const GAMEFILEFLAG_CI_HOLO4_DONE: u32 = 0x2c;
+pub const GAMEFILEFLAG_CI_HOLO3_DONE: u32 = 0x2d;
+pub const GAMEFILEFLAG_CI_HOLO2_DONE: u32 = 0x2e;
+pub const GAMEFILEFLAG_CI_HOLO1_DONE: u32 = 0x2f;
+pub const GAMEFILEFLAG_CI_CLOAK_DONE: u32 = 0x30;
+pub const GAMEFILEFLAG_CI_DISGUISE_DONE: u32 = 0x31;
+pub const GAMEFILEFLAG_CI_XRAY_DONE: u32 = 0x32;
+pub const GAMEFILEFLAG_CI_IR_DONE: u32 = 0x33;
+pub const GAMEFILEFLAG_CI_RTRACKER_DONE: u32 = 0x34;
+pub const GAMEFILEFLAG_CI_DOORDECODER_DONE: u32 = 0x35;
+pub const GAMEFILEFLAG_CI_NIGHTVISION_DONE: u32 = 0x36;
+pub const GAMEFILEFLAG_CI_CAMSPY_DONE: u32 = 0x37;
+pub const GAMEFILEFLAG_CI_ECMMINE_DONE: u32 = 0x38;
+pub const GAMEFILEFLAG_CI_UPLINK_DONE: u32 = 0x39;
+pub const GAMEFILEFLAG_CI_TOUR_STARTED: u32 = 0x3a;
+pub const GAMEFILEFLAG_CRASHSITE_BIKE: u32 = 0x3b;
+pub const GAMEFILEFLAG_DEFENSE_JON: u32 = 0x3c;
+pub const GAMEFILEFLAG_AF1_ENTRY: u32 = 0x3d;
+pub const GAMEFILEFLAG_RESCUE_MECHANIC_DEAD: u32 = 0x3e;
+pub const GAMEFILEFLAG_G5_MINE: u32 = 0x3f;
+pub const GAMEFILEFLAG_LANGFILTERON: u32 = 0x40;
+pub const GAMEFILEFLAG_FOUNDTIMEDMINE: u32 = 0x41;
+pub const GAMEFILEFLAG_FOUNDPROXYMINE: u32 = 0x42;
+pub const GAMEFILEFLAG_FOUNDREMOTEMINE: u32 = 0x43;
+pub const GAMEFILEFLAG_LANGBIT1: u32 = 0x44;
+pub const GAMEFILEFLAG_LANGBIT2: u32 = 0x45;
+pub const GAMEFILEFLAG_LANGBIT3: u32 = 0x46;
+pub const GAMEFILEFLAG_HOWTO_HOVERCRATE: u32 = 0x47;
+pub const GAMEFILEFLAG_HOWTO_HOVERBIKE: u32 = 0x48;
+pub const GAMEFILEFLAG_HOWTO_DOORS: u32 = 0x49;
+pub const GAMEFILEFLAG_HOWTO_ELEVATORS: u32 = 0x4a;
+pub const GAMEFILEFLAG_HOWTO_TERMINALS: u32 = 0x4b;
+pub const GAMEFILEFLAG_4C: u32 = 0x4c;
+pub const GAMEFILEFLAG_4D: u32 = 0x4d;
+pub const GAMEFILEFLAG_4E: u32 = 0x4e;
+
+// `g_ScreenSize`.
+pub const SCREENSIZE_FULL: u8 = 0;
+pub const SCREENSIZE_WIDE: u8 = 1;
+pub const SCREENSIZE_CINEMA: u8 = 2;
+
+// `g_ScreenRatio`.
+pub const SCREENRATIO_NORMAL: u8 = 0;
+pub const SCREENRATIO_16_9: u8 = 1;
+
+// `g_SoloStages` indexes (the agent file's best times).
+pub const SOLOSTAGEINDEX_DEFECTION: i32 = 0;
+pub const SOLOSTAGEINDEX_INVESTIGATION: i32 = 1;
+pub const SOLOSTAGEINDEX_EXTRACTION: i32 = 2;
+pub const SOLOSTAGEINDEX_VILLA: i32 = 3;
+pub const SOLOSTAGEINDEX_CHICAGO: i32 = 4;
+pub const SOLOSTAGEINDEX_G5BUILDING: i32 = 5;
+pub const SOLOSTAGEINDEX_INFILTRATION: i32 = 6;
+pub const SOLOSTAGEINDEX_RESCUE: i32 = 7;
+pub const SOLOSTAGEINDEX_ESCAPE: i32 = 8;
+pub const SOLOSTAGEINDEX_AIRBASE: i32 = 9;
+pub const SOLOSTAGEINDEX_AIRFORCEONE: i32 = 10;
+pub const SOLOSTAGEINDEX_CRASHSITE: i32 = 11;
+pub const SOLOSTAGEINDEX_PELAGIC: i32 = 12;
+pub const SOLOSTAGEINDEX_DEEPSEA: i32 = 13;
+pub const SOLOSTAGEINDEX_DEFENSE: i32 = 14;
+pub const SOLOSTAGEINDEX_ATTACKSHIP: i32 = 15;
+pub const SOLOSTAGEINDEX_SKEDARRUINS: i32 = 16;
+pub const SOLOSTAGEINDEX_MBR: i32 = 17;
+pub const SOLOSTAGEINDEX_MAIANSOS: i32 = 18;
+pub const SOLOSTAGEINDEX_WAR: i32 = 19;
+pub const SOLOSTAGEINDEX_DUEL: i32 = 20;
+
+// Solo difficulties.
+pub const DIFF_A: i32 = 0;
+pub const DIFF_SA: i32 = 1;
+pub const DIFF_PA: i32 = 2;
+pub const DIFF_PD: i32 = 3;
+
 // `MUSIC_*`: sequence numbers (`g_SeqTable` order, the extract's sequences.json).
 pub const MUSIC_NONE: i32 = 0;
 pub const MUSIC_TITLE2: i32 = 1;

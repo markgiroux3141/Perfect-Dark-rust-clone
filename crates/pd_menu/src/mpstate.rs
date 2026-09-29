@@ -6,14 +6,15 @@
 //! Presets and challenges are data in the ROM (`mpconfigs.bin` +
 //! `mpstringsE.bin`, `challenge_load_config`, challenge.c:420), loaded as-is.
 //!
-//! **Substitution:** PD derives some unlocks from the solo game file (weapons
-//! found in missions, `fr_is_weapon_available_for_mp`; soundtracks from stage
-//! best times, `mp_is_track_unlocked`) and the rest from completed challenges.
-//! There is no game file here: [`Profile`] says which state to pretend —
-//! a fresh file, or one where every challenge is done and every weapon found.
+//! What is unlocked comes from the save files, as in PD (`super::files`):
+//! the challenges anyone completed are the agent file's, each player's are
+//! their player file's, and the weapons found and the soundtracks come from
+//! the agent's solo progress (which nothing here can earn). [`Profile`] can
+//! instead pretend everything is done (a developer's override).
 
 use super::generated::{self as gd, *};
 use pd_core::lang::Tx;
+use pd_core::savebuffer::FileGuid;
 use super::MenuSystem;
 
 /// `struct mpchrconfig` (types.h:4012).
@@ -38,7 +39,8 @@ pub struct MpPlayerConfig {
     pub base: MpChrConfig,
     pub controlmode: u8,
     pub options: u32,
-    pub fileid: u32,
+    /// The player file this player was loaded from or saved to (0, 0: none).
+    pub fileguid: FileGuid,
     /// `kills` .. `survivormedals`: the player file's statistics.
     pub career: pd_core::mp::MpCareer,
     /// `MEDAL_*` won in the last match (`mp_calculate_awards`).
@@ -48,6 +50,9 @@ pub struct MpPlayerConfig {
     pub handicap: u16,
     /// `g_MpSetup`'s aim control / options use these (options.c).
     pub aimcontrol: u8,
+    /// Each weapon's "use the secondary function" bit (`FUNCISSEC`), kept
+    /// between matches and in the player file.
+    pub gunfuncs: [u8; 6],
 }
 
 #[derive(Clone, Debug, Default)]
@@ -69,17 +74,24 @@ pub struct MpSetup {
     pub teamscorelimit: u16,
     pub chrslots: u16,
     pub weapons: [u8; 6],
-    pub fileid: u32,
+    /// The setup file this setup was loaded from or saved to.
+    pub fileguid: FileGuid,
 }
 
-/// `struct bossfile` (types.h:4061).
+/// `struct bossfile` (types.h:4061), with `bossfile.c`'s alternative-title
+/// globals, which the boss file keeps too.
 #[derive(Clone, Debug, Default)]
 pub struct BossFile {
     pub teamnames: [String; 8],
     pub locktype: u8,
+    pub unk89: u8,
     pub tracknum: i8,
-    pub multipletracknums: [u8; 8],
+    /// A bit per `g_MpTracks` row: in the random mix.
+    pub multipletracknums: [u8; 6],
     pub usingmultipletunes: bool,
+    /// `g_AltTitleUnlocked`, `g_AltTitleEnabled`.
+    pub alttitleunlocked: u8,
+    pub alttitleenabled: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -115,13 +127,16 @@ pub struct MpConfigSim {
     pub difficulties: [u8; 4],
 }
 
-/// Which save file the menus pretend is loaded.
+/// Where the menus' unlocks come from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Profile {
-    /// A new file: challenges 1-4 offered, the base roster only.
-    Fresh,
-    /// Every challenge completed (by player 1, at every player count) and
-    /// every weapon found: the whole roster, all arenas and scenarios.
+    /// The save files (PD's behaviour). On a blank Game Pak that is a new
+    /// file: challenges 1-4 offered, the base roster only.
+    Files,
+    /// SUBST: not PD. Every challenge counts as completed (by anyone and by
+    /// player 1, at every player count) and every weapon and tune as found,
+    /// whatever the files say: the whole roster, all arenas and scenarios.
+    /// The game doesn't keep the Game Pak's EEPROM while this is on.
     Complete,
 }
 
@@ -149,7 +164,7 @@ pub fn load_mpconfigs(assets: &pd_core::assets::AssetDir) -> Result<Vec<MpConfig
             teamscorelimit: be16(20),
             chrslots: be16(22),
             weapons: [c[24], c[25], c[26], c[27], c[28], c[29]],
-            fileid: 0,
+            fileguid: FileGuid::default(),
         };
         let mut sims = [MpConfigSim::default(); 8];
         for (j, s) in sims.iter_mut().enumerate() {
@@ -243,12 +258,62 @@ impl MenuSystem {
         (self.mp.challenges[ci].availability as u32 & (((self.mp.setup.chrslots as u32 & 0xf) << 1) | 1)) != 0
     }
 
-    pub fn challenge_is_completed_by_any_player_with_num_players(&self, index: usize, numplayers: usize) -> bool {
-        self.mp.challenges[index].completions[numplayers - 1] & 1 != 0
+    /// `g_MpChallenges[index].completions[numplayers - 1]`, with
+    /// [`Profile::Complete`]'s pretend completions (by anyone and player 1).
+    fn completions(&self, index: usize, numplayers: usize) -> u8 {
+        let c = self.mp.challenges[index].completions[numplayers - 1];
+        if self.mp.profile == Profile::Complete {
+            c | 0b11
+        } else {
+            c
+        }
     }
 
+    /// `challenge_is_completed_by_any_player_with_num_players` (challenge.c:754).
+    pub fn challenge_is_completed_by_any_player_with_num_players(&self, index: usize, numplayers: usize) -> bool {
+        self.completions(index, numplayers) & 1 != 0
+    }
+
+    /// `challenge_set_completed_by_any_player_with_num_players` (challenge.c:759).
+    pub fn challenge_set_completed_by_any_player_with_num_players(&mut self, index: usize, numplayers: usize, completed: bool) {
+        let c = &mut self.mp.challenges[index].completions[numplayers - 1];
+        if completed {
+            *c |= 1;
+        } else {
+            *c &= !1;
+        }
+    }
+
+    /// `challenge_is_completed_by_player_with_num_players` (challenge.c:769).
     pub fn challenge_is_completed_by_player_with_num_players(&self, mpchrnum: usize, index: usize, numplayers: usize) -> bool {
-        self.mp.challenges[index].completions[numplayers - 1] & (2 << mpchrnum) != 0
+        self.completions(index, numplayers) & (2 << mpchrnum) != 0
+    }
+
+    /// `challenge_set_completed_by_player_with_num_players` (challenge.c:774).
+    pub fn challenge_set_completed_by_player_with_num_players(&mut self, mpchrnum: usize, index: usize, numplayers: usize, completed: bool) {
+        let c = &mut self.mp.challenges[index].completions[numplayers - 1];
+        if completed {
+            *c |= 2 << mpchrnum;
+        } else {
+            *c &= !(2 << mpchrnum);
+        }
+    }
+
+    /// `challenge_consider_marking_complete` (challenge.c:814), from
+    /// `mp_end_match`: when the players' team won (there are no cheats), the
+    /// challenge counts as completed by anyone and by each player, at this
+    /// number of players, and the unlocks follow.
+    pub fn challenge_consider_marking_complete(&mut self) {
+        if self.challenge_is_complete_for_endscreen() {
+            let playercount = self.matchview.players.len();
+            let index = self.mp.challenge_index;
+            self.challenge_set_completed_by_any_player_with_num_players(index, playercount, true);
+            for i in 0..playercount {
+                let slot = self.matchview.players[i].slot;
+                self.challenge_set_completed_by_player_with_num_players(slot, index, playercount, true);
+            }
+            self.challenge_determine_unlocked_features();
+        }
     }
 
     fn any_complete(&self, ci: usize) -> bool {
@@ -348,9 +413,25 @@ impl MenuSystem {
         }
     }
 
-    /// `fr_is_weapon_available_for_mp` (training.c:226) — see [`Profile`].
+    /// `fr_is_weapon_available_for_mp` (training.c:226): found by the agent
+    /// (the X-Ray Scanner and the cloak also by finishing Infiltration and
+    /// Chicago); never the Psychosis Gun.
     fn fr_is_weapon_available_for_mp(&self, weapon: i32) -> bool {
-        weapon > 0 && self.mp.profile == Profile::Complete
+        // SUBST: PD asks the agent file / Profile::Complete counts every
+        // weapon as found.
+        if self.mp.profile == Profile::Complete {
+            return weapon > 0;
+        }
+        if weapon <= 0 || weapon == pd_core::ids::WEAPON_PSYCHOSISGUN as i32 {
+            return false;
+        }
+        if weapon == pd_core::ids::WEAPON_XRAYSCANNER as i32 && self.ci_is_stage_complete(pd_core::ids::SOLOSTAGEINDEX_INFILTRATION as usize) {
+            return true;
+        }
+        if weapon == pd_core::ids::WEAPON_CLOAKINGDEVICE as i32 && self.ci_is_stage_complete(pd_core::ids::SOLOSTAGEINDEX_CHICAGO as usize) {
+            return true;
+        }
+        self.fr_is_weapon_found(weapon)
     }
 
     /// `challenge_perform_sanity_checks` (challenge.c:258).
@@ -504,17 +585,13 @@ impl MenuSystem {
         }
     }
 
-    /// `challenges_init` (challengeinit.c:9) + the profile's completions.
+    /// `challenges_init` (challengeinit.c:9).
     pub fn challenges_init(&mut self) {
         for i in 0..self.mp.challenges.len() {
             let cfg = self.draw.res.mpconfigs[MP_CHALLENGES[i].confignum as usize].clone();
             let c = &mut self.mp.challenges[i];
             c.availability = 0;
             c.completions = [0; 4];
-            if self.mp.profile == Profile::Complete {
-                // Completed by "any player" and by player 1, with 1-4 players.
-                c.completions = [0b11; 4];
-            }
             let mut arr = [0u8; 16];
             Self::challenge_force_unlock_config_features(&cfg, &mut arr, i as i32);
             self.mp.challenges[i].unlockfeatures = arr;
@@ -655,7 +732,7 @@ impl MenuSystem {
         pl.base.mpbodynum = body as u8;
         pl.base.mpheadnum = head as u8;
         pl.base.displayoptions = (MPDISPLAYOPTION_RADAR | MPDISPLAYOPTION_HIGHLIGHTTEAMS) as u32;
-        pl.fileid = 0;
+        pl.fileguid = FileGuid::default();
         pl.base.name = name;
         pl.career = pd_core::mp::MpCareer::default();
         pl.title = MPPLAYERTITLE_BEGINNER as u8;
@@ -670,8 +747,7 @@ impl MenuSystem {
         b.difficulty = BOTDIFF_DISABLED as u8;
     }
 
-    /// `mp_init` (mplayer.c:461) + `bossfile_set_defaults` (bossfile.c:204) +
-    /// `mp_set_default_names_if_empty` (mplayer.c:554).
+    /// `mp_init` (mplayer.c:461): the default setup, players and simulants.
     pub fn mp_init(&mut self) {
         self.mp.setup.scenario = MPSCENARIO_COMBAT as u8;
         self.mp.setup.stagenum = STAGE_MP_SKEDAR as u8;
@@ -689,7 +765,7 @@ impl MenuSystem {
             | MPOPTION_PAC_SHOWONRADAR) as u32;
         self.vars.mphilltime = 10;
         self.mp_init_limits();
-        self.mp.setup.fileid = 0;
+        self.mp.setup.fileguid = FileGuid::default();
         self.mp.setup.name.clear();
         for i in 0..6 {
             self.mp_player_set_defaults(i, false);
@@ -699,29 +775,11 @@ impl MenuSystem {
         }
         self.mp_set_weaponset_slotnum(0);
         self.mp.lockinfo = MpLockInfo { lockedplayernum: 0, lastwinner: -1, lastloser: -1 };
-        self.mp.setup.chrslots = 0;
-        // bossfile_set_defaults
-        self.mp.bossfile.teamnames = Default::default();
-        self.mp.bossfile.tracknum = -1;
-        self.mp_enable_all_multi_tracks();
-        self.mp.bossfile.usingmultipletunes = false;
-        self.mp.bossfile.locktype = MPLOCKTYPE_NONE as u8;
-        // mp_set_default_names_if_empty
-        if self.mp.setup.name.is_empty() {
-            self.mp.setup.name = self.lang(pd_core::lang::tx(B_MISC, 438));
-        }
-        for i in 0..8 {
-            if self.mp.bossfile.teamnames[i].is_empty() {
-                self.mp.bossfile.teamnames[i] = self.lang(pd_core::lang::tx(B_OPTIONS, 8 + i as u16));
-            }
-        }
-        for i in 0..4 {
-            if self.mp.players[i].base.name.is_empty() {
-                self.mp.players[i].base.name = format!("{} {}\n", self.lang(pd_core::lang::tx(B_MISC, 437)), i + 1);
-            }
-        }
-        self.challenges_init();
         self.challenge_force_unlock_bot_features();
+        for p in self.mp.players.iter_mut() {
+            p.gunfuncs = [0; 6];
+        }
+        self.mp.setup.chrslots = 0;
     }
 
     /// Each chr slot's `mpchrconfig.team`.
@@ -1074,10 +1132,19 @@ impl MenuSystem {
 
     // ---- tracks (mplayer.c:2679) ----
 
-    /// `mp_is_track_unlocked` (mplayer.c:2725) — see [`Profile`].
+    /// `mp_is_track_unlocked` (mplayer.c:2725): a stage's tunes once the
+    /// agent has a best time on it.
     fn mp_is_track_unlocked(&self, tracknum: usize) -> bool {
-        let stage = MP_TRACKS[tracknum].unlockstage;
-        stage < 0 || stage > SOLOSTAGEINDEX_SKEDARRUINS || self.mp.profile == Profile::Complete
+        let stageindex = MP_TRACKS[tracknum].unlockstage;
+        // SUBST: PD asks the agent file / Profile::Complete counts every tune
+        // as unlocked.
+        if self.mp.profile == Profile::Complete {
+            return true;
+        }
+        if stageindex < 0 || stageindex > SOLOSTAGEINDEX_SKEDARRUINS {
+            return true;
+        }
+        self.ci_is_stage_complete(stageindex as usize)
     }
     fn mp_get_track_slot_index(&self, tracknum: usize) -> i32 {
         (0..tracknum).filter(|&i| self.mp_is_track_unlocked(i)).count() as i32
@@ -1112,13 +1179,14 @@ impl MenuSystem {
         }
     }
     pub fn mp_enable_all_multi_tracks(&mut self) {
-        self.mp.bossfile.multipletracknums = [0xff; 8];
+        self.mp.bossfile.multipletracknums = [0xff; 6];
     }
     pub fn mp_disable_all_multi_tracks(&mut self) {
-        self.mp.bossfile.multipletracknums = [0; 8];
+        self.mp.bossfile.multipletracknums = [0; 6];
     }
+    /// `mp_randomise_multi_tracks` (mplayer.c:2859).
     pub fn mp_randomise_multi_tracks(&mut self) {
-        for i in 0..8 {
+        for i in 0..self.mp.bossfile.multipletracknums.len() {
             self.mp.bossfile.multipletracknums[i] = self.rng.random() as u8;
         }
     }

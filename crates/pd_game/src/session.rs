@@ -193,6 +193,7 @@ mod tests {
     fn start_with(edit: impl FnOnce(&mut MenuSystem)) -> T {
         let assets = AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR"));
         let mut menu = MenuSystem::new(&assets, Profile::Complete).unwrap();
+        menu.load_agent_without_select();
         menu.open_combat_simulator();
         menu.mp.setup.stagenum = STAGE_MP_COMPLEX;
         menu.mp.setup.chrslots = 0b1_0001;
@@ -254,6 +255,115 @@ mod tests {
             t.menu.frame(&t.lv);
         }
         assert_eq!(t.dialog(), Some("g_CombatSimulatorMenuDialog"));
+    }
+
+    /// Challenge 1, played headless: the Combat Simulator loads it and the
+    /// match starts with its simulants. When the players' team wins (the
+    /// match's counters as if player 1 had killed a simulant 50 times), the
+    /// end screens are the challenge's verdict, Completed (under the offer to
+    /// save the player); the challenge counts as done by anyone and by player
+    /// 1 with one player, challenge 5 opens with what it unlocks, and once the
+    /// offer is declined the agent's file is saved to the Game Pak, where the
+    /// next power on finds it all.
+    /// Challenge 1 for player 1 alone, by a new agent on a blank Game Pak, as
+    /// the Combat Simulator's challenge list starts it; won (the match's
+    /// counters as if player 1 had killed a simulant 50 times) and over.
+    /// Returns the match and the unlocks before it.
+    fn challenge_1_won() -> (T, [u8; 80]) {
+        let assets = AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR"));
+        let mut menu = MenuSystem::new(&assets, Profile::Files).unwrap();
+        menu.load_agent_without_select();
+        menu.open_combat_simulator();
+        assert!(!menu.challenge_is_available_to_any_player(4), "a new agent has challenges 1-4");
+        menu.challenge_set_current_by_slot(0);
+        menu.mp.setup.chrslots |= 1;
+        menu.challenge_perform_sanity_checks();
+        let before = menu.mp.features_unlocked;
+        menu.start_match();
+        let Some(Outcome::StartMatch(setup)) = menu.take_outcome() else { panic!("no match") };
+        assert!(setup.challenge && !setup.simulants.is_empty());
+        let stage = Stage::load(&assets, pd_core::ids::stage_code(setup.stagenum).unwrap()).unwrap();
+        let level = TileLevel::for_stage(&stage);
+        let world = World::new(setup, Arc::new(stage), Arc::new(level), Arc::new(WorldRes::load(&assets).unwrap()), 5).unwrap();
+        let mut t = T { world, menu, lv: Lv::new(), over: false, ended: false, music: Vec::new() };
+        for _ in 0..30 {
+            t.frame(0);
+        }
+        let sim = t.world.setup.simulants[0].slot as usize;
+        t.world.mp.chrs[0].killcounts[sim] = 50;
+        t.world.mp.chrs[0].numpoints = 50;
+        t.world.main_end_stage();
+        for _ in 0..90 {
+            t.frame(0);
+        }
+        assert!(t.ended);
+        (t, before)
+    }
+
+    #[test]
+    fn a_challenge_won_is_marked_unlocks_and_is_saved() {
+        let assets = AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR"));
+        let (mut t, before) = challenge_1_won();
+        assert_eq!(t.dialog(), Some("g_MpEndscreenSavePlayerMenuDialog"));
+        assert!(t.menu.menu_is_dialog_open(&pd_menu::generated::G_MP_ENDSCREEN_CHALLENGE_COMPLETED_MENU_DIALOG));
+        assert!(t.menu.challenge_is_completed_by_any_player_with_num_players(0, 1));
+        assert!(t.menu.challenge_is_completed_by_player_with_num_players(0, 0, 1));
+        assert!(!t.menu.challenge_is_completed_by_any_player_with_num_players(0, 2));
+        assert!(t.menu.challenge_is_available_to_any_player(4), "challenge 5 opens");
+        let after = t.menu.mp.features_unlocked;
+        let new: Vec<usize> = (0..80).filter(|&f| after[f] & 1 != 0 && before[f] & 1 == 0).collect();
+        assert!(!new.is_empty(), "challenge 5 unlocks what its setup uses");
+        for &f in t.menu.mp.challenges[4].unlockfeatures.iter().filter(|&&f| f != 0) {
+            assert!(t.menu.challenge_is_feature_unlocked(f as i32), "feature {f}");
+        }
+        // The agent's save waits under the offer; declining it lets it run.
+        assert_eq!(t.menu.menudata.numpendingsaves, 1);
+        t.tap(B_BUTTON);
+        for _ in 0..60 {
+            t.frame(0);
+        }
+        assert_eq!(t.dialog(), Some("g_MpEndscreenChallengeCompletedMenuDialog"));
+        assert_eq!(t.menu.menudata.numpendingsaves, 0, "the agent was saved");
+        assert!(t.menu.paks.take_written());
+
+        let mut q = MenuSystem::new_with_eeprom(&assets, Profile::Files, Some(t.menu.paks.eeprom.clone())).unwrap();
+        q.load_agent_without_select();
+        assert!(q.challenge_is_completed_by_any_player_with_num_players(0, 1));
+        assert!(!q.challenge_is_completed_by_player_with_num_players(0, 0, 1), "player 1 has no file: theirs went unsaved");
+        assert!(q.challenge_is_available_to_any_player(4));
+        assert_eq!(q.mp.features_unlocked.map(|f| f & 1), after.map(|f| f & 1));
+    }
+
+    /// The end screens' offer taken: Save Now, the name confirmed (START),
+    /// the Game Pak chosen. Player 1 gets a file, which carries the challenge
+    /// they completed (and the match's statistics) to the next power on.
+    #[test]
+    fn a_player_saved_at_the_end_screens_keeps_their_challenge() {
+        let assets = AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR"));
+        let (mut t, _) = challenge_1_won();
+        assert_eq!(t.dialog(), Some("g_MpEndscreenSavePlayerMenuDialog"));
+        t.tap(A_BUTTON);
+        assert_eq!(t.dialog(), Some("g_MpEndscreenConfirmNameMenuDialog"));
+        t.tap(START_BUTTON);
+        assert_eq!(t.dialog(), Some("g_FilemgrSelectLocationMenuDialog"));
+        t.tap(A_BUTTON);
+        for _ in 0..60 {
+            t.frame(0);
+        }
+        assert_eq!(t.dialog(), Some("g_MpEndscreenChallengeCompletedMenuDialog"));
+        let g = t.menu.mp.players[0].fileguid;
+        assert!(g.fileid != 0 && g.deviceserial != 0, "player 1 has a file");
+        assert_eq!(t.menu.menudata.numpendingsaves, 0);
+        let played = t.menu.mp.players[0].career.gamesplayed;
+        assert_eq!(played, 1);
+
+        let mut q = MenuSystem::new_with_eeprom(&assets, Profile::Files, Some(t.menu.paks.eeprom.clone())).unwrap();
+        q.load_agent_without_select();
+        assert_eq!(q.mpplayerfile_load(0, pd_core::ids::SAVEDEVICE_GAMEPAK, g.fileid, g.deviceserial), 0);
+        assert_eq!(q.mp.players[0].base.name, "Player 1\n");
+        assert_eq!(q.mp.players[0].career.gamesplayed, 1);
+        assert!(q.challenge_is_completed_by_player_with_num_players(0, 0, 1));
+        assert!(q.challenge_is_completed_by_any_player_with_num_players(0, 1));
     }
 
     /// The match plays the tune the Soundtrack settings choose: a random one

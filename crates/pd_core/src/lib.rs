@@ -21,5 +21,7 @@ pub mod model;
 pub mod mp;
 pub mod mpweapons;
 pub mod music;
+pub mod pak;
 pub mod rng;
+pub mod savebuffer;
 pub mod text;

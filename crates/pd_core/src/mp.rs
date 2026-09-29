@@ -51,6 +51,10 @@ pub struct MatchPlayer {
     /// The player file's statistics, which the end of the match adds to.
     #[serde(default)]
     pub career: MpCareer,
+    /// `gunfuncs`: each weapon's "use the secondary function" bit
+    /// (`FUNCISSEC`), which the match keeps and hands back.
+    #[serde(default)]
+    pub gunfuncs: [u8; 6],
 }
 
 impl MatchPlayer {
@@ -68,7 +72,7 @@ impl Default for MatchPlayer {
     /// (`mplayer.c:408`), no handicap.
     fn default() -> Self {
         let chr = MatchChr { displayoptions: MPDISPLAYOPTION_RADAR | MPDISPLAYOPTION_HIGHLIGHTTEAMS, ..MatchChr::default() };
-        MatchPlayer { slot: 0, chr, controlmode: 0, options: Self::DEFAULT_OPTIONS, handicap: 128, career: MpCareer::default() }
+        MatchPlayer { slot: 0, chr, controlmode: 0, options: Self::DEFAULT_OPTIONS, handicap: 128, career: MpCareer::default(), gunfuncs: [0; 6] }
     }
 }
 
@@ -410,7 +414,8 @@ pub fn mp_calculate_player_title(c: &MpCareer) -> u8 {
 
 /// What `mp_calculate_awards` (`mplayer.c:1962`) leaves in a player's
 /// mpplayerconfig at the end of a match: the file's statistics with the match
-/// added, the medals won (`MEDAL_*`) and the title worked out again.
+/// added, the medals won (`MEDAL_*`) and the title worked out again, and the
+/// gun functions the player left each weapon on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MpPlayerResult {
     /// The player's chr slot.
@@ -418,6 +423,7 @@ pub struct MpPlayerResult {
     pub career: MpCareer,
     pub medals: u8,
     pub title: u8,
+    pub gunfuncs: [u8; 6],
 }
 
 /// `struct ranking`: one row of the rankings, best first.
