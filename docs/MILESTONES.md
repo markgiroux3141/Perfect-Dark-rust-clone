@@ -21,7 +21,7 @@ Each milestone is sized to fit one Claude context and ends in something checkabl
 | M10 | The other five scenarios | **done** (2026-09-28) |
 | M11 | Simulant types, difficulties, commands | **done** (2026-09-28) |
 | M12 | Presentation: split-screen, radar, death camera, rumble | **done** (2026-09-29) |
-| M13 | Music | **built** (2026-09-29); playtest pending |
+| M13 | Music | **done** (2026-09-29) |
 | M14 | Challenges and the save profile | — |
 
 The first playable path is M2 → M3 → M4 → M6: menus, walking, shooting, then a real match. M5 moves ahead of M6 if the user wants the full arsenal before simulants.
@@ -478,7 +478,7 @@ Checked: `cargo test --workspace --release` green (engine 6, n64 27, pd_core 38,
 - **Left for later:** auto-aim (`autoaim_tick`, the CMP150's follow lock-on); bruises (with a port of PD's chr shade/fog lighting); blood and bullet holes on objects; the R-Tracker (solo); the cloak's refraction.
 - **Gotchas:** chr `j < players.len()` is player `j`'s body: the renderer and the shots skip `c.player == Some(viewer)`, not every player chr. `Renderer::render_views` replaces the caller's encoder after each view (it submits them); `render_player` still draws one view into a target the size of that view. The 2D layer's size is the framebuffer's (at least 320 × 220); `hud_gfx` is the last view's crop. `DamageFrom::at` is the only way a shield hit learns its box.
 
-## M13: Music
+## M13: Music (done)
 
 PD's music in the menus and in matches: the sequencer and the soundbank. Nothing plays music yet; matches have only SFX.
 
@@ -499,7 +499,7 @@ Plan, in order (each step ends with tests or a render):
 - [x] 4. **The callers:** `pd_menu` (the Perfect Menu and Combat Simulator roots, the end screens, the Soundtrack dialog's preview and interval); `pd_sim` (`MatchSetup`'s tune choice, `music_set_stage_and_start_music` in `World::new` at `lv_reset`'s point, `music_start_mp_death`, `music_tick`'s MP half, `music_stop`). Tests: the track chosen per setting, the death tune and its end, switching.
 - [x] 5. **Playback:** `engine::audio` streams (a pushed stereo stream at any rate, resampled on the audio thread), `pd_game::music` (the one `Music`, both event streams in frame order, audio frames kept ahead of the device, the TV route).
 - [x] 6. **Offline render:** `pd_music` in `pd_tools` (a track, or a scripted menu → match → death → end flow, to a WAV). Renders for the user.
-- [ ] 7. **Playtest**; notes and Status.
+- [x] 7. **Playtest**; notes and Status.
 
 What was built, beyond the plan's wording:
 
@@ -515,9 +515,9 @@ What was built, beyond the plan's wording:
 Checked: `cargo test --workspace --release` green (engine 7, n64 41, pd_core 42, pd_menu 10 + the goldens (no pixel moved), pd_sim 192 + 8 ignored, pd_render 16, pd_game 5 + 3), `cargo clippy --workspace --release --all-targets -- -D warnings` clean, `check_boundaries.py` ok, `check_against_spikes.py` OK, `build_assets.py` twice identical.
 
 - **Tests:** `n64::naudio` (a looped ADPCM square wave on a one-note sequence: the pitch at key base and an octave up, the note's length at the default 488 us a tick and at a tempo meta's, the release, every half-period steady across subframes at a semitone up, a channel fade in 8 steps of 32 and the player's stop; `vmulf` mixing, the resampler at unity, the envelope ramp; a click through bus 1 echoing at 2200 and 4400; bus 0's chorus; `SAMPLE184`, `_getRate`/`_getVol`, times to samples; the oscillators); `pd_core::music` (the RSP decoder against the exporter's on four wavetables, sample for sample; all 119 sequences read to the exporter's event, note and tick counts; the queue: the menu tune, reset, primary, the death pause and resume, stop; every MP tune renders); `pd_sim::mp::music` (a fixed tune draws nothing and a random one twice; switching needs two enabled; a death's tune and its 1200 quarter-ticks; switching after a tune's duration with its fade and 2 s silence); `pd_menu` (the Perfect Menu, Combat Simulator and Soundtrack calls); `pd_game` (the session's tune from the Soundtrack settings and End Game's end tune; the player on the clock); `engine` (the stream).
-- **Renders** (`target/pd_music/`, 90 s each, 22018 Hz): `mainmenu`, `combatsim_menu`, `dark_combat`, `skedar_mystery`, `ci_operative`, `datadyne_action`, `maian_tears`, `alien_conflict`, `combatsim_complete`, `death_mp`, `flow`. Peaks −0.2 to −6.8 dBFS, none clipped, no note dropped; 60 s renders in 0.6 s. Nobody has listened yet.
+- **Renders** (`target/pd_music/`, 90 s each, 22018 Hz): `mainmenu`, `combatsim_menu`, `dark_combat`, `skedar_mystery`, `ci_operative`, `datadyne_action`, `maian_tears`, `alien_conflict`, `combatsim_complete`, `death_mp`, `flow`. Peaks −0.2 to −6.8 dBFS, none clipped, no note dropped; 60 s renders in 0.6 s. The user played it (2026-09-29).
 
-**Done when:** tests, clippy and the checks pass (yes), and the user hears PD's music in the menus and in matches, with the death tune, switching and the end tune (pending).
+**Done when:** tests, clippy and the checks pass (yes), and the user hears PD's music in the menus and in matches, with the death tune, switching and the end tune (yes, 2026-09-29: "everything works").
 
 ### Notes for the next contexts
 
