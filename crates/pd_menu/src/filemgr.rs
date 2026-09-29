@@ -26,6 +26,9 @@ use super::generated::*;
 use super::types::*;
 use super::MenuSystem;
 
+/// The name of [`MenuSystem::make_tester_agent`]'s agent (not PD).
+pub const TESTER_AGENT: &str = "Tester";
+
 type R = HRet;
 
 fn ok() -> R {
@@ -1512,6 +1515,44 @@ impl MenuSystem {
         self.filelists_free();
         self.filestate = FILESTATE_SELECTED;
         cstr_to_string(&self.gamefile.name)
+    }
+
+    /// Not PD: an agent named [`TESTER_AGENT`] on the Game Pak with everything
+    /// done, for testing: every challenge completed (by anyone, with one to
+    /// four players), every solo stage given a best time on every difficulty,
+    /// every weapon found. PD's own unlock rules then open every arena,
+    /// weapon, simulant type and tune for it, and it saves and loads like any
+    /// agent. Made once, at power on, before the agent select: nothing if one
+    /// is there or the Game Pak is full. The menus' own agent is left as it
+    /// was (the defaults). Returns whether it made one.
+    pub fn make_tester_agent(&mut self) -> bool {
+        self.filelist_create(0, FILETYPE_GAME as u8);
+        self.filelists_tick();
+        let list = self.filelists.lists[0].clone().unwrap_or_default();
+        self.filelists_free();
+        if list.files.iter().any(|f| MenuSystem::gamefile_get_overview(&f.name).0 == TESTER_AGENT) || list.spacesfree[SAVEDEVICE_GAMEPAK as usize] <= 0 {
+            return false;
+        }
+        self.gamefile_load_defaults();
+        self.gamefile.name = cstr::<11>(TESTER_AGENT);
+        for i in 0..self.mp.challenges.len() {
+            for j in 1..=4 {
+                self.challenge_set_completed_by_any_player_with_num_players(i, j, true);
+            }
+        }
+        self.challenge_determine_unlocked_features();
+        for t in self.gamefile.besttimes.iter_mut() {
+            *t = [1; 3];
+        }
+        for w in 1..(self.gamefile.weaponsfound.len() * 8) as i32 {
+            self.fr_set_weapon_found(w);
+        }
+        let guid = list.deviceguids[SAVEDEVICE_GAMEPAK as usize];
+        let made = self.gamefile_save(SAVEDEVICE_GAMEPAK, guid.fileid, guid.deviceserial) == 0;
+        // Back to the agent power on leaves (none chosen).
+        self.gamefile_load_defaults();
+        self.gamefileguid = FileGuid::default();
+        made
     }
 
     /// `MENUROOT_CHANGE_AGENT` (`menutick.c:566`): the menus stop, the agent

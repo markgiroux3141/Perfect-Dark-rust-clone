@@ -143,7 +143,7 @@ impl ModelRenderer {
             .map(|m| {
                 let st = draw_state(m, None, [255; 4], Cull::Back);
                 let tex = m.texture.as_ref().and_then(|t| textures.get(&t.id));
-                let extras = Extras { env_from_frame: m.env.is_none(), fog_tint: m.fog_tint, fog: m.fog.map(rgba_f), texgen_linear: m.texgen_linear };
+                let extras = Extras { env_from_frame: m.env.is_none(), fog_tint: m.fog_tint, fog: m.fog.map(rgba_f), texgen_linear: m.texgen_linear, fog_shade: m.fog_shade };
                 combiner.material(device, &st, tex, &extras)
             })
             .collect();

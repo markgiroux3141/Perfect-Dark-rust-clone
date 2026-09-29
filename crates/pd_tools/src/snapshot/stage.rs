@@ -1,4 +1,4 @@
-//! `pd_snapshot <outdir> stage <code> [--size WxH] [--spawns n] [--frames n] [--all-rooms] [--full] [--farsight]`:
+//! `pd_snapshot <outdir> stage <code> [--size WxH] [--spawns n] [--frames n] [--all-rooms] [--full] [--farsight] [--at x,y,z,theta]`:
 //! a player's view of a stage from its spawn pads, through the game's own path
 //! (a `pd_sim` world with one player, `pd_render`'s BG on a headless GPU).
 //! Each shot places the player as `player_start_new_life` would at spawn pad
@@ -14,7 +14,9 @@
 //! `--farsight`: the player's whole frame instead (`Renderer::render_player`),
 //! the Farsight up and aimed for 80 frames, so the view is its x-ray, as
 //! `<code>_spawn<k>_farsight.png`. `--full`: the player's whole frame
-//! (objects, the sky, the HUD) as `<code>_spawn<k>_full.png`.
+//! (objects, the sky, the HUD) as `<code>_spawn<k>_full.png`. `--at`: one view instead,
+//! from the player's feet at `x,y,z` facing `theta` degrees, as the game's F1 panel
+//! shows them (`P1 feet (x, y, z) θ`), as `<code>_at.png`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -35,6 +37,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let mut farsight = false;
     let mut all_rooms = false;
     let mut full = false;
+    let mut at: Option<[f32; 4]> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let mut val = |name: &str| it.next().cloned().ok_or(format!("{name} needs a value"));
@@ -50,6 +53,10 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             "--farsight" => farsight = true,
             "--all-rooms" => all_rooms = true,
             "--full" => full = true,
+            "--at" => {
+                let v: Vec<f32> = val("--at")?.split(',').map(|s| s.trim().parse::<f32>()).collect::<Result<_, _>>().map_err(|e| format!("--at: {e}"))?;
+                at = Some(v.try_into().map_err(|_| "--at is x,y,z,theta")?);
+            }
             s if !s.starts_with("--") && code.is_none() => code = Some(s.to_owned()),
             s => return Err(format!("stage: unknown argument {s:?}")),
         }
@@ -71,9 +78,14 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let depth = &target.depth.as_ref().expect("depth").1;
 
     let mut paths = Vec::new();
-    for (k, &pad) in stage.spawn_pads.iter().enumerate().take(spawns) {
-        let p = &stage.pads[pad];
-        world.players[0].start_new_life(&level, &[], p.pos, p.look_angle());
+    // A pad's place and facing (tan2f(look.x, look.z)), or --at's: PD's
+    // theta faces (-sin θ, 0, cos θ), so the facing is -θ.
+    let starts: Vec<(String, glam::Vec3, f32)> = match at {
+        Some([x, y, z, theta]) => vec![(format!("{code}_at"), glam::Vec3::new(x, y + 53.0, z), -theta.to_radians())],
+        None => stage.spawn_pads.iter().enumerate().take(spawns).map(|(k, &pad)| (format!("{code}_spawn{k}_pad{pad:04x}"), stage.pads[pad].pos, stage.pads[pad].look_angle())).collect(),
+    };
+    for (k, (name, pos, facing)) in starts.into_iter().enumerate() {
+        world.players[0].start_new_life(&level, &[], pos, facing);
         for _ in 0..frames {
             world.step(4, &[PlayerInput::default()]);
         }
@@ -116,7 +128,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
         renderer.render(&gpu.queue, &mut enc, &target.view, depth, &view, frame.as_ref());
         gpu.queue.submit(Some(enc.finish()));
         let rgba = target.read_rgba8(&gpu.device, &gpu.queue);
-        let path = outdir.join(format!("{code}_spawn{k}_pad{pad:04x}.png"));
+        let path = outdir.join(format!("{name}.png"));
         crate::write_png(&path, w as usize, h as usize, &rgba)?;
         paths.push(path);
     }

@@ -274,3 +274,36 @@ fn the_menus_ask_for_their_music() {
     }
     assert!(music(&mut pd).contains(&MusicCall::SetInterval(15)));
 }
+
+/// With a custom level listed (not PD), the arena list gains a fourth group,
+/// "Custom", after PD's three, whose one row picks the level's stage; PD's
+/// rows are unchanged, and the arena's name is the level's.
+#[test]
+fn a_custom_level_is_listed_in_its_own_group() {
+    use super::handlers::mp_arena_menu_handler as h;
+    let mut pd = pd();
+    let item = &gd::G_MP_ARENA_MENU_ITEMS[0];
+    let op = |pd: &mut MenuSystem, op: i32, value: i32| {
+        let mut data = HandlerData { value, ..HandlerData::default() };
+        let r = h(pd, op, item, &mut data);
+        (data, r)
+    };
+    let (plain, _) = op(&mut pd, MENUOP_GET_OPTION_COUNT, 0);
+    let (groups, _) = op(&mut pd, MENUOP_GET_OPTGROUP_COUNT, 0);
+    assert_eq!((plain.value, groups.value), (17, 3));
+    pd.custom_arenas = vec![pd_core::assets::CustomLevel { code: "kokiri".into(), stagenum: 0x60, name: "Kokiri Forest".into() }];
+    assert_eq!(op(&mut pd, MENUOP_GET_OPTION_COUNT, 0).0.value, 18);
+    assert_eq!(op(&mut pd, MENUOP_GET_OPTGROUP_COUNT, 0).0.value, 4);
+    let HRet::S(label) = op(&mut pd, MENUOP_GET_OPTGROUP_TEXT, 3).1 else { panic!("no group label") };
+    assert_eq!(label, "Custom\n");
+    assert_eq!(op(&mut pd, MENUOP_GET_OPTGROUP_START_INDEX, 3).0.groupstartindex, 17);
+    let HRet::S(name) = op(&mut pd, MENUOP_GET_OPTION_TEXT, 17).1 else { panic!("no row text") };
+    assert_eq!(name, "Kokiri Forest");
+    op(&mut pd, MENUOP_CONFIRM, 17);
+    assert_eq!(pd.mp.setup.stagenum, 0x60);
+    assert_eq!(op(&mut pd, MENUOP_GET_SELECTED_INDEX, 0).0.value, 17);
+    assert_eq!(pd.arena_name(0x60).as_deref(), Some("Kokiri Forest"));
+    // PD's rows are where they were: Complex, the last Classic arena but two.
+    op(&mut pd, MENUOP_CONFIRM, 14);
+    assert_eq!(pd.mp.setup.stagenum, pd_core::ids::STAGE_MP_COMPLEX);
+}

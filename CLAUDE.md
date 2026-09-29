@@ -14,7 +14,8 @@ cargo test -p pd_sim --release -- --ignored --nocapture   # long probes
 cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # offscreen PNGs (e.g. `out model dark_combat --gun chrfalcon2`,
                                             #   `out menu --combat w40 down down down a w50 shot:setup` (script format in pd_menu::script;
                                             #   `--fresh --boot` starts at power on's agent select on a blank Game Pak),
-                                            #   `out stage ref` (the 8 spawn-pad views, on the GPU; `--full` adds objects, sky, HUD),
+                                            #   `out stage ref` (the 8 spawn-pad views, on the GPU; `--full` adds objects, sky, HUD;
+                                            #   `--at x,y,z,theta` one view from the F1 panel's "P1 feet (...) θ"),
                                             #   `out match --duel`, `out lab` (a match with simulants; the pd_lab map), `out pickups [--bots]`,
                                             #   `out scenario htb` (htm, pac, koh, ctc: a scenario's props, HUD, highlights, room tints),
                                             #   `out flow start w30 shot:pause kill wend shot:end` (the pause menu and
@@ -22,7 +23,10 @@ cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # off
                                             #   `out flow --teams --mates 2 hold:a:50 shot:am` (the active menu; `hold:a+z:1` next screen),
                                             #   `out flow --players 4 [--vsplit] [--shield] w60 shot:split` (split screen),
                                             #   `out flow --challenge 1 w40 win wend shot:verdict` (a challenge, won),
-                                            #   `out match --duel --lock --dist 900` (the rocket launcher's lock))
+                                            #   `out match --duel --lock --dist 900` (the rocket launcher's lock),
+                                            #   `out flow --stage kokiri --mates 3 start w300 shot:m` (a match on any arena, custom too))
+cargo run --release -p pd_import --bin pd_import -- kokiri   # convert a custom level (crates/pd_import/levels/<code>.json) into custom/
+                                            #   (gitignored); `--check <code>`, `--explain <code> x z`, `--probe <code> x0 z0 x1 z1`
 cargo run --release -p pd_tools --bin pd_music -- <out.wav> <tune|--flow> [secs]   # offline music renders (MUSIC_* name or number; --list)
 cargo run --release -p pd_tools --bin pd_lab # the simulant/route viewer (a window: for the user, not for Claude to drive)
 python tools/check_boundaries.py            # headless crates stay headless
@@ -47,7 +51,8 @@ python tools/pd-assets/check_against_spikes.py   # assets/ against the old repo'
 
 ## Where things are
 
-- `crates/`: the eight crates (see ARCHITECTURE.md § Crates).
+- `crates/`: the nine crates (see ARCHITECTURE.md § Crates); `pd_import` is the custom level importer (offline, M15).
+- `custom/`: converted levels (gitignored; another game's data), laid over `assets/` at run time (ARCHITECTURE.md § Custom levels).
 - `assets/`: generated, committed; layout in ARCHITECTURE.md § Assets.
 - `tools/pd-assets/`: Python exporters (stdlib only; `pd_bg_preview.py` needs numpy + Pillow).
 - `reference/`: gitignored. `pd-decomp` and `pd-pcport` are junctions to the old repo's clones, and `pd_bot_port_sheet.md` holds the verbatim C for the bot port. See [reference/README.md](reference/README.md).

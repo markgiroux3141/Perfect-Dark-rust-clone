@@ -237,27 +237,26 @@ fn check_format(what: &str, got: &str, want: &str) -> Result<(), String> {
     }
 }
 
-/// One tile as the collision code sees it: the flags the chr code reads as
-/// booleans, and all of them in `geoflags`.
 fn tile_poly(t: &TileRow) -> Result<GeomPoly, String> {
     if t.verts.len() < 3 {
         return Err(format!("tiles: room {:#x} has a tile with {} vertices", t.room, t.verts.len()));
     }
-    let f = |bit: u32| t.flags & bit != 0;
-    let mut p = GeomPoly::new(
-        t.verts.iter().map(|&v| Vec3::from(v)).collect(),
-        f(GEOFLAG_FLOOR1 | GEOFLAG_FLOOR2),
-        f(GEOFLAG_WALL),
-        f(GEOFLAG_BLOCK_SIGHT),
-        f(GEOFLAG_BLOCK_SHOOT),
-        Some(t.room),
-    );
-    p.ladder = f(GEOFLAG_LADDER);
-    p.crouch = f(GEOFLAG_AIBOTCROUCH);
-    p.duck = f(GEOFLAG_AIBOTDUCK);
-    p.floortype = t.floortype;
-    p.geoflags = t.flags;
-    Ok(p)
+    Ok(GeomPoly::from_tile(t.room, t.flags, t.floortype, t.verts.iter().map(|&v| Vec3::from(v)).collect()))
+}
+
+impl GeomPoly {
+    /// One `tiles.json` tile as the collision code sees it: the flags the chr
+    /// code reads as booleans, and all of them in `geoflags`.
+    pub fn from_tile(room: u16, flags: u32, floortype: u8, verts: Vec<Vec3>) -> GeomPoly {
+        let f = |bit: u32| flags & bit != 0;
+        let mut p = GeomPoly::new(verts, f(GEOFLAG_FLOOR1 | GEOFLAG_FLOOR2), f(GEOFLAG_WALL), f(GEOFLAG_BLOCK_SIGHT), f(GEOFLAG_BLOCK_SHOOT), Some(room));
+        p.ladder = f(GEOFLAG_LADDER);
+        p.crouch = f(GEOFLAG_AIBOTCROUCH);
+        p.duck = f(GEOFLAG_AIBOTDUCK);
+        p.floortype = floortype;
+        p.geoflags = flags;
+        p
+    }
 }
 
 impl Stage {

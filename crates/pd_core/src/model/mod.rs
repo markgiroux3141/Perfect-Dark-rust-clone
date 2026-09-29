@@ -235,6 +235,11 @@ pub struct Material {
     /// Cycle 1 of a two-cycle blender is `FOG_PRIM_A` (the gun's shade tint).
     /// The menu context turns fog off, so the menus ignore it.
     pub fog_tint: bool,
+    /// Cycle 1 of a two-cycle blender is `G_RM_FOG_SHADE_A`: a fog stage's BG
+    /// fades to the fog colour by the RSP's per-vertex fog (`g_GfxGroup01`'s
+    /// render modes). Absent in PD's own files (no arena has fog).
+    #[serde(default)]
+    pub fog_shade: bool,
 }
 
 /// Tile 0 of a material, as the texture load left it.

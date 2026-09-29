@@ -4,20 +4,109 @@
 //! test's `CARGO_MANIFEST_DIR`) so this crate never guesses where the repo is.
 //! The layout is docs/ARCHITECTURE.md § Assets; `tools/pd-assets/build_assets.py`
 //! writes it.
+//!
+//! **Custom levels** live in a second tree with the same layout, laid over
+//! `assets/` ([`AssetDir::with_custom_levels`]): `custom/levels.json` lists
+//! them ([`CustomLevel`]) and `custom/stages/<code>/` holds each one's four
+//! stage files, exactly as an arena's. `pd_import` writes it; it is never
+//! committed (a level converted from another game is that game's data).
 
 use std::path::{Path, PathBuf};
 
 use serde::de::DeserializeOwned;
+use serde::Deserialize;
 
-/// The root of a generated `assets/` tree.
+/// The root of a generated `assets/` tree, and optionally the custom-levels
+/// tree laid over it.
 #[derive(Clone, Debug)]
 pub struct AssetDir {
     root: PathBuf,
+    /// `custom/`: its files win over `assets/`'s at the same relative path.
+    custom: Option<PathBuf>,
+}
+
+/// The stage numbers custom levels take: past PD's last (`STAGE_TEST_OLD`,
+/// 0x5d), within the 7 bits an MP setup file keeps the stage in.
+pub const CUSTOM_STAGENUMS: std::ops::RangeInclusive<u8> = 0x60..=0x7f;
+
+/// One entry of `custom/levels.json`: a converted level, playable as an arena.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct CustomLevel {
+    /// Its directory, `custom/stages/<code>/`.
+    pub code: String,
+    /// Its `STAGE_*` number, from [`CUSTOM_STAGENUMS`].
+    pub stagenum: u8,
+    /// The arena menu's name for it.
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+struct CustomLevelsFile {
+    format: String,
+    levels: Vec<CustomLevel>,
 }
 
 impl AssetDir {
     pub fn new(root: impl Into<PathBuf>) -> AssetDir {
-        AssetDir { root: root.into() }
+        AssetDir { root: root.into(), custom: None }
+    }
+
+    /// With the custom levels in `$PD_CUSTOM`, else in `custom/` beside the
+    /// asset root, when that exists.
+    pub fn with_custom_levels(self) -> AssetDir {
+        let dir = std::env::var_os("PD_CUSTOM").map(PathBuf::from).or_else(|| self.root.parent().map(|p| p.join("custom")));
+        match dir {
+            Some(d) if d.is_dir() => self.with_custom_dir(d),
+            _ => self,
+        }
+    }
+
+    /// With the custom levels in `dir`.
+    pub fn with_custom_dir(mut self, dir: impl Into<PathBuf>) -> AssetDir {
+        self.custom = Some(dir.into());
+        self
+    }
+
+    /// The custom-levels tree, if one is laid over the assets.
+    pub fn custom_dir(&self) -> Option<&Path> {
+        self.custom.as_deref()
+    }
+
+    /// `custom/levels.json`'s levels (none without a custom tree). A malformed
+    /// index is logged and ignored: the arenas still play.
+    pub fn custom_levels(&self) -> Vec<CustomLevel> {
+        let Some(dir) = &self.custom else { return Vec::new() };
+        let path = dir.join("levels.json");
+        if !path.exists() {
+            return Vec::new();
+        }
+        match self.read_json::<CustomLevelsFile>(&path) {
+            Ok(f) if f.format == "pd-custom-levels/1" => f.levels.into_iter().filter(|l| CUSTOM_STAGENUMS.contains(&l.stagenum)).collect(),
+            Ok(f) => {
+                log::warn!("{}: format {:?}, expected pd-custom-levels/1", path.display(), f.format);
+                Vec::new()
+            }
+            Err(e) => {
+                log::warn!("{e}");
+                Vec::new()
+            }
+        }
+    }
+
+    /// A stage's code: PD's (`ids::stage_code`), else a custom level's.
+    pub fn stage_code(&self, stagenum: u8) -> Option<String> {
+        crate::ids::stage_code(stagenum).map(str::to_owned).or_else(|| self.custom_levels().into_iter().find(|l| l.stagenum == stagenum).map(|l| l.code))
+    }
+
+    /// `rel` in the custom tree if it is there, else under the root.
+    fn overlaid(&self, rel: &Path) -> PathBuf {
+        if let Some(c) = &self.custom {
+            let p = c.join(rel);
+            if p.exists() {
+                return p;
+            }
+        }
+        self.root.join(rel)
     }
 
     /// The repo's `assets/` for a crate at `crates/<name>`: pass
@@ -31,9 +120,10 @@ impl AssetDir {
     }
 
     /// A path relative to the root, as the asset files themselves store them
-    /// (e.g. a model's texture `file`).
+    /// (e.g. a model's texture `file`); a custom level's own files are found
+    /// in the custom tree.
     pub fn path(&self, rel: &str) -> PathBuf {
-        self.root.join(rel)
+        self.overlaid(Path::new(rel))
     }
 
     /// `textures/<num>.png`: the global pool, by PD texture number.
@@ -103,9 +193,10 @@ impl AssetDir {
         self.root.join("data").join(name)
     }
 
-    /// `stages/<code>/`, by PD's stage code (`ref` is Complex).
+    /// `stages/<code>/`, by PD's stage code (`ref` is Complex), or a custom
+    /// level's.
     pub fn stage(&self, code: &str) -> PathBuf {
-        self.root.join("stages").join(code)
+        self.overlaid(&Path::new("stages").join(code))
     }
 
     /// Read a file, with its path in the error.
@@ -123,5 +214,34 @@ impl AssetDir {
     pub fn read_png(&self, path: &Path) -> Result<(usize, usize, Vec<u8>), String> {
         let img = image::open(path).map_err(|e| format!("{}: {e}", path.display()))?.to_rgba8();
         Ok((img.width() as usize, img.height() as usize, img.into_raw()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A custom tree lays its stages and files over the assets, lists its
+    /// levels, and resolves their stage numbers; PD's codes win.
+    #[test]
+    fn custom_levels_are_laid_over_the_assets() {
+        let dir = std::env::temp_dir().join(format!("pd_custom_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("stages").join("kok")).unwrap();
+        std::fs::write(
+            dir.join("levels.json"),
+            r#"{"format":"pd-custom-levels/1","levels":[{"code":"kok","stagenum":96,"name":"Kok"},{"code":"bad","stagenum":31,"name":"Clash"}]}"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("stages").join("kok").join("tex.png"), b"x").unwrap();
+        let a = AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR")).with_custom_dir(&dir);
+        assert_eq!(a.custom_levels(), vec![CustomLevel { code: "kok".into(), stagenum: 96, name: "Kok".into() }], "a PD stage number is refused");
+        assert_eq!(a.stage("kok"), dir.join("stages").join("kok"));
+        assert_eq!(a.path("stages/kok/tex.png"), dir.join("stages/kok/tex.png"));
+        assert_eq!(a.stage("ref"), a.root().join("stages").join("ref"));
+        assert_eq!(a.stage_code(96).as_deref(), Some("kok"));
+        assert_eq!(a.stage_code(crate::ids::STAGE_MP_COMPLEX).as_deref(), Some("ref"));
+        assert_eq!(a.stage_code(97), None);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

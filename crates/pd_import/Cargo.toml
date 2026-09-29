@@ -1,0 +1,22 @@
+[package]
+name = "pd_import"
+description = "The custom level importer: another game's level converted into a Combat Simulator arena's four stage files, with rooms, fog, waypoints and item placement generated."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+
+# Headless, like the simulation it builds on: no wgpu, winit, kira or egui.
+[[bin]]
+name = "pd_import"
+path = "src/bin/pd_import.rs"
+
+[dependencies]
+pd_core = { workspace = true }
+pd_sim = { workspace = true }
+glam = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+image = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }

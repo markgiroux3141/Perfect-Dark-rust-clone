@@ -7,7 +7,10 @@
 //     direction is taken into model space by the transposed modelview, and
 //     G_TEXTURE_GEN from the LookAt vectors (gfx_pc.cpp:1075-1150);
 //   * the RDP colour combiner, one or two cycles, evaluated from its 16 mux ids;
-//   * the cycle-1 FOG_PRIM_A blender tint, the alpha compares.
+//   * the cycle-1 FOG_PRIM_A blender tint, the alpha compares;
+//   * G_FOG: the RSP's fog factor in each vertex's shade alpha (z/w × fm + fo,
+//     gSPFogPosition), and the cycle-1 FOG_SHADE_A blender that fades to the
+//     fog colour by it.
 // All maths runs on the raw 0..1 values the N64 puts on screen, and the result
 // is written as it is: the target is not sRGB, so blending also happens on
 // display-space values, as the RDP's blender does.
@@ -26,6 +29,7 @@ struct Frame {
     flat: vec4<f32>,      // flat colour override + alpha (alpha 0 = off)
     misc: vec4<f32>,      // x: env-alpha override (0 = off), y: 3-point filter
     fogcol: vec4<f32>,    // the render context's fog colour (0..1)
+    fogpos: vec4<f32>,    // G_FOG: x multiplier, y offset (gSPFogPosition), z 1 = on
 };
 
 struct Material {
@@ -39,7 +43,7 @@ struct Material {
     tex: vec4<f32>,      // width, height, uls, ult
     shift: vec4<f32>,    // shift scale s, t, has_texture, two_cycle
     flags: vec4<u32>,    // alpha_test (0 none, 1 edge, 2 threshold), fog_tint, env_from_frame, fog_from_frame (the frame's fogcol)
-    flags2: vec4<u32>,   // texgen_linear, unused, translucent material, bilerp (G_TF_BILERP)
+    flags2: vec4<u32>,   // texgen_linear, fog_shade (FOG_SHADE_A), translucent material, bilerp (G_TF_BILERP)
 };
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -102,6 +106,16 @@ fn vs_main(v: VIn) -> VOut {
         }
     } else {
         o.shade = v.col / 255.0;
+    }
+    if (frame.fogpos.z != 0.0) {
+        // G_FOG: the RSP writes the fog factor over the shade alpha, from the
+        // vertex's z/w in the N64's −1..1 (the target's depth is 0..1).
+        // SUBST: a vertex behind the eye (w ≤ 0) has z/w past 1, full fog, which
+        // the clipped triangle then spreads across the floor at the player's
+        // feet (a big triangle, such as a converted level's) / it takes the
+        // near plane's value, no fog.
+        let zw = select(-1.0, 2.0 * o.clip.z / o.clip.w - 1.0, o.clip.w > 0.0);
+        o.shade.a = clamp(zw * frame.fogpos.x + frame.fogpos.y, 0.0, 255.0) / 255.0;
     }
     o.st = st;
     return o;
@@ -265,6 +279,11 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     if (mat.flags.y != 0u) {
         let fog = select(mat.fog, frame.fogcol, mat.flags.w != 0u);
         c = vec4<f32>(mix(c.rgb, fog.rgb, fog.a), c.a);
+    }
+    // Cycle-1 blender G_RM_FOG_SHADE_A: CLR_FOG·A_SHADE + CLR_IN·(1−A_SHADE),
+    // the shade alpha being the vertex's fog.
+    if (mat.flags2.y != 0u) {
+        c = vec4<f32>(mix(c.rgb, frame.fogcol.rgb, in.shade.a), c.a);
     }
     // Env-alpha override: a render context that swaps every combiner's alpha
     // for the env alpha (opaque materials) or texel alpha x env alpha

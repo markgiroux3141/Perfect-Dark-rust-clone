@@ -23,6 +23,7 @@ members = [
     "crates/pd_render",
     "crates/pd_game",
     "crates/pd_tools",
+    "crates/pd_import",
 ]
 default-members = ["crates/pd_game"]
 

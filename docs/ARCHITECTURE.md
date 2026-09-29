@@ -1,6 +1,6 @@
 # Architecture
 
-A faithful recreation of Perfect Dark's **Combat Simulator** in Rust. It covers the Perfect Menu, every Combat Simulator setup dialog, the 16 MP arenas, the six scenarios, simulants, and the full MP arsenal, all behaving the way the NTSC-final ROM does. There is no solo campaign, co-op or counter-op, and no level editor.
+A faithful recreation of Perfect Dark's **Combat Simulator** in Rust. It covers the Perfect Menu, every Combat Simulator setup dialog, the 16 MP arenas, the six scenarios, simulants, and the full MP arsenal, all behaving the way the NTSC-final ROM does. There is no solo campaign, co-op or counter-op, and no level editor; levels from other games can be converted into arenas offline (`pd_import`, [D10](#decisions)).
 
 The work so far lives as five spikes in `D:\Claude Code Projects\Hide and Seek Level Builder` (the "old repo"). Each is a function-by-function port of the decomp that has been verified by tests and playtests. This repo does not re-port what those spikes already got right. It **moves that code into a structure it can grow in**, merges the duplicates the spikes accumulated, and cuts the ties to the hide-and-seek game. Their measured findings are kept in [spike-notes/](spike-notes/).
 
@@ -23,6 +23,7 @@ pd_game ──► pd_render ──► engine
    └──────► pd_menu ─┴──► pd_core ──► n64 (CPU only)
 
 pd_tools ──► everything (headless snapshots, probes, debug viewers)
+pd_import ──► pd_sim, pd_core (offline: another game's level into stage files)
 ```
 
 Arrows point at what a crate may use. Nothing points back up.
@@ -37,6 +38,7 @@ Arrows point at what a crate may use. Nothing points back up.
 | **`pd_render`** | PD on the GPU: BG, every model through the one combiner path, effects, HUD canvas (radar, sights, shields), x-ray, framebuffer post, a `View` per player laid into the frame (`Renderer::render_views`: split screen) | write to the world |
 | **`pd_game`** | the `perfect_dark` binary: state machine (Menus → Match → Results), device → N64 controller mapping, event → voice routing, the music's frames onto an engine stream, the Game Pak's EEPROM kept in a file (`save`), presentation settings; its library half, `session`, couples a match with the menus over it (pause, end screens) for the binary and `pd_snapshot` | contain game rules |
 | **`pd_tools`** | `pd_snapshot` (offscreen PNGs of menus, guns, stages, matches, pickups), probes, offline audio renders (`pd_music`: a tune, or a menu → match → death → end flow, to a WAV), the bot/nav debug viewer | ship in the game |
+| **`pd_import`** | the custom level importer: a recipe (`levels/<code>.json`), the source importers (`oot`: Ocarina of Time scenes from the OoT Clone repo's extractor) into one `LevelSource`, the collision preprocessing (step risers, ledges as ladders, water), rooms and portals by a k-d split, the four stage files, the gameplay data (`nav::gen`'s waypoints baked in, spawns, weapons and ammo, hills, bases, cover), a check match; headless | ship in the game; be needed at run time |
 
 ### Why these boundaries
 
@@ -129,6 +131,19 @@ Generated Rust sits beside the code that uses it: `crates/pd_core/src/ids.rs` (`
 
 Nothing reads the decomp or the ROM at run time. In the spikes, the Complex match read `tiles/ref.json`, `pads/ref.json` and `mp_setupref.c` from `reference/pd-decomp` on every launch; the stage exporter (`pd_stage.py`) owns that now.
 
+### Custom levels
+
+Levels converted from other games (`crates/pd_import`, run by hand: `pd_import <code>`) live in `custom/` at the repo root, **gitignored** (the output is the source game's data, made from its owner's copy), laid over `assets/` at run time (`AssetDir::with_custom_levels`: `$PD_CUSTOM`, else `custom/` beside the asset root; a file there wins over `assets/`' at the same path):
+
+```
+custom/
+  levels.json                the custom arenas: code, stage number (0x60-0x7f, CUSTOM_STAGENUMS), menu name
+  stages/<code>/             the four stage files, in pd_stage.py's formats, plus
+                             tex/<n>.png  the level's own textures (ids 0x10000 | material in bg.json)
+                             report.txt   the import's report
+```
+
+A custom stage is an arena to everything that loads one: the menus list it in a "Custom" group, `AssetDir::stage_code` resolves its number, `Stage::load` and `StageBg::load` read it like any other.
 ### Pipeline
 
 `tools/pd-assets/` holds the Python exporters from the spikes: stdlib only, except the numpy/Pillow preview tool. They read `reference/pd-decomp` (the decomp's own `tools/extract` must have run once against the ROM; see [reference/README.md](../reference/README.md)). One driver, `build_assets.py`, runs them all into `assets/` and writes `MANIFEST.json`; every path comes from `pd_paths.py`. Individual exporters stay runnable on their own. `check_against_spikes.py` compares `assets/` with the old repo's per-feature exports and names every intended difference.
@@ -212,6 +227,7 @@ Where each spike file goes. Paths on the left are under `native/crates/game/src/
 | D7 | The world supports four human players from the start | Retrofitting players into single-player state (`PlayerGun` holds screen/projection) is the expensive way round |
 | D8 | PD arenas route on PD's own waypoint graph; our generator (`pd_sim::nav`) is kept, tested and selectable | This is a faithful recreation, so PD's graph is the behaviour. The generator (which passed the Complex A/B) stays because it takes generic geometry and serves any level PD has no graph for |
 | D9 | Saves go through PD's own file system (`pak.c`) on the Game Pak's 2 KB EEPROM, kept as a file | Everything around a save stays PD's: the swap files, four of each type, the file manager's dialogs and free spaces, the GUIDs. No Controller Pak is plugged in, a state PD handles. The file is the chip's bytes, so an emulator's 16 Kbit `.eep` loads |
+| D10 | Levels from other games are converted **offline** into PD's own stage format (`pd_import`); the run time gains nothing but a second asset root, a menu group and PD's fog | The game stays one path: a custom arena is four stage files like an arena's. Everything such a level lacks (baked lighting, rooms and portals, PD-style collision, waypoints, spawns, pickups, scenario pads) is made ahead of time, and checked by loading the stage as the game does and playing a match on it |
 
 ## Open questions
 

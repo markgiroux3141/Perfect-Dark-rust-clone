@@ -35,6 +35,8 @@ use std::collections::{BinaryHeap, HashMap, VecDeque};
 
 use glam::{Vec2, Vec3};
 
+use pd_core::ids::GEOFLAG_LADDER;
+
 use super::{NavGraph, NavPad, NavWaygroup, NavWaypoint, PadFlags};
 use crate::stage::{CdResult, FloorKind, LevelGeom, TileFlag, TileLevel, WPSEGFLAG_INWARDSONLY, WPSEGFLAG_OUTWARDSONLY};
 
@@ -191,7 +193,7 @@ pub fn probe_walk_why(level: &TileLevel, a: Vec3, b: Vec3, p: &GenParams) -> Res
         // A chr on a go-to within 2.5 radii of a ladder climbs it (`chr.c:618`):
         // a walk must stay out of that reach (a Climb link goes in on purpose).
         let prop = here + Vec3::Y * ROOT;
-        if level.cd_find_ladder(prop, p.radius * 2.5 + PATH_MARGIN, height - ROOT, 1.0 - ROOT).is_some() {
+        if level.cd_find_ladder(prop, p.radius * 2.5 + PATH_MARGIN, height - ROOT, 1.0 - ROOT, GEOFLAG_LADDER).is_some() {
             return Err(format!("within a ladder's reach at ({x:.0}, {m:.0}, {z:.0})"));
         }
         if !fits(level, here, p.radius + PATH_MARGIN, height) {
@@ -332,7 +334,7 @@ fn sample(level: &TileLevel, geom: &LevelGeom, p: &GenParams) -> (Vec<Sample>, H
                     continue;
                 }
                 // ...and a chr on a go-to there wouldn't be climbing a ladder.
-                if level.cd_find_ladder(floor + Vec3::Y * ROOT, p.radius * 2.5 + PATH_MARGIN, height - ROOT, 1.0 - ROOT).is_some() {
+                if level.cd_find_ladder(floor + Vec3::Y * ROOT, p.radius * 2.5 + PATH_MARGIN, height - ROOT, 1.0 - ROOT, GEOFLAG_LADDER).is_some() {
                     continue;
                 }
                 let clearance = [50.0, 80.0, 120.0, 170.0, 230.0]
@@ -362,7 +364,7 @@ pub fn explain_point(level: &TileLevel, x: f32, z: f32, p: &GenParams) -> Vec<St
         let height = chr_height_at(level, floor, p.radius);
         let fit = fits(level, floor, p.radius + p.margin, height);
         let walls = level.walls_touching(floor + Vec3::Y * ROOT, p.radius + p.margin, height - ROOT, 20.0 - ROOT);
-        let ladder = level.cd_find_ladder(floor + Vec3::Y * ROOT, p.radius * 2.5 + PATH_MARGIN, height - ROOT, 1.0 - ROOT).is_some();
+        let ladder = level.cd_find_ladder(floor + Vec3::Y * ROOT, p.radius * 2.5 + PATH_MARGIN, height - ROOT, 1.0 - ROOT, GEOFLAG_LADDER).is_some();
         out.push(format!(
             "poly {i} ({:?}) y {y:.1}: ground {g:.1}, ground from +{} {gh:.1}, height {height}, fits {fit} (walls {walls:?}), ladder {ladder}",
             poly.floor_kind(),

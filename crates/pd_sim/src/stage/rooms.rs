@@ -138,15 +138,19 @@ struct PortalRow {
     verts: Vec<[f32; 3]>,
 }
 
-#[derive(Deserialize)]
-struct NoFogEnv {
+/// The z range of an environment row (`struct nofogenvironment` or, on a fog
+/// stage, `struct fogenvironment`).
+#[derive(Deserialize, Clone, Copy)]
+struct EnvZRange {
     near: f32,
     far: f32,
 }
 
 #[derive(Deserialize)]
 struct EnvRow {
-    nofogenvironment: NoFogEnv,
+    fog: bool,
+    nofogenvironment: Option<EnvZRange>,
+    fogenvironment: Option<EnvZRange>,
 }
 
 #[derive(Deserialize)]
@@ -197,8 +201,10 @@ impl BgRooms {
             let verts: Vec<Vec3> = p.verts.iter().map(|&v| Vec3::from(v)).collect();
             portals.push(BgPortal { room1: p.rooms[0] as u16, room2: p.rooms[1] as u16, flags: p.flags, metric: portal_metric(&verts), verts });
         }
+        let env = if h.env.fog { h.env.fogenvironment } else { h.env.nofogenvironment };
+        let env = env.ok_or_else(|| format!("stage {code}: bg.json's env has no row for fog = {}", h.env.fog))?;
         let mut b = BgRooms::build(rooms, portals, h.lights);
-        b.zrange = (h.env.nofogenvironment.near, h.env.nofogenvironment.far);
+        b.zrange = (env.near, env.far);
         Ok(b)
     }
 

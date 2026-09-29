@@ -1,0 +1,27 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "kokiri",
+  "name": "Kokiri Forest",
+  "stagenum": 96,
+  "scale": 2.5,
+  "source": {
+    "game": "oot",
+    "scene_dir": "D:/Claude Code Projects/OOT Clone/extracted/scenes/overworld/spot04",
+    "scene": "spot04",
+    "layer": 0,
+    "light_setting": 1,
+    "sun_dir": [59, 103, 17],
+    "draw_rooms": [0],
+    "remove": [
+      {"min": [2350, -2000, -4000], "max": [7000, 4000, 4000]},
+      {"min": [1900, -2000, -4000], "max": [2350, 4000, -148]}
+    ],
+    "walls": [
+      {"from": [1900, -148], "to": [2350, -148], "y": [-300, 700]}
+    ]
+  },
+  "rooms": 40,
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

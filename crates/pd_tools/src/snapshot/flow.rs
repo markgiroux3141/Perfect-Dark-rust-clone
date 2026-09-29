@@ -170,6 +170,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let (mut score, mut minutes, mut seed, mut teams, mut mates) = (1u8, None::<u8>, harness::SPIKE_SEED, false, 0usize);
     let (mut players, mut vsplit, mut shield) = (1usize, false, false);
     let mut challenge = None::<i32>;
+    let mut stage = None::<String>;
     let mut words: Vec<String> = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -190,6 +191,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             "--vsplit" => vsplit = true,
             "--shield" => shield = true,
             "--challenge" => challenge = Some(val("--challenge")?.parse().map_err(|e| format!("--challenge: {e}"))?),
+            "--stage" => stage = Some(val("--stage")?),
             s => words.push(s.to_owned()),
         }
     }
@@ -205,8 +207,19 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
         menu.mp.setup.chrslots |= 1;
         menu.challenge_perform_sanity_checks();
     } else {
+        // An arena's stage number by its code: the arena menu's (g_MpArenas),
+        // else a custom level's.
+        let stagenum = match &stage {
+            None => STAGE_MP_COMPLEX,
+            Some(code) => pd_menu::generated::MP_ARENAS
+                .iter()
+                .map(|a| a.stagenum as u8)
+                .find(|&n| pd_core::ids::stage_code(n) == Some(code.as_str()))
+                .or_else(|| assets.custom_levels().iter().find(|l| &l.code == code).map(|l| l.stagenum))
+                .ok_or_else(|| format!("--stage {code}: no such arena"))?,
+        };
         let mp = &mut menu.mp;
-        mp.setup.stagenum = STAGE_MP_COMPLEX;
+        mp.setup.stagenum = stagenum;
         mp.setup.scorelimit = score.saturating_sub(1).min(100);
         mp.setup.timelimit = minutes.map_or(60, |m| m.saturating_sub(1).min(60));
         mp.setup.chrslots = 0b1_0000 | ((1 << players) - 1);
@@ -229,8 +242,8 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     menu.vars.screensplit = if vsplit { SCREENSPLIT_VERTICAL } else { SCREENSPLIT_HORIZONTAL };
     menu.start_match();
     let Some(Outcome::StartMatch(setup)) = menu.take_outcome() else { return Err("the menus started no match".into()) };
-    let code = stage_code(setup.stagenum).ok_or("no stage code")?;
-    let stage = Arc::new(Stage::load(&assets, code)?);
+    let code = assets.stage_code(setup.stagenum).ok_or("no stage code")?;
+    let stage = Arc::new(Stage::load(&assets, &code)?);
     let level = Arc::new(TileLevel::for_stage(&stage));
     let res = Arc::new(WorldRes::load(&assets)?);
     let weapons = MenuSystem::weapon_set_weaponnums(&setup.weapons);
@@ -287,7 +300,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let gpu = HeadlessGpu::new()?;
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut renderer = Renderer::new(&gpu.device, &gpu.queue, format);
-    renderer.load_stage(&gpu.device, &gpu.queue, &assets, code)?;
+    renderer.load_stage(&gpu.device, &gpu.queue, &assets, &code)?;
     let target = RenderTarget::on_device(&gpu.device, w, h, format, true);
     let mut f = Flow { world, menu, lv: Lv::new(), gpu, renderer, target, over: false };
 

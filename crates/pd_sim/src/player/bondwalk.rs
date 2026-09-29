@@ -474,7 +474,7 @@ impl Player {
                     self.ladderupdown = sp74 * 0.3;
                 } else {
                     let (radius, ymax, _) = self.player_get_bbox();
-                    if env.level.cd_find_ladder(self.pos, radius * 1.1, ymax - self.pos.y, self.manground - self.pos.y + 1.0).is_none() {
+                    if env.level.cd_find_ladder(self.pos, radius * 1.1, ymax - self.pos.y, self.manground - self.pos.y + 1.0, GEOFLAG_LADDER | GEOFLAG_LADDER_PLAYERONLY).is_none() {
                         self.ladderupdown = 0.0;
                     } else {
                         spcc.x += sp74 * n.x;
@@ -574,10 +574,10 @@ impl Player {
 
         // On a ladder? A second, lower probe keeps the player "near" one without
         // taking the ground from under it (onladder2).
-        let mut onladder = level.cd_find_ladder(self.pos, radius * 1.2, ymax - self.pos.y, self.manground - self.pos.y + 1.0);
+        let mut onladder = level.cd_find_ladder(self.pos, radius * 1.2, ymax - self.pos.y, self.manground - self.pos.y + 1.0, GEOFLAG_LADDER | GEOFLAG_LADDER_PLAYERONLY);
         let mut onladder2 = false;
         if onladder.is_none() {
-            if let Some(n) = level.cd_find_ladder(self.pos, radius * 1.1, ymax - self.pos.y, self.manground - self.pos.y - 10.0) {
+            if let Some(n) = level.cd_find_ladder(self.pos, radius * 1.1, ymax - self.pos.y, self.manground - self.pos.y - 10.0, GEOFLAG_LADDER | GEOFLAG_LADDER_PLAYERONLY) {
                 onladder2 = true;
                 self.laddernormal = n;
             }

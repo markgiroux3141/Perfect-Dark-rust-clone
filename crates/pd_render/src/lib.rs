@@ -353,6 +353,11 @@ impl Renderer {
             if o.is_gone() {
                 continue;
             }
+            // obj_render (`propobj.c:12692`): lost in a fog stage's fog, not drawn.
+            let shade = obj_shade_mode(self.bg.as_ref(), w2e, o.pos, xray.is_some());
+            if shade == ShadeMode::Xlu {
+                continue;
+            }
             let mut frame = lit_frame(world_proj, p.look, p.up, obj_lights, env);
             tint_frame(&mut frame, o.room.and_then(|r| world.scenario_highlight_room(r)));
             let mut xlu = false;
@@ -372,6 +377,9 @@ impl Renderer {
             // propobj.c:12839).
             if let Some(h) = world.scenario_highlight_obj(pi, o) {
                 frame.fogcol = h.map(|v| v as f32 / 255.0);
+            }
+            if let (ShadeMode::Frac(a), Some(bg)) = (shade, self.bg.as_ref()) {
+                frame.fogcol = bg::obj_merge_colour_fracs(frame.fogcol, sky_f32(bg), a);
             }
             if let Some(e) = xray {
                 // In x-ray: the flat eraser colour through the fog at full
@@ -409,7 +417,9 @@ impl Renderer {
         // lit as the objects are, from the chr's floor room's brightness.
         for (ci, c) in world.chrs.iter().enumerate().filter(|(_, c)| c.player != Some(pi) && c.onanyscreen) {
             let alpha = chr_render_alpha(c);
-            if alpha <= 0.0 {
+            // chr_render (`chr.c:3446`): not drawn when lost in the fog.
+            let shade = obj_shade_mode(self.bg.as_ref(), w2e, c.pos, xray.is_some());
+            if alpha <= 0.0 || shade == ShadeMode::Xlu {
                 continue;
             }
             let cloak = c.cloak.alpha() as f32 / 255.0;
@@ -420,6 +430,9 @@ impl Renderer {
             // chr.c:3482) in place of the shade colour.
             if let Some(h) = world.scenario_highlight_chr(pi, ci) {
                 frame.fogcol = h.map(|v| v as f32 / 255.0);
+            }
+            if let (ShadeMode::Frac(a), Some(bg)) = (shade, self.bg.as_ref()) {
+                frame.fogcol = bg::obj_merge_colour_fracs(frame.fogcol, sky_f32(bg), a);
             }
             let mut xlu = alpha < 255.0;
             if xlu {
@@ -641,6 +654,31 @@ fn chr_render_alpha(c: &pd_sim::chr::Chr) -> f32 {
         alpha = alpha * (120 - a.fadeintimer60) as f32 * (1.0 / 120.0);
     }
     (alpha * (c.cloak.alpha() as f32 / 255.0)).trunc()
+}
+
+/// `SHADEMODE_*` (`constants.h:3690`): how the fog takes a prop.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ShadeMode {
+    Opa,
+    Frac(f32),
+    Xlu,
+}
+
+/// `env_get_obj_shade_mode` (`env.c:445`) for a prop at world `pos`: only on
+/// a fog stage, not in x-ray; `prop->z` is its depth ahead of the camera.
+fn obj_shade_mode(bg: Option<&bg::StageBg>, w2e: Mat4, pos: Vec3, xray: bool) -> ShadeMode {
+    let Some(bg) = bg.filter(|b| b.fog && !xray) else { return ShadeMode::Opa };
+    let z = -w2e.transform_point3(pos).z;
+    match bg::env_get_obj_shade_frac(&bg.env, z) {
+        None => ShadeMode::Opa,
+        Some(a) if a > 1.0 => ShadeMode::Xlu,
+        Some(a) => ShadeMode::Frac(a),
+    }
+}
+
+/// The sky colour (0..1), which fog stages fade to (`g_Env.skyredfrac`, ...).
+fn sky_f32(bg: &bg::StageBg) -> [f32; 3] {
+    bg.sky().map(|v| v as f32)
 }
 
 /// A model to draw: (model, visibility, joints (eye space), frame, cull, xlu).

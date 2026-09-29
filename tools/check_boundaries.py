@@ -3,7 +3,7 @@
     python tools/check_boundaries.py
 
 The rule is in docs/ARCHITECTURE.md: n64 (without its `gpu` feature), pd_core,
-pd_sim and pd_menu never depend on wgpu, winit, kira, gilrs or egui, directly or
+pd_sim, pd_menu and the level importer (pd_import) never depend on wgpu, winit, kira, gilrs or egui, directly or
 transitively; nothing below `engine` depends on `engine`; and the engine's
 source never names the game or the console.
 """
@@ -12,7 +12,7 @@ import re
 import subprocess
 import sys
 
-HEADLESS = ["n64", "pd_core", "pd_sim", "pd_menu"]
+HEADLESS = ["n64", "pd_core", "pd_sim", "pd_menu", "pd_import"]
 FORBIDDEN = {"wgpu", "winit", "kira", "gilrs", "egui", "egui-wgpu", "egui-winit", "engine"}
 
 

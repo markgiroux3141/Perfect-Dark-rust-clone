@@ -53,21 +53,38 @@ pub fn menuhandler_mp_teams_label(pd: &mut MenuSystem, op: i32, _item: &'static 
 }
 
 /// `mp_arena_menu_handler` (setup.c:157).
+///
+/// `// SUBST:` PD lists `g_MpArenas` in three groups (Dark, Classic,
+/// Random) / the custom levels (not PD: `pd_import`'s conversions) follow in a
+/// fourth group, "Custom", when there are any.
 pub fn mp_arena_menu_handler(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, data: &mut HandlerData) -> R {
     let groups: [(i32, u16); 3] = [(0, 116), (13, 117), (16, 118)];
     let unlocked: Vec<usize> = (0..MP_ARENAS.len()).filter(|&i| pd.challenge_is_feature_unlocked(MP_ARENAS[i].requirefeature)).collect();
     let no_classic = !pd.challenge_is_feature_unlocked(MPFEATURE_STAGE_COMPLEX) && !pd.challenge_is_feature_unlocked(MPFEATURE_STAGE_TEMPLE) && !pd.challenge_is_feature_unlocked(MPFEATURE_STAGE_FELICITY);
+    // The custom group follows PD's (index `pdgroups`), its rows after PD's.
+    let pdgroups = if no_classic { 2 } else { 3 };
+    let custom = !pd.custom_arenas.is_empty();
+    let is_custom_group = custom && data.value == pdgroups;
     match op {
-        MENUOP_GET_OPTION_COUNT => data.value = unlocked.len() as i32,
+        MENUOP_GET_OPTION_COUNT => data.value = (unlocked.len() + pd.custom_arenas.len()) as i32,
         MENUOP_GET_OPTION_TEXT => {
-            if let Some(&i) = unlocked.get(data.value.max(0) as usize) {
+            let k = data.value.max(0) as usize;
+            if let Some(&i) = unlocked.get(k) {
                 return pd.lang(MP_ARENAS[i].name).into();
+            }
+            if let Some(c) = pd.custom_arenas.get(k - unlocked.len()) {
+                return c.name.clone().into();
             }
         }
         MENUOP_CONFIRM => {
             // PD walks to index `data.value` among the unlocked arenas (or past the
             // end, which is the "Random" row's index 16 when all are unlocked).
-            let i = unlocked.get(data.value.max(0) as usize).copied().unwrap_or(MP_ARENAS.len() - 1);
+            let k = data.value.max(0) as usize;
+            if let Some(c) = k.checked_sub(unlocked.len()).and_then(|j| pd.custom_arenas.get(j)) {
+                pd.mp.setup.stagenum = c.stagenum;
+                return ok();
+            }
+            let i = unlocked.get(k).copied().unwrap_or(MP_ARENAS.len() - 1);
             pd.mp.setup.stagenum = MP_ARENAS[i].stagenum as u8;
         }
         MENUOP_GET_SELECTED_INDEX => {
@@ -80,13 +97,21 @@ pub fn mp_arena_menu_handler(pd: &mut MenuSystem, op: i32, _item: &'static MenuI
                     count += 1;
                 }
             }
+            if let Some(j) = pd.custom_arenas.iter().position(|c| c.stagenum == pd.mp.setup.stagenum) {
+                data.value = (unlocked.len() + j) as i32;
+            }
         }
         MENUOP_GET_OPTGROUP_COUNT => {
             data.value = 3;
             if no_classic {
                 data.value -= 1;
             }
+            if custom {
+                data.value += 1;
+            }
         }
+        MENUOP_GET_OPTGROUP_TEXT if is_custom_group => return "Custom\n".to_string().into(),
+        MENUOP_GET_OPTGROUP_START_INDEX if is_custom_group => data.groupstartindex = unlocked.len() as i32,
         MENUOP_GET_OPTGROUP_TEXT => {
             let mut count = data.value;
             if no_classic && count > 0 {
@@ -684,16 +709,11 @@ pub fn mp_menu_text_mpconfig_marquee(pd: &mut MenuSystem, _item: &'static MenuIt
         return String::new();
     }
     let (filename, numsims, stagenum, scenarionum) = MenuSystem::mpsetupfile_get_overview(&f.name);
-    let mut arenanum = -1;
-    for (i, a) in MP_ARENAS.iter().enumerate() {
-        if a.stagenum == stagenum as i32 {
-            arenanum = i as i32;
-        }
-    }
-    if scenarionum <= 5 && arenanum != -1 && !filename.is_empty() && numsims as i32 <= MAX_BOTS {
+    // PD's arenanum search over g_MpArenas, and the custom levels (not PD).
+    let arena = pd.arena_name(stagenum as u8);
+    if let (true, Some(arena)) = (scenarionum <= 5 && !filename.is_empty() && numsims as i32 <= MAX_BOTS, arena) {
         let fmt = pd.lang(tx(B_MPMENU, 140));
         let scen = pd.lang(MP_SCENARIO_OVERVIEWS[scenarionum as usize].name);
-        let arena = pd.lang(MP_ARENAS[arenanum as usize].name);
         return fmt.replacen("%s", &filename, 1).replacen("%s", &scen, 1).replacen("%s", &arena, 1).replacen("%d", &numsims.to_string(), 1);
     }
     String::new()
@@ -1612,7 +1632,7 @@ pub fn menuhandler_mp_save_settings(pd: &mut MenuSystem, op: i32, _item: &'stati
 }
 
 pub fn mp_menu_text_arena_name(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {
-    MP_ARENAS.iter().find(|a| a.stagenum == pd.mp.setup.stagenum as i32).map(|a| pd.lang(a.name)).unwrap_or_else(|| "\n".into())
+    pd.arena_name(pd.mp.setup.stagenum).unwrap_or_else(|| "\n".into())
 }
 
 pub fn mp_menu_text_weapon_set_name(pd: &mut MenuSystem, _item: &'static MenuItem) -> String {

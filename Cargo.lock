@@ -2234,6 +2234,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pd_import"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "glam 0.29.3",
+ "image",
+ "log",
+ "pd_core",
+ "pd_sim",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pd_menu"
 version = "0.1.0"
 dependencies = [

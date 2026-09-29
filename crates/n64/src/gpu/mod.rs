@@ -77,6 +77,19 @@ pub struct FrameUniform {
     /// without their own: PD sets it apart from the env colour
     /// (`renderdata.fogcolour`).
     pub fogcol: [f32; 4],
+    /// The RSP's fog (`G_FOG`, `gSPFogPosition`): x the multiplier and y the
+    /// offset ([`fog_factor`]), z 1 while `G_FOG` is set. Every vertex's shade
+    /// alpha is then its fog factor, which `G_RM_FOG_SHADE_A` blends by.
+    pub fogpos: [f32; 4],
+}
+
+/// `gSPFogPosition(min, max)` (`gbi.h`): the RSP's fog multiplier and offset,
+/// as the integers the macro packs (`128000 / (max − min)`,
+/// `(500 − min) × 256 / (max − min)`, C's truncating division). The RSP gives a
+/// vertex `clamp(z/w × fm + fo, 0, 255)` of fog, z/w in −1..1.
+pub fn fog_factor(min: i32, max: i32) -> (f32, f32) {
+    let d = (max - min).max(1);
+    ((128000 / d) as f32, ((500 - min) * 256 / d) as f32)
 }
 
 impl FrameUniform {
@@ -93,7 +106,17 @@ impl FrameUniform {
             flat: [0.0; 4],
             misc: [0.0; 4],
             fogcol: [1.0; 4],
+            fogpos: [0.0; 4],
         }
+    }
+
+    /// With `G_FOG` set: `gDPSetFogColor(colour)` and `gSPFogPosition(min, max)`
+    /// (`env_start_fog`, `env.c:378`).
+    pub fn with_fog(mut self, colour: [f32; 3], min: i32, max: i32) -> FrameUniform {
+        let (fm, fo) = fog_factor(min, max);
+        self.fogcol = [colour[0], colour[1], colour[2], 1.0];
+        self.fogpos = [fm, fo, 1.0, 0.0];
+        self
     }
 
     /// The RSP's LookAt vectors from the camera's look and up (eye space is the
@@ -135,6 +158,9 @@ pub struct Extras {
     pub fog: Option<[f32; 4]>,
     /// `G_TEXTURE_GEN_LINEAR`.
     pub texgen_linear: bool,
+    /// Cycle 1 of a two-cycle blender is `G_RM_FOG_SHADE_A`: the frame's fog
+    /// colour by the vertex's fog (a fog stage's BG, `g_GfxGroup01`).
+    pub fog_shade: bool,
 }
 
 /// Which pipeline a draw uses.
@@ -333,7 +359,7 @@ impl Combiner {
             tex: [size[0], size[1], t.ul[0], t.ul[1]],
             shift: [t.shift[0], t.shift[1], has_tex, if st.two_cycle { 1.0 } else { 0.0 }],
             flags: [alpha_test, extras.fog_tint as u32, extras.env_from_frame as u32, extras.fog.is_none() as u32],
-            flags2: [extras.texgen_linear as u32, 0, st.xlu as u32, (has_tex > 0.0 && t.bilerp) as u32],
+            flags2: [extras.texgen_linear as u32, extras.fog_shade as u32, st.xlu as u32, (has_tex > 0.0 && t.bilerp) as u32],
         };
         let buf = wgpu::util::DeviceExt::create_buffer_init(device, &wgpu::util::BufferInitDescriptor { label: Some("n64-material"), contents: bytemuck::bytes_of(&u), usage: wgpu::BufferUsages::UNIFORM });
         let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -466,10 +492,26 @@ mod tests {
         naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all()).validate(&module).unwrap();
     }
 
+    /// `gSPFogPosition(994, 1000)` (Kokiri Forest's day fog, PD's
+    /// `g_FogEnvironments` style): no fog up to 99.4% of the depth range, all
+    /// fog at the far plane.
+    #[test]
+    fn the_fog_position_packs_as_gbi_h_does() {
+        let (fm, fo) = fog_factor(994, 1000);
+        assert_eq!((fm, fo), (21333.0, -21077.0));
+        let fog = |zw: f32| (zw * fm + fo).clamp(0.0, 255.0);
+        assert!(fog(2.0 * 0.994 - 1.0) < 1.0);
+        assert_eq!(fog(1.0), 255.0);
+        assert!(fog(2.0 * 0.997 - 1.0) > 100.0 && fog(2.0 * 0.997 - 1.0) < 160.0);
+        // PD's Pelagic II row (env.c): 995..1000.
+        assert_eq!(fog_factor(995, 1000), (25600.0, -25344.0));
+    }
+
     #[test]
     fn the_uniforms_match_the_shaders_layout() {
-        // 4x4 matrix + 9 vec4s (M7 added the fog colour); 11 vec4s.
-        assert_eq!(std::mem::size_of::<FrameUniform>(), 64 + 9 * 16);
+        // 4x4 matrix + 10 vec4s (M7 added the fog colour, M15 the fog
+        // position); 11 vec4s.
+        assert_eq!(std::mem::size_of::<FrameUniform>(), 64 + 10 * 16);
         assert_eq!(std::mem::size_of::<MaterialUniform>(), 11 * 16);
         assert_eq!(std::mem::size_of::<Vertex>(), 44);
     }

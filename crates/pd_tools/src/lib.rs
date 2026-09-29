@@ -10,12 +10,14 @@ use pd_core::assets::AssetDir;
 pub mod lab;
 pub mod snapshot;
 
-/// The asset root: `PD_ASSETS` if set, else the repo's `assets/`.
+/// The asset root: `PD_ASSETS` if set, else the repo's `assets/`; with the
+/// custom levels (`PD_CUSTOM`, else `custom/` beside it) when there are any.
 pub fn assets() -> AssetDir {
-    match std::env::var_os("PD_ASSETS") {
+    let a = match std::env::var_os("PD_ASSETS") {
         Some(p) => AssetDir::new(p),
         None => AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR")),
-    }
+    };
+    a.with_custom_levels()
 }
 
 /// Write tightly packed RGBA8 as a PNG, creating the directory.

@@ -109,6 +109,8 @@ struct RawNode {
 #[derive(Deserialize)]
 struct RawBg {
     nodes: Vec<RawNode>,
+    #[serde(default)]
+    textures: HashMap<String, PoolEntry>,
 }
 
 #[derive(Deserialize)]
@@ -131,9 +133,11 @@ impl BgHitMesh {
             let node = raw.nodes.get(b.node).ok_or("bg.json: a batch's node is missing")?;
             let Some(room) = node.room else { continue };
             let m = &def.materials[b.material];
-            // A pool texture's number; a texture stored in the file has none.
-            let surface = m.texture.as_ref().filter(|t| t.id < 0x10000).map(|t| {
-                let e = pool.get(&format!("{:04x}", t.id));
+            // A pool texture's number, whose `g_Textures` row the pool index
+            // keeps; a texture stored in the file carries its own surface
+            // types in its `textures` entry (a custom level's).
+            let surface = m.texture.as_ref().map(|t| {
+                let e = if t.id < 0x10000 { pool.get(&format!("{:04x}", t.id)) } else { raw.textures.get(&t.id.to_string()) };
                 TexSurface { soundsurfacetype: e.map_or(0, |e| e.soundsurfacetype), surfacetype: e.map_or(0, |e| e.surfacetype) }
             });
             let start = mesh.tris.len();

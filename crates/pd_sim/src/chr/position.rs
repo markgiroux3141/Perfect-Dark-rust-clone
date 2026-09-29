@@ -119,7 +119,7 @@ impl World {
             arg2.z = arg1.z + mv.y;
         }
         // chr.c:618: a chr on a go-to touching a ladder climbs it.
-        c.onladder = c.actiontype == Act::GoPos && level.cd_find_ladder(c.pos, c.radius * 2.5, c.manground + c.height - c.pos.y, c.manground + 1.0 - c.pos.y).is_some();
+        c.onladder = c.actiontype == Act::GoPos && level.cd_find_ladder(c.pos, c.radius * 2.5, c.manground + c.height - c.pos.y, c.manground + 1.0 - c.pos.y, GEOFLAG_LADDER).is_some();
         if c.aibot.is_some() {
             // chr.c:628: the height, from the go-to's pad flags and the tiles.
             c.height = 185.0;

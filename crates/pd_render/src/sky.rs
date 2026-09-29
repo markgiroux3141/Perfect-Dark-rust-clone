@@ -26,7 +26,7 @@ use wgpu::util::DeviceExt;
 /// `TEXTURE_0013` (`g_TcSkyWaterConfigs[TEX_ENV_00]`): 64 × 64 IA8, wrapped.
 pub const TEX_CLOUDS: u16 = 0x0013;
 
-/// `struct nofogenvironment`'s sky fields (`bg.json` `env`).
+/// The environment row's sky fields (`bg.json` `env`, either table).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SkyEnv {
     pub sky: [u8; 3],

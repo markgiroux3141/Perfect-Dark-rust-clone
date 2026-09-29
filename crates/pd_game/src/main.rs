@@ -38,7 +38,6 @@ use n64::pad::{A_BUTTON, MAX_PADS, START_BUTTON};
 use n64::rdp::Gfx;
 use pd_core::assets::AssetDir;
 use pd_core::events::Event;
-use pd_core::ids::stage_code;
 use pd_core::lv::Lv;
 use pd_core::mp::MatchSetup;
 use pd_menu::mpstate::Profile;
@@ -171,6 +170,11 @@ impl PdGame {
             log::info!("save: the Game Pak is {}{}", p.display(), if profile == Profile::Complete { " (not written while everything is unlocked)" } else { "" });
         }
         let mut menu = MenuSystem::new_with_eeprom(assets, profile, eeprom)?;
+        // Not PD: a "Tester" agent with everything done, for testing (kept in
+        // the save like any agent; made once).
+        if profile == Profile::Files && menu.make_tester_agent() {
+            log::info!("save: made the agent {:?} (everything unlocked)", pd_menu::filemgr::TESTER_AGENT);
+        }
         if combat {
             let agent = menu.load_agent_without_select();
             log::info!("save: agent {agent}");
@@ -240,7 +244,8 @@ impl PdGame {
 
     /// The menus handed over a match: play it if its arena is exported.
     fn start_match(&mut self, ctx: &mut Ctx, setup: MatchSetup) {
-        let code = stage_code(setup.stagenum).unwrap_or("");
+        let code = self.assets.stage_code(setup.stagenum).unwrap_or_default();
+        let code = code.as_str();
         if !self.match_assets.has_stage(code) {
             let lines = self.menu.describe_match(&setup);
             self.screen = Screen::StandIn { setup, lines };
@@ -672,7 +677,11 @@ fn main() {
         let root = AssetRoot::discover("PD_ASSETS", "assets", "MANIFEST.json")?;
         log::info!("assets: {}", root.root().display());
         let save_path = (!fresh).then(|| save::locate(root.root()));
-        let game = PdGame::new(AssetDir::new(root.root()), profile, combat, save_path)?;
+        let assets = AssetDir::new(root.root()).with_custom_levels();
+        if let Some(dir) = assets.custom_dir() {
+            log::info!("custom levels: {} ({} listed)", dir.display(), assets.custom_levels().len());
+        }
+        let game = PdGame::new(assets, profile, combat, save_path)?;
         let config = AppConfig { title: "Perfect Dark".into(), size: (1280, 960), tick_hz: 60.0, ..AppConfig::default() };
         engine::app::run(config, game)
     };
@@ -721,7 +730,7 @@ mod tests {
         let mut ma = MatchAssets::new(&assets);
         for code in pd_sim::stage::ARENAS {
             assert!(ma.has_stage(code), "{code}");
-            let stagenum = (0..=255u8).find(|&n| stage_code(n) == Some(code)).unwrap();
+            let stagenum = (0..=255u8).find(|&n| pd_core::ids::stage_code(n) == Some(code)).unwrap();
             let setup = MatchSetup { stagenum, players: vec![pd_core::mp::MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
             let mut world = ma.start(setup, code, 3).unwrap();
             let start = world.players[0].pos;

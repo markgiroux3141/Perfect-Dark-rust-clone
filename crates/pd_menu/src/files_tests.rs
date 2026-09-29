@@ -189,3 +189,26 @@ fn the_load_player_list_shows_saved_players() {
     assert_eq!(list.numfiles(), 1);
     assert_eq!(pd.filemgr_get_select_name(&list.files[0], FILETYPE_MPPLAYER), "Joanna-2:07\n");
 }
+
+/// Not PD: the Tester agent. On a blank Game Pak it is made once (a second
+/// call finds it); the menus' own agent stays the defaults; loaded, it has
+/// every arena, weapon and challenge PD's unlock rules open, and a second boot
+/// from the image still lists it.
+#[test]
+fn the_tester_agent_has_everything_unlocked() {
+    let mut pd = MenuSystem::new(&assets(), Profile::Files).unwrap();
+    let locked = crate::generated::MP_ARENAS.iter().filter(|a| !pd.challenge_is_feature_unlocked(a.requirefeature)).count();
+    assert!(locked > 0, "a new agent has arenas to unlock");
+    assert!(pd.make_tester_agent());
+    assert!(!pd.make_tester_agent(), "made once");
+    assert_eq!(cstr_to_string(&pd.gamefile.name), "Dark", "the menus' agent is the default still");
+    let mut q = MenuSystem::new_with_eeprom(&assets(), Profile::Files, Some(pd.paks.eeprom.clone())).unwrap();
+    assert!(!q.make_tester_agent(), "found on the next boot");
+    assert_eq!(q.load_agent_without_select(), super::filemgr::TESTER_AGENT);
+    assert!(crate::generated::MP_ARENAS.iter().all(|a| q.challenge_is_feature_unlocked(a.requirefeature)));
+    // Entering the Combat Simulator works the unlocks out again (the load did it before the weapons found).
+    q.open_combat_simulator();
+    let locked: Vec<i32> = crate::generated::MP_WEAPONS.iter().filter(|w| !q.challenge_is_feature_unlocked(w.unlockfeature)).map(|w| w.weaponnum).collect();
+    assert!(locked.is_empty(), "locked weapons: {locked:?}");
+    assert!((0..q.mp.challenges.len()).all(|i| q.challenge_is_completed_by_any_player_with_num_players(i, 1)));
+}

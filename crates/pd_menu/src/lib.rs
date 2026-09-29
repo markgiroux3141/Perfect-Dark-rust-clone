@@ -381,6 +381,9 @@ pub struct MenuSystem {
     pub mpsetup_filelists_made: bool,
     /// `var8006294c`: a dialog was open at the last `menu_tick`.
     pub menus_were_open: bool,
+    /// Not PD: the custom levels (`custom/levels.json`), listed after PD's
+    /// arenas in a group of their own ([`handlers::mp_arena_menu_handler`]).
+    pub custom_arenas: Vec<pd_core::assets::CustomLevel>,
 }
 
 impl MenuSystem {
@@ -438,6 +441,7 @@ impl MenuSystem {
             filelists_active: false,
             mpsetup_filelists_made: false,
             menus_were_open: false,
+            custom_arenas: assets.custom_levels(),
         };
         pd.pads[0].connected = true;
         for m in pd.menus.iter_mut() {
@@ -729,6 +733,16 @@ impl MenuSystem {
         self.in_match = true;
     }
 
+    /// The arena menu's name for a stage: `g_MpArenas`' (the first match, as
+    /// the text functions search), else a custom level's (not PD).
+    pub fn arena_name(&self, stagenum: u8) -> Option<String> {
+        generated::MP_ARENAS
+            .iter()
+            .find(|a| a.stagenum == stagenum as i32)
+            .map(|a| self.lang(a.name))
+            .or_else(|| self.custom_arenas.iter().find(|c| c.stagenum == stagenum).map(|c| c.name.clone()))
+    }
+
     /// `mp_choose_random_stage` (setup.c:130): one of the first 16 arenas that
     /// is unlocked, by `random()`.
     pub fn mp_choose_random_stage(&mut self) -> i32 {
@@ -811,7 +825,7 @@ impl MenuSystem {
     pub fn describe_match(&self, m: &MatchSetup) -> Vec<String> {
         let mut lines = Vec::new();
         let scen = self.lang(generated::MP_SCENARIO_OVERVIEWS[m.scenario as usize % 6].name);
-        let arena = generated::MP_ARENAS.iter().find(|a| a.stagenum == m.stagenum as i32).map(|a| self.lang(a.name)).unwrap_or_default();
+        let arena = self.arena_name(m.stagenum).unwrap_or_default();
         lines.push(format!("Scenario: {}", scen.trim()));
         lines.push(format!("Arena: {}", arena.trim()));
         // A slot holds a g_MpWeapons index; the label takes the option index

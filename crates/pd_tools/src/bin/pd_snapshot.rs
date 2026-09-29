@@ -15,7 +15,7 @@
 //!   a Combat match with simulants, the player's whole frame (M6);
 //! * `lab [<code>] [--bots n] [--diff d] [--seed s] [--at s] [--ours]`: `pd_lab`'s
 //!   top-down map of a simulants-only match (M6);
-//! * `flow [--score n] [--minutes m] [--seed s] <steps...>`: a match with the
+//! * `flow [--stage code] [--score n] [--minutes m] [--seed s] <steps...>`: a match with the
 //!   menus over it under a scripted controller: the pause menu, the kill feed,
 //!   the end screens, back to the menus (M7; the steps are in
 //!   `pd_tools::snapshot::flow`);

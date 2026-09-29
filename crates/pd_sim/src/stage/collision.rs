@@ -361,7 +361,7 @@ impl TileLevel {
         let sight = pick(&|p| p.blocks_sight);
         let shot = pick(&|p| p.blocks_shot);
         let any_blocker = pick(&|p| p.wall || p.blocks_sight || p.blocks_shot);
-        let ladders = pick(&|p| p.ladder);
+        let ladders = pick(&|p| p.ladder_flags() != 0);
         let crouch = pick(&|p| p.crouch);
         let duck = pick(&|p| p.duck);
         let room_neighbours = infer_room_neighbours(&geom);
@@ -520,10 +520,17 @@ impl TileLevel {
         self.first_touching(list, pos, radius, ymax, ymin).is_some()
     }
 
-    /// `cd_find_ladder` (`collision.c:2163`): the first ladder tile a cylinder of
-    /// `width` at `pos` touches, and its normal turned to face `pos`.
-    pub fn cd_find_ladder(&self, pos: Vec3, width: f32, ymax: f32, ymin: f32) -> Option<Vec3> {
-        let p = self.first_touching(&self.ladders, pos, width, ymax, ymin)?;
+    /// `cd_find_ladder` (`collision.c:2163`): the first tile with any of
+    /// `geoflags` (a chr asks for `GEOFLAG_LADDER`, `chr.c:622`; a player also
+    /// for `GEOFLAG_LADDER_PLAYERONLY`, `bondwalk.c:792`) a cylinder of `width`
+    /// at `pos` touches, and its normal turned to face `pos`.
+    pub fn cd_find_ladder(&self, pos: Vec3, width: f32, ymax: f32, ymin: f32, geoflags: u32) -> Option<Vec3> {
+        let p = self
+            .ladders
+            .iter()
+            .copied()
+            .filter(|&p| self.geom.polys[p].ladder_flags() & geoflags != 0)
+            .find(|&p| self.tile_in_range(p, pos, width, true, ymax, ymin) && self.volume_collect_tile(p, pos.x, pos.z, width).is_some())?;
         let poly = &self.geom.polys[p];
         let n = poly.normal;
         Some(if (pos - poly.verts[0]).dot(n) < 0.0 { -n } else { n })
@@ -1649,6 +1656,25 @@ mod tests {
 
     fn arena() -> TileLevel {
         TileLevel::new(fixtures::arena())
+    }
+
+    /// `cd_find_ladder` matches the geoflags asked for: a
+    /// `GEOFLAG_LADDER_PLAYERONLY` tile is a ladder to a player
+    /// (`bondwalk.c:792` asks for both bits) and not to a chr (`chr.c:622`).
+    #[test]
+    fn a_player_only_ladder_is_climbed_by_players_alone() {
+        use pd_core::ids::{GEOFLAG_LADDER, GEOFLAG_LADDER_PLAYERONLY, GEOFLAG_WALL};
+        let wall = |x: f32, flags: u32| {
+            let v = vec![Vec3::new(x, 0.0, -50.0), Vec3::new(x, 0.0, 50.0), Vec3::new(x, 150.0, 50.0), Vec3::new(x, 150.0, -50.0)];
+            GeomPoly::from_tile(1, GEOFLAG_WALL | flags, 0, v)
+        };
+        let l = TileLevel::new(LevelGeom { polys: vec![wall(0.0, GEOFLAG_LADDER_PLAYERONLY), wall(500.0, GEOFLAG_LADDER)], rooms: vec![1] });
+        let near = |x: f32| Vec3::new(x - 25.0, 50.0, 0.0);
+        let player = GEOFLAG_LADDER | GEOFLAG_LADDER_PLAYERONLY;
+        assert!(l.cd_find_ladder(near(0.0), 30.0, 130.0, -49.0, player).is_some());
+        assert!(l.cd_find_ladder(near(0.0), 30.0, 130.0, -49.0, GEOFLAG_LADDER).is_none());
+        assert!(l.cd_find_ladder(near(500.0), 30.0, 130.0, -49.0, GEOFLAG_LADDER).is_some());
+        assert!(l.cd_find_ladder(near(500.0), 30.0, 130.0, -49.0, player).is_some());
     }
 
     #[test]

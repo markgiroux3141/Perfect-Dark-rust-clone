@@ -64,6 +64,13 @@ impl GeomPoly {
         GeomPoly { verts, normal, floor, wall, blocks_sight, blocks_shot, room, ladder: false, crouch: false, duck: false, floortype: 0, geoflags: 0 }
     }
 
+    /// The ladder bits it has, `GEOFLAG_LADDER` and `GEOFLAG_LADDER_PLAYERONLY`
+    /// (what `cd_find_ladder` matches; a fixture's ladder is `ladder` alone).
+    pub fn ladder_flags(&self) -> u32 {
+        use pd_core::ids::{GEOFLAG_LADDER, GEOFLAG_LADDER_PLAYERONLY};
+        (if self.ladder { GEOFLAG_LADDER } else { 0 }) | (self.geoflags & (GEOFLAG_LADDER | GEOFLAG_LADDER_PLAYERONLY))
+    }
+
     /// |cos| of the angle between the polygon's plane normal and +Y: 1 = level.
     pub fn tilt_cos(&self) -> f32 {
         self.normal.y.abs()

@@ -47,9 +47,11 @@ use crate::view::View;
 /// The render context's env colour for a BG material that never set one.
 const BG_ENV: [u8; 4] = [255, 255, 255, 255];
 
-/// `struct nofogenvironment`'s fields the view needs (`bg.json` `env`).
+/// The stage's environment row (`bg.json` `env`), the fields the view needs:
+/// a `struct nofogenvironment`, or with fog a `struct fogenvironment`, which
+/// adds `fogmin`/`fogmax` (`env.c`: `g_NoFogEnvironments`, `g_FogEnvironments`).
 #[derive(Deserialize, Clone, Copy, Debug)]
-pub struct NoFogEnv {
+pub struct EnvRow {
     pub near: f32,
     pub far: f32,
     pub sky_r: u8,
@@ -61,12 +63,60 @@ pub struct NoFogEnv {
     pub clouds_b: u8,
     pub clouds_scale: f32,
     pub clouds_height: f32,
+    /// A fog row's fog range, thousandths of the depth range (`g_Env.fogmin`,
+    /// `fogmax`); 0 for a no-fog row.
+    #[serde(default)]
+    pub fogmin: i32,
+    #[serde(default)]
+    pub fogmax: i32,
 }
 
+/// `bg.json` `env`: `fog` is `g_FogEnabled` (`env_choose_and_apply`), with the
+/// row it was chosen from.
 #[derive(Deserialize)]
 struct EnvHeader {
     fog: bool,
-    nofogenvironment: NoFogEnv,
+    nofogenvironment: Option<EnvRow>,
+    fogenvironment: Option<EnvRow>,
+}
+
+impl EnvHeader {
+    fn row(&self, code: &str) -> Result<(EnvRow, bool), String> {
+        match (self.fog, self.fogenvironment, self.nofogenvironment) {
+            (true, Some(r), _) => Ok((r, true)),
+            (false, _, Some(r)) => Ok((r, false)),
+            _ => Err(format!("stage {code}: bg.json's env has no row for fog = {}", self.fog)),
+        }
+    }
+}
+
+/// `env_tick`'s shade settings (`env.c:158`) and `env_get_obj_shade_mode`
+/// (`env.c:445`): how far into the fog an object or chr at eye depth `z`
+/// is, for `obj_merge_colour_fracs`. `None` is `SHADEMODE_OPA` (no fog on
+/// it), `Some(1.0..)` `SHADEMODE_XLU` (lost in it: not drawn), else
+/// `SHADEMODE_FRAC`.
+pub fn env_get_obj_shade_frac(env: &EnvRow, z: f32) -> Option<f32> {
+    if z < 0.0 {
+        return None;
+    }
+    // bg_get_scale_bg2gfx is 1 on an arena.
+    let (znear, zfar) = (env.near, env.far);
+    let minfrac = env.fogmin as f32 * 0.001;
+    let maxfrac = env.fogmax as f32 * 0.001;
+    let sp28 = 128.0 / (maxfrac - minfrac);
+    let sp24 = (0.5 - minfrac) * 256.0 / (maxfrac - minfrac);
+    let alphafar = -sp28 * zfar * (znear + 1.0) / (zfar - znear) / 255.0;
+    let alphanear = (sp28 * (zfar + 1.0) / (zfar - znear) + sp24) / 255.0;
+    let a = alphanear + alphafar / z;
+    (a >= 0.0).then_some(a)
+}
+
+/// `obj_merge_colour_fracs` (`propobj.c:1751`): the shade colour (0..1)
+/// moved `frac` of the way to the sky, its alpha to full.
+pub fn obj_merge_colour_fracs(colour: [f32; 4], sky: [f32; 3], frac: f32) -> [f32; 4] {
+    let c = colour.map(|v| v * 255.0);
+    let mix = |tmp: f32, to: f32| ((tmp + (to - tmp) * frac) as i32) as f32 / 255.0;
+    [mix(c[0], sky[0] * 255.0), mix(c[1], sky[1] * 255.0), mix(c[2], sky[2] * 255.0), mix(c[3], 255.0)]
 }
 
 /// A layer's block tree (`pd_bg.bsp_tree`): a leaf, or a parent's plane and
@@ -157,8 +207,10 @@ struct RoomDraws {
 
 pub struct StageBg {
     pub def: Arc<ModelDef>,
-    /// The stage's environment row: z range and sky.
-    pub env: NoFogEnv,
+    /// The stage's environment row: z range, sky, fog range.
+    pub env: EnvRow,
+    /// `g_FogEnabled`: the BG is drawn with `G_FOG`, fading to the sky colour.
+    pub fog: bool,
     vbuf: wgpu::Buffer,
     ibuf: wgpu::Buffer,
     draws: Vec<Draw>,
@@ -206,9 +258,7 @@ impl StageBg {
         let dir = assets.stage(code);
         let def = Arc::new(ModelDef::load_file(assets, &dir.join("bg.json"), &dir.join("bg.bin"))?);
         let header: Header = assets.read_json(&dir.join("bg.json"))?;
-        if header.env.fog {
-            return Err(format!("stage {code} runs with fog, which the BG does not draw yet"));
-        }
+        let (env, fog) = header.env.row(code)?;
         if header.nodes.len() != def.nodes.len() || header.batches.len() != def.batches.len() {
             return Err(format!("stage {code}: bg.json's nodes/batches don't match its model"));
         }
@@ -236,7 +286,7 @@ impl StageBg {
             .map(|m| {
                 let st = draw_state(m, None, BG_ENV, Cull::Back);
                 let tex = m.texture.as_ref().and_then(|t| textures.get(&t.id));
-                let extras = Extras { env_from_frame: false, fog_tint: m.fog_tint, fog: m.fog.map(rgba_f), texgen_linear: m.texgen_linear };
+                let extras = Extras { env_from_frame: false, fog_tint: m.fog_tint, fog: m.fog.map(rgba_f), texgen_linear: m.texgen_linear, fog_shade: m.fog_shade };
                 combiner.material(device, &st, tex, &extras)
             })
             .collect();
@@ -343,7 +393,8 @@ impl StageBg {
         let n = rooms.len();
         Ok(StageBg {
             def,
-            env: header.env.nofogenvironment,
+            env,
+            fog,
             vbuf,
             ibuf,
             draws,
@@ -379,6 +430,11 @@ impl StageBg {
     /// on screen get their brightness (`room_highlight`) and animated textures.
     pub fn prepare(&self, queue: &wgpu::Queue, view: &View, three_point: bool, frame: Option<&BgFrame>) {
         let mut f = FrameUniform::new(view.projection()).with_lookat(view.look, view.up);
+        if self.fog {
+            // env_start_fog (env.c:378): the sky's colour, g_Env's range, G_FOG.
+            let s = self.sky();
+            f = f.with_fog([s[0] as f32, s[1] as f32, s[2] as f32], self.env.fogmin, self.env.fogmax);
+        }
         f.misc[1] = three_point as u32 as f32;
         self.slot.write(queue, &f, &[view.world_to_eye()]);
         let Some(frame) = frame else { return };
@@ -729,6 +785,28 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// `env_get_obj_shade_mode` over a fog row like Kokiri Forest's (z 25 to
+    /// 14500, fog from 994/1000 of the depth): nothing behind the camera or
+    /// near it, then a fraction rising through the fog, and past the far plane
+    /// lost in it. `env_tick`'s `znear + 1` (kept) starts a prop's fog at ~19 m
+    /// where the RSP's on the BG starts at ~32 m. `obj_merge_colour_fracs`
+    /// moves the colour that fraction to the sky and the alpha to full.
+    #[test]
+    fn a_prop_fades_into_the_fog_as_env_c_has_it() {
+        let env = super::EnvRow {
+            near: 25.0, far: 14500.0, sky_r: 200, sky_g: 200, sky_b: 150, clouds_enabled: 0, clouds_r: 0, clouds_g: 0, clouds_b: 0,
+            clouds_scale: 0.0, clouds_height: 0.0, fogmin: 994, fogmax: 1000,
+        };
+        let f = |z: f32| super::env_get_obj_shade_frac(&env, z);
+        assert_eq!(f(-10.0), None);
+        assert_eq!(f(1500.0), None);
+        let (a, b) = (f(3000.0).unwrap(), f(10000.0).unwrap());
+        assert!((a - 0.428).abs() < 0.005 && (b - 0.936).abs() < 0.005, "{a} {b}");
+        assert!(f(20000.0).unwrap() > 1.0);
+        let m = super::obj_merge_colour_fracs([0.5, 0.5, 0.5, 0.25], [1.0, 1.0, 0.5], 0.5);
+        assert_eq!(m.map(|v| (v * 255.0).round() as i32), [191, 191, 127, 159]);
     }
 
     /// `room_highlight`: at full brightness nothing changes; a room at 128
