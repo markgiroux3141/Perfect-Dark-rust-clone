@@ -6,7 +6,7 @@
 //!
 //! `// SUBST:` PD ticks a chr in a room off every screen less often, in the
 //! background (`props_tick_player`'s prop states) / every chr is in the
-//! foreground every frame, as every room is on screen until M9's portals.
+//! foreground every frame.
 //!
 //! Source: the old repo's `pd_spike/chraction.rs` (`chr_tick`, footsteps),
 //! checked against `chr.c` and `footstep.c`.

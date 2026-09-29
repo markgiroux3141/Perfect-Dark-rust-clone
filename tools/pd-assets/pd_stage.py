@@ -12,11 +12,16 @@ its collision tiles, its pads and waypoint graph, and its MP setup.
 **bg.json** is a `pd-model/1` header (see `pd_models.py`) with one POSITION root
 and one DL node per room and layer (`room`, `layer` "opa"/"xlu", and `tree`, the
 BSP of a layer with parent blocks, `pd_bg.bsp_tree`), vertices in world
-centimetres, textures from the pool (`textures/<num>.png`). Extra header keys:
-`stage`, `units`, `env` (fog/transparency, `env.c`), `rooms` (`g_BgRooms` pos,
-brightness range, the room's opa/xlu node, bounding box), `section2_textures`.
-Not exported yet (M9, room lighting and animated textures): the per-vertex colour
-index `room_highlight` rescales, and the `dyntex` s/t.
+centimetres, textures from the pool (`textures/<num>.png`). Each batch's header
+entry also carries `leaf` (its block within the layer), `cidx` (per vertex, the
+index into the room's colour table that `room_highlight` rescales) and, for the
+animated textures, `dyntex` (the kind), `st` (the raw s,t `dyntex_tick_room`
+rewrites) and `stscale` (each vertex's `G_TEXTURE` s/t scale: U = s × scale
+>> 16, in 1/32 texels). Extra header keys: `stage`, `units`, `env` (fog/transparency,
+`env.c`), `rooms` (`g_BgRooms` pos and brightness range, section 3's bounding
+box and light count, the room's opa/xlu node), `portals` (`g_BgPortals`: the
+two rooms, flags, vertices), `bgcmds` (`g_BgCommands`), `lights` (the lights
+file data, `struct light`), `section2_textures`.
 
 **tiles.json** (`pd-tiles/1`): `rooms` (every room number the tiles file names,
 ascending) and `tiles[]`, each `{room, flags, floortype, floorcol, verts}`:
@@ -25,7 +30,8 @@ booleans, `floortype` is `FLOORTYPE_*` (`constants.h:961`), `verts` the outline
 in cm. The tiles keep the decomp file's order within a room, rooms ascending.
 
 **pads.json** (`pd-pads/1`): `pads[]` `{pos, look, up, flags, bbox, liftnum}`
-with `flags` PD's `PADFLAG_*` bits (`constants.h:3321`); `waypoints[]` `{pad,
+with `flags` PD's `PADFLAG_*` bits (`constants.h:3321`, `PADFLAG_HASBBOXDATA`
+as `mkpads` sets it); `waypoints[]` `{pad,
 group, neighbours}` and `waygroups[]` `{neighbours}`, neighbours as PD encodes
 them (`id | WPSEGFLAG_OUTWARDSONLY 0x4000 | WPSEGFLAG_INWARDSONLY 0x8000`,
 `padhalllv.c:44`); `cover[]` `{pos, look, special}`.
@@ -35,7 +41,10 @@ its `g_Stages` row by `struct stagetableentry`'s field names), `intro[]`
 and `props[]`, one object per macro in the setup file, `{type, <param>: value}`
 with the parameter names of the macro's `#define` (`include/intro.h`,
 `include/props.h`). Pads are pad numbers; other arguments are evaluated where
-the headers define them, else kept as their source text.
+the headers define them, else kept as their source text. `bgai[]`: the
+background AI lists (`ailists[]` from id 0x1000), `{id, cmds[]}`, each command
+`{type, <param>: value}` (only the few an MP setup uses: `activate_lift`,
+`set_ailist`, `set_wind_speed` and the simulant set-up).
 
 Usage:
     python tools/pd-assets/pd_stage.py              # every stage in pd_bg.STAGES
@@ -92,6 +101,8 @@ PADFLAGS = {
     "aiduck": 0x10000,
 }
 
+PADFLAG_HASBBOXDATA = 0x0200  # constants.h:3330
+
 WPSEGFLAG_OUTWARDSONLY = 0x4000  # padhalllv.c:44
 WPSEGFLAG_INWARDSONLY = 0x8000  # padhalllv.c:45
 
@@ -139,7 +150,7 @@ def export_bg(stem: str, pool: pd_models.TexturePool) -> dict:
     filenum, filename = bg_file(stem)
     model = {k: d[k] for k in ("name", "source", "nummatrices", "nodes", "parts", "materials", "batches")}
     model.update(skel=None, textures=textures)
-    extra = {k: d[k] for k in ("stage", "units", "env", "rooms", "section2_textures")}
+    extra = {k: d[k] for k in ("stage", "units", "env", "rooms", "portals", "bgcmds", "lights", "section2_textures")}
     nbytes, tris = pd_models.write_model(model, "bg", filenum, filename, out("stages", stem), EXPORTER, extra)
     return {"bg_tris": tris, "bg_bytes": nbytes, "bg_textures": len(textures)}
 
@@ -192,6 +203,11 @@ def export_pads(stem: str) -> dict:
         for key, bit in PADFLAGS.items():
             if p.get(key):
                 flags |= bit
+        # mkpads (tools/assetmgr/mkpads:185): a box other than ±100 is stored,
+        # and flagged; pad_unpack gives ±100 without it (pad.c:82).
+        box = (p["xmin"], p["xmax"], p["ymin"], p["ymax"], p["zmin"], p["zmax"])
+        if box != (-100, 100, -100, 100, -100, 100):
+            flags |= PADFLAG_HASBBOXDATA
         pads.append({"pos": p["pos"], "look": p["dir"], "up": p["up"], "flags": flags,
                      "bbox": [p["xmin"], p["xmax"], p["ymin"], p["ymax"], p["zmin"], p["zmax"]],
                      "liftnum": p.get("liftnum", 0)})
@@ -269,9 +285,64 @@ def stage_row(stage_name: str) -> dict:
     return row
 
 
+#: The setup macros that place a model (their `model` argument).
+MODEL_MACROS = ("stdobject", "door", "lift", "glass", "tinted_glass", "hover_prop", "weapon", "ammocratemulti")
+
+
+def setup_models(c, macros: tuple[str, ...] = MODEL_MACROS) -> list[int]:
+    """Every MODEL_ number an arena's MP setup places with one of `macros`,
+    sorted (`pd_models.py` exports them)."""
+    params = macro_params("intro.h", "props.h")
+    found = set()
+    for stem in pd_bg.STAGES:
+        text = gen.preprocess(gen.read(src("setups", f"mp_setup{stem}.c")))
+        m = re.search(r"\bprops\[\]\s*=\s*\{(.*?)\n\};", text, re.S)
+        for macro, args in calls(m.group(1)):
+            if macro in macros:
+                found.add(c.eval(args[params[macro].index("model")]))
+    return sorted(found)
+
+
+#: The commands an MP setup's background AI lists use (`include/commands.h`),
+#: by their parameter names. Anything else is an error: the world would not run it.
+BGAI_COMMANDS = {
+    "activate_lift": ["liftid", "object"],
+    "set_ailist": ["chr", "ailist"],
+    "set_wind_speed": ["speed"],
+    "mp_init_simulants": [], "rebuild_teams": [], "rebuild_squadrons": [],
+}
+
+
+def bg_ailists(text: str, path: str, value) -> list[dict]:
+    """The setup's background AI lists (`ailists[]` ids from 0x1000, each run
+    by a BG chr, `chraireset.c:53`) as `{id, cmds: [{type, <param>: value}]}`."""
+    m = re.search(r"\bailists\[\]\s*=\s*\{(.*?)\n\};", text, re.S)
+    if not m:
+        raise SystemExit(f"{decomp_rel(path)}: no ailists[]")
+    lists = []
+    for fm in re.finditer(r"\{\s*(\w+)\s*,\s*(0x[0-9a-fA-F]+|\d+)\s*\}", m.group(1)):
+        func, lid = fm.group(1), int(fm.group(2), 0)
+        if func == "NULL" or lid < 0x1000:
+            continue
+        bm = re.search(rf"\bu8\s+{func}\[\]\s*=\s*\{{(.*?)\n\}};", text, re.S)
+        if not bm:
+            raise SystemExit(f"{decomp_rel(path)}: no {func}[]")
+        cmds = []
+        for macro, args in calls(bm.group(1)):
+            if macro == "endlist":
+                break
+            names = BGAI_COMMANDS.get(macro)
+            if names is None or len(names) != len(args):
+                raise SystemExit(f"{decomp_rel(path)}: {func}: {macro}({', '.join(args)}) is not a BG AI command the world runs")
+            cmds.append({"type": macro, **{k: value(a) for k, a in zip(names, args)}})
+        lists.append({"id": lid, "cmds": cmds})
+    return lists
+
+
 def export_setup(stem: str, stage_name: str) -> dict:
     path = src("setups", f"mp_setup{stem}.c")
-    text = gen.read(path)
+    # Felicity's and Grid's props have `#if VERSION >= VERSION_NTSC_1_0` rows.
+    text = gen.preprocess(gen.read(path))
     c = gen.Consts()
     for h in ("constants.h", "files.h"):
         c.load_header(src("include", h))
@@ -308,7 +379,7 @@ def export_setup(stem: str, stage_name: str) -> dict:
     write_json(out("stages", stem, "setup.json"), {
         "format": "pd-setup/1", "source": decomp_rel(path), "exporter": EXPORTER,
         "stage": {"name": stage_name, "num": c.eval(stage_name), "code": stem, "table": stage_row(stage_name)},
-        "intro": intro, "props": props,
+        "intro": intro, "props": props, "bgai": bg_ailists(text, path, value),
     })
     return {"spawns": sum(1 for e in intro if e["type"] == "spawn"), "props": len(props)}
 

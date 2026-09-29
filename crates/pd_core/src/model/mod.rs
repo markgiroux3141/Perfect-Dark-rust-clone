@@ -27,7 +27,8 @@
 //!   number, or `0x10000 | texconfig index` when it is stored in the model;
 //! * `textures`: `{id: {file, w, h, cfg_w, cfg_h, levels, source}}`, `file`
 //!   relative to the asset root;
-//! * `batches[]`: `{node, material, nverts, nidx}` in draw order.
+//! * `batches[]`: `{node, material, nverts, nidx}` in draw order; a door model's
+//!   display-list batches add `vsrc`, `st` and `stscale` per vertex.
 //!
 //! `assets/models/<stem>.bin` holds the batches back to back, little-endian:
 //! `nverts` vertices of 28 bytes (`f32 x,y,z; u16 mtx; f32 u,v; u8 c[4]; u8
@@ -60,10 +61,12 @@ pub use pose::{JointFn, Model, PoseParams};
 
 /// `modeldef.skel` values that matter to callers (`g_Skel*`, skeletons.c).
 /// `g_SkelChrGun` (`modeldata/chrgun.c:11`): a held gun, a weapon pickup.
+pub const SKEL_BASIC: i32 = 0x02;
 pub const SKEL_CHRGUN: i32 = 0x03;
 pub const SKEL_CHR: i32 = 0x09;
 pub const SKEL_HEAD: i32 = 0x0d;
 pub const SKEL_HUDPIECE: i32 = 0x2a;
+pub const SKEL_LIFT: i32 = 0x1b;
 
 /// A model's visibility with every toggle on and only the nearest LOD
 /// showing: how a model is drawn with no instance state.
@@ -149,6 +152,12 @@ struct BatchHead {
     material: usize,
     nverts: usize,
     nidx: usize,
+    #[serde(default)]
+    vsrc: Vec<u16>,
+    #[serde(default)]
+    st: Vec<[i16; 2]>,
+    #[serde(default)]
+    stscale: Vec<[u16; 2]>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -171,6 +180,7 @@ struct RawNode {
     dim: Option<[f32; 3]>,
     texture: Option<u32>,
     texture_size: Option<[f32; 2]>,
+    verts: Option<Vec<[f32; 3]>>,
 }
 
 /// How a batch's triangles are culled.
@@ -279,6 +289,12 @@ pub struct Batch {
     pub material: usize,
     pub verts: Vec<Vert>,
     pub idx: Vec<u16>,
+    /// A door model's display-list batch (`DOORFLAG_0004`): each vertex's index
+    /// in its node's vertex table, its raw `s, t` and the `G_TEXTURE` scale it
+    /// was loaded under (empty otherwise).
+    pub vsrc: Vec<u16>,
+    pub st: Vec<[i16; 2]>,
+    pub stscale: Vec<[u16; 2]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -297,6 +313,9 @@ pub enum NodeKind {
     HeadSpot,
     /// A part box (`modelrodata_bbox`): `[xmin, xmax, ymin, ymax, zmin, zmax]`.
     BBox { hitpart: i32, bbox: [f32; 6] },
+    /// Collision geometry (`modelrodata_geo`, type 0x19): up to four vertices
+    /// in the model's space (an object's floor or wall, a lift's walls).
+    Geo { verts: Vec<Vec3> },
     /// A third-person muzzle flash billboard (`modelrodata_chrgunfire`).
     ChrGunfire { pos: Vec3, dim: Vec3, texture: Option<u32>, texture_size: [f32; 2] },
     /// The first-person muzzle star (`model_render_node_star_gunfire`).
@@ -388,7 +407,7 @@ impl ModelDef {
             off += b.nverts * 28;
             let idx = (0..b.nidx).map(|i| u16::from_le_bytes([data[off + 2 * i], data[off + 2 * i + 1]])).collect();
             off += b.nidx * 2;
-            batches.push(Batch { node: b.node, material: b.material, verts, idx });
+            batches.push(Batch { node: b.node, material: b.material, verts, idx, vsrc: b.vsrc.clone(), st: b.st.clone(), stscale: b.stscale.clone() });
         }
         if off != data.len() {
             return Err(err("trailing bytes"));
@@ -459,6 +478,7 @@ impl ModelDef {
                     "stargunfire" => NodeKind::StarGunfire { quads: r.quads.clone().unwrap_or_default() },
                     "gundl" => NodeKind::GunDl { rendermode: r.rendermode.unwrap_or(0) },
                     "dl" => NodeKind::Dl { rendermode: r.rendermode.unwrap_or(0) },
+                    "geo" => NodeKind::Geo { verts: r.verts.as_deref().unwrap_or(&[]).iter().map(|&v| Vec3::from(v)).collect() },
                     other => NodeKind::Other(other.to_owned()),
                 };
                 Node {

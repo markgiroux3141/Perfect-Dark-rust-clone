@@ -413,7 +413,7 @@ impl World {
             if self.bot_brains {
                 self.bot_tick_unpaused(i);
             }
-            // "cheap" (every room on screen until M9) has no reader in Combat.
+            // "cheap" has no reader in Combat.
             // Dampen blur.
             let lv60 = self.lv.lvupdate60;
             {
@@ -517,8 +517,7 @@ impl World {
             if matches!(act, Act::Die | Act::Dead) {
                 a.speedmultforwards = 0.0;
                 a.speedmultsideways = 0.0;
-            } else if act == Act::GoPos {
-                // (GOPOSFLAG_WAITING is lift logic: no lifts in the arenas yet.)
+            } else if act == Act::GoPos && !c.act_gopos.waiting {
                 a.speedmultforwards = 1.0;
                 a.speedmultsideways = 0.0;
             } else {
@@ -570,7 +569,7 @@ impl World {
                 }
             }
         }
-        if !forcloak && (diff == BOTDIFF_MEAT || diff == BOTDIFF_EASY) {
+        if !forcloak && (diff == BOTDIFF_MEAT || diff == BOTDIFF_EASY) && !c.chr_gopos_is_waiting() {
             let mut angletotarget = atan2f(tc.pos.x - c.pos.x, tc.pos.z - c.pos.z) - c.roty();
             if angletotarget < 0.0 {
                 angletotarget += turn();
@@ -701,8 +700,9 @@ impl World {
             match newaction {
                 Some(MyAction::GetItem) => {
                     // chr_go_to_prop(chr, gotoprop, GOPOSFLAG_RUN).
-                    if let Some(pos) = self.ab(i).gotoprop.and_then(|id| self.props.get(id)).map(|o| o.pos) {
-                        self.chr_go_to_room_pos(i, pos);
+                    if let Some((pos, room)) = self.ab(i).gotoprop.and_then(|id| self.props.get(id)).map(|o| (o.pos, o.room)) {
+                        let rooms: Vec<u16> = room.into_iter().collect();
+                        self.chr_go_to_room_pos(i, pos, &rooms);
                         self.ab_mut(i).myaction = MyAction::GetItem;
                     }
                 }
@@ -1137,8 +1137,7 @@ impl World {
             let insight = self.chr_has_los_to_chr(i, q);
             self.ab_mut(i).canseecloaked = false;
             // `// SUBST:` `chr_has_los_to_chr` hands back the sight ray's final
-            // room, found through the portals / without portals (M9), the
-            // polled chr's own room.
+            // room, found through the portals / the polled chr's own first room.
             let room = self.chrs[q].rooms.first().copied();
             let a = self.ab_mut(i);
             a.chrdistances[q] = dist;
@@ -1244,6 +1243,9 @@ impl World {
             c.fireslots = Default::default();
             c.firecount = [0; 2];
             c.held = [None, None];
+            c.liftaction = 0;
+            c.inlift = false;
+            c.lift = None;
             c.height = 185.0;
             // The fresh aibot is bot_reset's list: no ammo, an empty inventory
             // (botinv_clear), the fists, nothing to fetch.

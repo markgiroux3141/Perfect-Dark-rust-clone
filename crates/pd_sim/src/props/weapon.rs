@@ -203,11 +203,27 @@ impl World {
         }
     }
 
-    /// `obj_damage` (`propobj.c:14399`) for the guns' objects: the attacker's
-    /// number goes into `hidden` (not a deployed laptop's, whose bits name its
-    /// owner), and an explosive's fuse is cut. `weaponnum` is `WEAPON_NONE` for
-    /// a bounce, which a weapon object ignores. True: it destroyed a sentry,
-    /// whose blast is the caller's (`obj_check_destroyed`).
+    /// `obj_damage_by_gunfire` (`propobj.c:14392`): not an object immune to it.
+    pub(crate) fn obj_damage_by_gunfire(&mut self, id: u32, damage: f32, weaponnum: u8, playernum: i32) -> bool {
+        if self.props.get(id).is_some_and(|o| o.flags2 & OBJFLAG2_IMMUNETOGUNFIRE == 0) {
+            return self.obj_damage(id, damage, weaponnum, playernum);
+        }
+        false
+    }
+
+    /// `obj_damage` (`propobj.c:14399`): the attacker's number goes into
+    /// `hidden` (not a deployed laptop's, whose bits name its owner); an
+    /// explosive gun's fuse is cut; a mortal object takes the damage (×250 in
+    /// PD's units, at least 1), and glass at its `maxdamage` breaks
+    /// (`glass_destroy`). `weaponnum` is `WEAPON_NONE` for a bounce, which a
+    /// pickup ignores. True: it destroyed a sentry, whose blast is the
+    /// caller's (`obj_check_destroyed`).
+    ///
+    /// Not ported: the other mortal objects' deforming and blowing up
+    /// (`obj_set_dropped`, `obj_check_destroyed`): the arenas' only mortal
+    /// objects are glass and the sentries; an ammo crate going off
+    /// (`OBJFLAG_AMMOCRATE_EXPLODENOW`): the arenas' crates are multi-ammo
+    /// crates of guns, never explosive rounds.
     pub(crate) fn obj_damage(&mut self, id: u32, damage: f32, weaponnum: u8, playernum: i32) -> bool {
         let Some(o) = self.obj_mut(id) else { return false };
         if o.ty != OBJTYPE_AUTOGUN {
@@ -215,8 +231,8 @@ impl World {
             o.hidden |= ((playernum as u32) << 28) & 0xf000_0000;
         }
         if weaponnum == WEAPON_NONE {
-            // obj_defaults_to_bounceable_invincible_pickupable: weapons.
-            if o.ty == OBJTYPE_WEAPON {
+            // obj_defaults_to_bounceable_invincible_pickupable.
+            if matches!(o.ty, OBJTYPE_KEY | OBJTYPE_AMMOCRATE | OBJTYPE_WEAPON | OBJTYPE_HAT | OBJTYPE_MULTIAMMOCRATE | OBJTYPE_SHIELD | OBJTYPE_ESCASTEP) || o.flags & OBJFLAG_01000000 != 0 {
                 return false;
             }
         } else if o.flags & OBJFLAG_INVINCIBLE != 0 {
@@ -230,8 +246,22 @@ impl World {
                 }
             }
             return false;
+        } else if matches!(o.ty, OBJTYPE_AMMOCRATE | OBJTYPE_MULTIAMMOCRATE | OBJTYPE_DOOR) {
+            // Crates aren't hurt (see above); doors are never mortal (obj_is_mortal).
+            return false;
         }
-        o.ty == OBJTYPE_AUTOGUN && super::autogun::autogun_damage(o, damage)
+        if o.ty == OBJTYPE_AUTOGUN {
+            return super::autogun::autogun_damage(o, damage);
+        }
+        if o.ty == OBJTYPE_GLASS || o.ty == OBJTYPE_TINTEDGLASS {
+            // obj_get_destroyed_level 0 (glass breaks at its first level).
+            let damage = (damage * 250.0).max(1.0);
+            o.damage = (o.damage + damage).min(32767.0);
+            if o.damage >= o.maxdamage {
+                self.glass_destroy(id);
+            }
+        }
+        false
     }
 
     /// The object with `id`, wherever it is (ticking detaches the list).

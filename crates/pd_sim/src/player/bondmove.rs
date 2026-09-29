@@ -105,6 +105,8 @@ impl Player {
     pub(super) fn bmove_process_input(&mut self, input: &PlayerInput, lv: &Lv, res: &WorldRes, rng: &mut Rng) {
         let lv60 = lv.lvupdate60freal;
         let fov = self.zoominfovy;
+        // bondmove.c:1444: a use tap lasts one frame.
+        self.bondactivateorreload = false;
         let mlookscale = if lv.lvupdate240 != 0 { 4.0 / lv.lvupdate240 as f32 } else { 4.0 };
         // inputMouseGetScaledDelta (pcport input.c:1256)
         let freelookdx = input.mouse_dx * (0.022 / 3.5) * self.mouse_sens;
@@ -266,11 +268,9 @@ impl Player {
             }
         } else {
             // B released after a short press: btapcount → bondactivateorreload
-            // (bondmove.c:1303, lv.c:1293). current_player_interact (doors,
-            // lifts, switches: M9) has nothing to use, so the reload.
+            // (bondmove.c:1449); lv_render uses a door or else reloads (lv.c:1293).
             if self.usedowntime > 0 {
-                self.gun.bgun_reload_if_possible(&res.gset, HAND_RIGHT);
-                self.gun.bgun_reload_if_possible(&res.gset, HAND_LEFT);
+                self.bondactivateorreload = true;
             }
             self.usedowntime = 0;
             self.gun.bgun_release_use();

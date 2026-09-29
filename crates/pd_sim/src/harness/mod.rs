@@ -90,7 +90,7 @@ pub fn arena(res: Arc<WorldRes>, setup: MatchSetup, seed: u64) -> Result<World, 
     let spots = [(-e, -e), (0.0, -e), (e, -e), (e, 0.0), (e, e), (0.0, e), (-e, e), (-e, 0.0)];
     let spawns: Vec<(glam::Vec3, glam::Vec3)> = spots.iter().map(|&(x, z)| (glam::Vec3::new(x, 50.0, z), glam::Vec3::new(-x, 0.0, -z).normalize_or_zero())).collect();
     let stage = Stage::fixture("arena", arena(), &spawns);
-    let level = Arc::new(TileLevel::new(stage.geom.clone()));
+    let level = Arc::new(TileLevel::for_stage(&stage));
     let mut w = World::new(setup, Arc::new(stage), level.clone(), res, seed)?;
     w.nav = Arc::new(NavGraph::grid(&level, 250.0));
     Ok(w)

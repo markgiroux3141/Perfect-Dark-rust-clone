@@ -44,6 +44,9 @@ pub struct GeomPoly {
     /// (`constants.h:961`: 0 default/none, 1 wood, 2 stone, 3 carpet, 4 metal,
     /// 5 mud, 6 water, 7 dirt, 8 snow). An editor level would set it per material.
     pub floortype: u8,
+    /// PD's `GEOFLAG_*` bits, all of them (the booleans above are some); 0 for
+    /// a polygon from another source.
+    pub geoflags: u32,
 }
 
 /// How a floor polygon should be treated.
@@ -58,7 +61,7 @@ pub enum FloorKind {
 impl GeomPoly {
     pub fn new(verts: Vec<Vec3>, floor: bool, wall: bool, blocks_sight: bool, blocks_shot: bool, room: Option<u16>) -> Self {
         let normal = newell_normal(&verts);
-        GeomPoly { verts, normal, floor, wall, blocks_sight, blocks_shot, room, ladder: false, crouch: false, duck: false, floortype: 0 }
+        GeomPoly { verts, normal, floor, wall, blocks_sight, blocks_shot, room, ladder: false, crouch: false, duck: false, floortype: 0, geoflags: 0 }
     }
 
     /// |cos| of the angle between the polygon's plane normal and +Y: 1 = level.

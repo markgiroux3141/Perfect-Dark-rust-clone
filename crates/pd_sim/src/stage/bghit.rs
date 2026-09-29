@@ -9,7 +9,7 @@
 //!
 //! `// SUBST:` PD tests only the rooms the shot passes through
 //! (`portal_find_rooms`) plus the forced-onscreen ones / every room's
-//! triangles, keeping the nearest hit, until M9's portals.
+//! triangles, keeping the nearest hit.
 
 use std::collections::HashMap;
 

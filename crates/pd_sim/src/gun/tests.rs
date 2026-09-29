@@ -226,7 +226,7 @@ fn rocket_explosion_hurts_the_board_flashes_the_room_shakes_and_smokes() {
     let room = w.level.floor_room(at, 1.0).unwrap();
     let settled_light = w.lights.brightness(Some(room));
     assert!(w.explosion_create_simple(0, at, EXPLOSIONTYPE_ROCKET));
-    assert!(w.lights.room(room).br_flash >= 80, "rangeh 80 flash: {}", w.lights.room(room).br_flash);
+    assert!(w.lights.rooms[room as usize].br_flash >= 80, "rangeh 80 flash: {}", w.lights.rooms[room as usize].br_flash);
     idle(&mut w, 1);
     assert!(w.boards[0].damage > 1.0, "first-frame object damage: {}", w.boards[0].damage);
     assert!(w.vi.intensity > 0.0, "no shake");
@@ -245,7 +245,7 @@ fn rocket_explosion_hurts_the_board_flashes_the_room_shakes_and_smokes() {
     assert!((68..=72).contains(&smoked_at), "the smoke at maxage − 20 = 70: {smoked_at}");
     let freed_at = freed_at.expect("never freed");
     assert!((168..=172).contains(&freed_at), "freed at 90 + 16 × 5 = 170: {freed_at}");
-    assert_eq!(w.lights.room(room).br_flash, 0, "the flash decays away");
+    assert_eq!(w.lights.rooms[room as usize].br_flash, 0, "the flash decays away");
     assert_eq!(w.vi.intensity, 0.0, "the shake stops");
 }
 
@@ -289,7 +289,7 @@ fn a_punch_at_the_wall_thuds() {
 fn a_shot_at_complexs_floor_sounds_like_its_surface() {
     let r = res();
     let stage = Arc::new(Stage::load(&assets(), "ref").unwrap());
-    let level = Arc::new(TileLevel::new(stage.geom.clone()));
+    let level = Arc::new(TileLevel::for_stage(&stage));
     let setup = MatchSetup { stagenum: STAGE_MP_COMPLEX, players: vec![MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
     let mut w = World::new(setup, stage.clone(), level, r.clone(), 7).unwrap();
     w.harness_give_loadout(r.gset.order.clone());

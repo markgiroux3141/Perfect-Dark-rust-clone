@@ -183,7 +183,7 @@ mod tests {
         menu.start_match();
         let Some(Outcome::StartMatch(setup)) = menu.take_outcome() else { panic!("no match") };
         let stage = Stage::load(&assets, "ref").unwrap();
-        let level = TileLevel::new(stage.geom.clone());
+        let level = TileLevel::for_stage(&stage);
         let world = World::new(setup, Arc::new(stage), Arc::new(level), Arc::new(WorldRes::load(&assets).unwrap()), 5).unwrap();
         T { world, menu, lv: Lv::new(), over: false, ended: false }
     }

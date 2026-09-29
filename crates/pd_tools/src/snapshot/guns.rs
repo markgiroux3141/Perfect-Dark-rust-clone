@@ -124,7 +124,7 @@ impl Snap {
 
 fn range(res: Arc<WorldRes>, n64: bool) -> Result<World, String> {
     let stage = Stage::fixture("range", fixtures::firing_range(), &[fixtures::FIRING_RANGE_SPAWN]);
-    let level = TileLevel::new(stage.geom.clone());
+    let level = TileLevel::for_stage(&stage);
     let setup = MatchSetup { players: vec![MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
     let mut w = World::new(setup, Arc::new(stage), Arc::new(level), res, 0x1234_5678)?;
     w.boards = fixtures::firing_range_boards();

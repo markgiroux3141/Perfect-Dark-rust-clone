@@ -18,6 +18,7 @@ pub mod events;
 pub mod fx;
 pub mod gun;
 pub mod harness;
+pub mod lights;
 pub mod mp;
 pub mod nav;
 pub mod player;

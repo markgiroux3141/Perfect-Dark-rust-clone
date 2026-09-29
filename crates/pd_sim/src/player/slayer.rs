@@ -41,16 +41,15 @@ impl World {
             p.visionmode = VISIONMODE_SLAYERROCKETSTATIC;
             return;
         };
-        let level = self.level.clone();
         let o = &mut self.props.objs[i];
         let sp2a8 = o.realrot.x_axis.length();
         let mut sp2b8 = Mat3::from_cols(o.realrot.x_axis / sp2a8, o.realrot.y_axis / sp2a8, o.realrot.z_axis / sp2a8);
         let rocketpos = o.pos;
         // mtx00016208(sp2b8, ...): the camera's look and up, before this tick's turn.
         let (look, up) = (sp2b8 * Vec3::Z, sp2b8 * Vec3::Y);
-        // bg_find_rooms_by_pos: no room holds the rocket. SUBST: rooms are the
-        // boxes over their tiles (M9: the BG's rooms).
-        let outofbounds = !level.geom.rooms.iter().any(|&r| level.room_bbox(r).is_some_and(|(lo, hi)| rocketpos.cmpge(lo).all() && rocketpos.cmple(hi).all()));
+        // bg_find_rooms_by_pos: no room holds the rocket, nor lies under it.
+        let (inrooms, aboverooms, _) = self.stage.rooms.bg_find_rooms_by_pos(rocketpos, 20);
+        let outofbounds = inrooms.is_empty() && aboverooms.is_empty();
         {
             let p = &mut self.players[pi];
             if outofbounds {
@@ -115,7 +114,11 @@ impl World {
         }
         let p = &mut self.players[pi];
         p.waitforzrelease = true;
-        // player_move_camera_from_pos_rooms(rocketpos, up, look).
+        // player_move_camera_from_pos_rooms(rocketpos, up, look, rocket's pos, its
+        // rooms) (player.c:3636). `// SUBST:` the rocket's prop rooms aren't
+        // tracked / from its box and the floor under it (PD's route for a
+        // rocket with no rooms).
+        p.player_move_camera_from_pos_rooms(rocketpos, None, &self.stage.rooms, &self.level);
         p.cam.player_allocate_matrices(rocketpos, look, up);
     }
 }

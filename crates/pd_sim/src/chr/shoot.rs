@@ -11,8 +11,10 @@
 //! A launcher fires its projectile instead (`crate::bot::botact`), and a
 //! Farsight also shoots through walls at an unseen target.
 //!
-//! `// SUBST:` PD's round also meets objects (`CDTYPE_OBJS`: mines, the
-//! sentry, pickups) / the BG and chrs only.
+//! The round meets objects and doors too (`CDTYPE_OBJS | DOORS |
+//! PATHBLOCKER`): the ones with collision geometry, whose blocks stand for them
+//! (`// SUBST:` PD's objects without geometry, the pickups and thrown guns,
+//! don't meet it either; a flat object's is its block).
 //!
 //! Source: the old repo's `pd_spike/chraction.rs` (shooting) and
 //! `pd_complex/fight.rs` (`bot_shot_effects`), checked against
@@ -31,6 +33,7 @@ use crate::world::World;
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum RoundHit {
     Chr(usize),
+    Obj(u32),
     Bg,
 }
 
@@ -136,10 +139,26 @@ impl World {
         math::look_basis(Vec3::ZERO, dir, Vec3::new(0.0, -1.0, 0.0)).transform_vector3(v)
     }
 
-    /// The first thing along a simulant's round: the BG's shot-blocking tiles
-    /// or a chr's perimeter (the shooter's own left out, `chr_set_perim_enabled`).
-    fn chr_round_first_hit(&self, i: usize, from: Vec3, dir: Vec3, maxdist: f32) -> Option<(f32, RoundHit)> {
+    /// The first thing along a simulant's round: the BG's shot-blocking tiles,
+    /// the props of `types` (`CDTYPE_*`, `GEOFLAG_BLOCK_SHOOT`) or a chr's
+    /// perimeter (the shooter's own left out, `chr_set_perim_enabled`).
+    fn chr_round_first_hit(&self, i: usize, from: Vec3, dir: Vec3, maxdist: f32, types: u32) -> Option<(f32, RoundHit)> {
         let mut best = self.level.raycast_shoot(from, dir, maxdist).map(|h| (h.dist, RoundHit::Bg));
+        let geos = self.obj_geos_with_ids(types);
+        let blocks: Vec<crate::stage::PropGeo> = geos.iter().map(|g| g.1).collect();
+        // A prop's floor is an object's (CDTYPE_OBJS).
+        let floors = if types & CDTYPE_OBJS != 0 { self.prop_floors() } else { Vec::new() };
+        let to = from + dir * maxdist;
+        if let Some((frac, what)) = crate::stage::TileLevel::cd_los_props(from, to, &blocks, &floors, GEOFLAG_BLOCK_SHOOT) {
+            let t = frac * maxdist;
+            let id = match what {
+                crate::stage::LosProp::Geo(k) => geos[k].0,
+                crate::stage::LosProp::Floor(k) => floors[k].prop,
+            };
+            if best.is_none_or(|(bt, _)| t < bt) {
+                best = Some((t, RoundHit::Obj(id)));
+            }
+        }
         for (j, o) in self.chrs.iter().enumerate() {
             // A dead chr has no geometry; a dying one's still stops rounds.
             if j == i || o.actiontype == super::Act::Dead || o.player.is_some_and(|p| self.players[p].isdead) {
@@ -205,10 +224,11 @@ impl World {
                 }
                 g
             });
-            // Don't fire a gun pushed through a wall or into another chr.
+            // Don't fire a gun pushed through a wall, a closed door or into
+            // another chr (CDTYPE_DOORS | CHRS | BG | DOORSWITHOUTFLAG | PLAYERS).
             let pp = self.chrs[i].pos;
             let to_gun = gunpos - pp;
-            if self.chr_round_first_hit(i, pp, to_gun.normalize_or_zero(), to_gun.length()).is_some() {
+            if self.chr_round_first_hit(i, pp, to_gun.normalize_or_zero(), to_gun.length(), CDTYPE_DOORS | CDTYPE_DOORSWITHOUTFLAG).is_some() {
                 firingthisframe = false;
             }
             if firingthisframe {
@@ -236,7 +256,7 @@ impl World {
                     maulercharge *= 10.0;
                     self.ab_mut(i).maulercharge[hand] = 0.0;
                 }
-                let hit = if normalshoot { self.chr_round_first_hit(i, gunpos, dir, 65536.0) } else { None };
+                let hit = if normalshoot { self.chr_round_first_hit(i, gunpos, dir, 65536.0, CDTYPE_OBJS | CDTYPE_DOORS | CDTYPE_PATHBLOCKER | CDTYPE_DOORSWITHOUTFLAG) } else { None };
                 self.navstats.rounds += 1;
                 if matches!(hit, Some((_, RoundHit::Chr(_)))) {
                     self.navstats.round_hits += 1;
@@ -250,6 +270,17 @@ impl World {
                         self.bgun_play_prop_hit_sound_chr(weaponnum, gunfunc, hitpos);
                         self.chr_emit_sparks(j, HITPART_GENERAL, hitpos, dir);
                         self.chr_damage_by_impact(j, damage, dir, DamageFrom::new(Some(i), weaponnum, gunfunc), HITPART_GENERAL);
+                    }
+                    Some((_, RoundHit::Obj(id))) => {
+                        // bgun_play_prop_hit_sound for an object (g_SurfaceTypeMetalObj),
+                        // sparks, obj_damage_by_gunfire.
+                        let sound = if self.rng.random().is_multiple_of(2) { 0x8089 } else { 0x808a };
+                        self.sound_at(sound, 1.0, hitpos, DEFAULT_DISTS);
+                        self.fx.sparks.create(&mut self.rng, hitpos, Vec3::ZERO, Vec3::ZERO, SPARKTYPE_DEFAULT);
+                        let damage = self.chr_gset_damage(weaponnum, gunfunc, maulercharge);
+                        // mp_chr_to_chrindex: the chr's own index.
+                        let playernum = i as i32;
+                        self.obj_damage_by_gunfire(id, damage, weaponnum, playernum);
                     }
                     Some((_, RoundHit::Bg)) => {
                         // bgun_play_bg_hit_sound(gset, hitpos, -1, rooms): no texture.
@@ -308,7 +339,7 @@ impl World {
         let flash = self.chrs[i].held[hand].as_mut().is_some_and(|h| h.weapon_set_gunfire_visible(firingthisframe && normalshoot));
         if flash {
             if let Some(room) = self.chrs[i].rooms.first().copied() {
-                self.lights.room(room).flash(48.0, 128);
+                self.room_flash_lighting(room, 48, 128);
             }
         }
     }

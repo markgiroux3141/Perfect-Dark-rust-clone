@@ -703,7 +703,7 @@ fn emit(
             flags: PadFlags {
                 walkdirect: walkdirect[k],
                 crouch: samples[s].crouch,
-                duck: false,
+                ..Default::default()
             },
         })
         .collect();

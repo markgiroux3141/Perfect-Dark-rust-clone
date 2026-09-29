@@ -166,7 +166,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     menu.start_match();
     let Some(Outcome::StartMatch(setup)) = menu.take_outcome() else { return Err("the menus started no match".into()) };
     let stage = Arc::new(Stage::load(&assets, "ref")?);
-    let level = Arc::new(TileLevel::new(stage.geom.clone()));
+    let level = Arc::new(TileLevel::for_stage(&stage));
     let res = Arc::new(WorldRes::load(&assets)?);
     let weapons = MenuSystem::weapon_set_weaponnums(&setup.weapons);
     let mut world = World::new(setup, stage.clone(), level.clone(), res, seed)?;

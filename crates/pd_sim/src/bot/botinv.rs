@@ -1156,8 +1156,8 @@ impl World {
             self.ab_mut(i).forcemainloop = true;
             return;
         }
-        let end = self.chrs[i].act_gopos.endpos;
-        self.chr_go_to_room_pos(i, end);
+        let (end, endrooms) = (self.chrs[i].act_gopos.endpos, self.chrs[i].act_gopos.endrooms.clone());
+        self.chr_go_to_room_pos(i, end, &endrooms);
     }
 
     /// The simulant's share of `mpstats_record_death` (`mpstats.c:331`): a kill

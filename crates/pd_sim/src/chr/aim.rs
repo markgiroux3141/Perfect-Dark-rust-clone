@@ -158,18 +158,22 @@ impl Chr {
 impl crate::world::World {
     /// `chr_has_los_to_chr` (`chraction.c:6513`): unless the target is
     /// invisible to it, a clear sight line from the chr's eye (`ground +
-    /// height − 20`) to the target's `prop->pos` through the sight-blocking BG
-    /// (the two perimeters are off, and no other chr blocks sight).
-    /// `// SUBST:` PD's sight line also meets doors, objects and path
-    /// blockers (`CDTYPE_DOORS | CDTYPE_OBJS`) / not yet: Complex has none that
-    /// block it; the arenas' doors and objects are M9's.
+    /// height − 20`) to the target's `prop->pos` through the sight-blocking BG,
+    /// doors, objects and path blockers that aren't see-through
+    /// (`CDTYPE_OBJS | DOORS | PATHBLOCKER | BG | AIOPAQUE`, `GEOFLAG_BLOCK_SIGHT`;
+    /// the two perimeters are off, and no chr blocks sight).
     pub(crate) fn chr_has_los_to_chr(&self, i: usize, target: usize) -> bool {
         if self.bot_is_target_invisible(i, target) {
             return false;
         }
         let c = &self.chrs[i];
         let eye = glam::Vec3::new(c.pos.x, c.ground + c.height - 20.0, c.pos.z);
-        self.level.los(eye, self.chrs[target].pos)
+        let to = self.chrs[target].pos;
+        if !self.level.los(eye, to) {
+            return false;
+        }
+        let types = pd_core::ids::CDTYPE_OBJS | pd_core::ids::CDTYPE_DOORS | pd_core::ids::CDTYPE_PATHBLOCKER | pd_core::ids::CDTYPE_AIOPAQUE;
+        crate::stage::TileLevel::cd_los_props(eye, to, &self.obj_geos(types), &self.prop_floors(), pd_core::ids::GEOFLAG_BLOCK_SIGHT).is_none()
     }
 
     /// `chr_uncloak(chr, value)` (`chr.c:2054`) for chr `i`.

@@ -27,6 +27,7 @@ pub mod hud;
 pub mod hudmsg;
 pub mod models;
 pub mod post;
+pub mod sky;
 pub mod view;
 pub mod xray;
 
@@ -70,6 +71,12 @@ pub struct Renderer {
     /// screen size; empty for none): `lv_render` draws `menu_render` after
     /// the HUD, then the modal text over it.
     pub menu_layer: Vec<[f32; 4]>,
+    /// A copy of its model per `DOORFLAG_0004` door (by object id), whose
+    /// display list's vertices are rewritten every frame.
+    door_models: std::collections::HashMap<u32, std::sync::Arc<pd_core::model::ModelDef>>,
+    /// The sky pass (made on the first match view).
+    sky: Option<sky::SkyRenderer>,
+    color_format: wgpu::TextureFormat,
 }
 
 /// `lights_set_for_room`'s light from a room's brightness (`dlights.c:303`),
@@ -112,12 +119,16 @@ impl Renderer {
             world_depth_copy: None,
             hud_in_frame: true,
             menu_layer: Vec::new(),
+            door_models: std::collections::HashMap::new(),
+            sky: None,
+            color_format,
         }
     }
 
     /// Load the stage's BG, and the fonts and textures a match draws with.
     pub fn load_stage(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &AssetDir, code: &str) -> Result<(), String> {
         self.bg = Some(bg::StageBg::load(device, queue, &mut self.combiner, assets, code)?);
+        self.door_models.clear();
         self.load_assets(assets)
     }
 
@@ -145,15 +156,28 @@ impl Renderer {
         self.bg.as_ref().map_or([0.38, 0.40, 0.43], |b| b.sky())
     }
 
-    /// The BG alone into `color` + `depth` (same size), cleared first.
-    pub fn render(&self, queue: &wgpu::Queue, encoder: &mut wgpu::CommandEncoder, color: &wgpu::TextureView, depth: &wgpu::TextureView, view: &View) {
+    /// The BG alone into `color` + `depth` (same size), cleared first; with
+    /// `frame`, only the rooms its portals found, lit.
+    pub fn render(&self, queue: &wgpu::Queue, encoder: &mut wgpu::CommandEncoder, color: &wgpu::TextureView, depth: &wgpu::TextureView, view: &View, frame: Option<&bg::BgFrame>) {
         if let Some(bg) = &self.bg {
-            bg.prepare(queue, view, self.three_point);
+            bg.prepare(queue, view, self.three_point, frame);
         }
         let mut rp = world_pass(encoder, color, depth, self.sky());
         if let Some(bg) = &self.bg {
-            bg.draw(&mut rp, &self.combiner);
+            bg.draw(&mut rp, &self.combiner, frame, view.eye);
         }
+    }
+
+    /// The BG frame for player `pi` of `world` into a `w` × `h` target.
+    pub fn bg_frame<'a>(world: &'a World, pi: usize, w: u32, h: u32) -> Option<bg::BgFrame<'a>> {
+        let p = world.players.get(pi)?;
+        Some(bg::BgFrame {
+            portals: &p.portalview,
+            lights: &world.lights,
+            frac80: world.frac80,
+            scale: [w as f32 / p.cam.c_screenwidth, h as f32 / p.cam.c_screenheight],
+            target: [w, h],
+        })
     }
 
     /// Player `pi`'s whole frame into `target` (its colour texture is copied
@@ -177,7 +201,8 @@ impl Renderer {
         let w2e = view.world_to_eye();
         let world_proj = view.projection();
         let gun_proj = view.gun_projection();
-        let brightness = world.lights.brightness(p.floorroom);
+        // lights_set_for_room(prop->rooms[0]): the player's room lights the gun.
+        let brightness = world.lights.brightness(p.rooms.first().copied().or(p.floorroom));
         let gun = &p.gun;
         let shadecol = gun.p.gunshadecol;
         let env = [shadecol[0] as f32 / 255.0, shadecol[1] as f32 / 255.0, shadecol[2] as f32 / 255.0, shadecol[3] as f32 / 255.0];
@@ -210,6 +235,7 @@ impl Renderer {
         let obj_lights = gun_lights(brightness, false);
         let held: Vec<u32> = gun.hands.iter().filter_map(|h| h.rocket).collect();
         let mut objdraws: Vec<Draw> = Vec::new();
+        let mut door_verts: Vec<(String, pd_sim::props::door::DoorVerts)> = Vec::new();
         for o in &world.props.objs {
             // A loaded rocket is drawn with the gun (`bgun_render`); a Slayer
             // rider doesn't see their own rocket (`propobj.c:12715`).
@@ -230,6 +256,13 @@ impl Renderer {
                 frame.misc[0] = (60 - o.timetoregen) as f32 * 0.016_666_668;
                 xlu = true;
             }
+            // A tinted pane's env alpha is its opacity from this camera
+            // (`propobj.c:12804`, `glass_update_portal`).
+            if let Some(t) = &o.tinted {
+                let opacity = pd_sim::props::glass::glass_calculate_opacity(o.pos, p.cam.pos(), t.xludist, t.opadist, t.unk64);
+                frame.misc[0] = opacity as f32 / 255.0;
+                xlu = true;
+            }
             // The fog colour: the pickup highlight (scenario_highlight_prop,
             // propobj.c:12839).
             if let Some(h) = world.scenario_highlight_obj(pi, o) {
@@ -244,7 +277,21 @@ impl Renderer {
                 xlu = true;
             }
             let joints = o.init_matrices().iter().map(|m| w2e * *m).collect();
-            objdraws.push((o.def.clone(), o.vis.clone(), joints, frame, None, xlu));
+            // A DOORFLAG_0004 door draws its own copy of the model, its display
+            // list clipped to the frame (`door_calc_vertices_*`).
+            let def = match o.door.as_ref().map(|d| pd_sim::props::door::door_calc_texturemap(o, d)) {
+                Some(verts) if !verts.is_empty() => {
+                    let def = self
+                        .door_models
+                        .entry(o.id)
+                        .or_insert_with(|| std::sync::Arc::new(pd_core::model::ModelDef { stem: format!("{}#door{}", o.def.stem, o.id), ..(*o.def).clone() }))
+                        .clone();
+                    door_verts.push((def.stem.clone(), verts));
+                    def
+                }
+                _ => o.def.clone(),
+            };
+            objdraws.push((def, o.vis.clone(), joints, frame, None, xlu));
         }
 
         // The simulants (`chr_render`, `chr.c:3378`): the body, its head and the
@@ -340,6 +387,11 @@ impl Renderer {
                 log::warn!("model {}: {e}", def.stem);
             }
         }
+        for (stem, batches) in &door_verts {
+            for (bi, verts) in batches {
+                self.models.rewrite_verts(queue, stem, *bi, verts);
+            }
+        }
         for hand in gun.hands.iter().filter(|_| draw_gun) {
             if let Some(gm) = hand.gunmodel.as_ref().filter(|_| hand.visible) {
                 if world.players.len() == 1 {
@@ -389,18 +441,34 @@ impl Renderer {
         }
         self.overlay.prepare(device, queue, &self.hud_gfx);
 
+        let bgframe = Self::bg_frame(world, pi, target.width, target.height);
         if let Some(bg) = self.bg.as_ref().filter(|_| xray.is_none()) {
-            bg.prepare(queue, &view, self.three_point);
+            bg.prepare(queue, &view, self.three_point, bgframe.as_ref());
+        }
+        // sky_render (`sky.c:206`): the cloud plane, not in x-ray.
+        if let Some(bg) = self.bg.as_ref() {
+            let env = bg.sky_env();
+            let verts = if xray.is_none() { sky::sky_geometry(&env, &p.cam, p.cam.pos(), &(world_proj * w2e), world.sky_cloud_offset) } else { Vec::new() };
+            let sky = self.sky.get_or_insert_with(|| sky::SkyRenderer::new(device, queue, &assets, self.color_format, DEPTH_FORMAT));
+            sky.prepare(device, queue, &env, &verts);
         }
         {
             // sky_render: the fill colour, black in x-ray (`sky.c:267`).
             let sky = if xray.is_some() { [0.0; 3] } else { self.sky() };
             let mut rp = world_pass(encoder, color, depth, sky);
+            if let Some(s) = self.sky.as_ref().filter(|_| self.bg.is_some()) {
+                s.draw(&mut rp);
+            }
+            // bg_render_scene (bg.c:987): the rooms' opaque layers, the wall
+            // hits, then the translucent layers with the props' (see bg.rs).
             if let Some(bg) = self.bg.as_ref().filter(|_| xray.is_none()) {
-                bg.draw(&mut rp, &self.combiner);
+                bg.draw_opaque(&mut rp, &self.combiner, bgframe.as_ref());
             }
             self.fx.draw_some(&mut rp, fx::FxPass::World, |k| k.before_objects());
             self.models.draw(&mut rp, &self.combiner, &obj_cmds);
+            if let Some(bg) = self.bg.as_ref().filter(|_| xray.is_none()) {
+                bg.draw_xlu(&mut rp, &self.combiner, bgframe.as_ref(), view.eye);
+            }
             self.fx.draw_some(&mut rp, fx::FxPass::World, |k| !k.before_objects());
         }
         if let Some(t) = &self.world_depth_copy {
@@ -488,7 +556,7 @@ mod tests {
         };
         let a = AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR"));
         let stage = Stage::fixture("range", fixtures::firing_range(), &[fixtures::FIRING_RANGE_SPAWN]);
-        let level = TileLevel::new(stage.geom.clone());
+        let level = TileLevel::for_stage(&stage);
         let setup = MatchSetup { players: vec![MatchPlayer::default()], ..Default::default() };
         let mut w = World::new(setup, Arc::new(stage), Arc::new(level), Arc::new(WorldRes::load(&a).unwrap()), 1).unwrap();
         w.boards = fixtures::firing_range_boards();

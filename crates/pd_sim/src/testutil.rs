@@ -27,10 +27,18 @@ pub fn complex_arc() -> (Arc<Stage>, Arc<TileLevel>) {
     static C: OnceLock<(Arc<Stage>, Arc<TileLevel>)> = OnceLock::new();
     C.get_or_init(|| {
         let stage = Stage::load(&assets(), "ref").expect("assets/stages/ref");
-        let level = TileLevel::new(stage.geom.clone());
+        let level = TileLevel::for_stage(&stage);
         (Arc::new(stage), Arc::new(level))
     })
     .clone()
+}
+
+/// One player on the arena `code` (`assets/stages/<code>`), seed 3.
+pub fn arena(code: &str) -> World {
+    let stage = Stage::load(&assets(), code).unwrap();
+    let level = TileLevel::for_stage(&stage);
+    let setup = pd_core::mp::MatchSetup { stagenum: stage.stagenum, players: vec![pd_core::mp::MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
+    World::new(setup, Arc::new(stage), Arc::new(level), res(), 3).unwrap()
 }
 
 /// [`complex_arc`] borrowed for the life of the test run.
@@ -47,7 +55,7 @@ pub fn range() -> World {
 
 pub fn range_with(geom: crate::stage::LevelGeom) -> World {
     let stage = Stage::fixture("range", geom, &[fixtures::FIRING_RANGE_SPAWN]);
-    let level = TileLevel::new(stage.geom.clone());
+    let level = TileLevel::for_stage(&stage);
     let setup = MatchSetup { players: vec![MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
     let mut w = World::new(setup, Arc::new(stage), Arc::new(level), res(), 0x1234_5678).unwrap();
     w.boards = fixtures::firing_range_boards();
@@ -97,7 +105,7 @@ pub fn sounds(events: &[Event]) -> Vec<u16> {
 /// `n` players in the firing range, the rest spread along the hall.
 pub fn range_players(n: usize) -> World {
     let stage = Stage::fixture("range", fixtures::firing_range(), &[fixtures::FIRING_RANGE_SPAWN]);
-    let level = TileLevel::new(stage.geom.clone());
+    let level = TileLevel::for_stage(&stage);
     let players = (0..n).map(|i| MatchPlayer { slot: i as u8, handicap: 128, ..Default::default() }).collect();
     let setup = MatchSetup { players, ..Default::default() };
     let mut w = World::new(setup, Arc::new(stage), Arc::new(level), res(), 0x1234_5678).unwrap();

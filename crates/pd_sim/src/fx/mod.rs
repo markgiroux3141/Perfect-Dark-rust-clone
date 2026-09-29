@@ -1,6 +1,6 @@
 //! The effects the world ticks: tracers ([`beam`], `gunfx.c`), impact sparks
 //! ([`sparks`], `sparks.c` / `sparkstick.c`), bullet holes and scorches
-//! ([`wallhit`], `wallhit.c`), ejected casings ([`casing`], `gunfx.c` /
+//! ([`wallhit`], `wallhit.c`), glass shards ([`shards`], `shards.c`), ejected casings ([`casing`], `gunfx.c` /
 //! `casingtick.c`), crossbow bolts' trails ([`boltbeam`], `gunfx.c`) and smoke
 //! ([`smoke`], `smoke.c`). They are simulation
 //! state because PD ticks them with `lvupdate240` and draws random numbers
@@ -12,6 +12,7 @@
 pub mod beam;
 pub mod boltbeam;
 pub mod casing;
+pub mod shards;
 pub mod smoke;
 pub mod sparks;
 pub mod wallhit;
@@ -33,6 +34,7 @@ pub struct Fx {
     /// `casing_tick`'s landing sound limiter: quarter-ticks until another may play.
     pub casing_cooldown240: i32,
     pub boltbeams: boltbeam::BoltBeams,
+    pub shards: shards::Shards,
 }
 
 impl Fx {

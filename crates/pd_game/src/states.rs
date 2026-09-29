@@ -17,10 +17,10 @@ pub enum Screen {
     Menus,
     /// A match being played.
     Match(Box<World>),
-    /// SUBST: PD loads any arena here / only the stages the exporter has
-    /// written can be played (Complex until M9), so for the others the game
-    /// shows what would start and goes back to the menus on START or A, as PD
-    /// does after a match (menutick.c:217).
+    /// A match that could not start (its arena missing from `assets/` or
+    /// failing to load; every arena is exported): what would have started,
+    /// back to the menus on START or A, as PD does after a match
+    /// (menutick.c:217).
     StandIn { setup: MatchSetup, lines: Vec<String> },
 }
 
@@ -46,7 +46,7 @@ impl MatchAssets {
     pub fn start(&mut self, setup: MatchSetup, code: &str, seed: u64) -> Result<World, String> {
         if !self.stages.contains_key(code) {
             let stage = Stage::load(&self.assets, code)?;
-            let level = TileLevel::new(stage.geom.clone());
+            let level = TileLevel::for_stage(&stage);
             self.stages.insert(code.to_owned(), (Arc::new(stage), Arc::new(level)));
         }
         if self.res.is_none() {
@@ -69,5 +69,5 @@ pub fn draw_match_stand_in(gfx: &mut Gfx, fonts: &Fonts, lines: &[String]) {
     let (mut x, mut y) = (16, 40);
     ctx.render_v2(&mut x, &mut y, &(lines.join("\n") + "\n"), FontId::Xs, 0xc0e0ffff, w, h, 0, 0);
     let (mut x, mut y) = (16, h - 22);
-    ctx.render_v2(&mut x, &mut y, "This arena is not exported yet (M9). START: back to the menus\n", FontId::Xs, 0x8090a0ff, w, h, 0, 0);
+    ctx.render_v2(&mut x, &mut y, "This arena could not be loaded. START: back to the menus\n", FontId::Xs, 0x8090a0ff, w, h, 0, 0);
 }

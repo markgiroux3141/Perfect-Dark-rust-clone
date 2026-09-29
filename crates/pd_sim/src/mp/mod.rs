@@ -502,20 +502,18 @@ impl World {
         input
     }
 
-    /// Smart slow motion's test (`lv.c:2061`): a living player's room is on
-    /// another living player's screen.
-    ///
-    /// `// SUBST:` PD asks `bg_room_is_on_player_screen` (the portal
-    /// visibility, `g_MpRoomVisibility`) / without room culling (M9) a room is
-    /// on a player's screen when it is the room that player stands in.
+    /// Smart slow motion's test (`lv.c:2061`): one of a living player's rooms
+    /// is on another living player's screen (`bg_room_is_on_player_screen`,
+    /// `g_MpRoomVisibility`).
     pub(crate) fn lv_smart_slowmo_enemy_on_screen(&self) -> bool {
         let n = self.players.len();
         for p in 0..n {
             if self.players[p].isdead {
                 continue;
             }
-            for &room in &self.chrs[p].rooms {
-                if (0..n).any(|o| o != p && !self.players[o].isdead && self.players[o].floorroom == Some(room)) {
+            for &room in &self.players[p].rooms {
+                let vis = self.mp_room_visibility.get(room as usize).copied().unwrap_or(0);
+                if (0..n).any(|o| o != p && !self.players[o].isdead && vis & (1 << o) != 0) {
                     return true;
                 }
             }

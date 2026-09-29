@@ -1,4 +1,40 @@
 {
+ "a51_crate2": {
+  "filenum": 94,
+  "file": "FILE_PA51_CRATE2",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51_crate2.bin",
+  "tris": 12,
+  "modelnum": 33,
+  "statescale": 4096
+ },
+ "a51_horiz_door_bot": {
+  "filenum": 98,
+  "file": "FILE_PA51_HORIZ_DOOR_BOT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51_horiz_door_bot.bin",
+  "tris": 38,
+  "modelnum": 26,
+  "statescale": 4096
+ },
+ "a51_horiz_door_top": {
+  "filenum": 101,
+  "file": "FILE_PA51_HORIZ_DOOR_TOP",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51_horiz_door_top.bin",
+  "tris": 38,
+  "modelnum": 25,
+  "statescale": 4096
+ },
+ "a51_lift_thinwall": {
+  "filenum": 105,
+  "file": "FILE_PA51_LIFT_THINWALL",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51_lift_thinwall.bin",
+  "tris": 18,
+  "modelnum": 46,
+  "statescale": 4096
+ },
  "a51airman": {
   "filenum": 561,
   "file": "FILE_CA51AIRMAN",
@@ -96,6 +132,15 @@
   "kind": "chr",
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/cassandra.bin",
   "tris": 965
+ },
+ "ch_shutter1": {
+  "filenum": 133,
+  "file": "FILE_PCH_SHUTTER1",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/ch_shutter1.bin",
+  "tris": 8,
+  "modelnum": 174,
+  "statescale": 4096
  },
  "chrar34": {
   "filenum": 849,
@@ -631,12 +676,30 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/darkwet.bin",
   "tris": 600
  },
+ "dd_dr_nonref": {
+  "filenum": 1980,
+  "file": "FILE_PDD_DR_NONREF",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_dr_nonref.bin",
+  "tris": 36,
+  "modelnum": 438,
+  "statescale": 4096
+ },
  "dd_guard": {
   "filenum": 447,
   "file": "FILE_CDD_GUARD",
   "kind": "chr",
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dd_guard.bin",
   "tris": 697
+ },
+ "dd_labdoor": {
+  "filenum": 441,
+  "file": "FILE_PDD_LABDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_labdoor.bin",
+  "tris": 72,
+  "modelnum": 191,
+  "statescale": 4096
  },
  "dd_labtech": {
   "filenum": 404,
@@ -659,6 +722,15 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dd_shock_inf.bin",
   "tris": 768
  },
+ "dd_window": {
+  "filenum": 181,
+  "file": "FILE_PDD_WINDOW",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_window.bin",
+  "tris": 2,
+  "modelnum": 63,
+  "statescale": 4096
+ },
  "ddshock": {
   "filenum": 69,
   "file": "FILE_CDDSHOCK",
@@ -679,6 +751,15 @@
   "kind": "chr",
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/djbond.bin",
   "tris": 619
+ },
+ "door2a_g5": {
+  "filenum": 187,
+  "file": "FILE_PDOOR2A_G5",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/door2a_g5.bin",
+  "tris": 12,
+  "modelnum": 129,
+  "statescale": 4096
  },
  "druggun": {
   "filenum": 910,
@@ -784,6 +865,15 @@
   "kind": "chr",
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/g5_swat_guard.bin",
   "tris": 720
+ },
+ "glass_floor": {
+  "filenum": 618,
+  "file": "FILE_PGLASS_FLOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/glass_floor.bin",
+  "tris": 2,
+  "modelnum": 227,
+  "statescale": 409
  },
  "grenade": {
   "filenum": 912,
@@ -1366,6 +1456,15 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/headwong.bin",
   "tris": 191
  },
+ "hovercrate1": {
+  "filenum": 215,
+  "file": "FILE_PHOVERCRATE1",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/hovercrate1.bin",
+  "tris": 78,
+  "modelnum": 90,
+  "statescale": 4096
+ },
  "hudpiece": {
   "filenum": 601,
   "file": "FILE_GHUDPIECE",
@@ -1435,6 +1534,15 @@
   "kind": "gun",
   "source": "pd-decomp/src/assets/ntsc-final/files/guns/maiansmg.bin",
   "tris": 312
+ },
+ "matrix_lift": {
+  "filenum": 620,
+  "file": "FILE_PMATRIX_LIFT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/matrix_lift.bin",
+  "tris": 52,
+  "modelnum": 229,
+  "statescale": 409
  },
  "moore": {
   "filenum": 410,
@@ -1550,6 +1658,15 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/guns/proximitymine.bin",
   "tris": 70
  },
+ "ravinelift": {
+  "filenum": 232,
+  "file": "FILE_PRAVINELIFT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/ravinelift.bin",
+  "tris": 12,
+  "modelnum": 136,
+  "statescale": 4096
+ },
  "rcp120": {
   "filenum": 900,
   "file": "FILE_GRCP120",
@@ -1564,6 +1681,15 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/guns/remotemine.bin",
   "tris": 125
  },
+ "roofgun": {
+  "filenum": 454,
+  "file": "FILE_PROOFGUN",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/roofgun.bin",
+  "tris": 57,
+  "modelnum": 0,
+  "statescale": 409
+ },
  "secretary": {
   "filenum": 82,
   "file": "FILE_CSECRETARY",
@@ -1577,6 +1703,15 @@
   "kind": "gun",
   "source": "pd-decomp/src/assets/ntsc-final/files/guns/shotgun.bin",
   "tris": 522
+ },
+ "sk_door1": {
+  "filenum": 236,
+  "file": "FILE_PSK_DOOR1",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_door1.bin",
+  "tris": 28,
+  "modelnum": 110,
+  "statescale": 4096
  },
  "skminigun": {
   "filenum": 903,
@@ -1634,6 +1769,15 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/stripes.bin",
   "tris": 754
  },
+ "tdoor": {
+  "filenum": 455,
+  "file": "FILE_PTDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/tdoor.bin",
+  "tris": 12,
+  "modelnum": 195,
+  "statescale": 4096
+ },
  "theking": {
   "filenum": 86,
   "file": "FILE_CTHEKING",
@@ -1654,6 +1798,15 @@
   "kind": "chr",
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/trent.bin",
   "tris": 939
+ },
+ "window": {
+  "filenum": 257,
+  "file": "FILE_PWINDOW",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/window.bin",
+  "tris": 2,
+  "modelnum": 4,
+  "statescale": 409
  },
  "xrayspecs": {
   "filenum": 1904,

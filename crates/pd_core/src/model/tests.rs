@@ -43,8 +43,9 @@ fn anim_at(num: u16, frame: f32, speed: f32) -> Anim {
 #[test]
 fn every_model_loads_in_preorder_with_its_parts_and_textures() {
     let s = store();
-    // 225 through M7; M8 adds the MP ammo crate (multi_ammo_crate).
-    assert_eq!(s.index.len(), 226);
+    // 225 through M7; M8 adds the MP ammo crate (multi_ammo_crate); M9 the 17
+    // other models the arenas' setups place (doors, lifts, glass, crates).
+    assert_eq!(s.index.len(), 243);
     for stem in s.index.keys() {
         let d = s.get(stem).unwrap_or_else(|e| panic!("{e}"));
         for (i, n) in d.nodes.iter().enumerate() {

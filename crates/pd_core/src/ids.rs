@@ -694,6 +694,12 @@ pub const PADFLAG_AIIGNOREY: u32 = 0x8000;
 pub const PADFLAG_AIDUCK: u32 = 0x10000;
 pub const PADFLAG_AIBOTINUSE: u32 = 0x20000;
 
+// `chr->liftaction`: a go-to's progress through a lift (`constants.h:1505`).
+pub const LIFTACTION_NOTUSINGLIFT: u8 = 0;
+pub const LIFTACTION_WAITINGFORLIFT: u8 = 1;
+pub const LIFTACTION_ONLIFT: u8 = 2;
+pub const LIFTACTION_WAITINGONLIFT: u8 = 3;
+
 // Floor materials, for footsteps (`constants.h:961`).
 pub const FLOORTYPE_DEFAULT: u8 = 0;
 pub const FLOORTYPE_WOOD: u8 = 1;
@@ -1287,6 +1293,11 @@ pub const SMOKETYPE_PINBALL: usize = 19;
 pub const SMOKETYPE_WATER: usize = 20;
 pub const SMOKETYPE_DEBRIS: usize = 21;
 pub const SMOKETYPE_UFO: usize = 22;
+
+// `shard->type` (`shards_create`).
+pub const SHARDTYPE_GLASS: u8 = 0;
+pub const SHARDTYPE_BOTTLE: u8 = 1;
+pub const SHARDTYPE_WOOD: u8 = 2;
 
 // `g_ExplosionTypes` rows.
 pub const EXPLOSIONTYPE_NONE: usize = 0;

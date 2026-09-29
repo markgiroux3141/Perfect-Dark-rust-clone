@@ -621,6 +621,18 @@ POOL_SFXMAP = [
     "SFXMAP_80D4_FOOTSTEP", "SFXMAP_80D5_FOOTSTEP", "SFXMAP_80D6_FOOTSTEP", "SFXMAP_80D7_FOOTSTEP",
     "SFXMAP_80D8_FOOTSTEP", "SFXMAP_80D9_FOOTSTEP", "SFXMAP_80DA_FOOTSTEP", "SFXMAP_80DB_FOOTSTEP",
     "SFXMAP_810C_SHIP_HUM",
+    # The arenas' doors (door_play_opening_sound .. _closed_sound, propobj.c:18485):
+    # the sound types their setups use (1, 3, 4, 8, 10, 16, 18).
+    "SFXMAP_8008_DOOR", "SFXMAP_800A_DOOR", "SFXMAP_800C_DOOR", "SFXMAP_800D_DOOR",
+    "SFXMAP_8014_DOOR", "SFXMAP_8015_DOOR", "SFXMAP_8016_DOOR", "SFXMAP_801A_DOOR",
+    "SFXMAP_801B_DOOR", "SFXMAP_801E_DOOR", "SFXMAP_801F_DOOR", "SFXMAP_8020_DOOR",
+    "SFXMAP_8026_DOOR", "SFXMAP_8027_DOOR", "SFXMAP_81B0_DOOR",
+    # Felicity's lift (sound type 22; lift_tick plays the opening and opened sounds).
+    "SFXMAP_81AE_DOOR", "SFXMAP_81AF_DOOR", "SFXMAP_81B5_DOOR",
+    # A shot light breaking (lights_handle_hit, dlights.c:497).
+    "SFXMAP_8077_HIT_GLASS",
+    # A pane of glass breaking (shards_create, shards.c:81).
+    "SFXMAP_8078_GLASS_SHATTER",
 ]
 #: Sounds started by SFXNUM: the chr grunts (male, female, Jo, Maian ARGH sets
 #: of chraction.c), the pickup chimes, the Slayer beep and the Combat Boost

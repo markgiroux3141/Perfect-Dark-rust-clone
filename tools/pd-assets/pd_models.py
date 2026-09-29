@@ -97,6 +97,8 @@ FX_TEXTURES = [
     0x002E, 0x002F, 0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037,
     0x0038, 0x0039, 0x003A, 0x003B, 0x063B, 0x0854, 0x0855, 0x0856, 0x0859, 0x085A,
     0x08F0, 0x0B53, 0x0C27, 0x0C28, 0x0C32, 0x0C97, 0x0DA5,
+    # g_TcSkyWaterConfigs[TEX_ENV_00] (textureconfig.c:233): the clouds.
+    0x0013,
 ]
 
 # ---------------------------------------------------------------------------
@@ -113,6 +115,14 @@ def model_states() -> dict[str, tuple[int, int]]:
     for m in re.finditer(r"/\*0x([0-9a-f]+)\*/\s*\{\s*NULL,\s*(FILE_\w+),\s*(\w+)\s*\}", text):
         states.setdefault(m.group(2), (int(m.group(1), 16), int(m.group(3), 0)))
     return states
+
+
+def model_state_rows() -> dict[int, tuple[str, int]]:
+    """MODEL_ number -> (FILE_ name, scale): every `g_ModelStates` row
+    (`modeldata/general.c`)."""
+    text = gen.read(src("game", "modeldata", "general.c"))
+    return {int(m.group(1), 16): (m.group(2), int(m.group(3), 0))
+            for m in re.finditer(r"/\*0x([0-9a-f]+)\*/\s*\{\s*NULL,\s*(FILE_\w+),\s*(\w+)\s*\}", text)}
 
 
 def file_table() -> dict[str, tuple[int, str]]:
@@ -199,6 +209,16 @@ def model_list(weapons: dict, c: gen.Consts) -> list[tuple[str, str]]:
     add("props/multi_ammo_crate.bin", "prop")
     table = file_table()
     by_num = {num: rel for rel, (num, _) in table.items()}
+    # Every arena's setup objects (doors, lifts, glass, crates, hover props),
+    # through g_ModelStates (general.c) by their `model` argument.
+    import pd_stage  # noqa: PLC0415 (pd_stage imports this module)
+    by_name = {name: rel for rel, (_, name) in table.items()}
+    rows = model_state_rows()
+    for modelnum in pd_stage.setup_models(c):
+        fname = rows[modelnum][0]
+        if fname not in by_name:
+            raise SystemExit(f"MODEL {modelnum:#x} is {fname}, which is not in files/list.c")
+        add(by_name[fname], "prop")
     for n in sorted(chr_filenums(c)):
         rel = by_num.get(n)
         if rel is None:
@@ -302,8 +322,11 @@ def write_model(d: dict, stem: str, filenum: int, filename: str, dirpath: str | 
         for x, y, z, mtx, u, v, c0, c1, c2, c3, flags in b["verts"]:
             blob += VERTEX.pack(x, y, z, int(mtx), u, v, int(c0), int(c1), int(c2), int(c3), int(flags))
         blob += struct.pack(f"<{len(b['indices'])}H", *b["indices"])
+        # Anything else a batch carries (the BG's `leaf`, `cidx`, `dyntex`,
+        # `st`) rides in its header entry.
         heads.append({"node": b["node"], "material": b["material"],
-                      "nverts": len(b["verts"]), "nidx": len(b["indices"])})
+                      "nverts": len(b["verts"]), "nidx": len(b["indices"]),
+                      **{k: v for k, v in b.items() if k not in ("node", "material", "verts", "indices")}})
     head = {
         "format": FORMAT,
         "name": d["name"],
@@ -381,13 +404,16 @@ def export_all(weapons: dict) -> tuple[dict, "TexturePool"]:
     index: dict[str, dict] = {}
     warned = 0
     total = 0
+    import pd_stage  # noqa: PLC0415 (pd_stage imports this module)
+    door_models = set(pd_stage.setup_models(c, ("door",)))
     for rel, kind in model_list(weapons, c):
         path = asset("files", *rel.split("/"))
         if not os.path.exists(path):
             raise SystemExit(f"missing {decomp_rel(path)}")
         stem = os.path.splitext(os.path.basename(rel))[0]
         filenum, filename = table[rel]
-        d, warnings = pd_fpgun.export_model(path, None, tex_sink=pool.sink)
+        dlverts = filename in states and states[filename][0] in door_models
+        d, warnings = pd_fpgun.export_model(path, None, tex_sink=pool.sink, dlverts=dlverts)
         nbytes, tris = write_model(d, stem, filenum, filename)
         total += nbytes
         index[stem] = {"filenum": filenum, "file": filename, "kind": kind, "source": decomp_rel(path), "tris": tris}

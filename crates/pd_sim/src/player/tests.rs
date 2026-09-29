@@ -25,7 +25,7 @@ fn res() -> Arc<crate::world::WorldRes> {
 
 fn complex() -> (Stage, TileLevel) {
     let stage = Stage::load(&assets(), "ref").expect("assets/stages/ref");
-    let level = TileLevel::new(stage.geom.clone());
+    let level = TileLevel::for_stage(&stage);
     (stage, level)
 }
 
@@ -46,7 +46,7 @@ impl Walker {
 
     fn frame(&mut self, level: &TileLevel, input: &PlayerInput) {
         self.lv.frame(4, LvTickIn::default());
-        let env = WalkEnv { level, cyls: &[], fastmovement: false, shieldfrac: 0.0, menuopen: false };
+        let env = WalkEnv { level, cyls: &[], floors: &[], fastmovement: false, shieldfrac: 0.0, menuopen: false };
         self.p.tick(input, &self.lv, &env, &res(), &mut self.rng, &mut self.events);
     }
 }
@@ -283,7 +283,7 @@ fn walking_on_complex_makes_metal_footsteps_every_150cm() {
     let mut w = Walker::new();
     // Spawned as PD spawns, facing along the pad into the room.
     let pad = &stage.pads[stage.spawn_pads[0]];
-    w.p.start_new_life(&level, pad.pos, pad.look_angle());
+    w.p.start_new_life(&level, &[], pad.pos, pad.look_angle());
     for _ in 0..60 {
         w.frame(&level, &PlayerInput::default());
     }
@@ -400,4 +400,50 @@ fn probe_spawn_floors() {
         let spike = level.drop_to_ground(pos).y;
         println!("pad {p:#06x} at {pos:.0?}: PD ground {pd:.1}, spike drop {spike:.1}");
     }
+}
+
+/// Pipes' pit floor is `GEOFLAG_DIE`: a player standing on it dies at once
+/// (`bondwalk.c:944`), and a simulant dropped onto it dies on landing
+/// (`chr.c:917`).
+#[test]
+fn a_die_floor_kills_players_and_simulants() {
+    use crate::harness::{self, NavChoice};
+    // A corner of the pit with no walkway over it.
+    let pit = Vec3::new(-2060.0, -503.0, -1500.0);
+    let mut w = crate::testutil::arena("crad");
+    w.players[0].place(pit, 0.0);
+    w.sync_player_chr(0);
+    let idle = PlayerInput::default();
+    for _ in 0..3 {
+        w.step(4, std::slice::from_ref(&idle));
+    }
+    assert!(w.players[0].isdead, "the player stood on the die floor and lived (floor flags {:#x})", w.players[0].floorflags);
+
+    let stage = Arc::new(Stage::load(&assets(), "crad").unwrap());
+    let level = Arc::new(TileLevel::for_stage(&stage));
+    let setup = pd_core::mp::MatchSetup { stagenum: stage.stagenum, ..harness::setup(1, 1, BOTDIFF_NORMAL) };
+    let mut w = harness::world(stage, level, crate::testutil::res(), setup, NavChoice::Pd, harness::SPIKE_SEED, false).unwrap();
+    w.bot_brains = false;
+    for _ in 0..200 {
+        harness::step_idle(&mut w);
+    }
+    let sim = w.chrs.iter().position(|c| c.aibot.is_some()).unwrap();
+    assert!(!w.chr_is_dead(sim));
+    // Stood on the pit floor, then lifted 3 m: it falls onto it.
+    w.chr_move_to_pos(sim, pit + Vec3::Y * 50.0, 0.0);
+    let c = &mut w.chrs[sim];
+    c.forcetoground = false;
+    c.manground += 300.0;
+    c.sumground = c.manground * 9.999_998;
+    c.pos.y += 300.0;
+    c.model.chrinfo.set_root_position(c.pos);
+    let mut died = None;
+    for f in 0..120 {
+        harness::step_idle(&mut w);
+        if w.chr_is_dead(sim) {
+            died = Some(f);
+            break;
+        }
+    }
+    assert!(died.is_some(), "the simulant fell onto the die floor and lived: feet {}", w.chrs[sim].manground);
 }

@@ -605,3 +605,60 @@ fn a_thrown_knife_hurts_a_simulant() {
     }
     assert!(w.chrs[1].damage > before, "the knife hurt it: {} -> {}", before, w.chrs[1].damage);
 }
+
+/// Every arena hosts a Combat match: four NormalSims, unarmed at the start as
+/// in PD, arm themselves and kill each other within two minutes, routing on
+/// PD's graph through the doors and lifts. Prints each arena's figures.
+#[test]
+fn every_arena_hosts_a_simulant_match() {
+    let mut failed = Vec::new();
+    for code in crate::stage::ARENAS {
+        let stage = std::sync::Arc::new(Stage::load(&crate::testutil::assets(), code).unwrap());
+        let level = std::sync::Arc::new(TileLevel::for_stage(&stage));
+        let setup = pd_core::mp::MatchSetup { stagenum: stage.stagenum, ..harness::setup(0, 4, BOTDIFF_NORMAL) };
+        let w = harness::world(stage, level, res(), setup, NavChoice::Pd, SPIKE_SEED, false).unwrap();
+        let m = abtest::run_match(w, 120);
+        println!("{code:5} kills {:3} stalls {:3} gotos {:5} failed (no start, end, route) {:?}", m.kills, m.stalls, m.gotos[0], &m.gotos[1..]);
+        // (Villa: two unarmed simulants meeting in the tunnel under the pool,
+        // rooms 59 and 60, find no waypoint from there, by PD's own lookup,
+        // and stand retrying.)
+        if m.kills < 3 {
+            failed.push(code);
+        }
+    }
+    assert!(failed.is_empty(), "no match on {failed:?}");
+}
+
+
+/// A long probe (not PD): every 10 s of a four-simulant match on `ARENA`
+/// (default Fortress), each chr's place, action, target, guns and lift state,
+/// and the nearest door's mode and fraction.
+#[test]
+#[ignore]
+fn probe_arena_bots() {
+    let code = std::env::var("ARENA").unwrap_or("mp12".into());
+    let stage = std::sync::Arc::new(Stage::load(&crate::testutil::assets(), &code).unwrap());
+    let level = std::sync::Arc::new(TileLevel::for_stage(&stage));
+    let setup = pd_core::mp::MatchSetup { stagenum: stage.stagenum, ..harness::setup(0, 4, BOTDIFF_NORMAL) };
+    let mut w = harness::world(stage, level, res(), setup, NavChoice::Pd, SPIKE_SEED, false).unwrap();
+    for f in 0..60 * 120 {
+        harness::step_idle(&mut w);
+        if f % 600 == 0 {
+            for (i, c) in w.chrs.iter().enumerate() {
+                let a = c.aibot.as_ref().unwrap();
+                let door = w.props.objs.iter().filter_map(|o| o.door.as_ref().map(|d| ((o.pos - c.pos).length(), o.id, d.mode, d.frac))).min_by(|a, b| a.0.total_cmp(&b.0));
+                println!(
+                    "t {:4} chr {i} at {:.0} rooms {:?} act {:?} my {:?} target {:?} held {:?} liftaction {} door {door:?}",
+                    f / 60,
+                    c.pos,
+                    c.rooms,
+                    c.actiontype,
+                    a.myaction,
+                    c.target,
+                    c.held.iter().map(|h| h.as_ref().map(|g| g.weaponnum)).collect::<Vec<_>>(),
+                    c.liftaction
+                );
+            }
+        }
+    }
+}

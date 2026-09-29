@@ -51,7 +51,7 @@ use pd_core::model::Model;
 
 use crate::bot::Aibot;
 use crate::fx::beam::Beam;
-use crate::stage::PerimCyl;
+use crate::stage::PropGeo;
 
 pub use pd_core::ids::{HAND_LEFT, HAND_RIGHT};
 
@@ -74,6 +74,8 @@ pub enum Act {
 #[derive(Clone, Debug, Default)]
 pub struct GoPos {
     pub endpos: Vec3,
+    /// `act_gopos.endrooms`: the destination's rooms.
+    pub endrooms: Vec<u16>,
     /// `act_gopos.waypoints[MAX_CHRWAYPOINTS]` up to its NULL: the loaded part of
     /// the route (at most 5). `chr_gopos_advance_waypoint` reloads it from the
     /// current waypoint once `curindex` passes 3.
@@ -91,6 +93,8 @@ pub struct GoPos {
     pub age: i32,
     /// `act_gopos.restartttl`: when the current leg is given up and re-routed.
     pub restartttl: u16,
+    /// `GOPOSFLAG_WAITING`: standing at or in a lift (`chr_choose_stand_animation`).
+    pub waiting: bool,
 }
 
 /// A fire slot (`struct fireslot`, `g_Fireslots`): when the gun's shot sound
@@ -151,6 +155,11 @@ pub struct Chr {
     pub floorroom: Option<u16>,
     /// `FLOORTYPE_*`.
     pub floortype: u8,
+    /// `inlift`, `lift`: standing on a lift's floor, and which (object id).
+    pub inlift: bool,
+    pub lift: Option<u32>,
+    /// `LIFTACTION_*`: where a go-to is in using a lift.
+    pub liftaction: u8,
     pub onladder: bool,
     /// 0 the last move was clear, 2 it slid along an obstacle, 1 it was refused.
     pub invalidmove: u8,
@@ -273,7 +282,7 @@ impl Chr {
 
     /// `chr_get_geometry` (`chr.c:4949`): the cylinder other chrs collide with.
     /// A dying chr's blocks shots only, and a dead one's nothing.
-    pub fn perim(&self) -> Option<PerimCyl> {
-        (!self.is_dying_or_dead()).then_some(PerimCyl { x: self.pos.x, z: self.pos.z, radius: self.radius, ymin: self.manground, ymax: self.manground + self.height })
+    pub fn perim(&self) -> Option<PropGeo> {
+        (!self.is_dying_or_dead()).then_some(PropGeo::cyl(self.pos.x, self.pos.z, self.radius, self.manground, self.manground + self.height))
     }
 }

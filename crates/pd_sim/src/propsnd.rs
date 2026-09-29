@@ -8,8 +8,7 @@
 //! at `dist3`), read from `sfx/manifest.json`; a bare sound takes the caller's.
 //!
 //! `// SUBST:` PD measures the distance through rooms and portals
-//! (`lights_find_distance_through_rooms_with_limit`) / a straight line, until
-//! M9's portals.
+//! (`lights_find_distance_through_rooms_with_limit`) / a straight line.
 
 use std::collections::HashMap;
 

@@ -171,6 +171,7 @@ OML_AA_ZB_OPA_SURF = (AA_EN | Z_CMP | Z_UPD | IM_RD | ALPHA_CVG_SEL
 NODE_POSITION, NODE_GUNDL, NODE_DISTANCE, NODE_REORDER = 0x02, 0x04, 0x08, 0x09
 NODE_TYPE11, NODE_TOGGLE, NODE_POSITIONHELD, NODE_STARGUNFIRE, NODE_DL = 0x11, 0x12, 0x15, 0x16, 0x18
 NODE_BBOX = 0x0A
+NODE_GEO = 0x19
 NODE_CHRGUNFIRE = 0x0C
 NODE_CHRINFO = 0x01
 
@@ -440,6 +441,7 @@ class Interp:
                     src = self.resolve(w1, segs)
                     if src is None:
                         continue
+                    vtxbase = segs.get(0x04)
                     for i in range(n):
                         vo = src + i * VTX_SIZE
                         if vo + VTX_SIZE > len(self.d) or dest + i >= 16:
@@ -472,6 +474,12 @@ class Interp:
                             "c": cbytes,
                             "lit": lit,
                             "texgen": texgen,
+                            # G_TEXTURE's s/t scale at this load (the BG's dyntex
+                            # redoes U = s * scale >> 16 every frame).
+                            "texscale": (st.tex_s, st.tex_t),
+                            # The vertex's index in the node's vertex table, and its raw s/t.
+                            "vsrc": (vo - vtxbase) // VTX_SIZE if vtxbase is not None and vo >= vtxbase else -1,
+                            "st_raw": (s, t),
                         }
                     continue
                 if op == G_TRI4:
@@ -631,8 +639,14 @@ def model_parts(m: pd_model.ModelDef) -> dict[int, int]:
     return pd_gltf.model_parts(m)
 
 
-def export_model(path: str, texdir: str | None, texprefix: str = "tex_", tex_sink=None) -> tuple[dict, list[str]]:
+def export_model(path: str, texdir: str | None, texprefix: str = "tex_", tex_sink=None,
+                 dlverts: bool = False) -> tuple[dict, list[str]]:
     """One model file → the exporter's dict (nodes, parts, materials, batches, textures).
+
+    With `dlverts` (a door model), each `NODE_DL` batch also carries `vsrc`,
+    every vertex's index in its node's vertex table, and its raw `st` and
+    `stscale`: `door_calc_texturemap` (propobj.c:18299) rewrites that table
+    in groups of four as the door slides.
 
     Textures go to `tex_sink(model, texconfig, texid, stem) -> entry` when given
     (pd_models.py's global pool), else they are written into `texdir` as before.
@@ -643,6 +657,7 @@ def export_model(path: str, texdir: str | None, texprefix: str = "tex_", tex_sin
     parts = model_parts(m)
     part_of_node = {off: p for p, off in parts.items()}
     interp = Interp(m, cfgs, m.name)
+    dl_nodes: set[int] = set()
 
     out_nodes: list[dict] = []
     # nearest ancestor POSITION's matrix, for vertices with no G_MTX (none in the
@@ -694,6 +709,12 @@ def export_model(path: str, texdir: str | None, texprefix: str = "tex_", tex_sin
                         interp.used_textures.add(key)
                         rec["texture"] = cfg.texnum if cfg.texnum is not None else (0x10000 | cfg.index)
                         rec["texture_size"] = [cfg.width, cfg.height]
+        elif t == NODE_GEO and ro is not None:
+            # struct modelrodata_geo (types.h): a quad of collision geometry
+            # (obj_update_core_geo / obj_update_extra_geo, lift_update_tiles).
+            (count,) = struct.unpack_from(">i", m.data, ro)
+            rec["type"] = "geo"
+            rec["verts"] = [list(struct.unpack_from(">fff", m.data, ro + 4 + 12 * k)) for k in range(max(0, min(count, 4)))]
         elif t == NODE_BBOX and ro is not None:
             # struct modelrodata_bbox (types.h:470): what obj_find_bbox_rodata
             # hands the projectile/settle maths (propobj.c).
@@ -718,6 +739,8 @@ def export_model(path: str, texdir: str | None, texprefix: str = "tex_", tex_sin
             elif xlu and rm == MODELRENDERMODE_CTXAWARE_2PASS:
                 gdls.append((xlu, True))
             interp.st.colours_off = None
+            if t == NODE_DL:
+                dl_nodes.add(i)
             cull_exit = interp.run_node(i, n, rm, gdls, segs, ancestor_mtx(n))
             rec.update(rendermode=rm)
             if cull_exit is not None:
@@ -777,7 +800,12 @@ def export_model(path: str, texdir: str | None, texprefix: str = "tex_", tex_sin
             verts.append([v["pos"][0], v["pos"][1], v["pos"][2], v["mtx"],
                           round(v["uv"][0], 5), round(v["uv"][1], 5),
                           v["c"][0], v["c"][1], v["c"][2], v["c"][3], flags])
-        batches.append({"node": b["node"], "material": b["material"], "verts": verts, "indices": b["indices"]})
+        batch = {"node": b["node"], "material": b["material"], "verts": verts, "indices": b["indices"]}
+        if dlverts and b["node"] in dl_nodes and all(v["vsrc"] >= 0 for v in b["verts"]):
+            batch["vsrc"] = [v["vsrc"] for v in b["verts"]]
+            batch["st"] = [list(v["st_raw"]) for v in b["verts"]]
+            batch["stscale"] = [list(v["texscale"]) for v in b["verts"]]
+        batches.append(batch)
 
     return {
         "name": m.name,

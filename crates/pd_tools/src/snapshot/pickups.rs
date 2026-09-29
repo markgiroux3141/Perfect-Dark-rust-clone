@@ -67,7 +67,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     }
     let assets = crate::assets();
     let stage = Arc::new(Stage::load(&assets, &code)?);
-    let level = Arc::new(TileLevel::new(stage.geom.clone()));
+    let level = Arc::new(TileLevel::for_stage(&stage));
     let res = Arc::new(WorldRes::load(&assets)?);
     let gpu = HeadlessGpu::new()?;
     let format = wgpu::TextureFormat::Rgba8Unorm;

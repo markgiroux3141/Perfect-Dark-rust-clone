@@ -8,13 +8,16 @@ use pd_core::rng::Rng;
 
 use super::Player;
 use crate::chr::chr_adjust_pos_for_spawn;
-use crate::stage::{PerimCyl, Stage, TileLevel};
+use crate::stage::{PropFloor, PropGeo, Stage, TileLevel};
 
 /// Another chr as the spawn choice sees it: its `prop->pos` and `prop->rooms`.
 #[derive(Clone, Debug)]
 pub struct SpawnOther {
     pub pos: Vec3,
     pub rooms: Vec<u16>,
+    /// A human (`g_Vars.players[i]`): judged by what its screen shows, not
+    /// its rooms.
+    pub player: Option<usize>,
 }
 
 /// `player_choose_spawn_location(chrradius, ..., pads = g_SpawnPoints)`
@@ -28,7 +31,7 @@ pub struct SpawnOther {
 ///
 /// Returns the spot (at pad height, not on the floor) and
 /// `atan2f(pad.look.x, pad.look.z)`. `cyls` are the other chrs' perimeters.
-pub fn player_choose_spawn_location(level: &TileLevel, stage: &Stage, chrradius: f32, others: &[SpawnOther], cyls: &[PerimCyl], rng: &mut Rng) -> (Vec3, f32) {
+pub fn player_choose_spawn_location(level: &TileLevel, stage: &Stage, chrradius: f32, others: &[SpawnOther], cyls: &[PropGeo], mp_room_visibility: &[u8], rng: &mut Rng) -> (Vec3, f32) {
     let pads: Vec<Vec3> = stage.spawn_pads.iter().map(|&p| stage.pads[p].pos).collect();
     let angles: Vec<f32> = stage.spawn_pads.iter().map(|&p| stage.pads[p].look_angle()).collect();
     let numpads = pads.len();
@@ -36,19 +39,25 @@ pub fn player_choose_spawn_location(level: &TileLevel, stage: &Stage, chrradius:
     let mut verybad = vec![false; numpads];
     let mut bad = vec![false; numpads];
     for p in 0..numpads {
-        // SUBST: PD reads `pad.room` from the pad file / the room of the floor
-        // under the pad (the tiles' rooms stand in for the BSP's until M9).
-        let padroom = level.floor_room(pads[p], 20.0);
-        let neighbours = padroom.map(|r| level.room_neighbours(r)).unwrap_or_default();
+        let padroom = stage.pads[stage.spawn_pads[p]].room;
+        let neighbours = padroom.map(|r| stage.rooms.bg_room_get_neighbours(r as usize, 20)).unwrap_or_default();
         for o in others {
             let sq = o.pos.distance_squared(pads[p]);
             if sq < padsqdists[p] {
                 padsqdists[p] = sq;
             }
-            // SUBST: for a human, PD asks whether the pad's room is on that
-            // player's screen or standby list (`bg_room_is_on_player_screen`,
-            // portals, M9) / every other chr is judged the simulants' way, by
-            // its rooms against the pad's room and its neighbours.
+            if let Some(pi) = o.player {
+                // bg_room_is_on_player_screen / _standby (player.c:275).
+                let vis = padroom.and_then(|r| mp_room_visibility.get(r as usize)).copied().unwrap_or(0);
+                if vis & (1 << pi) != 0 {
+                    verybad[p] = true;
+                }
+                if verybad[p] || vis & (0x10 << pi) != 0 {
+                    bad[p] = true;
+                }
+                continue;
+            }
+            // A simulant: in the pad's room, or a neighbour (player.c:290).
             if padroom.is_some_and(|r| o.rooms.contains(&r)) {
                 verybad[p] = true;
             }
@@ -106,16 +115,18 @@ pub fn player_choose_spawn_location(level: &TileLevel, stage: &Stage, chrradius:
 impl Player {
     /// `player_start_new_life`'s placement (`player.c:527`): face
     /// `BADDTOR(360) − angle`, stand on the ground a 30 cm cylinder finds
-    /// under `pos` (`cd_find_ground_at_cyl_ctfril`), eye above it.
-    pub fn start_new_life(&mut self, level: &TileLevel, pos: Vec3, angle: f32) {
+    /// under `pos` among the tiles and the props' `floors`
+    /// (`cd_find_ground_at_cyl_ctfril`), eye above it.
+    pub fn start_new_life(&mut self, level: &TileLevel, floors: &[PropFloor], pos: Vec3, angle: f32) {
         self.reset_life();
         let angle = baddtor(360.0) - angle;
-        let (groundy, floorpoly) = level.cd_find_ground_at_cyl(pos, 30.0);
-        self.place(Vec3::new(pos.x, groundy, pos.z), badrtod4(angle));
-        self.floorpoly = floorpoly;
-        self.floorroom = floorpoly.and_then(|p| level.geom.polys[p].room);
-        if let Some(p) = floorpoly {
-            self.floortype = level.geom.polys[p].floortype;
+        let g = level.cd_find_ground_at_cyl_ctfril(pos, 30.0, floors);
+        self.place(Vec3::new(pos.x, g.y, pos.z), badrtod4(angle));
+        self.floorpoly = g.poly;
+        self.floorroom = g.room;
+        self.floortype = g.floortype;
+        if g.poly.is_some() || g.floor.is_some() {
+            self.floorflags = g.flags;
         }
     }
 }

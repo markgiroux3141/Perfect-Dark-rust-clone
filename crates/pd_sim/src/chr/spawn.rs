@@ -6,7 +6,7 @@ use pd_core::ids::FLOORTYPE_SNOW;
 use pd_core::math::baddtor;
 use pd_core::rng::Rng;
 
-use crate::stage::{CdResult, PerimCyl, TileLevel};
+use crate::stage::{CdResult, PropGeo, TileLevel};
 
 /// `chr_adjust_pos_for_spawn(chrradius, pos, rooms, angle, allowonscreen = true,
 /// force, onlysurrounding = false)` (`chraction.c:15018`): `pos` if a
@@ -18,7 +18,7 @@ use crate::stage::{CdResult, PerimCyl, TileLevel};
 ///
 /// Every caller in the Combat Simulator passes `allowonscreen = true` (or
 /// `force`, which sets it), so `chr_is_pos_offscreen` is never asked.
-pub fn chr_adjust_pos_for_spawn(level: &TileLevel, chrradius: f32, pos: Vec3, angle: f32, force: bool, cyls: &[PerimCyl]) -> Option<Vec3> {
+pub fn chr_adjust_pos_for_spawn(level: &TileLevel, chrradius: f32, pos: Vec3, angle: f32, force: bool, cyls: &[PropGeo]) -> Option<Vec3> {
     let ymax = 200.0;
     let ymin_at = |p: Vec3| {
         let ground = level.cd_find_ground_at_cyl(p, chrradius).0;
@@ -107,11 +107,11 @@ impl crate::world::World {
             .iter()
             .enumerate()
             .filter(|&(j, _)| j != i && self.chr_compare_teams(i, j, crate::mp::Compare::Enemies))
-            .map(|(_, c)| crate::player::SpawnOther { pos: c.pos, rooms: c.rooms.clone() })
+            .map(|(_, c)| crate::player::SpawnOther { pos: c.pos, rooms: c.rooms.clone(), player: c.player })
             .collect();
         let cyls = self.chr_perims_except(i);
         let radius = self.chrs[i].radius;
-        crate::player::player_choose_spawn_location(&self.level, &self.stage, radius, &others, &cyls, &mut self.rng)
+        crate::player::player_choose_spawn_location(&self.level, &self.stage, radius, &others, &cyls, &self.mp_room_visibility, &mut self.rng)
     }
 
     /// `chr_move_to_pos(chr, pos, rooms, angle, force = true)` (`chraction.c`):
@@ -123,12 +123,12 @@ impl crate::world::World {
         let cyls = self.chr_perims_except(i);
         let radius = self.chrs[i].radius;
         let Some(pos2) = chr_adjust_pos_for_spawn(&self.level, radius, pos, angle, true, &cyls) else { return };
-        let (ground, floorpoly) = self.level.cd_find_ground_at_cyl(pos2, radius);
+        let floors = self.prop_floors();
+        let g = self.level.cd_find_ground_at_cyl_ctfril(pos2, radius, &floors);
+        let ground = g.y;
         let c = &mut self.chrs[i];
-        if let Some(p) = floorpoly {
-            c.floortype = self.level.geom.polys[p].floortype;
-            c.floorroom = self.level.geom.polys[p].room;
-        }
+        c.floortype = g.floortype;
+        c.floorroom = g.room;
         c.ground = ground;
         c.manground = ground;
         c.sumground = ground * 9.999_998;

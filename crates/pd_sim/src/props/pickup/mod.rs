@@ -16,10 +16,8 @@
 use glam::{Mat3, Vec3};
 use pd_core::ids::*;
 use pd_core::lang::{tx, LANGBANK_PROPOBJ};
-use pd_core::math;
-use pd_core::mp::mp_get_mp_weapon_by_location;
 
-use super::{Bbox, Obj};
+use super::Obj;
 use crate::gun::Bgun;
 use crate::propsnd::DEFAULT_DISTS;
 use crate::world::World;
@@ -129,96 +127,12 @@ impl Obj {
 }
 
 impl World {
-    /// `setup_create_props`' objects in a Combat Simulator match (`setup.c:1400`):
-    /// the weapon locations (`setup_create_single_weapon`, `:617`), the multi
-    /// ammo crates after each (`:1704`), the shields.
-    ///
-    /// `// SUBST:` PD also creates the setup's other objects (`stdobject`s:
-    /// Complex's five at pads 77-81, doors, glass, lifts) / only the pickups
-    /// until the arenas' objects (M9).
-    pub(crate) fn setup_create_mp_pickups(&mut self) {
-        let props = self.stage.props.clone();
-        let weapons = self.setup.weapons;
-        let mut cur_mp_location: i32 = -1;
-        for p in &props {
-            let ty = p.get("type").and_then(|v| v.as_str()).unwrap_or("");
-            let int = |k: &str| p.get(k).and_then(|v| v.as_i64()).unwrap_or(0);
-            match ty {
-                "weapon" => {
-                    // The macro's `chr` parameter is the pad unless OBJFLAG_ASSIGNEDTOCHR.
-                    let flags = int("flags") as u32;
-                    if flags & OBJFLAG_ASSIGNEDTOCHR != 0 {
-                        continue;
-                    }
-                    let pad = int("chr") as i32;
-                    let mut weaponnum = int("weapon") as i32;
-                    let mut extrascale = int("scale") as i32;
-                    let mut createweapon = true;
-                    cur_mp_location = -1;
-                    let loc = weaponnum - WEAPON_MPLOCATION00 as i32;
-                    if (0..16).contains(&loc) {
-                        let mpweapon = mp_get_mp_weapon_by_location(&weapons, loc);
-                        cur_mp_location = loc;
-                        weaponnum = mpweapon.weaponnum;
-                        extrascale = mpweapon.extrascale;
-                        createweapon = mpweapon.hasweapon != 0;
-                        if mpweapon.weaponnum == WEAPON_MPSHIELD as i32 {
-                            // setup.c:645: a shield object, invincible, at full.
-                            if let Some(mut o) = self.pickup_obj("chrshield", extrascale, OBJTYPE_SHIELD, 0, flags | OBJFLAG_01000000 | OBJFLAG_INVINCIBLE, pad) {
-                                o.flags2 |= int("flags2") as u32 | OBJFLAG2_IMMUNETOEXPLOSIONS | OBJFLAG2_IMMUNETOGUNFIRE;
-                                o.flags3 |= int("flags3") as u32;
-                                o.shieldinitialamount = 1.0;
-                                o.shieldamount = 1.0;
-                                self.setup_create_object(o, pad);
-                            }
-                            createweapon = false;
-                        }
-                    }
-                    if weaponnum != WEAPON_NONE as i32 && createweapon {
-                        let stem = self.res.gset.weapon(weaponnum as u8).and_then(|w| w.tp_model.clone());
-                        if let Some(stem) = stem {
-                            if let Some(mut o) = self.pickup_obj(&stem, extrascale, OBJTYPE_WEAPON, weaponnum as u8, flags, pad) {
-                                o.flags2 |= int("flags2") as u32;
-                                o.flags3 |= int("flags3") as u32;
-                                self.setup_create_object(o, pad);
-                            }
-                        }
-                    }
-                }
-                "ammocratemulti" => {
-                    let mut slots = [0i32; 19];
-                    let mut ammoqty = 1;
-                    if cur_mp_location >= 0 {
-                        let mpweapon = mp_get_mp_weapon_by_location(&weapons, cur_mp_location);
-                        ammoqty = mpweapon.priammoqty;
-                        if mpweapon.priammotype > 0 && mpweapon.priammotype < 20 {
-                            slots[(mpweapon.priammotype - 1) as usize] = ammoqty;
-                        }
-                        if mpweapon.secammotype > 0 && mpweapon.secammotype < 20 {
-                            slots[(mpweapon.secammotype - 1) as usize] = mpweapon.secammoqty;
-                        }
-                    }
-                    if ammoqty > 0 {
-                        let pad = int("pad") as i32;
-                        if let Some(mut o) = self.pickup_obj("multi_ammo_crate", int("scale") as i32, OBJTYPE_MULTIAMMOCRATE, 0, int("flags") as u32, pad) {
-                            o.flags2 |= int("flags2") as u32;
-                            o.flags3 |= int("flags3") as u32;
-                            o.ammoslots = slots;
-                            self.setup_create_object(o, pad);
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    /// A setup object before placing: its model at `g_ModelStates[].scale / 4096
-    /// × extrascale / 256` (`obj_init`, `setup_create_object`), regenerating in a
-    /// match (`OBJH2FLAG_CANREGEN`, `setup.c:305`).
-    fn pickup_obj(&mut self, stem: &str, extrascale: i32, ty: u8, weaponnum: u8, flags: u32, pad: i32) -> Option<Obj> {
+    /// A pickup before placing: its model at `g_ModelStates[].scale / 4096`
+    /// (`obj_init`; `setup_create_object` applies the setup's extra scale),
+    /// regenerating in a match (`OBJH2FLAG_CANREGEN`, `setup.c:305`).
+    pub(crate) fn pickup_obj(&mut self, stem: &str, _extrascale: i32, ty: u8, weaponnum: u8, flags: u32, pad: i32) -> Option<Obj> {
         let def = self.res.models.get(stem).ok()?;
-        let scale = self.res.models.modelstate_scale(stem) * extrascale as f32 * (1.0 / 256.0);
+        let scale = self.res.models.modelstate_scale(stem);
         let id = self.props.alloc_id();
         let mut o = Obj::weapon(id, def, scale, weaponnum, FUNC_PRIMARY, 0);
         o.ty = ty;
@@ -230,26 +144,6 @@ impl World {
             o.vis.clear();
         }
         Some(o)
-    }
-
-    /// `setup_create_object` (`setup.c:289`) on pad `pad` → `obj_place_3d`
-    /// (`propobj.c:2232`): the pad's basis (`mtx00016d58(-look, up)`) scaled by
-    /// the model, the box's side lowest along the vertical on the floor under the
-    /// pad, 4 cm up (0 for a weapon, `obj_get_ground_clearance`). Complex's pads
-    /// have no bbox (PD reads ±100), so the centre is the pad.
-    fn setup_create_object(&mut self, mut o: Obj, pad: i32) {
-        let Some(p) = self.stage.pads.get(pad.max(0) as usize).filter(|_| pad >= 0).cloned() else { return };
-        // pad.room > 0: the pad is in a room.
-        if self.level.floor_room(p.pos, 1.0).is_none() {
-            return;
-        }
-        let mut mtx = math::look_at_basis(Vec3::ZERO, -p.look, p.up);
-        math::scale3(&mut mtx, o.scale);
-        let rot = Mat3::from_mat4(mtx);
-        let pos = obj_place_3d(&self.level, &o, &rot, p.pos);
-        o.realrot = rot;
-        o.pos = pos;
-        self.props.objs.push(o);
     }
 
     /// `obj_tick`'s respawn (`propobj.c:10951`), from `props_tick`: a taken
@@ -704,40 +598,6 @@ impl World {
         dst.push_str(".\n");
         dst
     }
-}
-
-/// `obj_place_3d`'s default case (`propobj.c:2232`): the basis vector most
-/// nearly vertical picks the box's axis; that axis's low end (its high end if
-/// the vector points down) goes on the floor found under the centre, plus the
-/// ground clearance. With no floor the object stays at the centre's offset.
-/// `// SUBST:` an object standing on another (`obj_find_by_pos`,
-/// `OBJHFLAG_ONANOTHEROBJ`) / never: the arenas' other objects are M9's.
-pub fn obj_place_3d(level: &crate::stage::TileLevel, o: &Obj, rot: &Mat3, centre: Vec3) -> Vec3 {
-    let b: Bbox = o.bbox;
-    let cols = [rot.x_axis, rot.y_axis, rot.z_axis];
-    let mut row = 0;
-    let mut maxval = cols[0].y.abs();
-    let mut isnegative = cols[0].y < 0.0;
-    for (r, c) in cols.iter().enumerate().skip(1) {
-        if c.y.abs() > maxval {
-            row = r;
-            isnegative = c.y < 0.0;
-            maxval = c.y.abs();
-        }
-    }
-    let (mut min, mut max) = match row {
-        0 => (b.xmin, b.xmax),
-        2 => (b.zmin, b.zmax),
-        _ => (b.ymin, b.ymax),
-    };
-    if isnegative {
-        std::mem::swap(&mut min, &mut max);
-    }
-    let mut pos2 = centre - cols[row] * min;
-    if let Some((y, _)) = level.cd_find_room_at_pos_ycnp(pos2) {
-        pos2.y = y - min * cols[row].y + super::projectile::obj_get_ground_clearance(o);
-    }
-    pos2
 }
 
 impl World {

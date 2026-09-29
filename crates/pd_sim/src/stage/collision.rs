@@ -6,23 +6,28 @@
 //!   `cd_test_volume_closestedge`, `cd_test_volume_fromdir`, and the swept tests
 //!   `cd_test_cylmove_*` via `cd_is_cylpath_intersecting_tilei` (the centre line
 //!   against tile edges);
-//! * ground: `cd_find_ground_at_cyl_ctfril` + `cd_find_ground_finalise`;
+//! * ground: `cd_find_ground_at_cyl_ctfril` + `cd_find_ground_finalise`, over the
+//!   tiles and the props' floors ([`PropFloor`]);
 //! * ladders and flagged tiles: `cd_find_ladder`, `is_cyl_touching_tile_with_flags`;
 //! * other chrs as `GEOTYPE_CYL` perimeters (`chr_get_geometry`), passed per call.
+//! * The ground search is `cd_find_ground_finalise` in full (`GEOFLAG_STEP`,
+//!   `SLOPE`, `DIE`, the props' `GEOTYPE_TILE_F` floors and lifts), and ramp walls
+//!   are tested (`cd_test_ramp_wall`, with `enableslopes`).
+//! * Sight and shot lines against the props' blocks, cylinders and floors:
+//!   [`TileLevel::cd_los_props`].
 //!
-//! Substitutions (there are no BSP rooms or portals yet, M9):
+//! Substitutions:
 //! * `// SUBST:` PD only tests the tiles of the rooms a chr is in or passes
 //!   through. Here every polygon is a candidate, rejected by bounding box first,
 //!   which is a superset.
 //! * `// SUBST:` the `oobfail` checks ("did the move leave every room?") become
 //!   [`TileLevel::in_bounds`]: is there any floor within the cylinder below the point.
-//! * `// SUBST:` rooms neighbour when their polygon edges run along each other
-//!   ([`infer_room_neighbours`]), standing in for `bg_room_get_neighbours`' portals.
+//! * A PD stage's rooms neighbour across its portals ([`TileLevel::for_stage`]).
+//!   `// SUBST:` a test fixture has no portals: its rooms neighbour when their
+//!   polygon edges run along each other ([`infer_room_neighbours`]).
 //! * `// SUBST:` sight and shot rays test the fan triangles of each polygon (what
 //!   `cd_is_line_intersecting_tilei` does) with a standard segment/triangle test in
 //!   place of `func0002f490`.
-//! * `GEOFLAG_STEP`, `GEOFLAG_SLOPE`, `GEOFLAG_DIE`, `GEOFLAG_RAMPWALL` and lifts are
-//!   not read (Complex has none of them; M9), so their branches are gone.
 //!
 //! Units: PD world units (cm). `ymax`/`ymin` arguments are **relative to the
 //! position** they're tested at, exactly as PD passes `ymax - prop->pos.y`.
@@ -30,6 +35,34 @@
 //! Source: the old repo's `pd_spike/tile_level.rs`.
 
 use glam::{Vec2, Vec3};
+use pd_core::ids::{FLOORTYPE_WATER, GEOFLAG_DIE, GEOFLAG_FLOOR1, GEOFLAG_FLOOR2, GEOFLAG_LIFTFLOOR, GEOFLAG_RAMPWALL, GEOFLAG_SLOPE, GEOFLAG_STEP, GEOFLAG_UNDERWATER};
+
+thread_local! {
+    /// `g_Vars.enableslopes`: false while a player standing on a
+    /// `GEOFLAG_SLOPE` floor tests its own moves (`bwalk_try_move_upwards`,
+    /// `bwalk_try_delta_nopush`), which lets it through the ramp walls
+    /// (`cd_test_ramp_wall`). `// SUBST:` PD's global / one per thread, so
+    /// worlds on other threads (the tests) don't share it; PD starts a stage
+    /// with it false until the first player move test, here true.
+    static ENABLESLOPES: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+}
+
+/// Sets `g_Vars.enableslopes` for a player's move test; dropping it sets it
+/// back to true, as each of those functions does on its way out.
+pub struct EnableSlopes;
+
+impl EnableSlopes {
+    pub fn set(enable: bool) -> EnableSlopes {
+        ENABLESLOPES.with(|e| e.set(enable));
+        EnableSlopes
+    }
+}
+
+impl Drop for EnableSlopes {
+    fn drop(&mut self) {
+        ENABLESLOPES.with(|e| e.set(true));
+    }
+}
 
 use super::geom::{GeomPoly, LevelGeom};
 
@@ -41,15 +74,217 @@ pub enum CdResult {
     Error,
 }
 
-/// A chr's perimeter as other chrs collide with it (`chr_get_geometry`,
-/// `chr.c:4949`): a vertical cylinder from `manground` to `manground + height`.
-#[derive(Clone, Copy, Debug)]
-pub struct PerimCyl {
+/// A prop's collision geometry (`prop_get_geometry`): a chr's perimeter
+/// (`GEOTYPE_CYL`, `chr_get_geometry`, `chr.c:4949`: a vertical cylinder from
+/// `manground` to `manground + height`) or an object's block (`GEOTYPE_BLOCK`,
+/// `obj_update_core_geo`: a convex footprint, from `ymin` to `ymax`). A block
+/// meets any wall, sight or shot query (`cd_volume_collect_from_bytes`,
+/// `collision.c:1246`); nothing stands on either.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PropGeo {
     pub x: f32,
     pub z: f32,
     pub radius: f32,
     pub ymin: f32,
     pub ymax: f32,
+    /// `GEOTYPE_BLOCK`: the footprint is the first `numvertices` of
+    /// `vertices` (x, z); 0 for a cylinder.
+    pub numvertices: u8,
+    pub vertices: [Vec2; 8],
+}
+
+impl PropGeo {
+    /// A `GEOTYPE_CYL`.
+    pub fn cyl(x: f32, z: f32, radius: f32, ymin: f32, ymax: f32) -> PropGeo {
+        PropGeo { x, z, radius, ymin, ymax, ..Default::default() }
+    }
+
+    /// A `GEOTYPE_BLOCK` (at most 8 vertices, as `struct geoblock`).
+    pub fn block(verts: &[Vec2], ymin: f32, ymax: f32) -> PropGeo {
+        let mut g = PropGeo { ymin, ymax, numvertices: verts.len().min(8) as u8, ..Default::default() };
+        let n = g.numvertices as usize;
+        g.vertices[..n].copy_from_slice(&verts[..n]);
+        g
+    }
+
+    pub fn is_block(&self) -> bool {
+        self.numvertices > 0
+    }
+
+    pub fn verts(&self) -> &[Vec2] {
+        &self.vertices[..self.numvertices as usize]
+    }
+
+    /// Edge `i -> i + 1` of a block at height `y`.
+    fn edge(&self, i: usize, y: f32) -> Edge {
+        let v = self.verts();
+        let (a, b) = (v[i], v[(i + 1) % v.len()]);
+        (Vec3::new(a.x, y, a.y), Vec3::new(b.x, y, b.y))
+    }
+
+    /// The vertical overlap test every prop geometry gets.
+    fn overlaps(&self, y: f32, checkvertical: bool, ymax: f32, ymin: f32) -> bool {
+        !checkvertical || (y + ymax >= self.ymin && y + ymin <= self.ymax)
+    }
+
+    /// `cd_block_collides_with_cyl_laterally` (`collision.c:1118`) or
+    /// `cd_cyl_collides_with_cyl_laterally` (`:1163`): the edge index hit.
+    fn collides_laterally(&self, x: f32, z: f32, radius: f32) -> Option<usize> {
+        if !self.is_block() {
+            let (sx, sz, w) = (x - self.x, z - self.z, self.radius + radius);
+            return (sx * sx + sz * sz <= w * w).then_some(0);
+        }
+        if cd_is_xz_in_block(self.verts(), x, z) {
+            return Some(0);
+        }
+        let v = self.verts();
+        for i in 0..v.len() {
+            let next = (i + 1) % v.len();
+            let value = cd_pos_get_dist_to_line(v[i].x, v[i].y, v[next].x, v[next].y, x, z).abs();
+            if value <= radius
+                && (cd_pos_get_dist_to_vtx(v[i].x, v[i].y, x, z) <= radius
+                    || cd_pos_get_dist_to_vtx(v[next].x, v[next].y, x, z) <= radius
+                    || cd_pos_get_side(v[i].x, v[i].y, v[next].x, v[next].y, x, z))
+            {
+                return Some(i);
+            }
+        }
+        None
+    }
+}
+
+/// `cd_is_xz_in_block` (`collision.c:759`): on one side of every edge.
+pub fn cd_is_xz_in_block(v: &[Vec2], x: f32, z: f32) -> bool {
+    let mut result: i32 = -1;
+    for i in 0..v.len() {
+        let next = (i + 1) % v.len();
+        let value = (v[next].y - v[i].y) * (x - v[i].x) - (v[next].x - v[i].x) * (z - v[i].y);
+        if value != 0.0 {
+            if i == 0 || result < 0 {
+                result = (value > 0.0) as i32;
+            } else {
+                if result != 0 && value < 0.0 {
+                    return false;
+                }
+                if result == 0 && value > 0.0 {
+                    return false;
+                }
+            }
+        }
+    }
+    result >= 0
+}
+
+/// A prop's floor (`GEOTYPE_TILE_F`): a lift's floor or an object's floor
+/// quad, in world space, with its `GEOFLAG_*`.
+#[derive(Clone, Copy, Debug)]
+pub struct PropFloor {
+    pub verts: [Vec3; 4],
+    pub flags: u32,
+    /// The object's id (`collision->prop`).
+    pub prop: u32,
+    /// The room the prop is in (`collision->room`).
+    pub room: Option<u16>,
+}
+
+impl PropFloor {
+    /// The tile's box (`tile->min[]`, `tile->max[]`).
+    fn bounds(&self) -> (Vec3, Vec3) {
+        let lo = self.verts.iter().copied().fold(Vec3::splat(f32::MAX), Vec3::min);
+        let hi = self.verts.iter().copied().fold(Vec3::splat(f32::MIN), Vec3::max);
+        (lo, hi)
+    }
+
+    fn in_range(&self, pos: Vec3, radius: f32) -> bool {
+        let (lo, hi) = self.bounds();
+        pos.x >= lo.x - radius && pos.x <= hi.x + radius && pos.z >= lo.z - radius && pos.z <= hi.z + radius
+    }
+
+    /// `cd_is_xz_in_tilef` (`collision.c:725`).
+    pub fn xz_in(&self, x: f32, z: f32) -> bool {
+        let v: Vec<Vec2> = self.verts.iter().map(|p| Vec2::new(p.x, p.z)).collect();
+        cd_is_xz_in_block(&v, x, z)
+    }
+
+    /// `cd_volume_collect_tilef` (`collision.c:1081`).
+    fn collect(&self, x: f32, z: f32, radius: f32) -> bool {
+        if self.xz_in(x, z) {
+            return true;
+        }
+        let v = &self.verts;
+        (0..4).any(|i| {
+            let next = (i + 1) % 4;
+            let value = cd_pos_get_dist_to_line(v[i].x, v[i].z, v[next].x, v[next].z, x, z).abs();
+            value <= radius
+                && (cd_pos_get_dist_to_vtx(v[i].x, v[i].z, x, z) <= radius
+                    || cd_pos_get_dist_to_vtx(v[next].x, v[next].z, x, z) <= radius
+                    || cd_pos_get_side(v[i].x, v[i].z, v[next].x, v[next].z, x, z))
+        })
+    }
+
+    /// `cd_find_y_tilef` (`collision.c:652`): the plane of the first three
+    /// vertices at (x, z), held within the tile's height range.
+    pub fn find_y(&self, x: f32, z: f32) -> f32 {
+        let v = &self.verts;
+        let a = v[1] - v[0];
+        let b = v[2] - v[0];
+        let n = Vec3::new(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
+        let tmp = n.x * v[0].x + n.y * v[0].y + n.z * v[0].z;
+        let (lo, hi) = self.bounds();
+        if n.y == 0.0 {
+            return hi.y;
+        }
+        let ground = ((tmp as f64 - x as f64 * n.x as f64 - z as f64 * n.z as f64) / n.y as f64) as f32;
+        ground.clamp(lo.y, hi.y)
+    }
+}
+
+/// What a sight or shot line met among the props ([`TileLevel::cd_los_props`]):
+/// an index into the geometry or the floors passed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LosProp {
+    Geo(usize),
+    Floor(usize),
+}
+
+/// Where the ground search found the ground.
+#[derive(Clone, Copy, Debug)]
+enum GroundSrc {
+    Tile(usize),
+    Floor(usize),
+}
+
+/// The ground under a cylinder (`cd_find_ground_at_cyl_ctfril`'s outputs).
+#[derive(Clone, Copy, Debug)]
+pub struct Ground {
+    pub y: f32,
+    /// A BG tile's polygon.
+    pub poly: Option<usize>,
+    /// The index into the prop floors passed, and that floor's prop.
+    pub floor: Option<usize>,
+    pub prop: Option<u32>,
+    /// The floor's `GEOFLAG_*` (`floorflags`; 0 when nothing was found, where
+    /// PD leaves the caller's value).
+    pub flags: u32,
+    /// `floorroom`: the tile's room, or the prop's.
+    pub room: Option<u16>,
+    /// `floortype`: the tile's (water under `GEOFLAG_UNDERWATER`); a prop's
+    /// floor is `FLOORTYPE_DEFAULT`; 0xff with no floor.
+    pub floortype: u8,
+}
+
+impl Default for Ground {
+    fn default() -> Ground {
+        Ground { y: NO_GROUND, poly: None, floor: None, prop: None, flags: 0, room: None, floortype: 0xff }
+    }
+}
+
+impl Ground {
+    /// `inlift`, `lift`: the ground is a lift's floor (`GEOTYPE_TILE_F` with
+    /// `GEOFLAG_LIFTFLOOR`, `collision.c:2255`), and that lift.
+    pub fn lift(&self) -> Option<u32> {
+        self.prop.filter(|_| self.flags & GEOFLAG_LIFTFLOOR != 0)
+    }
 }
 
 /// What a sight/shot ray met first.
@@ -77,7 +312,7 @@ pub struct CdObstacle {
 #[derive(Clone, Copy, Debug)]
 enum Hit {
     Tile { poly: usize, vertexindex: usize },
-    Cyl(usize),
+    Prop { k: usize, vertexindex: usize },
 }
 
 /// "No ground" as PD returns it from `cd_find_ground_finalise`.
@@ -140,6 +375,21 @@ impl TileLevel {
         TileLevel { geom, bbox, walls, floors, sight, shot, any_blocker, ladders, crouch, duck, room_neighbours, room_bboxes }
     }
 
+    /// A PD stage's collision: its tiles, with the rooms' neighbours from the
+    /// BG's portals (`bg_room_get_neighbours`, `bg.c:5869`) and their boxes
+    /// from `g_Rooms[].bbmin/bbmax`, in place of what [`TileLevel::new`] infers
+    /// from the tiles.
+    pub fn for_stage(stage: &super::Stage) -> Self {
+        let mut l = TileLevel::new(stage.geom.clone());
+        let rooms = &stage.rooms;
+        if rooms.portals.is_empty() {
+            return l; // a fixture
+        }
+        l.room_neighbours = (1..rooms.roomcount()).map(|r| (r as u16, rooms.bg_room_get_neighbours(r, usize::MAX))).collect();
+        l.room_bboxes = (1..rooms.roomcount()).map(|r| (r as u16, (rooms.rooms[r].bbmin, rooms.rooms[r].bbmax))).collect();
+        l
+    }
+
     // ─── Volume tests ────────────────────────────────────────────────────────
 
     /// `cd_volume_collect_from_bytes` (`collision.c:1186`) for tiles: bounding box
@@ -176,23 +426,68 @@ impl TileLevel {
         None
     }
 
+    /// `cd_test_ramp_wall` (`collision.c:1382`): for a triangular wall tile under
+    /// a ramp (`GEOFLAG_RAMPWALL`), does the height `y1..y2` at `pos` actually
+    /// meet it? Each edge's height where it passes `pos` (along x or z,
+    /// whichever the edge runs further in) counts when it lies within the range,
+    /// or when edges above and below it have both been seen. A slope's ramp
+    /// walls count for nothing while `enableslopes` is off. Non-zero: a hit.
+    pub fn cd_test_ramp_wall(&self, poly: usize, pos: Vec3, y1: f32, y2: f32) -> i32 {
+        let p = &self.geom.polys[poly];
+        if !ENABLESLOPES.with(|e| e.get()) && p.geoflags & GEOFLAG_SLOPE != 0 {
+            return 0;
+        }
+        let v = &p.verts;
+        let (mut count, mut y1count, mut y2count) = (0, 0, 0);
+        for i in 0..v.len() {
+            let next = (i + 1) % v.len();
+            let xdiff = (v[next].x - v[i].x).abs();
+            let zdiff = (v[next].z - v[i].z).abs();
+            if xdiff != 0.0 || zdiff != 0.0 {
+                let (this0, next0, posval) = if zdiff < xdiff { (v[i].x, v[next].x, pos.x) } else { (v[i].z, v[next].z, pos.z) };
+                let somefloat = (posval - this0) / (next0 - this0);
+                if (0.0..=1.0).contains(&somefloat) {
+                    let somefloat2 = v[i].y + (v[next].y - v[i].y) * somefloat;
+                    if somefloat2 >= y2 - 1.0 {
+                        y2count += 1;
+                        if y1count != 0 {
+                            count += 1;
+                        }
+                    } else if somefloat2 <= y1 + 1.0 {
+                        y1count += 1;
+                        if y2count != 0 {
+                            count += 1;
+                        }
+                    } else {
+                        count += 1;
+                    }
+                }
+            }
+        }
+        count
+    }
+
+    /// A wall tile passes `cd_test_ramp_wall` if it isn't a ramp wall.
+    fn ramp_wall_ok(&self, poly: usize, pos: Vec3, y1: f32, y2: f32) -> bool {
+        self.geom.polys[poly].geoflags & GEOFLAG_RAMPWALL == 0 || self.cd_test_ramp_wall(poly, pos, y1, y2) != 0
+    }
+
     /// `cd_volume_collect(..., GEOFLAG_WALL, ..., maxcollisions = 1)`: the first
     /// wall tile, else the first chr perimeter, the cylinder at `pos` touches. PD
     /// checks the background before props, so the order is the same.
-    fn volume_collect_wall(&self, pos: Vec3, radius: f32, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PerimCyl]) -> Option<Hit> {
+    fn volume_collect_wall(&self, pos: Vec3, radius: f32, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PropGeo]) -> Option<Hit> {
         for &poly in &self.walls {
-            if self.tile_in_range(poly, pos, radius, checkvertical, ymax, ymin) {
+            if self.tile_in_range(poly, pos, radius, checkvertical, ymax, ymin) && self.ramp_wall_ok(poly, pos, pos.y + ymin, pos.y + ymax) {
                 if let Some(vertexindex) = self.volume_collect_tile(poly, pos.x, pos.z, radius) {
                     return Some(Hit::Tile { poly, vertexindex });
                 }
             }
         }
         for (k, c) in cyls.iter().enumerate() {
-            // `cd_cyl_collides_with_cyl_laterally` (`collision.c:1163`).
-            let vertical = !checkvertical || (pos.y + ymax >= c.ymin && pos.y + ymin <= c.ymax);
-            let (sx, sz, w) = (pos.x - c.x, pos.z - c.z, c.radius + radius);
-            if vertical && sx * sx + sz * sz <= w * w {
-                return Some(Hit::Cyl(k));
+            if c.overlaps(pos.y, checkvertical, ymax, ymin) {
+                if let Some(vertexindex) = c.collides_laterally(pos.x, pos.z, radius) {
+                    return Some(Hit::Prop { k, vertexindex });
+                }
             }
         }
         None
@@ -235,7 +530,7 @@ impl TileLevel {
     }
 
     /// `cd_test_volume_simple` (`collision.c:2428`).
-    pub fn cd_test_volume_simple(&self, pos: Vec3, radius: f32, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PerimCyl]) -> CdResult {
+    pub fn cd_test_volume_simple(&self, pos: Vec3, radius: f32, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PropGeo]) -> CdResult {
         match self.volume_collect_wall(pos, radius, checkvertical, ymax, ymin, cyls) {
             Some(_) => CdResult::Collision,
             None => CdResult::NoCollision,
@@ -244,11 +539,9 @@ impl TileLevel {
 
     /// `cd_test_volume_simple` with `CDTYPE_ALL & ~CDTYPE_BG`: the other chrs'
     /// perimeters only (`chr_adjust_pos_for_spawn` with `force`).
-    pub fn cd_test_volume_props(&self, pos: Vec3, radius: f32, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PerimCyl]) -> CdResult {
+    pub fn cd_test_volume_props(&self, pos: Vec3, radius: f32, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PropGeo]) -> CdResult {
         for c in cyls {
-            let vertical = !checkvertical || (pos.y + ymax >= c.ymin && pos.y + ymin <= c.ymax);
-            let (sx, sz, w) = (pos.x - c.x, pos.z - c.z, c.radius + radius);
-            if vertical && sx * sx + sz * sz <= w * w {
+            if c.overlaps(pos.y, checkvertical, ymax, ymin) && c.collides_laterally(pos.x, pos.z, radius).is_some() {
                 return CdResult::Collision;
             }
         }
@@ -265,7 +558,7 @@ impl TileLevel {
         radius: f32,
         ymax: f32,
         ymin: f32,
-        cyls: &[PerimCyl],
+        cyls: &[PropGeo],
     ) -> (CdResult, Option<Edge>) {
         match self.volume_collect_wall(topos, radius, true, ymax, ymin, cyls) {
             None => (CdResult::NoCollision, None),
@@ -273,12 +566,49 @@ impl TileLevel {
                 let v = &self.geom.polys[poly].verts;
                 (CdResult::Collision, Some((v[vertexindex], v[(vertexindex + 1) % v.len()])))
             }
-            Some(Hit::Cyl(k)) => {
-                let c = cyls[k];
+            Some(Hit::Prop { k, vertexindex }) => {
+                let c = &cyls[k];
+                if c.is_block() {
+                    return (CdResult::Collision, Some(c.edge(vertexindex, frompos.y)));
+                }
                 let (a, b) = cd_pos_get_cyl_edge(c.x, c.z, c.radius, frompos.x, frompos.z);
                 (CdResult::Collision, Some((Vec3::new(a.x, frompos.y, a.y), Vec3::new(b.x, frompos.y, b.y))))
             }
         }
+    }
+
+    /// `cd_test_atobany` / `cd_test_atobclosest` with `ATOBTYPE_LOS` over props
+    /// (`collision.c:3020`, `CHECKVERTICAL_YES` with no height offsets): how far
+    /// along `from → to` (0..1) the nearest prop geometry is, and which: a block
+    /// or cylinder in `geos` (any sight/shot flag meets a block), or one of the
+    /// `floors` carrying one of `geoflags` (`cd_is_line_intersecting_tilef`).
+    /// `// SUBST:` the floor quad is tested as its two triangles with a standard
+    /// segment/triangle test, as the BG's tiles are.
+    pub fn cd_los_props(from: Vec3, to: Vec3, geos: &[PropGeo], floors: &[PropFloor], geoflags: u32) -> Option<(f32, LosProp)> {
+        let len = (to - from).length();
+        let mut best: Option<(f32, LosProp)> = None;
+        let mut take = |t: f32, what: LosProp| {
+            if best.is_none_or(|(b, _)| t < b) {
+                best = Some((t, what));
+            }
+        };
+        for (k, g) in geos.iter().enumerate() {
+            let hit = if g.is_block() { Self::cylpath_block(g, from, to, true, 0.0, 0.0) } else { Self::cylpath_cyl(g, from, to, true, 0.0, 0.0) };
+            if let Some((end, _)) = hit {
+                take(if len > 0.0 { (end - from).length() / len } else { 0.0 }, LosProp::Geo(k));
+            }
+        }
+        for (k, f) in floors.iter().enumerate() {
+            if f.flags & geoflags == 0 {
+                continue;
+            }
+            let v = &f.verts;
+            let d = to - from;
+            if let Some(t) = segment_triangle(from, d, v[0], v[1], v[2]).or_else(|| segment_triangle(from, d, v[0], v[2], v[3])) {
+                take(t, LosProp::Floor(k));
+            }
+        }
+        best
     }
 
     // ─── Swept tests ─────────────────────────────────────────────────────────
@@ -331,8 +661,46 @@ impl TileLevel {
         None
     }
 
+    /// `cd_is_cylpath_intersecting_block` (`collision.c:2769`): the centre line
+    /// crossing one of the block's edges while the cylinder overlaps it in y, or
+    /// starting inside it.
+    fn cylpath_block(c: &PropGeo, frompos: Vec3, topos: Vec3, checkvertical: bool, ymax: f32, ymin: f32) -> Option<(Vec3, Edge)> {
+        if !(!checkvertical || (frompos.y + ymax >= c.ymin && topos.y + ymin <= c.ymax) || (frompos.y + ymin <= c.ymax && topos.y + ymax >= c.ymin)) {
+            return None;
+        }
+        let v = c.verts();
+        let mut spb8 = true;
+        let mut best: Option<(f32, usize)> = None;
+        let mut bestdistfrac = 1.0f32;
+        for i in 0..v.len() {
+            let next = (i + 1) % v.len();
+            if cd_000254d8(frompos, topos, v[i].x, v[i].y, v[next].x, v[next].y, &mut spb8) {
+                let distfrac = func0f1577f0(Vec2::new(frompos.x, frompos.z), Vec2::new(topos.x, topos.z), v[i], v[next]);
+                if distfrac < bestdistfrac {
+                    let y1 = (topos.y - frompos.y) * distfrac + frompos.y;
+                    let (y2, y1) = (y1 + ymax, y1 + ymin);
+                    if !checkvertical || (!(y1 >= c.ymax) && !(y2 <= c.ymin)) {
+                        bestdistfrac = distfrac;
+                        best = Some((distfrac, i));
+                    }
+                }
+            }
+        }
+        if let Some((frac, i)) = best {
+            let end = frompos + (topos - frompos) * frac;
+            return Some((end, c.edge(i, end.y)));
+        }
+        if spb8 {
+            return Some((frompos, (frompos, frompos)));
+        }
+        None
+    }
+
     /// `cd_is_cylpath_intersecting_cyl` (`collision.c:2857`).
-    fn cylpath_cyl(c: &PerimCyl, frompos: Vec3, topos: Vec3, checkvertical: bool, ymax: f32, ymin: f32) -> Option<(Vec3, Edge)> {
+    fn cylpath_cyl(c: &PropGeo, frompos: Vec3, topos: Vec3, checkvertical: bool, ymax: f32, ymin: f32) -> Option<(Vec3, Edge)> {
+        if c.is_block() {
+            return Self::cylpath_block(c, frompos, topos, checkvertical, ymax, ymin);
+        }
         let vertical_ok = !checkvertical
             || (frompos.y + ymax >= c.ymin && topos.y + ymin <= c.ymax)
             || (frompos.y + ymin <= c.ymax && topos.y + ymax >= c.ymin);
@@ -372,7 +740,7 @@ impl TileLevel {
     /// `GEOFLAG_WALL`: the swept centre line against wall tiles then perimeters.
     /// `closest` keeps the nearest crossing (the `findclosest` variants) instead of
     /// the first; either way the edge of the reported crossing comes back.
-    fn atob_cyl(&self, frompos: Vec3, topos: Vec3, ymax: f32, ymin: f32, cyls: &[PerimCyl], closest: bool) -> Option<Edge> {
+    fn atob_cyl(&self, frompos: Vec3, topos: Vec3, ymax: f32, ymin: f32, cyls: &[PropGeo], closest: bool) -> Option<Edge> {
         self.atob_cyl_obstacle(frompos, topos, true, ymax, ymin, cyls, closest).map(|(e, _)| e)
     }
 
@@ -386,7 +754,7 @@ impl TileLevel {
         checkvertical: bool,
         ymax: f32,
         ymin: f32,
-        cyls: &[PerimCyl],
+        cyls: &[PropGeo],
         closest: bool,
     ) -> Option<(Edge, Option<usize>)> {
         let mut best: Option<(f32, Edge, Option<usize>)> = None;
@@ -398,6 +766,11 @@ impl TileLevel {
             !closest
         };
         for &poly in &self.walls {
+            // cd_test_atobclosest_from_bytes (collision.c:3178) tests a ramp wall
+            // at `frompos` first (cd_test_atobany_from_bytes doesn't).
+            if closest && !self.ramp_wall_ok(poly, frompos, frompos.y + ymin, frompos.y + ymax) {
+                continue;
+            }
             // `cd_test_atobclosest_from_bytes`: skip tiles both ends lie beyond.
             let (lo, hi) = self.bbox[poly];
             if (frompos.x < lo.x && topos.x < lo.x)
@@ -423,8 +796,15 @@ impl TileLevel {
         best.map(|b| (b.1, b.2))
     }
 
+    /// `cd_test_cylmove_oobok_findclosest` with the obstacle kept
+    /// (`cd_get_obstacle_prop`): the index in `cyls` of the prop the swept line
+    /// meets first, `None` when that is the BG or nothing.
+    pub fn cd_test_cylmove_oobok_findclosest_obstacle(&self, frompos: Vec3, topos: Vec3, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PropGeo]) -> Option<usize> {
+        self.atob_cyl_obstacle(frompos, topos, checkvertical, ymax, ymin, cyls, true).and_then(|(_, k)| k)
+    }
+
     /// `cd_test_cylmove_oobok` (`collision.c:3576`): any wall on the swept line.
-    pub fn cd_test_cylmove_oobok(&self, frompos: Vec3, topos: Vec3, ymax: f32, ymin: f32, cyls: &[PerimCyl]) -> CdResult {
+    pub fn cd_test_cylmove_oobok(&self, frompos: Vec3, topos: Vec3, ymax: f32, ymin: f32, cyls: &[PropGeo]) -> CdResult {
         match self.atob_cyl(frompos, topos, ymax, ymin, cyls, false) {
             Some(_) => CdResult::Collision,
             None => CdResult::NoCollision,
@@ -441,7 +821,7 @@ impl TileLevel {
         radius: f32,
         ymax: f32,
         ymin: f32,
-        cyls: &[PerimCyl],
+        cyls: &[PropGeo],
     ) -> CdResult {
         if !self.in_bounds(topos, radius) {
             return CdResult::Collision;
@@ -459,7 +839,7 @@ impl TileLevel {
         radius: f32,
         ymax: f32,
         ymin: f32,
-        cyls: &[PerimCyl],
+        cyls: &[PropGeo],
     ) -> (CdResult, Option<Edge>) {
         match self.atob_cyl(frompos, topos, ymax, ymin, cyls, true) {
             Some(edge) => (CdResult::Collision, Some(edge)),
@@ -479,7 +859,7 @@ impl TileLevel {
         radius: f32,
         ymax: f32,
         ymin: f32,
-        cyls: &[PerimCyl],
+        cyls: &[PropGeo],
     ) -> (CdResult, Option<CdObstacle>) {
         match self.atob_cyl_obstacle(frompos, topos, true, ymax, ymin, cyls, true) {
             Some((edge, cyl)) => {
@@ -500,7 +880,7 @@ impl TileLevel {
 
     /// `cd_test_cylmove_oobok_findclosest` (`collision.c:3604`): the nearest wall
     /// or perimeter the centre line crosses, and its edge. Leaving the level is fine.
-    pub fn cd_test_cylmove_oobok_findclosest(&self, frompos: Vec3, topos: Vec3, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PerimCyl]) -> (CdResult, Option<Edge>) {
+    pub fn cd_test_cylmove_oobok_findclosest(&self, frompos: Vec3, topos: Vec3, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PropGeo]) -> (CdResult, Option<Edge>) {
         match self.atob_cyl_obstacle(frompos, topos, checkvertical, ymax, ymin, cyls, true) {
             Some((edge, _)) => (CdResult::Collision, Some(edge)),
             None => (CdResult::NoCollision, None),
@@ -519,7 +899,7 @@ impl TileLevel {
         checkvertical: bool,
         ymax: f32,
         ymin: f32,
-        cyls: &[PerimCyl],
+        cyls: &[PropGeo],
     ) -> (CdResult, Option<CdObstacle>) {
         match self.atob_cyl_obstacle(frompos, topos, checkvertical, ymax, ymin, cyls, true) {
             Some((edge, cyl)) => {
@@ -548,13 +928,13 @@ impl TileLevel {
         checkvertical: bool,
         ymax: f32,
         ymin: f32,
-        cyls: &[PerimCyl],
+        cyls: &[PropGeo],
     ) -> (CdResult, Option<CdObstacle>) {
         const MAX: usize = 20;
         // (edge, perimeter index, perimeter circle) per collision, in collection order.
         let mut collisions: Vec<(Edge, Option<usize>, Option<(f32, f32, f32)>)> = Vec::new();
         'bg: for &poly in &self.walls {
-            if !self.tile_in_range(poly, topos, radius, checkvertical, ymax, ymin) {
+            if !self.tile_in_range(poly, topos, radius, checkvertical, ymax, ymin) || !self.ramp_wall_ok(poly, topos, topos.y + ymin, topos.y + ymax) {
                 continue;
             }
             let v = &self.geom.polys[poly].verts;
@@ -577,10 +957,35 @@ impl TileLevel {
                 }
             }
         }
-        for (k, c) in cyls.iter().enumerate() {
-            let vertical = !checkvertical || (topos.y + ymax >= c.ymin && topos.y + ymin <= c.ymax);
+        'props: for (k, c) in cyls.iter().enumerate() {
+            if !c.overlaps(topos.y, checkvertical, ymax, ymin) {
+                continue;
+            }
+            if c.is_block() {
+                // cd_volumefromdir_collect_block (`collision.c:1498`): every edge in reach.
+                let v = c.verts();
+                for i in 0..v.len() {
+                    let next = (i + 1) % v.len();
+                    if v[i] == v[next] {
+                        continue;
+                    }
+                    let dist = cd_pos_get_dist_to_line(v[i].x, v[i].y, v[next].x, v[next].y, topos.x, topos.z).abs();
+                    if dist <= radius
+                        && (cd_pos_get_dist_to_vtx(v[i].x, v[i].y, topos.x, topos.z) <= radius
+                            || cd_pos_get_dist_to_vtx(v[next].x, v[next].y, topos.x, topos.z) <= radius
+                            || cd_pos_get_side(v[i].x, v[i].y, v[next].x, v[next].y, topos.x, topos.z))
+                    {
+                        if collisions.len() < MAX {
+                            collisions.push((c.edge(i, frompos.y), Some(k), None));
+                        } else {
+                            break 'props;
+                        }
+                    }
+                }
+                continue;
+            }
             let (xd, zd, f16) = (topos.x - c.x, topos.z - c.z, radius + c.radius);
-            if vertical && xd * xd + zd * zd <= f16 * f16 && collisions.len() < MAX {
+            if xd * xd + zd * zd <= f16 * f16 && collisions.len() < MAX {
                 collisions.push(((Vec3::ZERO, Vec3::ZERO), Some(k), Some((c.x, c.z, c.radius))));
             }
         }
@@ -631,93 +1036,191 @@ impl TileLevel {
 
     // ─── Ground ──────────────────────────────────────────────────────────────
 
-    /// `cd_find_ground_at_cyl_ctfril` (`collision.c:2219`) + `cd_find_ground_finalise`
-    /// (`collision.c:1826`): the floor tiles the cylinder's circle touches (up to
-    /// 20, no vertical test). If the centre is over any of them, the highest height
-    /// there that is below `pos.y`; otherwise the height at the nearest point on
-    /// the nearest edge of a touched tile. Returns `(ground, polygon)`, with
-    /// [`NO_GROUND`] when nothing was found.
+    /// `cd_find_ground_at_cyl_ctfril` (`collision.c:2219`) over the tiles alone:
+    /// `(ground, polygon)`, with [`NO_GROUND`] when nothing was found.
     pub fn cd_find_ground_at_cyl(&self, pos: Vec3, radius: f32) -> (f32, Option<usize>) {
-        let mut collisions: Vec<(usize, bool)> = Vec::new();
+        let g = self.cd_find_ground_at_cyl_ctfril(pos, radius, &[]);
+        (g.y, g.poly)
+    }
+
+    /// `cd_find_ground_at_cyl_ctfril` (`collision.c:2219`) + `cd_find_ground_finalise`
+    /// (`collision.c:1826`, NTSC 1.0+): the floor tiles and the props' floors the
+    /// cylinder's circle touches (up to 20, no vertical test). If the centre is
+    /// over any of them, the highest height there that is below `pos.y` (a
+    /// `GEOFLAG_STEP` tile's even if higher, once nothing else is); a
+    /// `GEOFLAG_DIE` tile is never under the centre. Otherwise (or when a slope
+    /// is among them) the height at the nearest point on the nearest edge of a
+    /// touched tile, a die tile's only while nothing else is found.
+    pub fn cd_find_ground_at_cyl_ctfril(&self, pos: Vec3, radius: f32, floors: &[PropFloor]) -> Ground {
+        // (tile or prop floor, intile)
+        let mut collisions: Vec<(GroundSrc, bool)> = Vec::new();
         for &poly in &self.floors {
             if collisions.len() >= 20 {
                 break;
             }
             if self.tile_in_range(poly, pos, radius, false, 0.0, 0.0) && self.volume_collect_tile(poly, pos.x, pos.z, radius).is_some() {
-                collisions.push((poly, false));
+                collisions.push((GroundSrc::Tile(poly), false));
+            }
+        }
+        for (k, f) in floors.iter().enumerate() {
+            if collisions.len() >= 20 {
+                break;
+            }
+            if f.flags & (GEOFLAG_FLOOR1 | GEOFLAG_FLOOR2) != 0 && f.in_range(pos, radius) && f.collect(pos.x, pos.z, radius) {
+                collisions.push((GroundSrc::Floor(k), false));
             }
         }
         let mut curground = NO_GROUND;
-        let mut found: Option<usize> = None;
+        let mut found: Option<GroundSrc> = None;
         let mut anyintile = false;
+        let mut hasflag0100 = false;
         for c in &mut collisions {
-            c.1 = self.geom.polys[c.0].xz_in_convex(pos.x, pos.z);
+            match c.0 {
+                GroundSrc::Tile(poly) => {
+                    let p = &self.geom.polys[poly];
+                    if p.geoflags & GEOFLAG_DIE != 0 {
+                        c.1 = false;
+                    } else {
+                        if p.geoflags & GEOFLAG_SLOPE != 0 {
+                            hasflag0100 = true;
+                        }
+                        c.1 = p.xz_in_convex(pos.x, pos.z);
+                    }
+                }
+                GroundSrc::Floor(k) => c.1 = floors[k].xz_in(pos.x, pos.z),
+            }
             anyintile |= c.1;
         }
         let mut hasground = false;
+        let mut hasdie = false;
+        let step = |src: GroundSrc| matches!(src, GroundSrc::Tile(p) if self.geom.polys[p].geoflags & GEOFLAG_STEP != 0);
         if anyintile {
-            for &(poly, intile) in &collisions {
-                if intile {
-                    let ground = self.geom.polys[poly].find_y(pos.x, pos.z);
+            for &(src, intile) in &collisions {
+                if intile && !step(src) {
+                    let ground = match src {
+                        GroundSrc::Tile(p) => self.geom.polys[p].find_y(pos.x, pos.z),
+                        GroundSrc::Floor(k) => floors[k].find_y(pos.x, pos.z),
+                    };
                     if ground >= curground && ground < pos.y {
                         curground = ground;
-                        found = Some(poly);
+                        found = Some(src);
+                        hasground = true;
+                    }
+                }
+            }
+            for &(src, intile) in &collisions {
+                if intile && step(src) {
+                    let GroundSrc::Tile(p) = src else { continue };
+                    let ground = self.geom.polys[p].find_y(pos.x, pos.z);
+                    if ground >= curground && (ground < pos.y || !hasground) {
+                        curground = ground;
+                        found = Some(src);
                         hasground = true;
                     }
                 }
             }
         }
-        if !hasground {
+        let hasgroundfromearlier = hasground;
+        if !hasground || hasflag0100 {
             let mut spe4 = 4_294_967_296.0f32;
-            for &(poly, intile) in &collisions {
+            for &(src, intile) in &collisions {
                 if intile {
                     continue;
                 }
-                let p = &self.geom.polys[poly];
-                let v = &p.verts;
-                for i in 0..v.len() {
-                    let next = (i + 1) % v.len();
-                    let (thisx, thisz, nextx, nextz) = (v[i].x, v[i].z, v[next].x, v[next].z);
+                let slope = matches!(src, GroundSrc::Tile(p) if self.geom.polys[p].geoflags & GEOFLAG_SLOPE != 0);
+                if hasgroundfromearlier && !slope {
+                    continue;
+                }
+                let (verts, isdie, isstep): (Vec<Vec3>, bool, bool) = match src {
+                    GroundSrc::Tile(p) => {
+                        let poly = &self.geom.polys[p];
+                        (poly.verts.clone(), poly.geoflags & GEOFLAG_DIE != 0, poly.geoflags & GEOFLAG_STEP != 0)
+                    }
+                    GroundSrc::Floor(k) => (floors[k].verts.to_vec(), false, false),
+                };
+                if isdie && hasground {
+                    continue;
+                }
+                let tilei = matches!(src, GroundSrc::Tile(_));
+                let height = |x: f32, z: f32, i: usize| match src {
+                    GroundSrc::Tile(p) => self.geom.polys[p].find_y_vtx(x, z, i),
+                    GroundSrc::Floor(k) => floors[k].find_y(x, z),
+                };
+                for i in 0..verts.len() {
+                    let next = (i + 1) % verts.len();
+                    let (thisx, thisz, nextx, nextz) = (verts[i].x, verts[i].z, verts[next].x, verts[next].z);
                     let spd4 = cd_pos_get_dist_to_line(thisx, thisz, nextx, nextz, pos.x, pos.z);
                     let f30 = spd4.abs();
-                    if f30 >= spe4 {
-                        continue;
-                    }
-                    let mut take = |x: f32, z: f32, d: f32, spe4: &mut f32| {
-                        let ground = p.find_y_vtx(x, z, i);
-                        if ground < pos.y {
+                    // A die tile taken so far gives way to any other edge.
+                    let closer = |d: f32, spe4: f32, hasdie: bool| d < spe4 || (tilei && hasdie);
+                    let mut take = |x: f32, z: f32, d: f32, spe4: &mut f32, hasdie: &mut bool, hasground: &mut bool| {
+                        let ground = height(x, z, i);
+                        if ground < pos.y || isstep {
                             curground = ground;
-                            found = Some(poly);
+                            found = Some(src);
                             *spe4 = d;
+                            *hasground = true;
+                            *hasdie = isdie;
                         }
                     };
-                    if cd_pos_get_side(thisx, thisz, nextx, nextz, pos.x, pos.z) {
-                        let (spb8, spb4) = (nextx - thisx, nextz - thisz);
-                        let f14 = spd4 / (spb8 * spb8 + spb4 * spb4).sqrt();
-                        take(pos.x + f14 * -spb4, pos.z + f14 * spb8, f30, &mut spe4);
-                    } else {
-                        let thisvalue = cd_pos_get_dist_to_vtx(thisx, thisz, pos.x, pos.z);
-                        let nextvalue = cd_pos_get_dist_to_vtx(nextx, nextz, pos.x, pos.z);
-                        if thisvalue < nextvalue {
-                            if thisvalue < spe4 {
-                                take(thisx, thisz, thisvalue, &mut spe4);
+                    if closer(f30, spe4, hasdie) {
+                        if cd_pos_get_side(thisx, thisz, nextx, nextz, pos.x, pos.z) {
+                            let (spb8, spb4) = (nextx - thisx, nextz - thisz);
+                            let f14 = spd4 / (spb8 * spb8 + spb4 * spb4).sqrt();
+                            take(pos.x + f14 * -spb4, pos.z + f14 * spb8, f30, &mut spe4, &mut hasdie, &mut hasground);
+                        } else {
+                            let thisvalue = cd_pos_get_dist_to_vtx(thisx, thisz, pos.x, pos.z);
+                            let nextvalue = cd_pos_get_dist_to_vtx(nextx, nextz, pos.x, pos.z);
+                            if thisvalue < nextvalue {
+                                if closer(thisvalue, spe4, hasdie) {
+                                    take(thisx, thisz, thisvalue, &mut spe4, &mut hasdie, &mut hasground);
+                                }
+                            } else if closer(nextvalue, spe4, hasdie) {
+                                take(nextx, nextz, nextvalue, &mut spe4, &mut hasdie, &mut hasground);
                             }
-                        } else if nextvalue < spe4 {
-                            take(nextx, nextz, nextvalue, &mut spe4);
                         }
                     }
                 }
             }
         }
-        (curground, found)
+        let mut g = Ground { y: curground, ..Default::default() };
+        match found {
+            // cd_get_floor_type (collision.c:520): an underwater tile is water.
+            Some(GroundSrc::Tile(p)) => {
+                let poly = &self.geom.polys[p];
+                g.poly = Some(p);
+                g.flags = poly.geoflags;
+                g.room = poly.room;
+                g.floortype = if poly.geoflags & GEOFLAG_UNDERWATER != 0 { FLOORTYPE_WATER } else { poly.floortype };
+            }
+            Some(GroundSrc::Floor(k)) => {
+                g.floor = Some(k);
+                g.prop = Some(floors[k].prop);
+                g.flags = floors[k].flags;
+                g.room = floors[k].room;
+            }
+            None => {}
+        }
+        g
     }
 
     /// `cd_find_y` over the floor tiles (`collision.c:985`, `GEOFLAG_FLOOR1 |
     /// GEOFLAG_FLOOR2`): of the floors whose outline holds `pos`, the highest at or
     /// below it (`ceiling` false), or the lowest at or above it (`ceiling` true).
     fn cd_find_y(&self, pos: Vec3, ceiling: bool) -> Option<(f32, usize)> {
+        self.cd_find_y_in(pos, ceiling, None)
+    }
+
+    /// [`Self::cd_find_y`] over the tiles of `rooms` only (`None`: every tile),
+    /// room by room in the list's order, as PD walks them: on a tie the first
+    /// room's floor wins.
+    fn cd_find_y_in(&self, pos: Vec3, ceiling: bool, rooms: Option<&[u16]>) -> Option<(f32, usize)> {
+        let order: Vec<usize> = match rooms {
+            None => self.floors.clone(),
+            Some(rooms) => rooms.iter().flat_map(|&r| self.floors.iter().copied().filter(move |&p| self.geom.polys[p].room == Some(r))).collect(),
+        };
         let mut best: Option<(f32, usize)> = None;
-        for &poly in &self.floors {
+        for poly in order {
             let (lo, hi) = self.bbox[poly];
             if pos.x < lo.x || pos.x > hi.x || pos.z < lo.z || pos.z > hi.z {
                 continue;
@@ -741,6 +1244,18 @@ impl TileLevel {
         best
     }
 
+    /// `cd_find_room_at_pos` (`collision.c:2312`): the room of the floor under
+    /// `pos` among the tiles of `nearrooms`.
+    pub fn cd_find_room_at_pos(&self, pos: Vec3, nearrooms: &[u16]) -> Option<u16> {
+        self.cd_find_y_in(pos, false, Some(nearrooms)).and_then(|(_, p)| self.geom.polys[p].room)
+    }
+
+    /// `cd_find_ground_at_pos_ct` (`collision.c:2288`): the height of the floor
+    /// under `pos` among the tiles of `rooms`, −2³² for none.
+    pub fn cd_find_ground_at_pos_ct(&self, pos: Vec3, rooms: &[u16]) -> f32 {
+        self.cd_find_y_in(pos, false, Some(rooms)).map_or(-4_294_967_296.0, |(y, _)| y)
+    }
+
     /// `cd_find_room_at_pos_ycnp` (`collision.c:2381`): the floor under `pos`,
     /// its height and polygon; `None` where PD finds no room.
     pub fn cd_find_room_at_pos_ycnp(&self, pos: Vec3) -> Option<(f32, usize)> {
@@ -753,8 +1268,8 @@ impl TileLevel {
         self.cd_find_y(pos, true)
     }
 
-    /// A room's bounding box. `// SUBST:` PD's `g_Rooms[].bbmin/bbmax` cover the
-    /// room's BG / the box over its collision tiles (M9: the BG's rooms).
+    /// A room's bounding box: `g_Rooms[].bbmin/bbmax` ([`TileLevel::for_stage`];
+    /// a fixture's is the box over its tiles).
     pub fn room_bbox(&self, room: u16) -> Option<(Vec3, Vec3)> {
         self.room_bboxes.get(&room).copied()
     }
@@ -1193,5 +1708,26 @@ mod tests {
         let over = TileLevel::new(LevelGeom { polys: vec![quad(280.0, 0.0, 200.0), quad(0.0, -500.0, 700.0)], rooms: vec![] });
         assert_eq!(over.cd_find_ground_at_cyl(Vec3::new(190.0, 349.0, 100.0), 20.0).0, 280.0);
         assert_eq!(over.cd_find_ground_at_cyl(Vec3::new(210.0, 349.0, 100.0), 20.0).0, 0.0);
+    }
+
+    /// A ramp's triangular side wall (`GEOFLAG_RAMPWALL`) meets a cylinder
+    /// whose height range crosses the ramp's edge above it, not one standing
+    /// on the ramp above the wall; a slope's ramp wall meets nothing while
+    /// `enableslopes` is off.
+    #[test]
+    fn a_ramp_wall_only_meets_what_is_beside_it() {
+        let mut wall = GeomPoly::new(vec![Vec3::new(0.0, 0.0, 0.0), Vec3::new(100.0, 100.0, 0.0), Vec3::new(100.0, 0.0, 0.0)], false, true, true, true, Some(1));
+        wall.geoflags = GEOFLAG_RAMPWALL | pd_core::ids::GEOFLAG_WALL | GEOFLAG_SLOPE;
+        let l = TileLevel::new(LevelGeom { polys: vec![wall], rooms: vec![1] });
+        // At x = 50 the ramp's edge is 50 cm up.
+        let at = Vec3::new(50.0, 0.0, 0.0);
+        assert_ne!(l.cd_test_ramp_wall(0, at, 0.0, 100.0), 0);
+        assert_eq!(l.cd_test_ramp_wall(0, at, 60.0, 160.0), 0);
+        assert_eq!(l.cd_test_volume_simple(Vec3::new(50.0, 110.0, 5.0), 20.0, true, 50.0, -50.0, &[]), CdResult::NoCollision);
+        assert_eq!(l.cd_test_volume_simple(Vec3::new(50.0, 40.0, 5.0), 20.0, true, 50.0, -50.0, &[]), CdResult::Collision);
+        let off = EnableSlopes::set(false);
+        assert_eq!(l.cd_test_ramp_wall(0, at, 0.0, 100.0), 0);
+        drop(off);
+        assert_ne!(l.cd_test_ramp_wall(0, at, 0.0, 100.0), 0);
     }
 }

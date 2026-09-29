@@ -19,10 +19,18 @@ pub mod bghit;
 mod collision;
 pub mod fixtures;
 mod geom;
+pub mod portals;
+pub mod rooms;
 
 pub use bghit::{BgHit, BgHitMesh, TexSurface};
 pub use collision::*;
 pub use geom::*;
+pub use rooms::BgRooms;
+
+/// The 16 Combat Simulator arenas' stage codes, in the arena menu's order:
+/// Skedar, Pipes, Ravine, G5 Building, Sewers, Warehouse, Grid, Ruins, Area 52,
+/// Base, Fortress, Villa, Car Park, Temple, Complex, Felicity.
+pub const ARENAS: [&str; 16] = ["oat", "crad", "arec", "cryp", "mp10", "mp4", "mp15", "mp9", "mp3", "mp1", "mp12", "mp13", "mp5", "jun", "ref", "mp11"];
 
 use glam::Vec3;
 use pd_core::assets::AssetDir;
@@ -56,11 +64,32 @@ pub struct Pad {
     /// `[xmin, xmax, ymin, ymax, zmin, zmax]`.
     pub bbox: [f32; 6],
     pub liftnum: i32,
+    /// `pad.room`, as `setup_prepare_pads` finds it (`setuppads.c:38`).
+    #[serde(skip)]
+    pub room: Option<u16>,
 }
 
 impl Pad {
     pub fn has(&self, flag: u32) -> bool {
         self.flags & flag != 0
+    }
+
+    /// `pad_has_bbox_data` (`pad.c:148`).
+    pub fn has_bbox_data(&self) -> bool {
+        self.flags & PADFLAG_HASBBOXDATA != 0
+    }
+
+    /// `pad.normal` (`pad_unpack`, `pad.c:116`): up × look.
+    pub fn normal(&self) -> Vec3 {
+        let (u, l) = (self.up, self.look);
+        Vec3::new(u.y * l.z - l.y * u.z, u.z * l.x - l.z * u.x, u.x * l.y - l.x * u.y)
+    }
+
+    /// `pad_get_centre` (`pad.c:156`): the middle of the pad's box, in world space.
+    pub fn centre(&self) -> Vec3 {
+        let b = &self.bbox;
+        let (n, u, l) = (self.normal(), self.up, self.look);
+        self.pos + ((b[0] + b[1]) * n + (b[2] + b[3]) * u + (b[4] + b[5]) * l) * 0.5
     }
 
     /// The facing a chr spawned here takes: `atan2f(pad.look.x, pad.look.z)`
@@ -117,8 +146,14 @@ pub struct Stage {
     /// scenarios (M10).
     pub intro: Vec<serde_json::Value>,
     pub props: Vec<serde_json::Value>,
+    /// The commands of the setup's background AI lists (`ailists[]` from id
+    /// 0x1000), in list order, `{type, <param>: value}`: `activate_lift`,
+    /// `set_wind_speed`, `set_ailist` and the simulant set-up.
+    pub bgai: Vec<serde_json::Value>,
     /// The BG triangles shots hit, with their textures' surface types.
     pub bghit: BgHitMesh,
+    /// PD's rooms and portals (`g_Rooms`, `g_BgPortals`).
+    pub rooms: BgRooms,
     /// `g_Stages[].eraserpropdist` and `unk30` (`stagetable.c`): the x-ray's
     /// reach for props, and how much further the BG shows.
     pub eraserpropdist: f32,
@@ -173,6 +208,12 @@ struct SetupFile {
     stage: SetupStage,
     intro: Vec<serde_json::Value>,
     props: Vec<serde_json::Value>,
+    bgai: Vec<BgAiList>,
+}
+
+#[derive(Deserialize)]
+struct BgAiList {
+    cmds: Vec<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -196,8 +237,8 @@ fn check_format(what: &str, got: &str, want: &str) -> Result<(), String> {
     }
 }
 
-/// One tile as the collision code sees it. Only the flags the chr code reads
-/// survive; `GEOFLAG_STEP`/`SLOPE`/`DIE`/`RAMPWALL`/lifts arrive with M9.
+/// One tile as the collision code sees it: the flags the chr code reads as
+/// booleans, and all of them in `geoflags`.
 fn tile_poly(t: &TileRow) -> Result<GeomPoly, String> {
     if t.verts.len() < 3 {
         return Err(format!("tiles: room {:#x} has a tile with {} vertices", t.room, t.verts.len()));
@@ -215,6 +256,7 @@ fn tile_poly(t: &TileRow) -> Result<GeomPoly, String> {
     p.crouch = f(GEOFLAG_AIBOTCROUCH);
     p.duck = f(GEOFLAG_AIBOTDUCK);
     p.floortype = t.floortype;
+    p.geoflags = t.flags;
     Ok(p)
 }
 
@@ -248,18 +290,23 @@ impl Stage {
         if let Some(&bad) = spawn_pads.iter().find(|&&p| p >= pads.pads.len()) {
             return Err(format!("spawn pad {bad:#x} out of range"));
         }
+        let rooms = BgRooms::load(assets, code)?;
+        let mut padlist = pads.pads;
+        setup_prepare_pads(&mut padlist, &rooms, &geom);
         Ok(Stage {
             code: code.to_owned(),
             stagenum: setup.stage.num,
             geom,
-            pads: pads.pads,
+            pads: padlist,
             waypoints,
             waygroups,
             cover: pads.cover,
             spawn_pads,
             intro: setup.intro,
             props: setup.props,
+            bgai: setup.bgai.into_iter().flat_map(|l| l.cmds).collect(),
             bghit: BgHitMesh::load(assets, code)?,
+            rooms,
             eraserpropdist: setup.stage.table.eraserpropdist as f32,
             eraserbgextra: setup.stage.table.unk30 as f32,
         })
@@ -269,11 +316,13 @@ impl Stage {
     /// default surface, a spawn pad at each `(pos, look)`, and the firing
     /// range's x-ray reach (`STAGE_CITRAINING`: 400, 0).
     pub fn fixture(code: &str, geom: LevelGeom, spawns: &[(Vec3, Vec3)]) -> Stage {
-        let pads: Vec<Pad> = spawns.iter().map(|&(pos, look)| Pad { pos, look, up: Vec3::Y, flags: 0, bbox: [0.0; 6], liftnum: -1 }).collect();
+        let pads: Vec<Pad> = spawns.iter().map(|&(pos, look)| Pad { pos, look, up: Vec3::Y, flags: 0, bbox: [0.0; 6], liftnum: -1, room: Some(1) }).collect();
+        let (lo, hi) = geom.bounds();
         Stage {
             code: code.to_owned(),
             stagenum: 0,
             bghit: BgHitMesh::from_geom(&geom),
+            rooms: BgRooms::single(lo, hi),
             geom,
             spawn_pads: (0..pads.len()).collect(),
             pads,
@@ -282,6 +331,7 @@ impl Stage {
             cover: Vec::new(),
             intro: Vec::new(),
             props: Vec::new(),
+            bgai: Vec::new(),
             eraserpropdist: 400.0,
             eraserbgextra: 0.0,
         }
@@ -295,6 +345,20 @@ impl Stage {
     /// ([`directed_links`]). Returns `(a, b, one_way)`.
     pub fn waypoint_links(&self) -> Vec<(usize, usize, bool)> {
         directed_links(self.waypoints.len(), |w| &self.waypoints[w].neighbours)
+    }
+}
+
+/// `setup_prepare_pads` (`setuppads.c:28`): a pad with no room (every one in
+/// the file) gets the room it is in by the rooms' boxes, the room of the floor
+/// under it among those if there is one.
+fn setup_prepare_pads(pads: &mut [Pad], rooms: &BgRooms, geom: &LevelGeom) {
+    let level = TileLevel::new(geom.clone());
+    for pad in pads.iter_mut() {
+        let (inrooms, aboverooms, _) = rooms.bg_find_rooms_by_pos(pad.pos, 20);
+        let list = if !inrooms.is_empty() { inrooms } else { aboverooms };
+        if let Some(&first) = list.first() {
+            pad.room = Some(level.cd_find_room_at_pos(pad.pos, &list).filter(|&r| r > 0).unwrap_or(first));
+        }
     }
 }
 

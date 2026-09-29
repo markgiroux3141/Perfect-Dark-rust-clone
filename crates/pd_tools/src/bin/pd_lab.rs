@@ -47,7 +47,7 @@ struct Lab {
 impl Lab {
     fn new(assets: &AssetDir, code: &str) -> Result<Lab, String> {
         let stage = Arc::new(Stage::load(assets, code)?);
-        let level = Arc::new(TileLevel::new(stage.geom.clone()));
+        let level = Arc::new(TileLevel::for_stage(&stage));
         let res = Arc::new(WorldRes::load(assets)?);
         let setup = harness::with_weapons(harness::setup(0, 4, 2), &harness::DEFAULT_SET);
         let world = harness::world(stage.clone(), level.clone(), res.clone(), setup, NavChoice::Pd, harness::SPIKE_SEED, false)?;

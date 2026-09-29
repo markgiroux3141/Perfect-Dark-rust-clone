@@ -82,9 +82,25 @@ from pd_fpgun import (  # noqa: E402
 
 from pd_paths import ASSETS, DECOMP, REPO, SRC, decomp_rel  # noqa: E402,F401
 
-#: stage file stem -> (STAGE_* constant, bg file). stagetable.c:22 for ref.
+#: stage file stem -> (STAGE_* constant, bg file): the 16 Combat Simulator
+#: arenas' `g_Stages` rows (stagetable.c).
 STAGES = {
+    "arec": ("STAGE_MP_RAVINE", "bg_arec.seg"),
     "ref": ("STAGE_MP_COMPLEX", "bg_ref.seg"),
+    "cryp": ("STAGE_MP_G5BUILDING", "bg_cryp.seg"),
+    "jun": ("STAGE_MP_TEMPLE", "bg_jun.seg"),
+    "crad": ("STAGE_MP_PIPES", "bg_crad.seg"),
+    "oat": ("STAGE_MP_SKEDAR", "bg_oat.seg"),
+    "mp1": ("STAGE_MP_BASE", "bg_mp1.seg"),
+    "mp3": ("STAGE_MP_AREA52", "bg_mp3.seg"),
+    "mp4": ("STAGE_MP_WAREHOUSE", "bg_mp4.seg"),
+    "mp5": ("STAGE_MP_CARPARK", "bg_mp5.seg"),
+    "mp9": ("STAGE_MP_RUINS", "bg_mp9.seg"),
+    "mp10": ("STAGE_MP_SEWERS", "bg_mp10.seg"),
+    "mp11": ("STAGE_MP_FELICITY", "bg_mp11.seg"),
+    "mp12": ("STAGE_MP_FORTRESS", "bg_mp12.seg"),
+    "mp13": ("STAGE_MP_VILLA", "bg_mp13.seg"),
+    "mp15": ("STAGE_MP_GRID", "bg_mp15.seg"),
 }
 
 SEG_BG_COL = 0x0D  # SPSEGMENT_BG_COL (constants.h:3923)
@@ -304,6 +320,98 @@ class BgFile:
             sec2 = raw
         n = (h0 & 0x7FFF) >> 1
         self.section2_textures = [struct.unpack_from(">H", sec2, 2 * i)[0] for i in range(n)]
+        # Section 3 (bg_build_tables, bg.c:1886-1965): g_BgSection3 =
+        # section2start + section2compsize + 4.
+        s3 = s2 + 4 + s2comp
+        _h3, s3comp = struct.unpack_from(">HH", d, s3)
+        raw = d[s3 + 4 : s3 + 4 + s3comp]
+        self.section3 = pd_tex.rzip_inflate(raw, 0)[0] if raw[:2] == b"s" else raw
+        self.primary_ptrs = hdr
+
+    def ptr(self, i: int) -> int | None:
+        """Primary `u32[i]` as an offset into the primary data (bg.c:1608-1634)."""
+        v = self.primary_ptrs[i]
+        return v - 0x0F000000 if v else None
+
+    def room_table(self) -> list[dict]:
+        """Section 3 (bg.c:1914-1965), rooms 1..roomcount-1: each room's box
+        (`s16` offsets from `g_BgRooms[r].pos`), its inflated gfx data length
+        (`* 0x10 + 0x100`, 16-aligned) and its light count."""
+        n = self.roomcount - 1
+        s = self.section3
+        out = []
+        for i in range(n):
+            r = i + 1
+            box = struct.unpack_from(">6h", s, i * 12)
+            pos = self.bgrooms[r][1]
+            out.append({"bbmin": [box[k] + pos[k] for k in range(3)], "bbmax": [box[3 + k] + pos[k] for k in range(3)]})
+        o = n * 12
+        for i in range(n):
+            ln = struct.unpack_from(">H", s, o + 2 * i)[0]
+            out[i]["gfxdatalen"] = ((ln * 0x10 + 0x100) + 15) & ~15
+        o += 2 * n
+        for i in range(n):
+            out[i]["numlights"] = s[o + i]
+        return out
+
+    def portals(self) -> list[dict]:
+        """`g_BgPortals` (primary u32[2], bg.c:1616) up to the `verticesoffset == 0`
+        terminator, each with its `struct portalvertices`: the file's
+        `verticesoffset` is a 1-based index into the vertex groups that follow
+        the array (bg.c:1710-1731)."""
+        p = self.primary
+        base = self.ptr(2)
+        rows = []
+        while True:
+            vo, r1, r2, fl = struct.unpack_from(">HhhB", p, base + 8 * len(rows))
+            if vo == 0:
+                break
+            rows.append((vo, r1, r2, fl))
+        groups = []
+        off = base + 8 * (len(rows) + 1)
+        while True:
+            count = p[off]
+            if count == 0:  # `pvertices->count <= 0` (u8)
+                break
+            groups.append([list(struct.unpack_from(">3f", p, off + 4 + 12 * k)) for k in range(count)])
+            off += 4 + 12 * count
+        out = []
+        for vo, r1, r2, fl in rows:
+            if not 1 <= vo <= len(groups):
+                raise SystemExit(f"portal verticesoffset {vo} outside {len(groups)} vertex groups")
+            out.append({"rooms": [r1, r2], "flags": fl, "verts": groups[vo - 1]})
+        return out
+
+    def commands(self) -> list[list[int]]:
+        """`g_BgCommands` (primary u32[3]) up to BGCMD_END, as `[type, len,
+        param]` (`struct bgcmd`, 8 bytes). A BGCMD_PORTALARG's param is a
+        pointer to a portal's vertices, resolved to the portal number as
+        `bg_find_portal_by_vertices` does (bg.c:1841, :2545)."""
+        base = self.ptr(3)
+        if base is None:
+            return []
+        out = []
+        while True:
+            t, ln, param = struct.unpack_from(">BBxxi", self.primary, base + 8 * len(out))
+            out.append([t, ln, param])
+            if t == 0x00:  # BGCMD_END
+                return out
+
+    def lights(self, numlights: int) -> list[dict]:
+        """`g_BgLightsFileData` (primary u32[4]): `struct light` (types.h), 0x22
+        bytes each, ordered by room (bg.c:1946)."""
+        base = self.ptr(4)
+        out = []
+        for i in range(numlights):
+            o = base + 0x22 * i
+            roomnum, colour, brightness, bits, mult, dx, dy, dz = struct.unpack_from(">HHBBBbbb", self.primary, o)
+            bbox = [list(struct.unpack_from(">3h", self.primary, o + 0x0A + 6 * k)) for k in range(4)]
+            # u8 bitfields, MSB first (IDO): sparkable, healthy, on, sparking, vulnerable.
+            out.append({"roomnum": roomnum, "colour": colour, "brightness": brightness,
+                        "sparkable": bits >> 7 & 1, "healthy": bits >> 6 & 1, "on": bits >> 5 & 1,
+                        "sparking": bits >> 4 & 1, "vulnerable": bits >> 3 & 1,
+                        "brightnessmult": mult, "dir": [dx, dy, dz], "bbox": bbox})
+        return out
 
     def load_room(self, r: int) -> Room:
         """`bg_load_room` (bg.c:2738) minus the memory juggling."""
@@ -505,6 +613,8 @@ def bsp_tree(room: Room, block: int | None, leaves: list[int]) -> list:
         t, _nx, a, bb, _c = room.blocks[b]
         if t == ROOMBLOCKTYPE_LEAF:
             return {"leaf": leaves.index(b)}
+        if a is None:
+            return None  # a childless parent draws nothing (bg.c:3183; Felicity has one)
         plane = list(struct.unpack_from(">6f", room.data, bb))
         child_next = room.blocks[a][1]
         return {"plane": [round(x, 4) for x in plane], "a": item(a),
@@ -590,6 +700,7 @@ def interpret(bg: BgFile, rooms: list[Room], variant: int = 0):
                         # dyntex_tick_room rewrites their s,t every frame (dyntex.c:150).
                         extra["dyntex"] = DYNTEX_TEXTURES[tex["id"]]
                         extra["st"] = [list(info[v["uid"][1] - 1][1:]) for v in b["verts"]]
+                        extra["stscale"] = [list(v["texscale"]) for v in b["verts"]]
                     batch_extra.append(extra)
                     for v in b["verts"]:
                         stats["lit_verts"] += bool(v["lit"])
@@ -608,10 +719,22 @@ def reads_prim(mat: dict) -> bool:
     return False
 
 
+def reads_env(mat: dict) -> bool:
+    """Does the combiner read ENVIRONMENT / ENV_ALPHA? (colour a/b/d: 5 = ENV;
+    c: 5 ENV, 12 ENV_ALPHA; alpha a/b/c/d: 5 = ENV — gbi.h:364-396)."""
+    for cyc in (0, 1):
+        a, b, c, d, Aa, Ab, Ac, Ad = mat["combine"][8 * cyc : 8 * cyc + 8]
+        if 5 in (a, b, d) or c in (5, 12) or 5 in (Aa, Ab, Ac, Ad):
+            return True
+    return False
+
+
 def effective(mat: dict) -> dict:
     m = dict(mat)
     if not reads_prim(m):
         m["prim"] = None
+    if not reads_env(m):
+        m["env"] = None
     if not m["fog_tint"]:
         m["fog"] = None
     return m
@@ -671,8 +794,9 @@ def build(stem: str) -> dict:
 
     # Starting-state independence: re-run from a deliberately different state.
     # Only the state a batch can actually SEE is compared: prim when the
-    # combiner reads PRIMITIVE / PRIM_LOD_FRAC, fog colour when the blender
-    # reads it (neither is true anywhere in Complex).
+    # combiner reads PRIMITIVE / PRIM_LOD_FRAC, env when it reads ENVIRONMENT
+    # (Temple's and Skedar's DLs never set env, and never read it), fog colour
+    # when the blender reads it.
     alt, *_ = interpret(bg, rooms, variant=1)
     diff = 0
     if len(alt.batches) != len(interp.batches):
@@ -701,7 +825,9 @@ def build(stem: str) -> dict:
             for k in range(3):
                 lo[k] = min(lo[k], v[k])
                 hi[k] = max(hi[k], v[k])
+    table = bg.room_table()
     out_rooms = []
+    lightindex = 0
     for room in rooms:
         g = room.data
         # dlights.c:1665 reads vertices[i].flags for COLOUR index i, even past
@@ -709,13 +835,21 @@ def build(stem: str) -> dict:
         alpha_only = [i for i in range(room.numcolours)
                       if room.vertices + i * VTX_SIZE + 6 < len(g) and g[room.vertices + i * VTX_SIZE + 6] & 1]
         lo, hi = room_bb.get(room.num, (None, None))
+        t = table[room.num - 1]
+        numlights = t["numlights"]
         out_rooms.append({
-            "room": room.num, "pos": list(room.pos), "bbmin": lo, "bbmax": hi,
+            "room": room.num, "pos": list(room.pos),
+            # g_Rooms[r].bbmin/bbmax (section 3, bg.c:1918); `gfx_bb*` is the
+            # box over the room's drawn vertices.
+            "bbmin": t["bbmin"], "bbmax": t["bbmax"], "gfx_bbmin": lo, "gfx_bbmax": hi,
             "br_light_min": room.br_light_min, "br_light_max": room.br_light_max,
+            # bg.c:1951-1960: an index into `lights` (-1 with none).
+            "numlights": numlights, "lightindex": lightindex if numlights else -1,
             "opa_node": room_nodes.get((room.num, "opa")), "xlu_node": room_nodes.get((room.num, "xlu")),
             "numvertices": room.numvertices, "numcolours": room.numcolours,
             "colour_alpha_only": alpha_only, "bsp_parents": room.parents,
         })
+        lightindex += numlights
 
     ntri = sum(len(b["indices"]) // 3 for b in batches)
     lo = [min(r["bbmin"][k] for r in out_rooms if r["bbmin"]) for k in range(3)]
@@ -723,7 +857,7 @@ def build(stem: str) -> dict:
     tlo, thi, _, _ = tiles_bbox(stem)
     summary = [
         f"bg_{stem}: rooms 1..{bg.roomcount - 1}, triangles {ntri}, batches {len(batches)}, "
-        f"materials {len(interp.materials)}, textures {len(used)}",
+        f"materials {len(interp.materials)}, textures {len(used)}, portals {len(bg.portals())}, lights {lightindex}",
         f"  env: fog={fog} transparency={transparency} ({env_src}); {replaced} commands rewritten",
         f"  bbox BG {[round(x, 1) for x in lo]}..{[round(x, 1) for x in hi]}, tiles {tlo}..{thi}",
     ]
@@ -740,6 +874,9 @@ def build(stem: str) -> dict:
         "materials": interp.materials,
         "batches": batches,
         "rooms": out_rooms,
+        "portals": bg.portals(),
+        "bgcmds": bg.commands(),
+        "lights": bg.lights(lightindex),
         "section2_textures": bg.section2_textures,
         "used": used,
         "warnings": warnings,

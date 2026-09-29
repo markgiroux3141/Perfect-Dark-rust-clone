@@ -12,19 +12,19 @@
   "check_against_spikes.py": "5a45d31669fb9b9b79a181bff4226eb3e99806f9abc82ac070a277fc361b8c7f",
   "pd_anim.py": "85e2ec9a1b2d0fdcdee787909647e654364437652f0339fa9e34571135ba1785",
   "pd_animmap.py": "804be1a12ad6e530eab690de10f3fa3954858a87958f1af5249d9b570ae1f6ff",
-  "pd_bg.py": "395baf18782819f7e7429ecb65932d30f9609d6320b41a337e1c0a1d75a64dcc",
+  "pd_bg.py": "e025f1e4b3c763761f476245304d9264d793ab88af54bddc8bb7ef85b41de7e7",
   "pd_bg_preview.py": "73172f4ba61b94f948b1bd140d31e1b6f2c113c453c3df7208641d2b91998155",
-  "pd_fpgun.py": "8a2f78f9a56ea9b5c8236a8e9c3bcaa67e19092d8c95e7777871ed3cb29931c5",
+  "pd_fpgun.py": "828b6ce627b54b452a65850036a75c58b5baad5bcdfd4fafd43e86424ef91367",
   "pd_gltf.py": "ae6da6c7b14e283701973d65e80615fb1200667aabe777e875dff02848d410ce",
-  "pd_ids.py": "82fb3fb28e47a9a9e5bd2273820a57a2a7c8e84bece62c29820e21406390f850",
+  "pd_ids.py": "fe1da14a685439dceeb6336362f9abbc4a8c1dfc0c58da01ed0c2999732e6b20",
   "pd_menu_gen.py": "02e16bebdc3e7d6a48579706fc7319110bde5e4bd10131277c1fe2e40e0dc0e5",
   "pd_model.py": "296358e46218e3c3df08e3809db18614ccdd998f28b681859162de9684a3983c",
-  "pd_models.py": "fbfe3f27d0b7929e8b4be50dacd1e66dff5470f8a49d49aa28ab5484c3a79263",
+  "pd_models.py": "e3621878862caf7677cd346c8ac35f9fc37ea02e896f65971782aa2a7f70cb87",
   "pd_paths.py": "bce54ee9800c28d0d6c5b152ef53d909fd33622459d0152c046efdcf5e31430a",
   "pd_pose.py": "38400087d82a55f27975064e5a477800f95273cfab526efdb823b3e9301b66de",
   "pd_preview.py": "1ac546d8fe6dc1df13f2db5f947f35f8d8cd50d7a432852ff9c8de9787e76dfe",
-  "pd_sfx.py": "eb00db57acf8d473435fa768f654e6c1ef8f1ade877fd1a608a68abae7dacea9",
-  "pd_stage.py": "5ccb94e9439ab3f313487ec02f90fd4a7c1ae11007e715afb0c8d2d4aabd7f3e",
+  "pd_sfx.py": "acf44dbcfd7b6b0ed56b81e7d6ce811178c3825a9a7c09e737cef5564531a532",
+  "pd_stage.py": "7ad7b6396c4dafbf3768ce89f03ad2b2901a4f703f27be5c9c363c61d09e40e5",
   "pd_tex.py": "547674a91e44c255fa656e13bfcccacc7c6a289800744ccfc495758a0e5ef65f",
   "pd_triage.py": "66077a025a4191827bc7996f21d559e1d0818c9465d30d9a48ccfad25e7777d9",
   "pd_weapons.py": "0d70b2b0c5f120fd17b624734fccf0e4722d23b0e2e277e94de19f697e1d9b5e"
@@ -32,10 +32,205 @@
  "counts": {
   "weapons": 38,
   "gun_scripts": 100,
-  "models": 226,
-  "model_textures": 9,
+  "models": 243,
+  "model_textures": 23,
   "headsandbodies": 152,
   "stages": {
+   "arec": {
+    "bg_tris": 804,
+    "bg_bytes": 47608,
+    "bg_textures": 24,
+    "tiles": 436,
+    "tile_rooms": 42,
+    "pads": 239,
+    "waypoints": 149,
+    "waygroups": 29,
+    "cover": 162,
+    "spawns": 10,
+    "props": 52
+   },
+   "crad": {
+    "bg_tris": 2141,
+    "bg_bytes": 127226,
+    "bg_textures": 13,
+    "tiles": 1041,
+    "tile_rooms": 77,
+    "pads": 261,
+    "waypoints": 177,
+    "waygroups": 24,
+    "cover": 165,
+    "spawns": 21,
+    "props": 33
+   },
+   "cryp": {
+    "bg_tris": 2298,
+    "bg_bytes": 143120,
+    "bg_textures": 22,
+    "tiles": 1004,
+    "tile_rooms": 36,
+    "pads": 209,
+    "waypoints": 129,
+    "waygroups": 12,
+    "cover": 157,
+    "spawns": 21,
+    "props": 30
+   },
+   "jun": {
+    "bg_tris": 1272,
+    "bg_bytes": 68952,
+    "bg_textures": 12,
+    "tiles": 406,
+    "tile_rooms": 26,
+    "pads": 192,
+    "waypoints": 102,
+    "waygroups": 25,
+    "cover": 177,
+    "spawns": 12,
+    "props": 36
+   },
+   "mp1": {
+    "bg_tris": 2391,
+    "bg_bytes": 141942,
+    "bg_textures": 25,
+    "tiles": 1387,
+    "tile_rooms": 53,
+    "pads": 247,
+    "waypoints": 139,
+    "waygroups": 20,
+    "cover": 178,
+    "spawns": 16,
+    "props": 63
+   },
+   "mp10": {
+    "bg_tris": 2535,
+    "bg_bytes": 155434,
+    "bg_textures": 23,
+    "tiles": 1372,
+    "tile_rooms": 86,
+    "pads": 186,
+    "waypoints": 106,
+    "waygroups": 43,
+    "cover": 124,
+    "spawns": 13,
+    "props": 39
+   },
+   "mp11": {
+    "bg_tris": 4954,
+    "bg_bytes": 270412,
+    "bg_textures": 37,
+    "tiles": 2329,
+    "tile_rooms": 40,
+    "pads": 243,
+    "waypoints": 137,
+    "waygroups": 34,
+    "cover": 145,
+    "spawns": 12,
+    "props": 57
+   },
+   "mp12": {
+    "bg_tris": 5962,
+    "bg_bytes": 342176,
+    "bg_textures": 28,
+    "tiles": 1950,
+    "tile_rooms": 119,
+    "pads": 514,
+    "waypoints": 371,
+    "waygroups": 13,
+    "cover": 272,
+    "spawns": 12,
+    "props": 103
+   },
+   "mp13": {
+    "bg_tris": 2882,
+    "bg_bytes": 173588,
+    "bg_textures": 25,
+    "tiles": 1543,
+    "tile_rooms": 71,
+    "pads": 219,
+    "waypoints": 149,
+    "waygroups": 38,
+    "cover": 195,
+    "spawns": 12,
+    "props": 30
+   },
+   "mp15": {
+    "bg_tris": 1562,
+    "bg_bytes": 92476,
+    "bg_textures": 17,
+    "tiles": 700,
+    "tile_rooms": 33,
+    "pads": 218,
+    "waypoints": 115,
+    "waygroups": 23,
+    "cover": 159,
+    "spawns": 10,
+    "props": 65
+   },
+   "mp3": {
+    "bg_tris": 2326,
+    "bg_bytes": 141272,
+    "bg_textures": 18,
+    "tiles": 1150,
+    "tile_rooms": 42,
+    "pads": 285,
+    "waypoints": 187,
+    "waygroups": 22,
+    "cover": 176,
+    "spawns": 12,
+    "props": 58
+   },
+   "mp4": {
+    "bg_tris": 2583,
+    "bg_bytes": 152446,
+    "bg_textures": 30,
+    "tiles": 1401,
+    "tile_rooms": 49,
+    "pads": 400,
+    "waypoints": 319,
+    "waygroups": 11,
+    "cover": 272,
+    "spawns": 12,
+    "props": 34
+   },
+   "mp5": {
+    "bg_tris": 1912,
+    "bg_bytes": 114512,
+    "bg_textures": 15,
+    "tiles": 957,
+    "tile_rooms": 41,
+    "pads": 308,
+    "waypoints": 226,
+    "waygroups": 7,
+    "cover": 169,
+    "spawns": 12,
+    "props": 42
+   },
+   "mp9": {
+    "bg_tris": 2149,
+    "bg_bytes": 126350,
+    "bg_textures": 31,
+    "tiles": 1010,
+    "tile_rooms": 104,
+    "pads": 186,
+    "waypoints": 102,
+    "waygroups": 28,
+    "cover": 134,
+    "spawns": 12,
+    "props": 42
+   },
+   "oat": {
+    "bg_tris": 2246,
+    "bg_bytes": 131552,
+    "bg_textures": 15,
+    "tiles": 942,
+    "tile_rooms": 67,
+    "pads": 262,
+    "waypoints": 165,
+    "waygroups": 24,
+    "cover": 221,
+    "spawns": 12,
+    "props": 45
+   },
    "ref": {
     "bg_tris": 2559,
     "bg_bytes": 152722,
@@ -50,21 +245,21 @@
     "props": 35
    }
   },
-  "pool_textures": 1386,
+  "pool_textures": 1692,
   "anims": 1207,
   "fonts": 5,
   "langbanks": 68,
-  "sounds": 236,
-  "keys": 573
+  "sounds": 254,
+  "keys": 627
  },
  "dirs": {
   "models": {
-   "files": 462,
-   "sha256": "3bc848183a374b02b07ef1126103d317d944137d9dad831d564a37a52b17df65"
+   "files": 510,
+   "sha256": "ecd76d89910531a366f050c0d57e16e985b571e5d902e2bdcf4b154e16cc711e"
   },
   "textures": {
-   "files": 1387,
-   "sha256": "813137a62c62cf4cc5a20aa27bf274070c3c8a272d50b842dd9cbebd7b5b3ffd"
+   "files": 1693,
+   "sha256": "f1166a230dd2eeb1764d2bc823e2164ab6ca60584e83e06baafcfffcf8abe25c"
   },
   "anims": {
    "files": 1208,
@@ -83,12 +278,12 @@
    "sha256": "25fade935e333dd0ddddc234e42db69bbe9d8903c8467ea8ff536275f0ce4e2b"
   },
   "sfx": {
-   "files": 237,
-   "sha256": "93d2b9ec4ada310c2dde693ffb8bf29745aa5da77b50af80ab7bc529d5665c45"
+   "files": 255,
+   "sha256": "f9c68ccbe9f419797910b3434a38a975d76a0a79e977229c3abba51b987413a4"
   },
   "stages": {
-   "files": 5,
-   "sha256": "5b84ff7cfe6a37cb992d22d1dbeb74f9de64d4877917228c9dd79e3ef4bb75da"
+   "files": 80,
+   "sha256": "1fbdabaac672f528134acc23fdce36491d2232f0890e821367afd439426464b3"
   }
  }
 }

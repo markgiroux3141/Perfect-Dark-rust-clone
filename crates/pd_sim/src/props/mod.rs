@@ -22,10 +22,15 @@
 //! collision with the range's boxes, this runs PD's tests on the stage.
 
 pub mod autogun;
+pub mod door;
 pub mod explosions;
+pub mod glass;
+pub mod hover;
 pub mod nbomb;
 pub mod pickup;
 pub mod projectile;
+pub mod setup;
+pub mod lift;
 #[cfg(test)]
 mod tests;
 pub mod weapon;
@@ -78,6 +83,20 @@ impl Bbox {
     /// its position the rotated box reaches.
     pub fn rotated_y_min(&self, r: &Mat3) -> f32 {
         self.rotated_local_min(r.x_axis.y, r.y_axis.y, r.z_axis.y)
+    }
+
+    /// `obj_get_rotated_local_max` (`propobj.c:429`).
+    fn rotated_local_max(&self, a1: f32, a2: f32, a3: f32) -> f32 {
+        let mut sum = 0.0;
+        sum += if a1 <= 0.0 { self.xmin * a1 } else { self.xmax * a1 };
+        sum += if a2 <= 0.0 { self.ymin * a2 } else { self.ymax * a2 };
+        sum += if a3 <= 0.0 { self.zmin * a3 } else { self.zmax * a3 };
+        sum
+    }
+
+    /// `obj_get_rotated_local_y_max_by_mtx3` (`propobj.c:389`).
+    pub fn rotated_y_max(&self, r: &Mat3) -> f32 {
+        self.rotated_local_max(r.x_axis.y, r.y_axis.y, r.z_axis.y)
     }
 }
 
@@ -205,6 +224,31 @@ pub struct Obj {
     /// The model's toggle and LOD visibility (`Model::vis`); empty draws every
     /// toggle and the nearest LOD.
     pub vis: Vec<bool>,
+    /// `obj->modelnum` (`MODEL_*`), -1 for the guns' own objects.
+    pub modelnum: i32,
+    /// `obj->damage` / `obj->maxdamage` (`maxdamage` from the setup, in
+    /// PD's quarter units: a setup's 1000 is 250 of health).
+    pub damage: f32,
+    pub maxdamage: f32,
+    /// `obj->geo`: what walls the object puts in the chrs' way (its core
+    /// block, `OBJFLAG_CORE_GEO_INUSE`, and its wall quads), and the floors
+    /// it offers (its floor quads), in world space (`obj_update_all_geo`).
+    pub geos: Vec<crate::stage::PropGeo>,
+    pub floors: Vec<crate::stage::PropFloor>,
+    /// `glass->portalnum` / `tintedglass->portalnum`: the portal the glass fills.
+    pub portalnum: Option<usize>,
+    /// A door's own state (`OBJTYPE_DOOR`).
+    pub door: Option<Box<door::Door>>,
+    /// A lift's own state (`OBJTYPE_LIFT`).
+    pub lift: Option<Box<lift::Lift>>,
+    /// A tinted pane's (`OBJTYPE_TINTEDGLASS`).
+    pub tinted: Option<glass::TintedGlass>,
+    /// A hover prop's float (`OBJTYPE_HOVERPROP`).
+    pub hov: Option<hover::Hov>,
+    /// `prop->rooms[0]` for a setup object (its floors' room). `// SUBST:`
+    /// PD keeps the rooms the object's box enters, followed as it moves /
+    /// the room its position is in when placed.
+    pub room: Option<u16>,
 }
 
 impl Obj {
@@ -239,6 +283,17 @@ impl Obj {
             shieldamount: 0.0,
             shieldinitialamount: 0.0,
             vis: Vec::new(),
+            modelnum: -1,
+            damage: 0.0,
+            maxdamage: 0.0,
+            geos: Vec::new(),
+            floors: Vec::new(),
+            portalnum: None,
+            door: None,
+            lift: None,
+            tinted: None,
+            hov: None,
+            room: None,
         };
         // weapon_init (`propobj.c:17353`): the gunfire hidden.
         o.weapon_set_gunfire_visible(false);
@@ -279,6 +334,10 @@ impl Obj {
 
     /// The model's root matrix in world space (`realrot` + `pos`).
     pub fn root_matrix(&self) -> Mat4 {
+        // A door's is `door_get_mtx` (`door_init_matrices`, `propobj.c:7841`).
+        if let Some(d) = &self.door {
+            return door::door_get_mtx(self, d);
+        }
         let mut m = Mat4::from_mat3(self.realrot);
         math::set_translation(&mut m, self.pos);
         m
@@ -347,6 +406,10 @@ pub struct Props {
     pub nbombs: Nbombs,
     /// `var80069bc4`: the homing rockets' controller memory, one static.
     pub homing_prevangle: f32,
+    /// `g_Lifts`: the lifts by lift number − 1 (`lift_activate`), by object id.
+    pub lifts: [Option<u32>; 10],
+    /// `g_LiftDoors`: the doors that call a lift (`OBJTYPE_LINKLIFTDOOR`).
+    pub liftdoors: Vec<lift::LiftDoor>,
 }
 
 impl Props {

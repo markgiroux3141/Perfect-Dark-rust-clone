@@ -59,6 +59,8 @@ pub enum FxKind {
     Wallhit(u16),
     /// Untextured vertex colour, opaque (the target boards).
     Flat,
+    /// Untextured vertex colour, translucent, no cull (glass shards).
+    Shard,
     /// `g_TcGdl1` smoke: IA texel 0x002a × shade (`G_CC_MODULATEIA`), wrapped.
     Smoke,
     /// `g_TcGdl2` explosion flare frame `i`: flame × colour map
@@ -85,7 +87,7 @@ impl FxKind {
             FxKind::Beam(_) => 0,
             FxKind::Spark => 1,
             FxKind::Wallhit(_) | FxKind::Smoke | FxKind::Nbomb | FxKind::GunFire(_) => 2,
-            FxKind::Flat | FxKind::XrayBg | FxKind::Xray => 3,
+            FxKind::Flat | FxKind::Shard | FxKind::XrayBg | FxKind::Xray => 3,
             FxKind::Explosion(_) => 4,
         }
     }
@@ -96,7 +98,7 @@ impl FxKind {
             FxKind::Beam(t) => (Some(t), None, false),
             FxKind::Spark => (Some(TEX_SPARK), None, true),
             FxKind::Wallhit(t) => (Some(t), None, true),
-            FxKind::Flat | FxKind::XrayBg | FxKind::Xray => (None, None, false),
+            FxKind::Flat | FxKind::Shard | FxKind::XrayBg | FxKind::Xray => (None, None, false),
             FxKind::Smoke => (Some(TEX_SMOKE), None, false),
             FxKind::Nbomb => (Some(TEX_NBOMBDOME), None, false),
             FxKind::GunFire(t) => (Some(t), None, true),
@@ -226,6 +228,47 @@ fn beam_render_generic(head: Vec3, headcol: u32, halfwidth: f32, tail: Vec3, tai
 /// the head (where the bolt left) to half-alpha pale blue at the bolt.
 pub fn boltbeam_geometry(beams: &pd_sim::fx::boltbeam::BoltBeams, cam: &FxCam) -> Vec<FxBatch> {
     beams.live().filter_map(|b| beam_render_generic(b.headpos, 0xafafff00, 2.0, b.tailpos, 0xafafff7f, cam)).collect()
+}
+
+// ── shards (shards.c) ───────────────────────────────────────────────────────
+
+/// `shards_render_glass` (`shards.c:325`): each live shard's triangle at its
+/// position and rotation (`mtx4_load_rotation_and_translation`), within 100 m
+/// of the camera; in x-ray in the eraser's colours, none beyond its reach.
+/// `// SUBST:` PD lights the shards (their colours are random normals) and
+/// maps its shard texture onto them by those normals (`G_TEXTURE_GEN`) / a
+/// pale translucent glass shaded by the normal's height.
+pub fn shards_geometry(shards: &pd_sim::fx::shards::Shards, campos: Vec3, xray: Option<&Eraser>) -> Option<FxBatch> {
+    if !shards.active {
+        return None;
+    }
+    let mut verts = Vec::new();
+    for s in shards.shards.iter().filter(|s| s.age60 > 0) {
+        let d = s.pos - campos;
+        if d.abs().max_element() >= 10000.0 {
+            continue;
+        }
+        let mut m = pd_core::math::mtx4_load_rotation(s.rot);
+        m.w_axis = s.pos.extend(1.0);
+        let col = |k: usize| -> Option<[f32; 4]> {
+            match xray {
+                Some(e) => xray::obj_colour(e, s.pos),
+                None => {
+                    let n = Vec3::new(s.colours[k][0] as i8 as f32, s.colours[k][1] as i8 as f32, s.colours[k][2] as i8 as f32).normalize_or_zero();
+                    let l = 0.6 + 0.4 * n.y.abs();
+                    Some([0.75 * l, 0.85 * l, 0.9 * l, 0.55])
+                }
+            }
+        };
+        for (k, v) in s.verts.iter().enumerate() {
+            let Some(c) = col(k) else { break };
+            verts.push(fv(m.transform_point3(Vec3::new(v[0], v[1], 0.0)), [0.0, 0.0], c));
+        }
+        if verts.len() % 3 != 0 {
+            verts.truncate(verts.len() / 3 * 3);
+        }
+    }
+    (!verts.is_empty()).then_some(FxBatch { kind: FxKind::Shard, verts })
 }
 
 // ── sparks (sparks.c) ───────────────────────────────────────────────────────
@@ -828,7 +871,8 @@ pub fn world_fx(world: &pd_sim::world::World, cam: &FxCam, xray: Option<&Eraser>
             }
         }
     }
-    // nbombs_render (`lv.c:1313`), after the sparks in PD's order.
+    // shards_render then sparks_render (`lv.c:1308`), then nbombs_render.
+    out.extend(shards_geometry(&world.fx.shards, cam.pos, xray));
     out.extend(sparks_geometry(&world.fx.sparks, cam.pos, cam.look, cam.fovy, xray));
     for (_, b) in nbomb_geometry(&world.props.nbombs, world.frac20) {
         out.push(b);
@@ -901,7 +945,7 @@ pub struct FxRenderer {
     depth_format: wgpu::TextureFormat,
 }
 
-fn upload(device: &wgpu::Device, queue: &wgpu::Queue, w: u32, h: u32, rgba: &[u8]) -> wgpu::TextureView {
+pub(crate) fn upload(device: &wgpu::Device, queue: &wgpu::Queue, w: u32, h: u32, rgba: &[u8]) -> wgpu::TextureView {
     let tex = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("pdfx-tex"),
         size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },

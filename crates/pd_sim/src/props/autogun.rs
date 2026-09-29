@@ -22,7 +22,7 @@ use pd_core::model::{ModelDef, NodeKind};
 use super::Obj;
 use crate::fx::Beam;
 use crate::propsnd::DEFAULT_DISTS;
-use crate::stage::PerimCyl;
+use crate::stage::PropGeo;
 use crate::world::World;
 
 /// `g_PropExplosionTypes[8 + MODEL_CHRAUTOGUN]` (`modeldata/general.c:853`): a
@@ -268,7 +268,7 @@ pub fn autogun_damage(o: &mut Obj, damage: f32) -> bool {
         a.damage = 0;
         a.destroyed = true;
         destroyed_now = true;
-        // M9: obj_deform bends the model's vertices.
+        // Not ported: obj_deform bends the model's vertices.
     }
     if a.destroyed && (a.damage >> 2) + 1 == 1 {
         o.flags |= OBJFLAG_DEACTIVATED;
@@ -278,7 +278,7 @@ pub fn autogun_damage(o: &mut Obj, damage: f32) -> bool {
 
 /// Where the segment `from → to` first meets a chr's perimeter cylinder
 /// (`chr_get_geometry`'s `GEOTYPE_CYL`), as the fraction along it.
-pub(crate) fn segment_cyl(from: Vec3, to: Vec3, c: &PerimCyl) -> Option<f32> {
+pub(crate) fn segment_cyl(from: Vec3, to: Vec3, c: &PropGeo) -> Option<f32> {
     let d = to - from;
     let (fx, fz) = (from.x - c.x, from.z - c.z);
     let a = d.x * d.x + d.z * d.z;
@@ -652,7 +652,7 @@ mod tests {
     /// A cylinder across the segment's path is met at its surface.
     #[test]
     fn segment_meets_a_perimeter() {
-        let c = PerimCyl { x: 100.0, z: 0.0, radius: 30.0, ymin: 0.0, ymax: 200.0 };
+        let c = PropGeo::cyl(100.0, 0.0, 30.0, 0.0, 200.0);
         let t = segment_cyl(Vec3::new(0.0, 100.0, 0.0), Vec3::new(200.0, 100.0, 0.0), &c).unwrap();
         assert!((t * 200.0 - 70.0).abs() < 0.01, "{t}");
         assert!(segment_cyl(Vec3::new(0.0, 300.0, 0.0), Vec3::new(200.0, 300.0, 0.0), &c).is_none());

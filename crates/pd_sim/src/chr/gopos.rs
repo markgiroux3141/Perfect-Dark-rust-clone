@@ -8,18 +8,23 @@
 //! at the current point, `roty` snapped to it, which is what `chr_turn_toward`
 //! does for a simulant once it has an aim point (`chraction.c:11481`). The
 //! Complex spike ported the rest and measured no stalls without it on PD's
-//! graph (SPIKE_PD_COMPLEX.md, stage 3). Lifts and `PADFLAG_AIIGNOREY` are not
-//! read (no MP arena waypoint uses them until M9), and the off-screen "magic"
-//! mode is off in multiplayer (`normmplayerisrunning`).
+//! graph (SPIKE_PD_COMPLEX.md, stage 3). The off-screen "magic" mode is off in
+//! multiplayer (`normmplayerisrunning`).
+//!
+//! Lifts: a route's `PADFLAG_AIWAITLIFT` pad (in front of a lift) and
+//! `PADFLAG_AIONLIFT` pad (in it) come in pairs. The chr waits at the first
+//! for the lift to come (calling it through the stop's door), steps on, waits
+//! in it for the other stop, and steps off (`chr_gopos_update_lift_action`).
 //!
 //! Source: the old repo's `pd_spike/chraction.rs` (go-to), checked against
 //! `reference/pd_bot_port_sheet.md` §12, which added the crouch flags' reset
 //! each tick, the restart timer and PD's handling of a failed re-route.
 
 use glam::{Vec2, Vec3};
+use pd_core::ids::{LIFTACTION_NOTUSINGLIFT, LIFTACTION_ONLIFT, LIFTACTION_WAITINGFORLIFT, LIFTACTION_WAITINGONLIFT};
 use pd_core::math::{atan2f, baddtor, turn};
 
-use super::{Act, GoPos};
+use super::{Act, Chr, GoPos};
 use crate::nav::{chrnavseed, PadFlags, MAX_CHRWAYPOINTS};
 use crate::world::World;
 
@@ -67,6 +72,30 @@ pub fn pos_is_arriving_at_pos(prev: Vec3, cur: Vec3, target: Vec3, range: f32) -
     pos_is_arriving_laterally_at_pos(prev, cur, target, range)
 }
 
+impl Chr {
+    /// `chr_gopos_is_waiting` (`chraction.c:1438`) for a simulant: standing,
+    /// or on a go-to waiting at or in a lift.
+    pub fn chr_gopos_is_waiting(&self) -> bool {
+        self.actiontype == Act::Stand || (self.actiontype == Act::GoPos && self.act_gopos.waiting)
+    }
+
+    /// `chr_choose_stand_animation` (`chraction.c:1670`) for a simulant: a
+    /// go-to starts waiting (a simulant has no stand animation to play).
+    fn chr_choose_stand_animation(&mut self) {
+        if self.actiontype == Act::GoPos {
+            self.act_gopos.waiting = true;
+        }
+    }
+
+    /// `chr_gopos_choose_animation` (`chraction.c:5862`) for a simulant: the
+    /// go-to stops waiting.
+    fn chr_gopos_choose_animation(&mut self) {
+        if self.actiontype == Act::GoPos {
+            self.act_gopos.waiting = false;
+        }
+    }
+}
+
 /// Go-to bookkeeping the A/B harness reads (not PD).
 #[derive(Clone, Debug, Default)]
 pub struct NavStats {
@@ -92,13 +121,11 @@ impl World {
     /// `nav_find_route` under the chr's nav seed into the 6-slot array. PD
     /// starts the go-to when the count is > 1, and that count includes the NULL
     /// terminator (`padhalllv.c:668`): **at least one** waypoint.
-    pub(crate) fn chr_go_to_room_pos(&mut self, i: usize, pos: Vec3) -> bool {
+    pub(crate) fn chr_go_to_room_pos(&mut self, i: usize, pos: Vec3, endrooms: &[u16]) -> bool {
         if self.chr_is_dead(i) {
             return false;
         }
-        // SUBST: PD is handed the destination's rooms (`prop->rooms` of the
-        // target) / the floor room under it (M9: the BG's rooms).
-        let endrooms: Vec<u16> = self.level.floor_room(pos, 20.0).into_iter().collect();
+        let endrooms = endrooms.to_vec();
         let prop = self.chrs[i].pos;
         let rooms = self.chrs[i].rooms.clone();
         if self.record_gotos {
@@ -106,6 +133,7 @@ impl World {
         }
         let next = self.nav.waypoint_find_closest_to_pos(&self.level, prop, &rooms);
         let last = self.nav.waypoint_find_closest_to_pos(&self.level, pos, &endrooms);
+        let endrooms_kept = endrooms.clone();
         self.navstats.gotos += 1;
         if next.is_none() {
             self.navstats.goto_no_start += 1;
@@ -126,12 +154,24 @@ impl World {
             let age = (self.rng.random() % 100) as i32;
             let c = &mut self.chrs[i];
             c.actiontype = Act::GoPos;
-            c.act_gopos = GoPos { endpos: pos, waypoints: route, curindex: 0, target: last, init: true, crouch: false, duck: false, age, restartttl: 0 };
+            c.act_gopos = GoPos { endpos: pos, endrooms: endrooms_kept, waypoints: route, curindex: 0, target: last, init: true, crouch: false, duck: false, age, restartttl: 0, waiting: false };
+            c.liftaction = LIFTACTION_NOTUSINGLIFT;
             // chr_gopos_init_expensive: the restart timer starts again.
             c.sleep = 0;
             return true;
         }
         false
+    }
+
+    /// `chr_go_to_pos` (`chraction.c:7279`): to a position, in the rooms it is
+    /// in (or above, `bg_find_rooms_by_pos`).
+    pub(crate) fn chr_go_to_pos(&mut self, i: usize, pos: Vec3) -> bool {
+        let (inrooms, aboverooms, _) = self.stage.rooms.bg_find_rooms_by_pos(pos, 20);
+        let rooms = if !inrooms.is_empty() { inrooms } else { aboverooms };
+        if rooms.is_empty() {
+            return false;
+        }
+        self.chr_go_to_room_pos(i, pos, &rooms)
     }
 
     /// `chr_gopos_advance_waypoint` (`chraction.c:5557`): the next loaded
@@ -176,7 +216,7 @@ impl World {
         if let Some(hit) = self.level.raycast_walls(pp, dir, dir.length()) {
             delta = hit.point;
         }
-        self.chr_go_to_room_pos(i, delta)
+        self.chr_go_to_pos(i, delta)
     }
 
     /// `chr_try_stop` → `chr_stop` → `chr_stand_immediate(chr, 16)`: back to
@@ -230,8 +270,8 @@ impl World {
             if self.record_gotos {
                 self.navstats.repath_at.push((c.pos, aim));
             }
-            let end = gp.endpos;
-            self.chr_go_to_room_pos(i, end);
+            let (end, endrooms) = (gp.endpos, gp.endrooms.clone());
+            self.chr_go_to_room_pos(i, end, &endrooms);
         }
         self.chr_gopos_consider_restart(i);
         if self.chrs[i].actiontype != Act::GoPos {
@@ -239,24 +279,29 @@ impl World {
         }
 
         let c = &self.chrs[i];
-        let (prev, prop) = (c.prevpos, c.pos);
+        let (prev, prop, inlift) = (c.prevpos, c.pos, c.inlift);
         let curindex = c.act_gopos.curindex;
         let mut advance = false;
         if let Some((padpos, flags)) = self.gopos_pad(i, curindex) {
             let arrivingxyz = pos_is_arriving_at_pos(prev, prop, padpos, 30.0);
+            let arrivingxz = pos_is_arriving_laterally_at_pos(prev, prop, padpos, 30.0);
             let gp = &mut self.chrs[i].act_gopos;
             if flags.crouch {
                 gp.crouch = true;
             } else if flags.duck {
                 gp.duck = true;
             }
-            if arrivingxyz {
+            if flags.lift() {
+                let w = self.chrs[i].act_gopos.waypoints[curindex];
+                let next = self.chrs[i].act_gopos.waypoints.get(curindex + 1).map(|&n| self.nav.waypoint_padnum(n));
+                advance = self.chr_gopos_update_lift_action(i, flags, arrivingxz, arrivingxyz, self.nav.waypoint_padnum(w), next);
+            } else if arrivingxyz || (arrivingxz && (inlift || flags.ignorey)) {
                 advance = true;
             }
         } else {
             // No more waypoints: arriving at the end point finishes the go-to.
             let end = self.chrs[i].act_gopos.endpos;
-            if pos_is_arriving_at_pos(prev, prop, end, 30.0) {
+            if pos_is_arriving_at_pos(prev, prop, end, 30.0) || (inlift && pos_is_arriving_laterally_at_pos(prev, prop, end, 30.0)) {
                 self.chr_try_stop(i);
                 return;
             }
@@ -289,7 +334,9 @@ impl World {
         if age % 10 == 0 || init {
             let cur = self.chrs[i].act_gopos.curindex;
             if let Some((padpos, flags)) = self.gopos_pad(i, cur) {
-                let candosomething = init;
+                // Two lift pads in a row are never skipped.
+                let nextlift = self.gopos_pad(i, cur + 1).is_some_and(|(_, f)| f.lift());
+                let candosomething = init && !(flags.lift() && nextlift);
                 if !flags.walkdirect || candosomething {
                     let nextpos = point(self, cur + 1);
                     if flags.walkdirect && candosomething {
@@ -310,9 +357,13 @@ impl World {
             self.chrs[i].act_gopos.init = false;
         }
 
-        // chr_nav_tick_main (SUBST, see the module): face the current point.
+        // chr_nav_tick_main (SUBST, see the module): face the current point,
+        // and every 10 ticks open a door in the way (chraction.c:12586).
         let cur = self.chrs[i].act_gopos.curindex;
         let target = point(self, cur);
+        if age % 10 == 0 {
+            self.chr_open_door(i, target);
+        }
         let c = &mut self.chrs[i];
         let d = Vec2::new(target.x - c.pos.x, target.z - c.pos.z);
         if d.length_squared() > 1e-6 {
@@ -326,12 +377,98 @@ impl World {
         }
     }
 
+    /// `chr_gopos_update_lift_action` (`chraction.c:12652`), NTSC final in
+    /// multiplayer: at a `PADFLAG_AIWAITLIFT` pad before an `AIONLIFT` one, wait
+    /// (calling the lift through the door towards the next pad) until the lift
+    /// is at most 40 cm above the chr's feet and its door, if any, half open;
+    /// at an `AIONLIFT` pad before an `AIWAITLIFT` one, wait in it until it is
+    /// at most 30 cm below the next pad's floor (and its door half open).
+    /// True: go on to the next waypoint. `arg2` is arriving at the pad
+    /// laterally, `arrivingatlift` arriving at it.
+    fn chr_gopos_update_lift_action(&mut self, i: usize, curpadflags: PadFlags, arg2: bool, arrivingatlift: bool, curpadnum: usize, nextpadnum: Option<usize>) -> bool {
+        let Some(liftid) = self.lift_find_by_pad(curpadnum) else { return false };
+        let Some(li) = self.props.objs.iter().position(|o| o.id == liftid && o.lift.is_some()) else { return false };
+        let lifty = crate::props::lift::lift_get_y(&self.props.objs[li]);
+        let l = self.props.objs[li].lift.as_ref().unwrap();
+        // The door at the lift's current stop is at least halfway open.
+        let doorblocks = l.doors[l.levelcur].and_then(|d| self.props.get(d)).and_then(|o| o.door.as_ref()).is_some_and(|d| d.frac < 0.5);
+        let nextpad = nextpadnum.map(|n| self.stage.pads[n].clone());
+        let nextflags = nextpad.as_ref().map_or(0, |p| p.flags);
+        let mut advance = false;
+        let c = &self.chrs[i];
+        let (liftaction, manground) = (c.liftaction, c.manground);
+        if curpadflags.waitlift {
+            if nextflags & pd_core::ids::PADFLAG_AIONLIFT != 0 {
+                if arrivingatlift || liftaction == LIFTACTION_WAITINGFORLIFT {
+                    // Begin entering the lift if it is under 40 cm above this
+                    // level (the solo check that it is over 1 m under it is
+                    // skipped: MP simulants may drop onto lifts).
+                    advance = lifty <= manground + 40.0 && !doorblocks;
+                }
+                if !advance {
+                    if arrivingatlift && liftaction != LIFTACTION_WAITINGFORLIFT {
+                        // Just arrived at the lift: wait, and call it.
+                        self.chrs[i].liftaction = LIFTACTION_WAITINGFORLIFT;
+                        self.chrs[i].chr_choose_stand_animation();
+                        if let Some(p) = &nextpad {
+                            self.chr_open_door(i, p.pos);
+                        }
+                    }
+                } else {
+                    // Enter the lift.
+                    let c = &mut self.chrs[i];
+                    c.liftaction = LIFTACTION_NOTUSINGLIFT;
+                    if c.chr_gopos_is_waiting() {
+                        c.chr_gopos_choose_animation();
+                    }
+                }
+            } else if arrivingatlift {
+                // Running past the lift without using it.
+                advance = true;
+                self.chrs[i].liftaction = LIFTACTION_NOTUSINGLIFT;
+            }
+        } else if curpadflags.onlift {
+            if nextflags & pd_core::ids::PADFLAG_AIWAITLIFT != 0 {
+                // Waiting for the door to close or the lift to arrive.
+                if arg2 || liftaction == LIFTACTION_WAITINGONLIFT {
+                    let p = nextpad.as_ref().unwrap();
+                    let rooms: Vec<u16> = p.room.into_iter().collect();
+                    let nextground = self.level.cd_find_ground_at_pos_ct(p.pos, &rooms);
+                    // Begin leaving once the lift is at most 30 cm under the
+                    // destination (no solo upper limit).
+                    advance = lifty >= nextground - 30.0 && !doorblocks;
+                }
+                if !advance {
+                    if arg2 && liftaction != LIFTACTION_WAITINGONLIFT {
+                        // Just arrived inside the lift.
+                        self.chrs[i].liftaction = LIFTACTION_WAITINGONLIFT;
+                        self.chrs[i].chr_choose_stand_animation();
+                    }
+                } else {
+                    // Start disembarking.
+                    let c = &mut self.chrs[i];
+                    c.liftaction = LIFTACTION_ONLIFT;
+                    if c.chr_gopos_is_waiting() {
+                        c.chr_gopos_choose_animation();
+                    }
+                }
+            } else if arg2 {
+                advance = true;
+                self.chrs[i].liftaction = LIFTACTION_ONLIFT;
+            }
+        }
+        advance
+    }
+
     /// `chr_gopos_consider_restart` (`chraction.c:5504`): a leg that takes twice
     /// its running time plus 5 s restarts (`bot_check_fetch`: a simulant
     /// fetching gives up, else route again).
     fn chr_gopos_consider_restart(&mut self, i: usize) {
         let lv60 = self.lv.lvupdate60 as u16;
         let c = &self.chrs[i];
+        if c.liftaction == LIFTACTION_WAITINGONLIFT || c.liftaction == LIFTACTION_WAITINGFORLIFT {
+            return;
+        }
         if c.act_gopos.restartttl == 0 {
             // chr_gopos_calculate_base_ttl (`chraction.c:5464`).
             let pos = self.gopos_pad(i, c.act_gopos.curindex).map_or(c.act_gopos.endpos, |p| p.0);
@@ -344,8 +481,8 @@ impl World {
             if c.aibot.is_some() {
                 self.bot_check_fetch(i);
             } else {
-                let end = c.act_gopos.endpos;
-                self.chr_go_to_room_pos(i, end);
+                let (end, endrooms) = (c.act_gopos.endpos, c.act_gopos.endrooms.clone());
+                self.chr_go_to_room_pos(i, end, &endrooms);
             }
         } else {
             self.chrs[i].act_gopos.restartttl -= lv60;

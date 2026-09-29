@@ -6,7 +6,7 @@
 //! clamped to the room. The damage is PD's per-axis box falloff
 //! (`explosion_inflict_damage`).
 //!
-//! Substitutions, until rooms and portals (M9):
+//! Substitutions:
 //! - `// SUBST:` PD clamps the parts to the explosion room's bbox plus those of
 //!   the portals the blast reaches (`explosion_create`) / only the room's own
 //!   box ([`ExpWorld::room_bbox`]).

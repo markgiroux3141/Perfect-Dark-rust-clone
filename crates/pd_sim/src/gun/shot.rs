@@ -173,7 +173,9 @@ impl World {
     /// (`obj_is_any_node_in_range`), with a clear line from the eye, takes the
     /// blow in the torso (ducking: general; squatting: half). If none did (and
     /// not `arg2`, the no-uncloak attacks), the BG is tried on the next tick.
-    /// (Glass: M9's arenas.) `arg2`'s `CHRCFLAG_AVOIDING` has no reader in a match.
+    /// A pane of glass on screen within 5 m (not for the Tranquilizer, nor `arg2`)
+    /// in the same order takes `damage × 2.5` if the blow's line meets its model.
+    /// `arg2`'s `CHRCFLAG_AVOIDING` has no reader in a match.
     fn hand_inflict_melee_damage(&mut self, pi: usize, h: usize, arg2: bool) {
         let mut skipthething = false;
         let (gsetnum, gsetfunc) = (self.players[pi].gun.hands[h].weaponnum, self.players[pi].gun.hands[h].weaponfunc);
@@ -192,8 +194,43 @@ impl World {
             .map(|j| (-w2s.transform_point3(self.chrs[j].pos).z, j))
             .filter(|&(z, _)| z < 500.0)
             .collect();
+        // The glass on screen, in the same list (`g_Vars.onscreenprops`).
+        const GLASS: usize = 1 << 30;
+        if gsetnum != WEAPON_TRANQUILIZER && !arg2 {
+            for (k, o) in self.props.objs.iter().enumerate() {
+                if (o.ty == OBJTYPE_GLASS || o.ty == OBJTYPE_TINTEDGLASS) && !o.is_gone() && !o.is_deleting() && crate::chr::body::pos_is_onscreen(&self.players[pi].cam, o.pos, o.def.scale * o.scale) {
+                    let z = -w2s.transform_point3(o.pos).z;
+                    if z < 500.0 {
+                        order.push((z, GLASS | k));
+                    }
+                }
+            }
+        }
         order.sort_by(|a, b| a.0.total_cmp(&b.0));
         for (_, j) in order {
+            if j & GLASS != 0 {
+                let k = j & !GLASS;
+                let o = &self.props.objs[k];
+                let mut m = pd_core::model::Model::new(o.def.clone());
+                m.scale = o.scale;
+                m.matrices = o.init_matrices();
+                let Some((distance, sp110)) = crate::chr::body::obj_is_any_node_in_range(&m, &w2s, spfc, spf4) else { continue };
+                if !(sp110 <= 0.0 && distance >= -rangelimit) {
+                    continue;
+                }
+                // cdtypes 0: nothing stands between. model_test_for_hit along the blow.
+                let id = o.id;
+                let (gunpos2d, gundir2d) = self.spread(pi, h, true);
+                let lodscale = self.players[pi].cam.c_lodscalez;
+                if self.props.objs[k].test_hit(&w2s, lodscale, gunpos2d, gundir2d.normalize_or_zero(), 4_294_836_224.0).is_some() {
+                    skipthething = true;
+                    // bgun_play_glass_hit_sound (`bondgun.c:8726`).
+                    self.sound_at(0x8077, 1.0, ppos, [400.0, 2500.0, 3000.0]);
+                    let damage = self.player_gset_damage(pi, h) * 2.5;
+                    self.obj_damage_by_gunfire(id, damage, gsetnum, pi as i32);
+                }
+                continue;
+            }
             let Some((distance, sp110)) = crate::chr::body::obj_is_any_node_in_range(&self.chrs[j].model, &w2s, spfc, spf4) else { continue };
             if !(sp110 <= 0.0 && distance >= -rangelimit) {
                 continue;
@@ -486,7 +523,13 @@ impl World {
     #[allow(clippy::too_many_arguments)]
     fn bg_hit(&mut self, pi: usize, weaponnum: u8, weaponfunc: usize, func: &Option<super::gset::FuncDef>, gunpos3d: Vec3, gundir3d: Vec3, b: &crate::stage::BgHit, explosiveshells: bool) {
         let playercount = self.players.len();
-        // lights_handle_hit: the lights in the room it hits. M9: breakable lights.
+        // lights_handle_hit (`prop.c:821`): a light in the room it hits breaks,
+        // with the glass sound at the light's first corner. PD's, kept: that
+        // corner is relative to the room, and goes to ps_create as a world
+        // position (`dlights.c:497`).
+        if let Some(corner) = self.lights.lights_handle_hit(&self.stage.rooms, gunpos3d, b.pos, b.room as usize) {
+            self.sound_at(0x8077, 1.0, corner, crate::propsnd::DEFAULT_DISTS);
+        }
         let mut texnum = 0;
         self.players[pi].gun.bgun_set_hit_pos(b.pos);
         // surfacetype: g_Textures[texturenum], or the default for none.

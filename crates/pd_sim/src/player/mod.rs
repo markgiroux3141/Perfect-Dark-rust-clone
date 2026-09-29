@@ -31,6 +31,7 @@ mod bondwalk;
 pub mod health;
 pub mod camera;
 pub mod cloak;
+pub mod rooms;
 pub mod slayer;
 mod spawn;
 pub mod vision;
@@ -52,7 +53,7 @@ use pd_core::model::{Model, ModelDef, NodeKind};
 use pd_core::rng::Rng;
 
 use crate::gun::{Bgun, GunCtx, GunIn, HAND_MODELS};
-use crate::stage::{CdObstacle, Edge, PerimCyl, TileLevel};
+use crate::stage::{CdObstacle, Edge, PropFloor, PropGeo, TileLevel};
 use crate::world::WorldRes;
 use bondhead::HeadAnim;
 use camera::{Camera, SCREEN_H, SCREEN_W};
@@ -65,7 +66,9 @@ pub const PLAYER_DEFAULT_FOV: f32 = 60.0;
 /// `prop_set_perim_enabled(prop, false)` does).
 pub struct WalkEnv<'a> {
     pub level: &'a TileLevel,
-    pub cyls: &'a [PerimCyl],
+    pub cyls: &'a [PropGeo],
+    /// The props' floors (`GEOTYPE_TILE_F`: lifts, objects' floor quads).
+    pub floors: &'a [PropFloor],
     /// `MPOPTION_FASTMOVEMENT`: the walk speed × 1.25 (`bondwalk.c:1478`).
     pub fastmovement: bool,
     /// `player_get_shield_frac`: the player's chr's shield / 8.
@@ -187,6 +190,13 @@ pub struct Player {
     pub floorpoly: Option<usize>,
     pub floorroom: Option<u16>,
     pub floortype: u8,
+    /// `floorflags`: the floor's `GEOFLAG_*` (kept while no floor is found).
+    pub floorflags: u32,
+    /// `inlift`, `lift`: standing on a lift's floor, and which lift (by object
+    /// id; `None` also while falling onto one); `liftground` its height.
+    pub inlift: bool,
+    pub lift: Option<u32>,
+    pub liftground: f32,
     /// Landing: `crouchtime240`, `crouchfall`, `sumcrouch` (the dip after a fall).
     crouchtime240: i32,
     crouchfall: f32,
@@ -280,6 +290,8 @@ pub struct Player {
     pub up: Vec3,
     pub swivelpos: [f32; 2],
     pub usedowntime: i32,
+    /// `bondactivateorreload`: a use tap this frame (a door, else a reload).
+    pub bondactivateorreload: bool,
     /// `invdowntime`: A held for this many ticks (-1 = consumed).
     pub invdowntime: i32,
     /// `aimtaptime`: R held this long (a short tap uncrouches), -1 = used.
@@ -335,6 +347,16 @@ pub struct Player {
     /// This frame's framebuffer effects (`lv_render`'s `bview_*` calls).
     pub viewfx: vision::ViewFx,
 
+    /// `prop->rooms`: the rooms the player's box is in (`bmove_update_rooms`).
+    pub rooms: Vec<u16>,
+    /// `cam_room`: the room the camera is in (`player_set_cam_properties`).
+    pub cam_room: usize,
+    /// `memcampos` / `memcamroom`: the last camera position that was in bounds.
+    pub memcampos: Vec3,
+    pub memcamroom: Option<u16>,
+    /// This frame's rooms on screen (`bg_tick_portals`).
+    pub portalview: crate::stage::portals::PortalView,
+
     bank: Arc<AnimBank>,
     /// `PLAYERCOUNT()`.
     playercount: usize,
@@ -369,6 +391,10 @@ impl Player {
             floorpoly: None,
             floorroom: None,
             floortype: FLOORTYPE_DEFAULT,
+            floorflags: 0,
+            inlift: false,
+            lift: None,
+            liftground: 0.0,
             crouchtime240: 0,
             crouchfall: 0.0,
             sumcrouch: 0.0,
@@ -441,6 +467,7 @@ impl Player {
             up: Vec3::Y,
             swivelpos: [0.0; 2],
             usedowntime: 0,
+            bondactivateorreload: false,
             invdowntime: 0,
             aimtaptime: 0,
             prev_c_updown: [false; 2],
@@ -466,6 +493,12 @@ impl Player {
             cam: Camera::default(),
             visionmode: VISIONMODE_NORMAL,
             cameramode: CAMERAMODE_DEFAULT,
+            rooms: Vec::new(),
+            // playermgr_allocate_player (playermgr.c:229).
+            cam_room: 1,
+            memcampos: Vec3::ZERO,
+            memcamroom: None,
+            portalview: Default::default(),
             slayerrocket: None,
             badrockettime: 0,
             slayer_prevfire: false,
@@ -588,9 +621,9 @@ impl Player {
 
     /// `player_update_perim_info` (`player.c:5160`): the cylinder other chrs
     /// collide with and shoot at.
-    pub fn perim(&self) -> PerimCyl {
+    pub fn perim(&self) -> PropGeo {
         let ymax = (self.manground + self.headheight + self.crouchoffsetrealsmall).max(self.manground + 80.0);
-        PerimCyl { x: self.pos.x, z: self.pos.z, radius: self.radius, ymin: self.manground, ymax }
+        PropGeo::cyl(self.pos.x, self.pos.z, self.radius, self.manground, ymax)
     }
 
     /// `bond2.theta`: the facing unit vector.

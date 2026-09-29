@@ -15,7 +15,7 @@ use super::{Embed, Obj};
 use crate::fx::boltbeam::BoltOwner;
 use crate::propsnd::DEFAULT_DISTS;
 use crate::stage::bghit::SURFACETYPE_DEEPWATER;
-use crate::stage::{CdResult, PerimCyl};
+use crate::stage::{CdResult, PropGeo};
 use crate::world::World;
 
 /// What a projectile's move met: PD's `g_EmbedProp` (and `g_EmbedTextureNum`'s
@@ -34,6 +34,16 @@ impl World {
     /// of the list), a deleted object freed. The first pass of a frame marks
     /// everything not yet ticked (`PROPFLAG_NOTYETTICKED`).
     pub(crate) fn props_tick_player(&mut self, pi: usize) {
+        // door_tick, lift_tick and hoverprop_tick, on the object's full tick
+        // (the first pass). `// SUBST:` PD ticks each door, lift and hover prop
+        // in its turn among the objects / every one of them first, in list
+        // order: a door looks at its siblings and at what stands in its way, a
+        // lift moves what stands on it, and a hover prop finds the floors
+        // under it, all of which the loop below has taken out of the world.
+        if pi == 0 {
+            self.props_tick_machines();
+        }
+        self.tinted_glass_update_portals(pi);
         let mut objs = std::mem::take(&mut self.props.objs);
         if pi == 0 {
             for o in objs.iter_mut() {
@@ -52,6 +62,20 @@ impl World {
         self.props.objs = objs;
     }
 
+    /// The doors, lifts and hover props' full ticks, in list order (see
+    /// [`Self::props_tick_player`]).
+    pub(crate) fn props_tick_machines(&mut self) {
+        for i in 0..self.props.objs.len() {
+            if self.props.objs[i].door.is_some() {
+                self.door_tick(i);
+            } else if self.props.objs[i].lift.is_some() {
+                self.lift_tick(i);
+            } else if self.props.objs[i].hov.is_some() {
+                self.hoverprop_tick(i);
+            }
+        }
+    }
+
     /// `obj_tick_player` (`propobj.c:11054`) for a gun's object. False: free it.
     fn obj_tick_player(&mut self, o: &mut Obj, pi: usize) -> bool {
         if o.is_deleting() {
@@ -68,6 +92,11 @@ impl World {
                         h.rocket = None;
                     }
                 }
+            }
+            // A setup object (broken glass) waits to come back; anything else goes.
+            if o.hidden2 & OBJH2FLAG_CANREGEN != 0 {
+                self.obj_free_to_regen(o);
+                return true;
             }
             return false;
         }
@@ -104,7 +133,7 @@ impl World {
 
     /// Every chr's perimeter a moving object collides with (`CDTYPE_ALL`), the
     /// owner's left out (`prop_set_perim_enabled(ownerprop, false)`).
-    fn obj_cyls(&self, owner: Option<usize>) -> Vec<PerimCyl> {
+    fn obj_cyls(&self, owner: Option<usize>) -> Vec<PropGeo> {
         let players = self.players.iter().enumerate().filter(|&(j, p)| Some(j) != owner && !p.isdead).map(|(_, p)| p.perim());
         let chrs = self.chrs.iter().enumerate().filter(|&(j, c)| c.player.is_none() && Some(j) != owner).filter_map(|(_, c)| c.perim());
         players.chain(chrs).collect()
@@ -523,7 +552,10 @@ impl World {
                     sp5f4 = level.geom.polys[poly].normal.normalize_or_zero();
                     sp5e8 = Vec3::new(o.pos.x, sp390, o.pos.z);
                     cdresult = CdResult::Collision;
-                    // M9: GEOFLAG_DIE deletes it.
+                    // Landing on a GEOFLAG_DIE tile deletes it (`propobj.c:7304`).
+                    if level.geom.polys[poly].geoflags & GEOFLAG_DIE != 0 {
+                        o.hidden |= OBJHFLAG_DELETING;
+                    }
                 }
                 _ => {
                     roomfound = level.cd_find_room_at_pos_ycnp(o.pos).is_some();
@@ -761,20 +793,26 @@ impl World {
             let level = self.level.clone();
             // cd_find_ceiling_room_at_pos_ycf, unless the bottom did not cross a
             // floor on the way (cd_test_los_oobok passes): then the floor under it.
-            let mut ground = level.cd_find_ceiling_room_at_pos_ycfn(sp5ac).map(|g| g.0);
+            let mut ground = level.cd_find_ceiling_room_at_pos_ycfn(sp5ac);
             if ground.is_none() || level.los_floors(prevpos, sp5ac) {
-                ground = level.cd_find_room_at_pos_ycnp(o.pos).map(|g| g.0);
+                ground = level.cd_find_room_at_pos_ycnp(o.pos);
             }
             if ground.is_none() {
                 o.pos.x = prevpos.x;
                 o.pos.z = prevpos.z;
-                ground = level.cd_find_room_at_pos_ycnp(o.pos).map(|g| g.0);
+                ground = level.cd_find_room_at_pos_ycnp(o.pos);
                 let p = o.projectile.as_mut().unwrap();
                 p.speed.x = 0.0;
                 p.speed.z = 0.0;
             }
             match ground {
-                Some(spa4) => o.pos.y = spa4 - sp98 + obj_get_ground_clearance(o),
+                Some((spa4, poly)) => {
+                    o.pos.y = spa4 - sp98 + obj_get_ground_clearance(o);
+                    // A GEOFLAG_DIE floor deletes it (`propobj.c:7631`).
+                    if level.geom.polys[poly].geoflags & GEOFLAG_DIE != 0 {
+                        o.hidden |= OBJHFLAG_DELETING;
+                    }
+                }
                 None => o.pos.y = prevpos.y,
             }
             let p = o.projectile.as_mut().unwrap();

@@ -138,7 +138,9 @@ impl World {
                     self.chr_try_stop(i);
                 }
                 DistMode::Advance | DistMode::Goto => {
-                    self.chr_go_to_room_pos(i, target_pos);
+                    // chr_go_to_prop (`chraction.c:7268`): the target's rooms.
+                    let rooms = self.chrs[targetprop].rooms.clone();
+                    self.chr_go_to_room_pos(i, target_pos, &rooms);
                 }
             }
             self.ab_mut(i).distmodettl60 = 60;

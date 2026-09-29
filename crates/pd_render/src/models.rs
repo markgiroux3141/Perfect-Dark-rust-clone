@@ -268,6 +268,21 @@ impl ModelRenderer {
         }
     }
 
+    /// Rewrite batch `bi` of the model loaded as `stem` with new positions and
+    /// UVs (a `DOORFLAG_0004` door's `door_calc_texturemap`), the rest of each
+    /// vertex as loaded.
+    pub fn rewrite_verts(&mut self, queue: &wgpu::Queue, stem: &str, bi: usize, pos_uv: &[([f32; 3], [f32; 2])]) {
+        let Some(gm) = self.models.get(stem) else { return };
+        let Some(b) = gm.def.batches.get(bi) else { return };
+        if b.verts.len() != pos_uv.len() {
+            return;
+        }
+        let out: Vec<Vertex> =
+            b.verts.iter().zip(pos_uv).map(|(v, (p, uv))| Vertex { pos: *p, uv: *uv, col: v.c.map(|x| x as f32), mtx: v.mtx as u32, flags: v.flags as u32 }).collect();
+        let offset = gm.batches[bi].base_vertex as u64 * std::mem::size_of::<Vertex>() as u64;
+        queue.write_buffer(&gm.vbuf, offset, bytemuck::cast_slice(&out));
+    }
+
     /// `bgun_render`'s laser liquid slide (`bondgun.c:8362`, one player only):
     /// every vertex's `t` falls 25 per 240th of a second, and when one passes
     /// -0x6000 they all go back 0x2000.

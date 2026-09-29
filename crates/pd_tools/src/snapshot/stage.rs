@@ -1,4 +1,4 @@
-//! `pd_snapshot <outdir> stage <code> [--size WxH] [--spawns n] [--frames n]`:
+//! `pd_snapshot <outdir> stage <code> [--size WxH] [--spawns n] [--frames n] [--all-rooms] [--full] [--farsight]`:
 //! a player's view of a stage from its spawn pads, through the game's own path
 //! (a `pd_sim` world with one player, `pd_render`'s BG on a headless GPU).
 //! Each shot places the player as `player_start_new_life` would at spawn pad
@@ -8,9 +8,13 @@
 //! The default size is PD's 320 × 220 view at 2×; the aspect is the image's,
 //! so `--size 960x540` frames the view like the old `pd_complex_snapshot`.
 //!
+//! The rooms drawn are those the player's portals find, lit as the stage lights
+//! them, unless the size has another aspect than the view's or `--all-rooms`.
+//!
 //! `--farsight`: the player's whole frame instead (`Renderer::render_player`),
 //! the Farsight up and aimed for 80 frames, so the view is its x-ray, as
-//! `<code>_spawn<k>_farsight.png`.
+//! `<code>_spawn<k>_farsight.png`. `--full`: the player's whole frame
+//! (objects, the sky, the HUD) as `<code>_spawn<k>_full.png`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -29,6 +33,8 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let mut spawns = 8usize;
     let mut frames = 40usize;
     let mut farsight = false;
+    let mut all_rooms = false;
+    let mut full = false;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let mut val = |name: &str| it.next().cloned().ok_or(format!("{name} needs a value"));
@@ -42,6 +48,8 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             "--spawns" => spawns = val("--spawns")?.parse().map_err(|e| format!("--spawns: {e}"))?,
             "--frames" => frames = val("--frames")?.parse().map_err(|e| format!("--frames: {e}"))?,
             "--farsight" => farsight = true,
+            "--all-rooms" => all_rooms = true,
+            "--full" => full = true,
             s if !s.starts_with("--") && code.is_none() => code = Some(s.to_owned()),
             s => return Err(format!("stage: unknown argument {s:?}")),
         }
@@ -49,7 +57,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let code = code.ok_or("stage: which stage? (e.g. ref)")?;
     let assets = crate::assets();
     let stage = Arc::new(Stage::load(&assets, &code)?);
-    let level = Arc::new(TileLevel::new(stage.geom.clone()));
+    let level = Arc::new(TileLevel::for_stage(&stage));
     let res = Arc::new(WorldRes::load(&assets)?);
     let setup = MatchSetup { stagenum: stage.stagenum, players: vec![MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
     let mut world = World::new(setup, stage.clone(), level.clone(), res, 0)?;
@@ -65,7 +73,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let mut paths = Vec::new();
     for (k, &pad) in stage.spawn_pads.iter().enumerate().take(spawns) {
         let p = &stage.pads[pad];
-        world.players[0].start_new_life(&level, p.pos, p.look_angle());
+        world.players[0].start_new_life(&level, &[], p.pos, p.look_angle());
         for _ in 0..frames {
             world.step(4, &[PlayerInput::default()]);
         }
@@ -87,10 +95,25 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             paths.push(path);
             continue;
         }
+        if full {
+            // The match view: objects, the sky, the HUD.
+            let mut enc = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("snapshot") });
+            renderer.render_player(&gpu.device, &gpu.queue, &mut enc, &target, &world, 0);
+            gpu.queue.submit(Some(enc.finish()));
+            let rgba = target.read_rgba8(&gpu.device, &gpu.queue);
+            let path = outdir.join(format!("{code}_spawn{k}_full.png"));
+            crate::write_png(&path, w as usize, h as usize, &rgba)?;
+            paths.push(path);
+            continue;
+        }
         let mut view = View::for_player(&world.players[0], znear, zfar);
         view.aspect = w as f32 / h as f32;
+        // The portals are the player's 320 × 220 view's: at another aspect
+        // every room is drawn, unlit.
+        let same_aspect = (view.aspect - 320.0 / 220.0).abs() < 0.01;
+        let frame = Renderer::bg_frame(&world, 0, w, h).filter(|_| same_aspect && !all_rooms);
         let mut enc = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("snapshot") });
-        renderer.render(&gpu.queue, &mut enc, &target.view, depth, &view);
+        renderer.render(&gpu.queue, &mut enc, &target.view, depth, &view, frame.as_ref());
         gpu.queue.submit(Some(enc.finish()));
         let rgba = target.read_rgba8(&gpu.device, &gpu.queue);
         let path = outdir.join(format!("{code}_spawn{k}_pad{pad:04x}.png"));

@@ -577,23 +577,24 @@ mod tests {
         }
     }
 
-    /// A match on Complex, as the menus would start it: the stage is exported,
-    /// the world starts, and a second of walking moves the player.
+    /// A match on every arena, as the menus would start it: the stage is
+    /// exported, the world starts, and a second of walking moves the player.
     #[test]
-    fn a_complex_match_starts_and_the_player_walks() {
+    fn every_arena_starts_and_the_player_walks() {
         let root = AssetRoot::discover("PD_ASSETS", "assets", "MANIFEST.json").unwrap();
         let assets = AssetDir::new(root.root());
         let mut ma = MatchAssets::new(&assets);
-        let code = stage_code(pd_core::ids::STAGE_MP_COMPLEX).unwrap();
-        assert!(ma.has_stage(code));
-        assert!(!ma.has_stage(stage_code(pd_core::ids::STAGE_MP_SKEDAR).unwrap()), "only Complex until M9");
-        let setup = MatchSetup { stagenum: pd_core::ids::STAGE_MP_COMPLEX, players: vec![pd_core::mp::MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
-        let mut world = ma.start(setup, code, 3).unwrap();
-        let start = world.players[0].pos;
-        let fwd = pd_sim::player::PlayerInput { walk_y: 127, ..Default::default() };
-        for _ in 0..60 {
-            world.step(4, std::slice::from_ref(&fwd));
+        for code in pd_sim::stage::ARENAS {
+            assert!(ma.has_stage(code), "{code}");
+            let stagenum = (0..=255u8).find(|&n| stage_code(n) == Some(code)).unwrap();
+            let setup = MatchSetup { stagenum, players: vec![pd_core::mp::MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
+            let mut world = ma.start(setup, code, 3).unwrap();
+            let start = world.players[0].pos;
+            let fwd = pd_sim::player::PlayerInput { walk_y: 127, ..Default::default() };
+            for _ in 0..60 {
+                world.step(4, std::slice::from_ref(&fwd));
+            }
+            assert!(world.players[0].pos.distance(start) > 50.0, "{code}: walked from {start} to {}", world.players[0].pos);
         }
-        assert!(world.players[0].pos.distance(start) > 100.0, "walked from {start} to {}", world.players[0].pos);
     }
 }

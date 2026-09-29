@@ -377,6 +377,8 @@ impl super::Player {
         self.startnewbonddie = true;
         self.bondbreathing = 0.0;
         self.insightaimmode = false;
+        self.inlift = false;
+        self.lift = None;
         // player_start_new_life: normal multiplayer fades the chr in.
         self.player_start_chr_fade(120.0, 1.0);
     }

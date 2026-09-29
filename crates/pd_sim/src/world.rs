@@ -6,13 +6,15 @@
 //!
 //! The frame, as `main.c:1043` runs it:
 //! 1. `lv_tick`: the timing (a Combat Boost caps it), `bgun_tick_boost`,
-//!    `casings_tick`, `sparks_tick`, `nbombs_tick`, `lv_update_misc_sfx`, and
+//!    `casings_tick`, `sparks_tick`, `nbombs_tick`, `lv_update_misc_sfx`,
+//!    `lighting_tick`, and
 //!    `props_tick` (each player's tracers, the sentries' tracers, the explosions,
 //!    the smoke);
 //! 2. each player's `player_tick`: `bmove_tick` (the controls, the hands' state
 //!    machines in `bgun_tick_gameplay`, the walk) and the camera, or riding a
 //!    Slayer rocket; the player's chr follows its player;
-//! 3. `lv_render`, per player: the x-ray's eraser (`bg_tick`), `lights_tick`,
+//! 3. `lv_render`, per player: `bg_tick` (the x-ray's eraser, the rooms on
+//!    screen through the portals), `lights_tick`,
 //!    `props_tick_player` (the objects: projectiles in flight, fuses, mines, the
 //!    sentries; the simulants, `bot_tick`; the player's cloak), after the last
 //!    player `alarm_tick`'s
@@ -29,7 +31,6 @@
 //! Source: `pd_complex/fight.rs` `Fight::frame` and `pd_guns/sim.rs` `Sim::frame`,
 //! which glued the two spike sims.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use glam::{Vec2, Vec3};
@@ -54,7 +55,7 @@ use crate::player::{player_choose_spawn_location, Player, PlayerInput, SpawnOthe
 use crate::props::explosions::{ExpOut, ExpWorld, Explosions, Victim, VictimId};
 use crate::props::Props;
 use crate::propsnd::{self, AudioConfigs, Listener};
-use crate::stage::{PerimCyl, Stage, TileLevel};
+use crate::stage::{PropGeo, Stage, TileLevel};
 
 /// What every world loads once and shares: the animation bank, the weapon
 /// table, the model files, the bodies and heads, and the sounds' audio configs.
@@ -81,79 +82,6 @@ impl WorldRes {
             lang: Arc::new(Lang::load(assets, "en")?),
             fonts: Arc::new(Fonts::load(assets)?),
         })
-    }
-}
-
-/// `// SUBST:` PD lights each room from its light data
-/// (`br_settled_regional`, `dlights.c`) / every room is settled at 230 until
-/// M9's room lighting; it is what the gun spike's range defaulted to.
-pub const ROOM_BRIGHTNESS: f32 = 230.0;
-
-/// A room's lighting: `struct room`'s `br_flash` over `br_settled_regional`.
-#[derive(Clone, Copy, Debug)]
-pub struct RoomLight {
-    pub br_settled_regional: f32,
-    pub br_flash: i32,
-}
-
-impl RoomLight {
-    /// `room_get_final_brightness_for_player` (`dlights.c:106`).
-    pub fn final_brightness(&self) -> f32 {
-        (self.br_flash as f32 + self.br_settled_regional).clamp(0.0, 255.0)
-    }
-
-    /// `room_flash_lighting(room, start, limit)` (`dlights.c:1567`) for the room
-    /// itself (its light transfer to itself is full, so the step is `start`),
-    /// then `room_flash_local_lighting` (`:1599`).
-    pub fn flash(&mut self, start: f32, limit: i32) {
-        let v = start * 5.0;
-        let increment = if start > 0.0 { v.min(start) } else { v.max(start) } as i32;
-        if increment > 0 {
-            if self.br_flash < limit {
-                self.br_flash = (self.br_flash + increment).min(limit);
-            }
-        } else if self.br_flash > limit {
-            self.br_flash = (self.br_flash + increment).max(limit);
-        }
-    }
-
-    /// The flash's decay in `lights_tick` (`dlights.c:1411`).
-    pub fn tick(&mut self, lv: &Lv) {
-        if self.br_flash != 0 {
-            let mut increment = lv.lvupdate240 * 2;
-            if self.br_flash > 0 {
-                increment = increment.min(self.br_flash);
-                self.br_flash -= increment;
-            } else {
-                // PD's @bug branch, kept: br_flash is <= 0 here.
-                if increment < self.br_flash {
-                    increment = self.br_flash;
-                }
-                self.br_flash += increment;
-            }
-        }
-    }
-}
-
-/// Every room's light, created settled on first use.
-#[derive(Clone, Debug, Default)]
-pub struct Lights {
-    pub rooms: HashMap<u16, RoomLight>,
-}
-
-impl Lights {
-    pub fn room(&mut self, room: u16) -> &mut RoomLight {
-        self.rooms.entry(room).or_insert(RoomLight { br_settled_regional: ROOM_BRIGHTNESS, br_flash: 0 })
-    }
-
-    pub fn brightness(&self, room: Option<u16>) -> f32 {
-        room.and_then(|r| self.rooms.get(&r)).map_or(ROOM_BRIGHTNESS, RoomLight::final_brightness)
-    }
-
-    pub fn tick(&mut self, lv: &Lv) {
-        for r in self.rooms.values_mut() {
-            r.tick(lv);
-        }
     }
 }
 
@@ -248,7 +176,8 @@ pub struct World {
     pub props: Props,
     /// The target boards (the firing range's); none on an arena.
     pub boards: Vec<Board>,
-    pub lights: Lights,
+    /// Room lighting (`dlights.c`).
+    pub lights: crate::lights::Lights,
     pub vi: ViShake,
     /// The Combat Boost, `g_Vars.speedpill*`: one for the whole world.
     pub speedpill: SpeedPill,
@@ -261,6 +190,22 @@ pub struct World {
     pub lookingatprop: Vec<Option<AimedAt>>,
     /// `g_20SecIntervalFrac`: the HUD's wave shimmer.
     pub frac20: f32,
+    /// `g_Lv80SecIntervalFrac` (`game_006900.c:25`): 0 to 1 over 80 s of match
+    /// time, which the animated textures run on.
+    pub frac80: f32,
+    /// `g_SkyCloudOffset` (`sky.c:43`): how far the clouds have drifted (in
+    /// their texture's `t`), and `g_SkyWindSpeed`, per tick.
+    pub sky_cloud_offset: f32,
+    pub sky_wind_speed: f32,
+    /// `g_BgPortals[].flags`: closed by doors and glass, forced open when those
+    /// are gone.
+    pub portalflags: crate::stage::rooms::PortalFlags,
+    /// `g_MpRoomVisibility`: per room, bit `i` on player `i`'s screen, bit
+    /// `4 + i` on its standby (`bg_choose_rooms_to_load`).
+    pub mp_room_visibility: Vec<u8>,
+    /// `g_Rooms[].flags`' ONSCREEN/STANDBY bits as the latest `bg_tick` left
+    /// them (the last player's pass, until the next pass redoes them).
+    pub roomflags: Vec<u16>,
     events: Vec<Event>,
 }
 
@@ -323,6 +268,9 @@ impl World {
                 c.mpslot = s.slot as usize;
             }
         }
+        let stage_portalflags = stage.rooms.initial_portal_flags();
+        let lights = crate::lights::Lights::new(&stage.rooms);
+        let nrooms = stage.rooms.roomcount();
         let mut w = World {
             mp: crate::mp::MpMatch::new(&setup),
             setup,
@@ -342,16 +290,22 @@ impl World {
             bots_spawned: false,
             bot_brains: true,
             spawns: vec![0; n],
-            fx: Fx::default(),
+            fx: Fx { shards: crate::fx::shards::Shards::new(n), ..Fx::default() },
             explosions: Explosions::default(),
             props: Props::default(),
             boards: Vec::new(),
-            lights: Lights::default(),
+            lights,
             vi: ViShake::default(),
             speedpill: SpeedPill::default(),
             misc_sfx: [false; 3],
             lookingatprop: vec![None; n],
             frac20: 0.0,
+            frac80: 0.0,
+            sky_cloud_offset: 0.0,
+            sky_wind_speed: 1.0,
+            portalflags: stage_portalflags,
+            mp_room_visibility: vec![0; nrooms],
+            roomflags: vec![0; nrooms],
             events: Vec::new(),
         };
         for i in 0..n {
@@ -359,7 +313,7 @@ impl World {
             w.spawn_player(i, &before);
             w.player_spawn_inventory(i);
         }
-        w.setup_create_mp_pickups();
+        w.setup_create_props();
         Ok(w)
     }
 
@@ -405,18 +359,29 @@ impl World {
     }
 
     /// The perimeters of every chr but player `except`'s.
-    fn perims_except(&self, except: usize) -> Vec<PerimCyl> {
+    pub(crate) fn perims_except(&self, except: usize) -> Vec<PropGeo> {
         self.chr_perims_except(except)
+    }
+
+    /// The rest of player `i`'s [`WalkEnv`]: fast movement, its shield, its menu.
+    pub(crate) fn walk_opts(&self, i: usize) -> (bool, f32, bool) {
+        let fastmovement = self.setup.options & pd_core::ids::MPOPTION_FASTMOVEMENT != 0;
+        (fastmovement, self.player_get_shield_frac(i), self.mp.menuopen.get(i).copied().unwrap_or(false))
     }
 
     /// Spawn player `i`, judging the pads against the enemies among the chrs
     /// in `others` (at the match start, the players already spawned; later,
     /// every other chr).
     fn spawn_player(&mut self, i: usize, others: &[usize]) {
-        let judged: Vec<SpawnOther> = others.iter().filter(|&&j| self.chr_compare_teams(i, j, crate::mp::Compare::Enemies)).map(|&j| SpawnOther { pos: self.chrs[j].pos, rooms: self.chrs[j].rooms.clone() }).collect();
-        let cyls: Vec<PerimCyl> = others.iter().filter_map(|&j| self.chrs[j].perim()).collect();
-        let (pos, angle) = player_choose_spawn_location(&self.level, &self.stage, 30.0, &judged, &cyls, &mut self.rng);
-        self.players[i].start_new_life(&self.level, pos, angle);
+        let judged: Vec<SpawnOther> = others
+            .iter()
+            .filter(|&&j| self.chr_compare_teams(i, j, crate::mp::Compare::Enemies))
+            .map(|&j| SpawnOther { pos: self.chrs[j].pos, rooms: self.chrs[j].rooms.clone(), player: self.chrs[j].player })
+            .collect();
+        let cyls: Vec<PropGeo> = others.iter().filter_map(|&j| self.chrs[j].perim()).collect();
+        let (pos, angle) = player_choose_spawn_location(&self.level, &self.stage, 30.0, &judged, &cyls, &self.mp_room_visibility, &mut self.rng);
+        let floors = self.prop_floors();
+        self.players[i].start_new_life(&self.level, &floors, pos, angle);
         self.mp.players[i].killsthislife = 0;
         self.mp.players[i].lifestarttime60 = self.player_get_mission_time(i);
         self.spawns[i] += 1;
@@ -440,7 +405,8 @@ impl World {
         c.cloaked = p.cloak.cloaked;
         c.floorroom = p.floorroom;
         c.floortype = p.floortype;
-        c.rooms = p.floorroom.into_iter().collect();
+        // The player's chr is the player's prop: its rooms.
+        c.rooms = if p.rooms.is_empty() { p.floorroom.into_iter().collect() } else { p.rooms.clone() };
         c.fadealpha = p.chrfadefrac * 255.0;
     }
 
@@ -524,12 +490,24 @@ impl World {
         if self.frac20 > 1.0 {
             self.frac20 -= 1.0;
         }
+        self.frac80 += self.lv.lvupdate60freal / 4800.0;
+        if self.frac80 > 1.0 {
+            self.frac80 -= 1.0;
+        }
+        // sky_tick (`skytick.c:8`).
+        self.sky_cloud_offset += self.lv.lvupdate60freal * self.sky_wind_speed;
+        if self.sky_cloud_offset > 4096.0 {
+            self.sky_cloud_offset -= 4096.0;
+        }
         self.tick_casings();
+        self.fx.shards.shards_tick(self.lv.lvupdate60);
         self.fx.sparks.tick(&self.lv);
         if self.props.nbombs.active {
             self.nbombs_tick();
         }
         self.lv_update_misc_sfx();
+        // lighting_tick (lv.c:2316).
+        self.lights.lighting_tick(&self.roomflags, self.lv.lvupdate240, &mut self.rng);
         self.fx.boltbeams.tick(self.lv.lvupdate60freal);
         self.scenario_tick();
         if !self.mp.endscreen {
@@ -546,10 +524,9 @@ impl World {
             let input = self.bmove_process_input_mp(i, inputs.get(i).unwrap_or(&idle));
             let input = &input;
             let cyls = self.perims_except(i);
-            let fastmovement = self.setup.options & pd_core::ids::MPOPTION_FASTMOVEMENT != 0;
-            let shieldfrac = self.player_get_shield_frac(i);
-            let menuopen = self.mp.menuopen.get(i).copied().unwrap_or(false);
-            let env = WalkEnv { level: &self.level, cyls: &cyls, fastmovement, shieldfrac, menuopen };
+            let floors = self.prop_floors();
+            let (fastmovement, shieldfrac, menuopen) = self.walk_opts(i);
+            let env = WalkEnv { level: &self.level, cyls: &cyls, floors: &floors, fastmovement, shieldfrac, menuopen };
             // player.c:3302: a rocket that is gone loses its signal.
             if self.players[i].visionmode == VISIONMODE_SLAYERROCKET && self.players[i].slayerrocket.is_none() {
                 self.players[i].visionmode = VISIONMODE_SLAYERROCKETSTATIC;
@@ -557,10 +534,16 @@ impl World {
             if self.players[i].visionmode == VISIONMODE_SLAYERROCKET {
                 // bmove_tick(0, 0, 0, 1): Jo stands still while the rocket flies.
                 self.players[i].tick(&idle, &self.lv, &env, &self.res, &mut self.rng, &mut self.events);
+                self.player_update_rooms(i);
                 self.player_tick_slayer(i, input);
             } else {
                 self.players[i].tick(input, &self.lv, &env, &self.res, &mut self.rng, &mut self.events);
                 self.players[i].cameramode = CAMERAMODE_DEFAULT;
+                self.player_update_rooms(i);
+                // The end of bwalk_tick (bondwalk.c:1834).
+                if !self.players[i].isdead {
+                    self.doors_check_automatic(i);
+                }
             }
             if self.players[i].die_request {
                 // player_die(true): fell for 4 s, or out of the world.
@@ -582,7 +565,6 @@ impl World {
         }
 
         // lv_render, per player.
-        self.lights.tick(&self.lv);
         let n = self.players.len();
         for i in 0..n {
             let motion_blur = self.lv_render_blur(i);
@@ -595,6 +577,8 @@ impl World {
                 }
             }
             self.bg_tick_eraser(i);
+            self.bg_tick(i);
+            self.lights_tick(i);
             self.props_tick_player(i);
             if i == 0 {
                 self.chrs_tick();
@@ -617,6 +601,12 @@ impl World {
             // targets PD lets the sight react to (`MODEL_TARGET` in CI training).
             let aimtrack = self.res.gset.has_flag(self.players[i].gun.bgun_get_weapon_num(HAND_RIGHT), WEAPONFLAG_AIMTRACK) && self.players[i].insightaimmode;
             self.lookingatprop[i] = if self.players.len() == 1 || aimtrack { self.prop_find_aiming_at(i, HAND_RIGHT, false, false) } else { None };
+            // Opening doors and reloading (`lv.c:1293`).
+            if self.players[i].bondactivateorreload && self.current_player_interact(i) {
+                let res = self.res.clone();
+                self.players[i].gun.bgun_reload_if_possible(&res.gset, HAND_RIGHT);
+                self.players[i].gun.bgun_reload_if_possible(&res.gset, pd_core::ids::HAND_LEFT);
+            }
             // props_test_for_pickup (`lv.c:1304`).
             self.props_test_for_pickup(i);
             // player_render_hud (`player.c`): in the third person (riding a
@@ -658,7 +648,9 @@ impl World {
             }
         }
         if n == 0 {
-            // A headless match (the harness): no player pass to tick them in.
+            // A headless match (the harness, not PD): no player pass to tick
+            // the doors, lifts and chrs in.
+            self.props_tick_machines();
             self.chrs_tick();
         }
         for b in self.boards.iter_mut() {
@@ -803,7 +795,24 @@ impl World {
         }
         for (pos, start) in out.flashes {
             if let Some(room) = self.level.floor_room(pos, 1.0) {
-                self.lights.room(room).flash(start, 255);
+                self.room_flash_lighting(room, start as i32, 255);
+            }
+        }
+    }
+
+    /// `room_flash_lighting` (`dlights.c:1567`) with the rooms on screen as the
+    /// latest portal tick left them.
+    pub(crate) fn room_flash_lighting(&mut self, room: u16, start: i32, limit: i32) {
+        self.lights.room_flash_lighting(&self.roomflags, room as usize, start, limit);
+    }
+
+    /// `lights_tick` (`dlights.c:1545`): a hand's muzzle flash lights the
+    /// player's room.
+    fn lights_tick(&mut self, pi: usize) {
+        let p = &self.players[pi];
+        if p.gun.hands.iter().any(|h| h.flashon) {
+            if let Some(&room) = p.rooms.first() {
+                self.room_flash_lighting(room, 64, 80);
             }
         }
     }

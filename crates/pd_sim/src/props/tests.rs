@@ -214,7 +214,7 @@ fn nbomb_storm_grows_darkens_hums_and_fades() {
     let n = *w.props.nbombs.bombs.iter().find(|n| n.age240 >= 0).unwrap();
     assert!((n.radius - 500.0).abs() < 30.0, "the radius at 80 ticks: {}", n.radius);
     let room = w.level.floor_room(pos, 1.0).unwrap();
-    assert!(w.lights.room(room).br_flash < -100, "the storm darkens the room: {}", w.lights.room(room).br_flash);
+    assert!(w.lights.rooms[room as usize].br_flash < -100, "the storm darkens the room: {}", w.lights.rooms[room as usize].br_flash);
     let hs = handle_sounds(&w.take_events());
     assert!(hs.iter().any(|&(h, s)| h == super::nbomb::NBOMB_HUM_HANDLE && s == 0x810c), "the hum: {hs:x?}");
     assert!(hs.iter().filter(|&&(_, s)| s == 0x0001).count() == 2, "two roars: {hs:x?}");
@@ -679,7 +679,7 @@ fn get_rotation_inverts_load_rotation() {
 fn on_complex_a_grenade_settles_on_the_floor_and_a_mine_sticks_to_a_wall() {
     use std::sync::Arc;
     let stage = Arc::new(crate::stage::Stage::load(&assets(), "ref").unwrap());
-    let level = Arc::new(crate::stage::TileLevel::new(stage.geom.clone()));
+    let level = Arc::new(crate::stage::TileLevel::for_stage(&stage));
     let setup = pd_core::mp::MatchSetup { stagenum: STAGE_MP_COMPLEX, players: vec![pd_core::mp::MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
     let mut w = World::new(setup.clone(), stage.clone(), level.clone(), res(), 7).unwrap();
     w.harness_give_loadout(res().gset.order.clone());

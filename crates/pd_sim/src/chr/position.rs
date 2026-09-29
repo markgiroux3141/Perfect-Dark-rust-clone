@@ -15,11 +15,12 @@
 //! Source: the old repo's `pd_spike/chraction.rs` (position), checked against
 //! `reference/pd_bot_port_sheet.md` §11.
 
+use pd_core::ids::*;
 use glam::{Vec2, Vec3};
 use pd_core::ids::FLOORTYPE_METAL;
 
 use super::Act;
-use crate::stage::{CdResult, PerimCyl, TileFlag};
+use crate::stage::{CdResult, PropFloor, PropGeo, TileFlag};
 use crate::world::World;
 
 /// `g_HeadAnims[HEADANIM_MOVING].translateperframe`: `bhead_reset`
@@ -34,11 +35,63 @@ pub fn projectile_update_fall(yincrement: &mut f32, speed: &mut f32, lvupdate60:
     *speed = s;
 }
 
+/// `prop_is_of_cd_type` (`prop.c:2788`) for an object or a door with
+/// geometry (a gone or deleting one has none). A door: not a see-through one
+/// for `CDTYPE_AIOPAQUE`, and unless `CDTYPE_DOORS` asks for every door, one
+/// in the state the types name (`prop_door_get_cd_types`). An object: not a
+/// see-through one for `CDTYPE_AIOPAQUE`, a mortal one for the
+/// `CDTYPE_OBJSIMMUNETO*` types, and a path blocker only for
+/// `CDTYPE_PATHBLOCKER`, anything else only for `CDTYPE_OBJS`.
+pub(crate) fn obj_is_of_cd_type(o: &crate::props::Obj, types: u32) -> bool {
+    if o.geos.is_empty() || o.is_gone() || o.is_deleting() {
+        return false;
+    }
+    if types & CDTYPE_AIOPAQUE != 0 && o.flags & OBJFLAG_AISEETHROUGH != 0 {
+        return false;
+    }
+    if let Some(d) = &o.door {
+        if types & CDTYPE_DOORSWITHOUTFLAG != 0 && o.flags3 & OBJFLAG3_80000000 != 0 {
+            return false;
+        }
+        return types & CDTYPE_DOORS != 0 || d.cd_types(o.flags2) & types != 0;
+    }
+    let invincible = o.flags & OBJFLAG_INVINCIBLE != 0;
+    if types & CDTYPE_OBJSIMMUNETOGUNFIRE != 0 && !invincible && o.flags2 & OBJFLAG2_IMMUNETOGUNFIRE == 0 {
+        return false;
+    }
+    if types & CDTYPE_OBJSIMMUNETOEXPLOSIONS != 0 && !invincible && o.flags2 & OBJFLAG2_IMMUNETOEXPLOSIONS == 0 {
+        return false;
+    }
+    let class = if o.flags & OBJFLAG_PATHBLOCKER != 0 { CDTYPE_PATHBLOCKER } else { CDTYPE_OBJS };
+    types & class != 0
+}
+
 impl World {
-    /// Every other chr's perimeter (`CDTYPE_ALL`: `chr_set_perim_enabled(chr,
-    /// false)` leaves out the chr's own), players included.
-    pub(crate) fn chr_perims_except(&self, i: usize) -> Vec<PerimCyl> {
-        self.chrs.iter().enumerate().filter(|&(j, _)| j != i).filter_map(|(_, c)| c.perim()).collect()
+    /// What a chr moving with `CDTYPE_ALL` walks into besides the BG: every
+    /// other chr's perimeter (`chr_set_perim_enabled(chr, false)` leaves out its
+    /// own), players included, then the objects' geometry.
+    pub(crate) fn chr_perims_except(&self, i: usize) -> Vec<PropGeo> {
+        let mut v: Vec<PropGeo> = self.chrs.iter().enumerate().filter(|&(j, _)| j != i).filter_map(|(_, c)| c.perim()).collect();
+        v.extend(self.obj_geos(CDTYPE_ALL));
+        v
+    }
+
+    /// Every prop's floor (`GEOTYPE_TILE_F` with `GEOFLAG_FLOOR1 | FLOOR2`: the
+    /// lifts' and the objects' floor quads) for the ground search
+    /// (`cd_volume_collect`'s props, `CDTYPE_ALL`).
+    pub(crate) fn prop_floors(&self) -> Vec<PropFloor> {
+        self.props.objs.iter().filter(|o| !o.floors.is_empty() && !o.is_gone() && !o.is_deleting()).flat_map(|o| o.floors.iter().copied()).collect()
+    }
+
+    /// The walls of the objects of `types` (`prop_is_of_cd_type`,
+    /// `prop.c:2788`): see [`obj_is_of_cd_type`].
+    pub(crate) fn obj_geos(&self, types: u32) -> Vec<PropGeo> {
+        self.props.objs.iter().filter(|o| obj_is_of_cd_type(o, types)).flat_map(|o| o.geos.iter().copied()).collect()
+    }
+
+    /// [`Self::obj_geos`] with each block's object id.
+    pub(crate) fn obj_geos_with_ids(&self, types: u32) -> Vec<(u32, PropGeo)> {
+        self.props.objs.iter().filter(|o| obj_is_of_cd_type(o, types)).flat_map(|o| o.geos.iter().map(move |g| (o.id, *g))).collect()
     }
 
     /// `chr_update_position` (`chr.c:521`), the non-absolute-animation path of a
@@ -51,6 +104,7 @@ impl World {
         let lv = self.lv.clone();
         let freal = lv.lvupdate60freal;
         let cyls = self.chr_perims_except(i);
+        let floors = self.prop_floors();
         let level = self.level.clone();
         let c = &mut self.chrs[i];
         let manground = c.manground;
@@ -118,11 +172,13 @@ impl World {
         } else {
             // chr.c:830: probe from 69 above manground, the step height.
             let probe = if arg2.y - manground < 69.0 { Vec3::new(arg2.x, manground + 69.0, arg2.z) } else { *arg2 };
-            let (mut ground, floorpoly) = level.cd_find_ground_at_cyl(probe, c.radius);
-            c.floorroom = floorpoly.and_then(|p| level.geom.polys[p].room);
-            if let Some(p) = floorpoly {
-                c.floortype = level.geom.polys[p].floortype;
-            }
+            let g = level.cd_find_ground_at_cyl_ctfril(probe, c.radius, &floors);
+            let mut ground = g.y;
+            c.floorroom = g.room;
+            c.floortype = g.floortype;
+            let floorflags = g.flags;
+            c.lift = g.lift();
+            c.inlift = c.lift.is_some();
             if ground < -100_000.0 {
                 ground = -100_000.0;
             }
@@ -148,6 +204,10 @@ impl World {
                         c.manground = c.ground;
                         c.sumground = c.ground * 9.999_998;
                         c.fallspeed.y = 0.0;
+                        // Landing on a GEOFLAG_DIE tile kills.
+                        if floorflags & GEOFLAG_DIE != 0 {
+                            die = true;
+                        }
                     }
                 } else if c.manground <= c.ground {
                     for _ in 0..lv.lvupdate60 {
@@ -172,11 +232,22 @@ impl World {
             arg2.y -= c.manground;
         }
         *ground_out = c.manground;
+        let oldpos = c.pos;
         c.pos = Vec3::new(arg2.x, arg2.y + c.manground, arg2.z);
-        // prop->rooms: cut to the floor's room (`chr.c:996`).
-        // SUBST: PD finds the rooms the chr's box enters (`chr_detect_rooms`,
-        // BSP) / the floor's room (M9).
-        c.rooms = c.floorroom.into_iter().collect();
+        // prop->rooms: the rooms the move ends in (`los_find_final_room_exhaustive`),
+        // cut to the floor's room when that is one of them (`chr.c:1004`), then
+        // those the chr's box enters (`chr_detect_rooms`, `chr.c:1934`: ±50 cm
+        // across, ±110 cm up and down, through open portals).
+        let (mut rooms, _) = self.stage.rooms.portal_find_rooms(oldpos, self.chrs[i].pos, &self.chrs[i].rooms);
+        let c = &self.chrs[i];
+        // (A chr with no rooms yet takes its floor's.)
+        if let Some(fr) = c.floorroom.filter(|fr| rooms.contains(fr) || rooms.is_empty()) {
+            rooms = vec![fr];
+        }
+        let pos = c.pos;
+        self.stage.rooms.bg_find_entered_rooms(pos - Vec3::new(50.0, 110.0, 50.0), pos + Vec3::new(50.0, 110.0, 50.0), &mut rooms, 7, true, &self.portalflags);
+        let c = &mut self.chrs[i];
+        c.rooms = rooms;
         if die {
             let shooter = if c.lastshooter.is_some() && c.timeshooter > 0 { c.lastshooter } else { Some(i) };
             self.chr_die(i, shooter);
@@ -188,7 +259,7 @@ impl World {
     /// the way, slide along the edge that was hit (method 1), else round that
     /// edge's nearer end (method 2), else stay put. Moves larger than half the
     /// radius on either axis are swept first.
-    fn chr_calculate_push_pos(&mut self, i: usize, dst: &mut Vec3, cyls: &[PerimCyl]) {
+    fn chr_calculate_push_pos(&mut self, i: usize, dst: &mut Vec3, cyls: &[PropGeo]) {
         let lvframe60 = self.lv.lvframe60;
         let level = &self.level;
         let c = &mut self.chrs[i];
@@ -287,7 +358,7 @@ impl World {
 
     /// `chr_ascend` (`chr.c:486`): may the chr's cylinder move `amount`
     /// vertically from `pos` without meeting a wall?
-    fn chr_ascend(level: &crate::stage::TileLevel, c: &super::Chr, pos: Vec3, amount: f32, cyls: &[PerimCyl]) -> bool {
+    fn chr_ascend(level: &crate::stage::TileLevel, c: &super::Chr, pos: Vec3, amount: f32, cyls: &[PropGeo]) -> bool {
         let (ymax, ymin) = c.bbox_rel();
         level.cd_test_volume_simple(pos + Vec3::Y * amount, c.radius, true, ymax, ymin, cyls) == CdResult::NoCollision
     }

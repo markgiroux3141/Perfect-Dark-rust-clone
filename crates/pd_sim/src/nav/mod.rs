@@ -16,11 +16,10 @@
 //! between them (docs/ARCHITECTURE.md, D8). PD's routing state (`step`) lives
 //! behind a lock here, so routing needs only `&NavGraph`.
 //!
-//! `// SUBST:` PD finds a pad's room with the BSP (`setup_prepare_pads`) and a
-//! room's neighbours through its portals (`bg_room_get_neighbours`) / a pad's
-//! room is the room of the floor under it and neighbours come from
-//! [`TileLevel::rooms_are_neighbours`] (M9: the BG's rooms). Candidate waypoints
-//! are gathered by room exactly as PD does.
+//! A pad's room is `setup_prepare_pads`' (`Stage::load`), a room's neighbours
+//! are across its portals ([`TileLevel::rooms_are_neighbours`], from
+//! `bg_room_get_neighbours`), and candidate waypoints are gathered by room
+//! exactly as PD does.
 //!
 //! Sources: the old repo's `pd_spike/pd_nav.rs`, `navgen.rs`, `navcheck.rs`,
 //! `waypoints.rs`.
@@ -32,7 +31,7 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use glam::{Vec2, Vec3};
-use pd_core::ids::{PADFLAG_AICROUCH, PADFLAG_AIDUCK, PADFLAG_AIWALKDIRECT};
+use pd_core::ids::{PADFLAG_AICROUCH, PADFLAG_AIDUCK, PADFLAG_AIIGNOREY, PADFLAG_AIONLIFT, PADFLAG_AIWAITLIFT, PADFLAG_AIWALKDIRECT};
 use pd_core::rng::Rng;
 
 use crate::stage::{wpseg_get_id, CdResult, Stage, TileLevel, WPSEGFLAG_INWARDSONLY, WPSEGFLAG_OUTWARDSONLY};
@@ -50,11 +49,29 @@ pub struct PadFlags {
     /// `PADFLAG_AICROUCH` / `PADFLAG_AIDUCK`: heading here, crouch / duck.
     pub crouch: bool,
     pub duck: bool,
+    /// `PADFLAG_AIWAITLIFT` / `PADFLAG_AIONLIFT`: wait here for a lift / ride
+    /// one from here (the pad's `liftnum` names it).
+    pub waitlift: bool,
+    pub onlift: bool,
+    /// `PADFLAG_AIIGNOREY`: arriving over the pad at any height counts.
+    pub ignorey: bool,
 }
 
 impl PadFlags {
     pub fn from_bits(flags: u32) -> PadFlags {
-        PadFlags { walkdirect: flags & PADFLAG_AIWALKDIRECT != 0, crouch: flags & PADFLAG_AICROUCH != 0, duck: flags & PADFLAG_AIDUCK != 0 }
+        PadFlags {
+            walkdirect: flags & PADFLAG_AIWALKDIRECT != 0,
+            crouch: flags & PADFLAG_AICROUCH != 0,
+            duck: flags & PADFLAG_AIDUCK != 0,
+            waitlift: flags & PADFLAG_AIWAITLIFT != 0,
+            onlift: flags & PADFLAG_AIONLIFT != 0,
+            ignorey: flags & PADFLAG_AIIGNOREY != 0,
+        }
+    }
+
+    /// Either lift flag.
+    pub fn lift(&self) -> bool {
+        self.waitlift || self.onlift
     }
 }
 
@@ -211,6 +228,10 @@ impl NavGraph {
 
     pub fn waypoint_room(&self, w: usize) -> Option<u16> {
         self.pads[self.waypoints[w].padnum].room
+    }
+
+    pub fn waypoint_padnum(&self, w: usize) -> usize {
+        self.waypoints[w].padnum
     }
 
     pub fn waypoint_flags(&self, w: usize) -> PadFlags {

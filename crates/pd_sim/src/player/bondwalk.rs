@@ -11,7 +11,7 @@ use pd_core::rng::Rng;
 use super::bondmove::bmove_dampen_shotspeed;
 use super::{CdGlobals, Player, WalkEnv, HEADANIM_MOVING};
 use crate::world::WorldRes;
-use crate::stage::{CdResult, Edge};
+use crate::stage::{CdResult, Edge, EnableSlopes};
 
 /// Add `rotateamount` radians to `vv_theta` (degrees) the way PD does:
 /// `BADRTOD4`, then wrapped into [0, 360).
@@ -28,7 +28,8 @@ fn add_theta(theta: f32, rotateamount: f32) -> f32 {
 
 impl Player {
     /// `bwalk_try_move_upwards` (`bondwalk.c:189`).
-    fn bwalk_try_move_upwards(&mut self, env: &WalkEnv, amount: f32) -> CdResult {
+    pub(crate) fn bwalk_try_move_upwards(&mut self, env: &WalkEnv, amount: f32) -> CdResult {
+        let _slopes = EnableSlopes::set(self.floorflags & GEOFLAG_SLOPE == 0);
         let newpos = self.pos + Vec3::Y * amount;
         let (radius, ymax, ymin) = self.player_get_bbox();
         let ymin = ymin - 0.1;
@@ -42,6 +43,7 @@ impl Player {
     /// `bwalk_try_delta_nopush` (`bondwalk.c:236`): try moving by `delta`; on
     /// success (and `apply`) take the move and the turn.
     fn bwalk_try_delta_nopush(&mut self, env: &WalkEnv, delta: Vec3, rotateamount: f32, apply: bool, extrawidth: f32) -> CdResult {
+        let _slopes = EnableSlopes::set(self.floorflags & GEOFLAG_SLOPE == 0);
         let mut result = CdResult::NoCollision;
         let mut dstpos = self.pos;
         if delta != Vec3::ZERO {
@@ -552,13 +554,15 @@ impl Player {
     }
 
     /// `bwalk_update_vertical` (`bondwalk.c:739`), NTSC final: ladders, the
-    /// ground under the cylinder, stepping up (a low-pass on `manground`, at most
-    /// 50 cm below the ground, refused by a ceiling), falling (PD's gravity,
-    /// landing exactly on the ground), the landing dip, and the eye height.
+    /// ground under the cylinder (the tiles' and the props' floors), riding a
+    /// lift (the ground moving under a player standing in the same lift),
+    /// stepping up (a low-pass on `manground`, at most 50 cm below the ground,
+    /// refused by a ceiling), dying on a `GEOFLAG_DIE` floor, falling (PD's
+    /// gravity, landing exactly on the ground), the landing dip, and the eye
+    /// height.
     ///
-    /// Not ported (M9): lifts and escalators, `GEOFLAG_DIE` floors, landing on a
-    /// chr in a lift. The counter-op radius fix and turbo mode are not in the
-    /// Combat Simulator.
+    /// The counter-op radius fix, turbo mode, the hoverbike and landing on a
+    /// chr in a lift (`!normmplayerisrunning`) are not in the Combat Simulator.
     pub(super) fn bwalk_update_vertical(&mut self, lv: &Lv, env: &WalkEnv) {
         let level = env.level;
         let (radius, ymax, _ymin) = self.player_get_bbox();
@@ -578,16 +582,46 @@ impl Player {
             self.laddernormal = n;
         }
 
-        // cd_find_ground_at_cyl_ctfril from the eye.
-        let (mut ground, floorpoly) = level.cd_find_ground_at_cyl(self.pos, self.radius);
-        self.floorpoly = floorpoly;
-        self.floorroom = floorpoly.and_then(|p| level.geom.polys[p].room);
-        if let Some(p) = floorpoly {
-            self.floortype = level.geom.polys[p].floortype;
+        // cd_find_ground_at_cyl_ctfril from the eye (lowered by the crouch in a lift).
+        let mut testpos = self.pos;
+        if self.inlift {
+            testpos.y -= self.crouchheight + self.crouchoffsetrealsmall;
         }
+        let g = level.cd_find_ground_at_cyl_ctfril(testpos, self.radius, env.floors);
+        let mut ground = g.y;
+        self.floorpoly = g.poly;
+        self.floorroom = g.room;
+        self.floortype = g.floortype;
+        if g.poly.is_some() || g.floor.is_some() {
+            self.floorflags = g.flags;
+        }
+        let newlift = g.lift();
         if ground < -30000.0 {
             ground = -30000.0;
         }
+
+        let mut lift = newlift;
+        if self.inlift && newlift.is_some() && !self.onladder {
+            // Remaining in a lift.
+            let moveamount = ground - self.ground;
+            if moveamount != 0.0 {
+                // The lift is moving (this ground under the feet, the same lift).
+                if !self.isfalling && lift == self.lift && self.liftground - self.manground < 1.0 && self.liftground - self.manground > -1.0 {
+                    self.ground += moveamount;
+                    // `lift->obj->flags & OBJFLAG_CHOPPER_INACTIVE` is never
+                    // set on a lift, so the move always goes through.
+                    self.manground += moveamount;
+                    self.sumground = self.manground / 0.045_499_98;
+                }
+            }
+        } else {
+            lift = None;
+        }
+        self.inlift = newlift.is_some();
+        if self.inlift {
+            self.liftground = ground;
+        }
+        self.lift = lift;
 
         // Ladders.
         if self.onladder {
@@ -620,6 +654,10 @@ impl Player {
                 if self.bwalk_try_move_upwards(env, sumground - self.manground) == CdResult::NoCollision {
                     self.manground = sumground;
                 }
+            }
+            // Standing on a GEOFLAG_DIE tile kills.
+            if self.floorflags & GEOFLAG_DIE != 0 && self.manground - 20.0 < self.ground && !self.onladder && !onladder2 {
+                self.die_request = true;
             }
         }
 

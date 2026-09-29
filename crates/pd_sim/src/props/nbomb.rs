@@ -198,7 +198,7 @@ impl World {
             let apart = bbmax.x < lo.x || bbmin.x > hi.x || bbmax.y < lo.y || bbmin.y > hi.y || bbmax.z < lo.z || bbmin.z > hi.z;
             if !apart && index < 52 {
                 index += 1;
-                self.lights.room(room).flash(-38.0, -180);
+                self.room_flash_lighting(room, -38, -180);
             }
         }
         let damage = 0.01 * self.lv.lvupdate60freal;
