@@ -114,6 +114,9 @@ struct PadState {
     id: GamepadId,
     /// Held state of every button by its raw native code.
     raw: HashMap<u32, bool>,
+    /// The rumble motor: its effect (made on first use) and whether it runs.
+    rumble: Option<gilrs::ff::Effect>,
+    rumbling: bool,
 }
 
 /// Every connected gamepad, in the order they connected.
@@ -162,7 +165,7 @@ impl Gamepads {
         let mut pads = Vec::new();
         for (id, gp) in gilrs.gamepads() {
             log::info!("gamepad: found \"{}\" (id {id})", gp.name());
-            pads.push(PadState { id, raw: HashMap::new() });
+            pads.push(PadState { id, raw: HashMap::new(), rumble: None, rumbling: false });
         }
         Some(Gamepads { gilrs, pads, debug: std::env::var_os("GAMEPAD_DEBUG").is_some() })
     }
@@ -175,7 +178,7 @@ impl Gamepads {
                 EventType::Connected => {
                     log::info!("gamepad: connected \"{}\" (id {})", self.gilrs.gamepad(ev.id).name(), ev.id);
                     if pos.is_none() {
-                        self.pads.push(PadState { id: ev.id, raw: HashMap::new() });
+                        self.pads.push(PadState { id: ev.id, raw: HashMap::new(), rumble: None, rumbling: false });
                     }
                 }
                 EventType::Disconnected => {
@@ -212,6 +215,40 @@ impl Gamepads {
 
     pub fn count(&self) -> usize {
         self.pads.len()
+    }
+
+    /// Run or stop the `i`th pad's rumble motor (a pad without force
+    /// feedback ignores it).
+    pub fn set_rumble(&mut self, i: usize, on: bool) {
+        let Some(state) = self.pads.get_mut(i) else { return };
+        if state.rumbling == on {
+            return;
+        }
+        state.rumbling = on;
+        let gp = self.gilrs.gamepad(state.id);
+        if !gp.is_connected() || !gp.is_ff_supported() {
+            return;
+        }
+        if state.rumble.is_none() {
+            use gilrs::ff::{BaseEffect, BaseEffectType, EffectBuilder, Replay, Ticks};
+            let effect = EffectBuilder::new()
+                .add_effect(BaseEffect { kind: BaseEffectType::Strong { magnitude: 0xc000 }, scheduling: Replay { play_for: Ticks::from_ms(60_000), ..Default::default() }, envelope: Default::default() })
+                .gamepads(&[state.id])
+                .finish(&mut self.gilrs);
+            match effect {
+                Ok(e) => state.rumble = Some(e),
+                Err(e) => {
+                    log::warn!("gamepad {}: no rumble ({e})", state.id);
+                    return;
+                }
+            }
+        }
+        if let Some(e) = &state.rumble {
+            let r = if on { e.play() } else { e.stop() };
+            if let Err(e) = r {
+                log::warn!("gamepad {}: rumble ({e})", state.id);
+            }
+        }
     }
 
     /// The `i`th connected pad.

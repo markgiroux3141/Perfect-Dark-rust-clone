@@ -674,6 +674,7 @@ impl MenuSystem {
             teamnames: self.mp.bossfile.teamnames.iter().map(|t| t.trim_end().to_string()).collect(),
             challenge: self.mp.bossfile.locktype == generated::MPLOCKTYPE_CHALLENGE as u8,
             mphilltime: self.vars.mphilltime,
+            screensplit: self.vars.screensplit,
         }
     }
 

@@ -144,7 +144,10 @@ fn an_open_menu_pauses_a_one_player_match() {
     for _ in 0..120 {
         step(&mut w, &PlayerInput { walk_y: 127, fire: true, ..PlayerInput::default() });
     }
-    assert_eq!((w.mp.stagetime60, w.chrs[1].pos, w.lv.lvframenum), (t, pos, frame), "the match moved while paused");
+    // A paused chr_update_position still recomputes manground from sumground
+    // (PD's too), which can move a chr by float noise.
+    assert_eq!((w.mp.stagetime60, w.lv.lvframenum), (t, frame), "the match moved while paused");
+    assert!(w.chrs[1].pos.distance(pos) < 1e-3, "the simulant moved while paused: {pos} to {}", w.chrs[1].pos);
     // Closed with START still held: no new pause menu until START is let go.
     w.set_menu_open(0, false);
     w.take_events();

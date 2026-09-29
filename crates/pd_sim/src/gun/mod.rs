@@ -26,6 +26,7 @@ pub mod hud;
 pub mod inv;
 mod pose;
 pub mod shot;
+pub mod sight;
 mod state;
 #[cfg(test)]
 mod tests;
@@ -84,6 +85,14 @@ pub enum GunEvent {
     Smoke { hand: usize, pos: Vec3, ty: usize },
     /// `bgun_free_held_rocket` (`:4552`): the launcher's rocket goes.
     FreeHeldRocket { hand: usize },
+    /// `playermgr_create_weapon` (`playermgr.c:776`): the player's body takes
+    /// the hand's weapon model (in a match, `IS8MB()`: always).
+    CreateHeldWeapon { hand: usize },
+    /// `playermgr_delete_weapon` (`playermgr.c:771`): the body lets go of it.
+    DeleteHeldWeapon { hand: usize },
+    /// `bgun_rumble` (`bondgun.c:204`): the controller pulses for a fifth of
+    /// a second (one controller: either hand's shot).
+    Rumble,
     /// `chr_uncloak_temporarily` for a thrown or fired projectile (`:7273`).
     UncloakTemporarily,
     /// `bgun_update_rocket_launcher` (`:6997`): the world owns the rocket.

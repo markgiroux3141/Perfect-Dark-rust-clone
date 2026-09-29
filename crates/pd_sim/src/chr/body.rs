@@ -308,9 +308,10 @@ pub fn pos_is_onscreen(cam: &Camera, pos: Vec3, modelscale: f32) -> bool {
 
 /// `obj_find_hitthing_by_bboxrodata_mtx` (`propobj.c:13923`): where the ray
 /// `pos + t·dir` enters part box `bbox` in the space of `mtx`, and the face's
-/// normal, both in that box's space; `None` when it misses. From inside the box:
-/// the start point, facing up.
-pub fn bbox_hitthing(bbox: &[f32; 6], mtx: &Mat4, pos: Vec3, dir: Vec3, pad: f32) -> Option<(Vec3, Vec3)> {
+/// normal, both in that box's space, and the face (`hitthing.unk28 / 2`: 0/1
+/// the low/high x face, 2/3 y, 4/5 z); `None` when it misses. From inside the
+/// box: the start point, facing up, face 1.
+pub fn bbox_hitthing(bbox: &[f32; 6], mtx: &Mat4, pos: Vec3, dir: Vec3, pad: f32) -> Option<(Vec3, Vec3, i32)> {
     let inv = mtx000172f0(mtx);
     let spb8 = inv.transform_point3(pos);
     let spac = inv.transform_vector3(dir);
@@ -331,7 +332,7 @@ pub fn bbox_hitthing(bbox: &[f32; 6], mtx: &Mat4, pos: Vec3, dir: Vec3, pad: f32
         }
     }
     if reset {
-        return Some((spb8, Vec3::Y));
+        return Some((spb8, Vec3::Y, 1));
     }
     let mut sp7c = Vec3::splat(-1.0);
     for i in 0..3 {
@@ -361,7 +362,7 @@ pub fn bbox_hitthing(bbox: &[f32; 6], mtx: &Mat4, pos: Vec3, dir: Vec3, pad: f32
     }
     let mut normal = Vec3::ZERO;
     normal[maxindex] = if side[maxindex] == 0 { 1.0 } else { -1.0 };
-    Some((hit, normal))
+    Some((hit, normal, maxindex as i32 * 2 + (side[maxindex] == 0) as i32))
 }
 
 /// `mtx000172f0` (`mtx.c:588`): the inverse of an affine matrix by its 3×3
@@ -454,6 +455,10 @@ pub struct ChrHit {
     /// World space.
     pub pos: Vec3,
     pub normal: Vec3,
+    /// The part box's face the round entered and where, in the box's space
+    /// (`hitthing.unk28 / 2`, `hitthing.pos`): a shield hit's shimmer starts
+    /// there. None from the triangle test.
+    pub face: Option<(i32, Vec3)>,
 }
 
 impl Chr {
@@ -573,16 +578,26 @@ impl Chr {
         if !pos_is_facing_pos(pos, dir, root, self.chr_get_hit_radius()) {
             return None;
         }
-        if !cheap {
+        // A shielded chr's boxes grow by 10 cm and always take the box test
+        // (`var8005efc0`, `chr.c:4533`).
+        let pad = if self.cshield > 0.0 { 10.0 / self.model.scale } else { 0.0 };
+        if !cheap && pad == 0.0 {
             let (hitpart, node) = self.model.test_for_hit(pos, dir, None, HitPad(0.0))?;
             if hitpart <= 0 {
                 return None;
             }
-            let (_, p, n) = self.model.hit_tris(0, pos, dir)?;
-            return Some(ChrHit { hitpart, node, pos: p, normal: n.normalize_or_zero() });
+            // projectile_0f06bea0 from the root: the body's triangles and the
+            // head's under it, the nearest.
+            let body = self.model.hit_tris(0, pos, dir);
+            let head = self.model.hit_tris_head(pos, dir);
+            let (_, p, n) = match (body, head) {
+                (Some(b), Some(h)) => if h.0 < b.0 { h } else { b },
+                (b, h) => b.or(h)?,
+            };
+            return Some(ChrHit { hitpart, node, pos: p, normal: n.normalize_or_zero(), face: None });
         }
         let mut from = None;
-        while let Some((hitpart, node)) = self.model.test_for_hit(pos, dir, from, HitPad(0.0)) {
+        while let Some((hitpart, node)) = self.model.test_for_hit(pos, dir, from, HitPad(pad)) {
             if hitpart <= 0 {
                 break;
             }
@@ -599,8 +614,8 @@ impl Chr {
                 HitNode::Head(_) => def.find_node_mtx_index(n, 0).map(|m| self.model.matrices[m]).or_else(|| self.model.head_matrix()),
             };
             if let Some(m) = mtx {
-                if let Some((p, nrm)) = bbox_hitthing(bbox, &m, pos, dir, 0.0) {
-                    return Some(ChrHit { hitpart, node, pos: m.transform_point3(p), normal: m.transform_vector3(nrm).normalize_or_zero() });
+                if let Some((p, nrm, side)) = bbox_hitthing(bbox, &m, pos, dir, pad) {
+                    return Some(ChrHit { hitpart, node, pos: m.transform_point3(p), normal: m.transform_vector3(nrm).normalize_or_zero(), face: Some((side, p)) });
                 }
             }
             from = Some(node);
@@ -640,7 +655,8 @@ mod tests {
     fn a_ray_enters_a_part_box_on_the_near_face() {
         let bbox = [-10.0, 10.0, 0.0, 50.0, -5.0, 5.0];
         let m = Mat4::from_translation(Vec3::new(100.0, 0.0, 0.0));
-        let (p, n) = bbox_hitthing(&bbox, &m, Vec3::new(100.0, 20.0, -100.0), Vec3::Z, 0.0).unwrap();
+        let (p, n, side) = bbox_hitthing(&bbox, &m, Vec3::new(100.0, 20.0, -100.0), Vec3::Z, 0.0).unwrap();
+        assert_eq!(side, 4, "the low z face");
         assert!((p - Vec3::new(0.0, 20.0, -5.0)).length() < 1e-4, "{p}");
         assert_eq!(n, Vec3::new(0.0, 0.0, -1.0));
         assert!(bbox_hitthing(&bbox, &m, Vec3::new(100.0, 80.0, -100.0), Vec3::Z, 0.0).is_none());

@@ -416,9 +416,8 @@ impl World {
     /// `PLAYERCOUNT() <= 2 && !(2 && (SCREENSPLIT_VERTICAL || IS4MB()))`: the
     /// long form of a pickup message ("Picked up a ...").
     fn hudmsg_full_text(&self) -> bool {
-        // SUBST: two players read the split from the options / horizontal until
-        // split-screen (M12).
-        self.players.len() <= 2
+        let n = self.players.len();
+        n <= 2 && !(n == 2 && self.setup.screensplit == pd_core::ids::SCREENSPLIT_VERTICAL)
     }
 
     /// `ammo_handle_pickup` (`propobj.c:16003`): the reserve topped up (unless
@@ -615,6 +614,8 @@ impl World {
     /// Hacker Central's uplink, which has no model to drop anyway) falls from
     /// where the player stands (`weapon_create_for_player_drop`).
     pub(crate) fn current_player_drop_all_items(&mut self, pi: usize) {
+        // weapon_delete_from_chr, both hands: the body lets go of its guns.
+        self.chrs[pi].held = [None, None];
         let gset = self.res.gset.clone();
         for w in WEAPON_UNARMED..=WEAPON_SUICIDEPILL {
             let hasmodel = gset.weapon(w).is_some_and(|d| d.tp_model.is_some());

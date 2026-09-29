@@ -12,7 +12,9 @@
 //!   standing, the player's Falcon hitting it (blood, flinch), it dying, and
 //!   its corpse fading, as `duel_<code>_<n>_<what>.png`; `--dist` cm apart
 //!   (default 400), `--gun` the simulant's weapon by `WEAPON_*` number
-//!   (default the CMP150).
+//!   (default the CMP150). With `--lock`: the player's rocket launcher
+//!   instead, its homing rocket (secondary) aimed at the simulant: the lock's
+//!   box closing in, locked, and the rocket on its way.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -69,7 +71,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let (mut w, mut h) = (640u32, 440u32);
     let (mut bots, mut diff, mut seed) = (4usize, 2u8, harness::SPIKE_SEED);
     let mut at: Vec<f32> = vec![4.0, 8.0, 12.0, 16.0, 20.0, 30.0];
-    let mut duel = false;
+    let (mut duel, mut lock) = (false, false);
     let mut dist = 400.0f32;
     let mut gun = pd_core::ids::WEAPON_CMP150;
     let mut it = args.iter();
@@ -87,6 +89,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             "--seed" => seed = val("--seed")?.parse().map_err(|e| format!("--seed: {e}"))?,
             "--at" => at = val("--at")?.split(',').map(|s| s.parse::<f32>().map_err(|e| format!("--at: {e}"))).collect::<Result<_, _>>()?,
             "--duel" => duel = true,
+            "--lock" => lock = true,
             "--dist" => dist = val("--dist")?.parse().map_err(|e| format!("--dist: {e}"))?,
             "--gun" => gun = val("--gun")?.parse().map_err(|e| format!("--gun: {e}"))?,
             s if !s.starts_with("--") => code = s.to_owned(),
@@ -99,7 +102,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let res = Arc::new(WorldRes::load(&assets)?);
     let mut g = Gpu::new(&assets, &code, w, h)?;
     if duel {
-        return run_duel(outdir, &code, stage, level, res, &mut g, seed, dist, gun);
+        return run_duel(outdir, &code, stage, level, res, &mut g, seed, dist, gun, lock);
     }
 
     let setup = harness::setup(1, bots, diff);
@@ -158,7 +161,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run_duel(outdir: &Path, code: &str, stage: Arc<Stage>, level: Arc<TileLevel>, res: Arc<WorldRes>, g: &mut Gpu, seed: u64, dist: f32, gun: u8) -> Result<Vec<PathBuf>, String> {
+fn run_duel(outdir: &Path, code: &str, stage: Arc<Stage>, level: Arc<TileLevel>, res: Arc<WorldRes>, g: &mut Gpu, seed: u64, dist: f32, gun: u8, lock: bool) -> Result<Vec<PathBuf>, String> {
     let mut world = harness::world(stage.clone(), level.clone(), res, harness::setup(1, 1, 2), NavChoice::Pd, seed, true)?;
     world.bot_loadout = vec![Some((gun, false))];
     world.bot_brains = false;
@@ -191,6 +194,37 @@ fn run_duel(outdir: &Path, code: &str, stage: Arc<Stage>, level: Arc<TileLevel>,
         world.step(4, &[PlayerInput::default()]);
     }
     shot(&world, "standing", &mut paths)?;
+    if lock {
+        use pd_core::ids::{WEAPON_HOMINGROCKET, WEAPON_ROCKETLAUNCHER};
+        world.step(4, &[PlayerInput { select: Some((WEAPON_ROCKETLAUNCHER, false)), ..PlayerInput::default() }]);
+        for _ in 0..90 {
+            world.step(4, &[PlayerInput::default()]);
+        }
+        // B held: the homing rocket.
+        for _ in 0..30 {
+            world.step(4, &[PlayerInput { use_held: true, ..PlayerInput::default() }]);
+        }
+        let aim = PlayerInput { aim: true, ..PlayerInput::default() };
+        for _ in 0..20 {
+            world.step(4, std::slice::from_ref(&aim));
+        }
+        shot(&world, "lock_closing", &mut paths)?;
+        for _ in 0..70 {
+            world.step(4, std::slice::from_ref(&aim));
+        }
+        shot(&world, "locked", &mut paths)?;
+        for _ in 0..3 {
+            world.step(4, &[PlayerInput { aim: true, fire: true, ..PlayerInput::default() }]);
+        }
+        for _ in 0..8 {
+            world.step(4, std::slice::from_ref(&aim));
+        }
+        if !world.props.objs.iter().any(|o| o.weaponnum == WEAPON_HOMINGROCKET) {
+            return Err("--lock: no homing rocket".into());
+        }
+        shot(&world, "rocket", &mut paths)?;
+        return Ok(paths);
+    }
     // Aim at the chest and tap the Falcon's trigger until it dies.
     let (_, pitch) = face(world.players[0].pos, b + Vec3::Y * 120.0);
     world.players[0].verta = pitch;

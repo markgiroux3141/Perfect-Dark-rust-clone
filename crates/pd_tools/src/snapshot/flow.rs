@@ -1,7 +1,11 @@
 //! `pd_snapshot <outdir> flow [--score n] [--minutes m] [--teams] [--mates n] [--seed s]
-//! [--size WxH] <steps...>`: a Combat match on Complex with the menus over it, as the game
-//! plays it (`pd_game::session`), under a scripted N64 controller 1 that
-//! drives both the match and the menus.
+//! [--players n] [--vsplit] [--size WxH] <steps...>`: a Combat match on Complex with the
+//! menus over it, as the game plays it (`pd_game::session`), under a scripted N64
+//! controller 1 that drives both the match and the menus.
+//!
+//! `--players n` (2-4): players 2.. join too (split screen; `--vsplit` puts two
+//! side by side), standing idle beside Sim 1, facing player 1. `--shield`:
+//! every chr but player 1 starts with a full shield (not PD: the snapshot's).
 //!
 //! The match is started through the menus' own `mp_start_match` from a setup
 //! with player 1 and one simulant ("Sim 1") and a score limit of `--score`
@@ -116,7 +120,9 @@ impl Flow {
         self.menu.pads[0].next_frame(held, stick.0, stick.1);
         self.menu.pads[0].connected = true;
         self.lv.frametime_apply(1, 4);
-        let out = pd_game::session::step(&mut self.world, &mut self.menu, &self.lv, 4, &[match_input(held, stick)]);
+        let mut inputs = vec![PlayerInput::default(); self.world.players.len()];
+        inputs[0] = match_input(held, stick);
+        let out = pd_game::session::step(&mut self.world, &mut self.menu, &self.lv, 4, &inputs);
         if out.ended {
             // The blur behind the end screens: this frame without the menus.
             self.renderer.menu_layer.clear();
@@ -132,7 +138,7 @@ impl Flow {
 
     fn render(&mut self) -> Vec<u8> {
         let mut enc = self.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("flow") });
-        self.renderer.render_player(&self.gpu.device, &self.gpu.queue, &mut enc, &self.target, &self.world, 0);
+        self.renderer.render_views(&self.gpu.device, &self.gpu.queue, &mut enc, &self.target, &self.world);
         self.gpu.queue.submit(Some(enc.finish()));
         self.target.read_rgba8(&self.gpu.device, &self.gpu.queue)
     }
@@ -156,6 +162,7 @@ impl Flow {
 pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let (mut w, mut h) = (640u32, 440u32);
     let (mut score, mut minutes, mut seed, mut teams, mut mates) = (1u8, None::<u8>, harness::SPIKE_SEED, false, 0usize);
+    let (mut players, mut vsplit, mut shield) = (1usize, false, false);
     let mut words: Vec<String> = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -172,6 +179,9 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             "--seed" => seed = val("--seed")?.parse().map_err(|e| format!("--seed: {e}"))?,
             "--teams" => teams = true,
             "--mates" => mates = val("--mates")?.parse().map_err(|e| format!("--mates: {e}"))?,
+            "--players" => players = val("--players")?.parse::<usize>().map_err(|e| format!("--players: {e}"))?.clamp(1, 4),
+            "--vsplit" => vsplit = true,
+            "--shield" => shield = true,
             s => words.push(s.to_owned()),
         }
     }
@@ -184,12 +194,14 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
         mp.setup.stagenum = STAGE_MP_COMPLEX;
         mp.setup.scorelimit = score.saturating_sub(1).min(100);
         mp.setup.timelimit = minutes.map_or(60, |m| m.saturating_sub(1).min(60));
-        mp.setup.chrslots = 0b1_0001;
+        mp.setup.chrslots = 0b1_0000 | ((1 << players) - 1);
         mp.bots[0].base.name = "Sim 1\n".into();
         mp.bots[0].difficulty = BOTDIFF_NORMAL;
         if teams {
             mp.setup.options |= MPOPTION_TEAMSENABLED;
-            mp.players[0].base.team = 0;
+            for k in 0..players {
+                mp.players[k].base.team = 0;
+            }
             mp.bots[0].base.team = 1;
         }
         for k in 1..=mates.min(7) {
@@ -199,6 +211,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             mp.bots[k].base.team = 0;
         }
     }
+    menu.vars.screensplit = if vsplit { SCREENSPLIT_VERTICAL } else { SCREENSPLIT_HORIZONTAL };
     menu.start_match();
     let Some(Outcome::StartMatch(setup)) = menu.take_outcome() else { return Err("the menus started no match".into()) };
     let stage = Arc::new(Stage::load(&assets, "ref")?);
@@ -224,7 +237,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             ((b.y - a.y).abs() < 1.0 && level.los(a + Vec3::Y * 150.0, b + Vec3::Y * 150.0)).then_some((a, b))
         })
         .ok_or("no spawn pad with open floor ahead")?;
-    world.step(4, &[PlayerInput::default()]);
+    world.step(4, &vec![PlayerInput::default(); world.players.len()]);
     // The simulants by setup order (the allocation shuffles the chrs).
     let sim = |w: &World, k: usize| w.chrs.iter().position(|c| c.aibot.as_ref().is_some_and(|a| a.aibotnum == k));
     let angle = pd_core::math::wrap_pos(pd_core::math::atan2f(a.x - b.x, a.z - b.z));
@@ -235,6 +248,19 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     harness::place_player(&mut world, 0, a, if theta < 0.0 { theta + 360.0 } else { theta });
     // The teammates a step to either side and a little ahead, facing away.
     let side = Vec3::new(d.z, 0.0, -d.x).normalize_or_zero();
+    if shield {
+        for ci in 1..world.chrs.len() {
+            harness::give_shield(&mut world, ci, 8.0);
+        }
+    }
+    // The other players beside Sim 1, facing player 1.
+    for k in 1..world.players.len() {
+        let sign = if k % 2 == 1 { -1.0 } else { 1.0 };
+        let at = ground(b + side * sign * 120.0 * (k.div_ceil(2) as f32) + Vec3::Y * 60.0);
+        let e = a - at;
+        let t = (-e.x).atan2(e.z).to_degrees();
+        harness::place_player(&mut world, k, at, if t < 0.0 { t + 360.0 } else { t });
+    }
     for k in 1..world.setup.simulants.len() {
         let Some(i) = sim(&world, k) else { continue };
         let sign = if k % 2 == 1 { 1.0 } else { -1.0 };

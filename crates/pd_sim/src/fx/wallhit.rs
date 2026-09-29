@@ -1,6 +1,7 @@
-//! Bullet holes and scorches: `wallhit_create` and
+//! Bullet holes, scorches and blood: `wallhit_create` and
 //! `wallhit_create_with_20_args` (`wallhit.c`), a textured quad on the surface
-//! with a colour per corner.
+//! with a colour per corner; a splat grows into place over its `timermax`
+//! and a fading one thins away (`wallhits_tick`).
 //!
 //! `// SUBST:` PD keeps up to `g_MaxBgWallhitsPerRoom` holes per room (and
 //! `g_MaxPropWallhits` on props), fading the oldest when a room fills
@@ -39,6 +40,105 @@ pub struct Wallhit {
     pub texnum: usize,
     /// `finalcolours[4]`: RGBA 0..1, one per corner.
     pub cols: [[f32; 4]; 4],
+    /// `basecolours[].a` (0..1): the alpha the timers scale.
+    pub basealpha: [f32; 4],
+    /// `timermax`, `timercur`, `timerspeed`, `expanding`, `fading`: a splat
+    /// grows in; a faded one shrinks its alpha to nothing.
+    pub timermax: u32,
+    pub timercur: u32,
+    pub timerspeed: u32,
+    pub expanding: bool,
+    pub fading: bool,
+    /// `vertices2`: the corners while it grows (drawn instead of `corners`).
+    pub growing: Option<[Vec3; 4]>,
+    /// `chrprop`: the chr whose blood it is; `createdframe`.
+    pub chr: Option<usize>,
+    pub createdframe: i32,
+}
+
+impl Wallhit {
+    /// The quad as drawn this frame.
+    pub fn draw_corners(&self) -> [Vec3; 4] {
+        self.growing.unwrap_or(self.corners)
+    }
+
+    /// `IS_BLOOD_DROP` (`wallhit.c`).
+    pub fn is_blood_drop(&self) -> bool {
+        self.texnum == WALLHITTEX_BLOOD4
+    }
+
+    /// `wallhit_fade` (`wallhit.c:245`): fade out over `time` ticks.
+    pub fn wallhit_fade(&mut self, time: u32) {
+        if !self.fading {
+            if self.timermax == 0 {
+                self.timermax = time;
+                self.timercur = time;
+            }
+            self.fading = true;
+            self.expanding = false;
+        }
+    }
+
+    /// `wallhits_tick`'s part for one wallhit (`wallhit.c:463`); false once
+    /// it has faded away (`wallhit_free`).
+    pub fn tick(&mut self, lvupdate240: i32) -> bool {
+        let mut f0 = (lvupdate240 as f32 + 2.0) * 0.25;
+        if self.timerspeed != 8 {
+            f0 *= 0.6 * ((self.timerspeed as f32 - 8.0) * 0.125);
+        }
+        if self.timermax == 0 {
+            self.growing = None;
+            for (c, &a) in self.cols.iter_mut().zip(&self.basealpha) {
+                c[3] = a;
+            }
+            return true;
+        }
+        let amount = (f0 + 0.5) as u32;
+        if self.expanding {
+            if self.timercur > self.timermax {
+                self.timermax = 0;
+                self.timercur = 0;
+            }
+            self.timercur += amount;
+        } else if amount < self.timercur {
+            self.timercur -= amount;
+        } else {
+            return false;
+        }
+        if self.timermax == 0 {
+            return true;
+        }
+        let mut f24 = (self.timercur as f32 / self.timermax as f32).min(1.0);
+        if self.expanding {
+            let f30 = 0.8 * (std::f32::consts::FRAC_PI_2 * f24).sin();
+            let mid = (self.corners[0] + self.corners[1] + self.corners[2] + self.corners[3]) * 0.25;
+            self.growing = Some(self.corners.map(|c| mid + (c - mid) * (0.2 + f30)));
+            f24 = (f24 * 2.0).min(1.0);
+        }
+        for (c, &a) in self.cols.iter_mut().zip(&self.basealpha) {
+            c[3] = ((a * 255.0 * f24) as u32).min(255) as f32 / 255.0;
+        }
+        true
+    }
+}
+
+/// The options `wallhit_create_with_20_args` takes beyond a hole's: the
+/// blood's colour (`g_WallhitBloodColour`), `timermax`/`timerspeed` (a splat
+/// grows in), whose blood it is and the frame.
+#[derive(Clone, Copy, Debug)]
+pub struct WallhitExtra {
+    pub blood: [u8; 3],
+    pub timermax: u32,
+    pub timerspeed: u32,
+    pub chr: Option<usize>,
+    pub frame: i32,
+}
+
+impl Default for WallhitExtra {
+    fn default() -> Self {
+        // wallhit_choose_blood_colour with no chr (`wallhit.c:232`).
+        WallhitExtra { blood: [0x40, 0x0a, 0x0a], timermax: 0, timerspeed: 0, chr: None, frame: 0 }
+    }
 }
 
 /// `wallhit_create` (`wallhit.c:637`): 0.6–0.7 of the texture's size.
@@ -54,6 +154,12 @@ pub fn wallhit_create(rng: &mut Rng, pos: Vec3, normal: Vec3, gunpos: Vec3, texn
 /// blast), with per-corner colours by type × `room_get_final_brightness_for_player`.
 #[allow(clippy::too_many_arguments)]
 pub fn wallhit_create_with_20_args(rng: &mut Rng, pos: Vec3, normal: Vec3, arg2: Option<Vec3>, texnum: usize, width: f32, height: f32, minalpha: u8, maxalpha: u8, rotdeg: u32, brightness: f32) -> Wallhit {
+    wallhit_create_with_extra(rng, pos, normal, arg2, texnum, width, height, minalpha, maxalpha, rotdeg, brightness, WallhitExtra::default())
+}
+
+/// [`wallhit_create_with_20_args`] with its blood colour, timers and owner.
+#[allow(clippy::too_many_arguments)]
+pub fn wallhit_create_with_extra(rng: &mut Rng, pos: Vec3, normal: Vec3, arg2: Option<Vec3>, texnum: usize, width: f32, height: f32, minalpha: u8, maxalpha: u8, rotdeg: u32, brightness: f32, extra: WallhitExtra) -> Wallhit {
     let n = normal.normalize_or_zero();
     // NTSC 1.0+: BULLET2, blood, BP glass and METAL keep the given rotdeg; the
     // rest spin at random.
@@ -101,21 +207,42 @@ pub fn wallhit_create_with_20_args(rng: &mut Rng, pos: Vec3, normal: Vec3, arg2:
     let alpha = if range != 0 { minalpha as u32 + rng.random() % range } else { 0 };
     let ty = WALLHIT_TYPE[texnum];
     let mut cols = [[0.0f32; 4]; 4];
-    for c in cols.iter_mut() {
-        let (g, a) = match ty {
-            WallhitType::Bullet => (255 - rng.random() % 40, if alpha != 0 { alpha } else { 255 }),
+    let mut basealpha = [0.0f32; 4];
+    for (c, ba) in cols.iter_mut().zip(basealpha.iter_mut()) {
+        let or255 = |a: u32| if a != 0 { a } else { 255 };
+        let (rgb, a) = match ty {
+            WallhitType::Bullet => {
+                let g = 255 - rng.random() % 40;
+                ([g; 3], or255(alpha))
+            }
             WallhitType::Soft => {
                 let g = rng.random() % 70;
-                (g, if alpha != 0 { alpha } else { 255 - rng.random() % 50 })
+                ([g; 3], if alpha != 0 { alpha } else { 255 - rng.random() % 50 })
             }
             WallhitType::Scorch => {
                 let g = rng.random() % 50;
-                (g, if alpha != 0 { alpha } else { 255 - rng.random() % 80 })
+                ([g; 3], if alpha != 0 { alpha } else { 255 - rng.random() % 80 })
             }
-            WallhitType::Paint | WallhitType::Blood => (255, 255),
+            WallhitType::Blood => (extra.blood.map(|v| v as u32), or255(alpha)),
+            // Paintball (an option the Combat Simulator never sets).
+            WallhitType::Paint => ([255; 3], or255(alpha)),
         };
-        let g = ((g as f32 * frac) as u32 & 0xff) as f32 / 255.0;
-        *c = [g, g, g, a as f32 / 255.0];
+        let f = |v: u32| ((v as f32 * frac) as u32 & 0xff) as f32 / 255.0;
+        *ba = a as f32 / 255.0;
+        *c = [f(rgb[0]), f(rgb[1]), f(rgb[2]), if extra.timermax != 0 { 0.0 } else { *ba }];
     }
-    Wallhit { corners, texnum, cols }
+    Wallhit {
+        corners,
+        texnum,
+        cols,
+        basealpha,
+        timermax: extra.timermax,
+        timercur: 0,
+        timerspeed: if extra.timerspeed != 0 { extra.timerspeed } else { 8 },
+        expanding: extra.timermax != 0,
+        fading: false,
+        growing: None,
+        chr: extra.chr,
+        createdframe: extra.frame,
+    }
 }

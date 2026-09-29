@@ -295,12 +295,12 @@ pub fn choose(
 }
 
 /// The `chr_is_dead` branch of `player_choose_third_person_animation`
-/// (`player.c:5503`): keep a death animation already playing, else `pick`
-/// (`random() % g_NumDeathAnimations`, drawn by the caller) one of
-/// `g_DeathAnimations`; speed 0.5, merge 16, not looping.
-pub fn choose_death(anim: &mut Anim, ctx: &mut AnimCtx, pick: u32) {
+/// (`player.c:5503`): keep a death animation already playing, else one of
+/// `g_DeathAnimations` by `random() % g_NumDeathAnimations` (drawn only
+/// then); speed 0.5, merge 16, not looping.
+pub fn choose_death(anim: &mut Anim, ctx: &mut AnimCtx, rng: &mut pd_core::rng::Rng) {
     let prev = anim.animnum;
-    let animnum = if DEATH_ANIMS.contains(&prev) { prev } else { DEATH_ANIMS[(pick % DEATH_ANIMS.len() as u32) as usize] };
+    let animnum = if DEATH_ANIMS.contains(&prev) { prev } else { DEATH_ANIMS[(rng.random() % DEATH_ANIMS.len() as u32) as usize] };
     let speed = 0.5;
     let mut reconfigure = animnum != prev;
     // startframe = -1 and the anim loops: reconfigure.

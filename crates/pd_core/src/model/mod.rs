@@ -553,6 +553,94 @@ impl ModelDef {
         None
     }
 
+    /// The node's first child (the tree is preorder).
+    pub fn node_child(&self, n: usize) -> Option<usize> {
+        (self.nodes[n].subtree_end > n + 1).then_some(n + 1)
+    }
+
+    /// The node's next sibling.
+    pub fn node_next(&self, n: usize) -> Option<usize> {
+        let end = self.nodes[n].subtree_end;
+        let scope = self.nodes[n].parent.map_or(self.nodes.len(), |p| self.nodes[p].subtree_end);
+        (end < scope).then_some(end)
+    }
+
+    /// A node with a matrix: `MODELNODETYPE_CHRINFO`, `POSITION`, `POSITIONHELD`.
+    pub fn is_mtx_node(&self, n: usize) -> bool {
+        matches!(self.nodes[n].kind, NodeKind::ChrInfo { .. } | NodeKind::Position { .. } | NodeKind::PositionHeld { .. })
+    }
+
+    /// `model_find_node_by_mtx_index` (`model.c:165`).
+    pub fn find_node_by_mtx_index(&self, mtxindex: usize) -> Option<usize> {
+        let m = mtxindex as i16;
+        self.nodes.iter().position(|node| match &node.kind {
+            NodeKind::ChrInfo { mtx, .. } | NodeKind::PositionHeld { mtx, .. } => *mtx == m,
+            NodeKind::Position { mtx, .. } => mtx.contains(&m),
+            _ => false,
+        })
+    }
+
+    /// `model_node_find_mtx_node` (`model.c:213`): the node or its nearest
+    /// ancestor with a matrix.
+    pub fn find_mtx_node(&self, n: usize) -> Option<usize> {
+        let mut cur = Some(n);
+        while let Some(i) = cur {
+            if self.is_mtx_node(i) {
+                return Some(i);
+            }
+            cur = self.nodes[i].parent;
+        }
+        None
+    }
+
+    /// `model_node_find_parent_mtx_node` (`model.c:230`).
+    pub fn find_parent_mtx_node(&self, n: usize) -> Option<usize> {
+        let mut cur = self.nodes[n].parent;
+        while let Some(i) = cur {
+            if self.is_mtx_node(i) {
+                return Some(i);
+            }
+            cur = self.nodes[i].parent;
+        }
+        None
+    }
+
+    /// `model_node_find_child_mtx_node` (`model.c:245`): the first node with a
+    /// matrix under `n`, in preorder.
+    pub fn find_child_mtx_node(&self, n: usize) -> Option<usize> {
+        (n + 1..self.nodes[n].subtree_end).find(|&i| self.is_mtx_node(i))
+    }
+
+    /// `model_node_find_child_or_parent_mtx_node` (`model.c:280`): the next
+    /// node with a matrix after `n`'s subtree, before the walk climbs out
+    /// through a matrix node (the next sibling bone).
+    pub fn find_child_or_parent_mtx_node(&self, n: usize) -> Option<usize> {
+        let mut node = n;
+        loop {
+            match self.node_child(node).filter(|_| node != n) {
+                Some(c) => node = c,
+                None => {
+                    let mut x = Some(node);
+                    let mut found = None;
+                    while let Some(i) = x {
+                        if i != n && self.is_mtx_node(i) {
+                            break;
+                        }
+                        if let Some(s) = self.node_next(i) {
+                            found = Some(s);
+                            break;
+                        }
+                        x = self.nodes[i].parent;
+                    }
+                    node = found?;
+                }
+            }
+            if self.is_mtx_node(node) {
+                return Some(node);
+            }
+        }
+    }
+
     /// `body_calculate_head_offset`'s vertex pass (`body.c`): every
     /// `MODELNODETYPE_DL` vertex and the bbox move up by `offset`.
     pub fn with_head_offset(&self, offset: f32) -> ModelDef {

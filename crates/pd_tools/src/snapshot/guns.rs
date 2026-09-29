@@ -128,6 +128,8 @@ fn range(res: Arc<WorldRes>, n64: bool) -> Result<World, String> {
     let setup = MatchSetup { players: vec![MatchPlayer { slot: 0, handicap: 128, ..Default::default() }], ..Default::default() };
     let mut w = World::new(setup, Arc::new(stage), Arc::new(level), res, 0x1234_5678)?;
     w.boards = fixtures::firing_range_boards();
+    // Not PD: every weapon at once (a match starts unarmed since M8).
+    w.harness_give_loadout(w.res.gset.order.clone());
     // The old tool's 16:9 screen (`player_tick` sets the camera from these);
     // through the N64 chain, PD's own 320 × 220.
     if n64 {

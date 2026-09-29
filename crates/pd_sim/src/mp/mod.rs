@@ -19,6 +19,7 @@
 
 pub mod awards;
 pub mod hudmsg;
+pub mod radar;
 pub mod scenario;
 
 use pd_core::events::Event;
@@ -624,7 +625,7 @@ impl World {
 
     /// `mp_end_match` (`mplayer.c:2426`): over for good (`MPPAUSEMODE_GAMEOVER`),
     /// no one on a Slayer rocket, the awards, then the end screens.
-    /// `// M12:` the menu music, `challenge_consider_marking_complete`.
+    /// `// M13:` the menu music; `// M14:` `challenge_consider_marking_complete`.
     fn mp_end_match(&mut self) {
         self.mp_set_paused(MPPAUSEMODE_GAMEOVER);
         for i in 0..self.players.len() {
@@ -648,7 +649,7 @@ impl World {
         self.scenario_tick_callback();
     }
 
-    /// `scenario_create_match_start_hudmsgs` (`scenarios.c:485`). `// M12:`
+    /// `scenario_create_match_start_hudmsgs` (`scenarios.c:485`). `// M14:`
     /// a challenge's name first.
     fn scenario_create_match_start_hudmsgs(&mut self) {
         let name = self.res.lang.get(tx(pd_core::lang::LANGBANK_MPMENU, MP_SCENARIO_NAMES[self.setup.scenario.min(5) as usize])).trim_end_matches('\n').to_string();

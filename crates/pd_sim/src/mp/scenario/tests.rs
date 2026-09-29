@@ -296,11 +296,12 @@ fn simulants_score(stage: Arc<Stage>, level: Arc<TileLevel>, scenario: u8, playe
 /// it (two teams of simulants tend to stand off, each carrier at home waiting
 /// for its own case back). Hacker Central runs on seed 1: the spike's seed
 /// puts the terminal on pad 13, a case pad in Complex's pit (room 42, 2.8 m
-/// under the floor), where no simulant's route leads.
+/// under the floor), where no simulant's route leads. Hold the Briefcase runs
+/// on [`harness::M12_SEED`].
 #[test]
 fn simulants_play_every_scenario() {
     let runs: [(u8, usize, usize, Option<&[u8]>, usize, u64); 5] = [
-        (MPSCENARIO_HOLDTHEBRIEFCASE, 0, 4, None, 120, SPIKE_SEED),
+        (MPSCENARIO_HOLDTHEBRIEFCASE, 0, 4, None, 120, harness::M12_SEED),
         (MPSCENARIO_HACKERCENTRAL, 0, 2, Some(&[0, 0]), 180, harness::M10_SEED),
         (MPSCENARIO_POPACAP, 0, 4, None, 120, SPIKE_SEED),
         (MPSCENARIO_KINGOFTHEHILL, 0, 4, Some(&[0, 1, 0, 1]), 120, SPIKE_SEED),
@@ -331,3 +332,4 @@ fn probe_every_arena_every_scenario() {
         println!("{code:5} htb {:3} htm {:3} pac {:3} koh {:3} ctc {:3}", scores[0], scores[1], scores[2], scores[3], scores[4]);
     }
 }
+

@@ -4,7 +4,8 @@
 //! range (`vi_set_z_range(env->near, env->far)`, `env.c:243`), and the world →
 //! eye → clip matrices.
 //!
-//! Later: the viewport of a split-screen quarter (M12).
+//! In split screen the view's target is its viewport (`Renderer::render_views`),
+//! so the projection needs no offset.
 
 use glam::{Mat4, Vec3};
 use pd_core::math;

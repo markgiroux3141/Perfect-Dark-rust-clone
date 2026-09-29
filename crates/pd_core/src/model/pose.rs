@@ -167,6 +167,11 @@ impl Model {
         self.vis_at(&self.def, &self.vis, node) && Self::reaches(&self.def, &self.vis, node)
     }
 
+    /// [`Model::node_visible`] for a node of the head.
+    pub fn head_node_visible(&self, node: usize) -> bool {
+        self.head.as_deref().is_some_and(|h| self.vis_at(h, &self.head_vis, node) && Self::reaches(h, &self.head_vis, node))
+    }
+
     fn vis_at(&self, def: &ModelDef, vis: &[bool], node: usize) -> bool {
         !matches!(def.nodes[node].kind, NodeKind::Toggle | NodeKind::Distance { .. }) || vis[node]
     }

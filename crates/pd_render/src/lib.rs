@@ -28,6 +28,8 @@ pub mod hud;
 pub mod hudmsg;
 pub mod models;
 pub mod post;
+pub mod radar;
+pub mod shield;
 pub mod sky;
 pub mod view;
 pub mod xray;
@@ -58,9 +60,15 @@ pub struct Renderer {
     assets: Option<AssetDir>,
     fonts: Option<Fonts>,
     text: TextState,
-    /// The last frame's 2D layer (kept for `pd_snapshot`, and for the N64
-    /// video chain, which composites it itself).
+    /// The last view's 2D layer, the view's size (kept for `pd_snapshot`).
     pub hud_gfx: Gfx,
+    /// Every view's 2D layer in PD's framebuffer (`render_views`): the N64
+    /// video chain composites it itself.
+    pub hud_frame: Gfx,
+    /// A 2D layer in framebuffer pixels, drawn into and cut to each view.
+    hud_scratch: Gfx,
+    /// Each view's own target in split screen (`render_views`).
+    views: Vec<RenderTarget>,
     /// The N64 video chain's switches (`n64::gpu::video`): the RDP's 3-point
     /// texture filter; a texture the world's depth is copied into before the
     /// gun pass clears it; and whether the 2D layer is drawn into the frame
@@ -68,15 +76,19 @@ pub struct Renderer {
     pub three_point: bool,
     pub world_depth_copy: Option<wgpu::Texture>,
     pub hud_in_frame: bool,
-    /// The menus' frame to lay over the HUD (premultiplied, the player's
-    /// screen size; empty for none): `lv_render` draws `menu_render` after
-    /// the HUD, then the modal text over it.
+    /// The menus' frame to lay over the HUD (premultiplied, PD's 320 × 220
+    /// framebuffer with every player's dialogs in its view; empty for none):
+    /// `lv_render` draws `menu_render` after the HUD, then the modal text over it.
     pub menu_layer: Vec<[f32; 4]>,
     /// A copy of its model per `DOORFLAG_0004` door (by object id), whose
     /// display list's vertices are rewritten every frame.
     door_models: std::collections::HashMap<u32, std::sync::Arc<pd_core::model::ModelDef>>,
     /// The sky pass (made on the first match view).
     sky: Option<sky::SkyRenderer>,
+    /// The radar's ring (`TEXTURE_003C`) and the shield's shimmer
+    /// (`TEXTURE_000D`), loaded with the fonts.
+    radar_ring: Option<n64::rdp::Texture>,
+    shield_tex: Option<n64::rdp::Texture>,
     color_format: wgpu::TextureFormat,
 }
 
@@ -128,12 +140,17 @@ impl Renderer {
             fonts: None,
             text: TextState::default(),
             hud_gfx: hud::layer(view::VIEW_W as usize, view::VIEW_H as usize),
+            hud_frame: hud::layer(view::VIEW_W as usize, view::VIEW_H as usize),
+            hud_scratch: hud::layer(view::VIEW_W as usize, view::VIEW_H as usize),
+            views: Vec::new(),
             three_point: false,
             world_depth_copy: None,
             hud_in_frame: true,
             menu_layer: Vec::new(),
             door_models: std::collections::HashMap::new(),
             sky: None,
+            radar_ring: None,
+            shield_tex: None,
             color_format,
         }
     }
@@ -150,6 +167,14 @@ impl Renderer {
     pub fn load_assets(&mut self, assets: &AssetDir) -> Result<(), String> {
         if self.fonts.is_none() {
             self.fonts = Some(Fonts::load(assets)?);
+        }
+        if self.radar_ring.is_none() {
+            let (w, h, px) = assets.read_png(&assets.texture(0x003c))?;
+            self.radar_ring = Some(n64::rdp::Texture::from_rgba8(w, h, &px, n64::rdp::Addr::Clamp, n64::rdp::Addr::Clamp));
+        }
+        if self.shield_tex.is_none() {
+            let (w, h, px) = assets.read_png(&assets.texture(fx::TEX_SHIELD))?;
+            self.shield_tex = Some(n64::rdp::Texture::from_rgba8(w, h, &px, n64::rdp::Addr::Wrap, n64::rdp::Addr::Wrap));
         }
         self.assets = Some(assets.clone());
         Ok(())
@@ -190,8 +215,64 @@ impl Renderer {
             frac80: world.frac80,
             tints: world.scenario_highlighted_rooms(),
             scale: [w as f32 / p.cam.c_screenwidth, h as f32 / p.cam.c_screenheight],
+            origin: [p.cam.c_screenleft, p.cam.c_screentop],
             target: [w, h],
         })
+    }
+
+    /// Every player's view laid into `frame`, a target of PD's framebuffer
+    /// (320 × 220) at any scale: with one player the view is the frame; in
+    /// split screen each view is drawn into its own target and copied to its
+    /// rectangle (`player_get_viewport_*`), black between them. Each view is
+    /// submitted before the next is prepared, since they share the uniform
+    /// buffers (`encoder` is replaced by a fresh one each time). Leaves every
+    /// view's 2D layer in [`Renderer::hud_frame`].
+    pub fn render_views(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, encoder: &mut wgpu::CommandEncoder, frame: &RenderTarget, world: &World) {
+        self.hud_frame = hud::layer(view::VIEW_W as usize, view::VIEW_H as usize);
+        let n = world.players.len();
+        if n <= 1 {
+            self.render_player(device, queue, encoder, frame, world, 0);
+            return;
+        }
+        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("pd-frame-clear"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &frame.view,
+                resolve_target: None,
+                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        let (sx, sy) = (frame.width as f32 / view::VIEW_W as f32, frame.height as f32 / view::VIEW_H as f32);
+        let mut views = std::mem::take(&mut self.views);
+        views.truncate(n);
+        for (pi, p) in world.players.iter().enumerate() {
+            let c = &p.cam;
+            let x0 = ((c.c_screenleft * sx).round() as u32).min(frame.width);
+            let y0 = ((c.c_screentop * sy).round() as u32).min(frame.height);
+            let x1 = (((c.c_screenleft + c.c_screenwidth) * sx).round() as u32).min(frame.width);
+            let y1 = (((c.c_screentop + c.c_screenheight) * sy).round() as u32).min(frame.height);
+            let (w, h) = ((x1 - x0).max(1), (y1 - y0).max(1));
+            if views.get(pi).is_none_or(|v| v.width != w || v.height != h || v.format != frame.format) {
+                let v = RenderTarget::on_device(device, w, h, frame.format, true);
+                if pi < views.len() {
+                    views[pi] = v;
+                } else {
+                    views.push(v);
+                }
+            }
+            self.render_player(device, queue, encoder, &views[pi], world, pi);
+            encoder.copy_texture_to_texture(
+                views[pi].color.as_image_copy(),
+                wgpu::TexelCopyTextureInfo { texture: &frame.color, mip_level: 0, origin: wgpu::Origin3d { x: x0, y: y0, z: 0 }, aspect: wgpu::TextureAspect::All },
+                wgpu::Extent3d { width: w.min(frame.width - x0), height: h.min(frame.height - y0), depth_or_array_layers: 1 },
+            );
+            let done = std::mem::replace(encoder, device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("pd-view") }));
+            queue.submit(Some(done.finish()));
+        }
+        self.views = views;
     }
 
     /// Player `pi`'s whole frame into `target` (its colour texture is copied
@@ -228,12 +309,21 @@ impl Renderer {
         let draw_gun = xray.is_none() && !riding;
 
         // The effects.
-        let cam = fx::FxCam { pos: p.cam.pos(), look: p.look, fovy: view.fovy, projection: p.cam.projection, world_to_screen: p.cam.world_to_screen, brightness };
+        let cam = fx::FxCam { pos: p.cam.pos(), look: p.look, fovy: view.fovy, projection: p.cam.projection, world_to_screen: p.cam.world_to_screen, brightness, viewer: pi };
         let mut world_fx = fx::world_fx(world, &cam, xray);
         if self.bg.is_none() && xray.is_none() {
             // SUBST: a stage's BG is its textured display lists / a test stage
             // (the firing range) has none, so its polygons are drawn flat.
             world_fx.splice(0..0, fx::fixture_geometry(&world.stage.geom));
+        }
+        // chr_render_shield after each chr drawn: its shield's glow.
+        if xray.is_none() {
+            for (ci, c) in world.chrs.iter().enumerate().filter(|(_, c)| c.player != Some(pi) && c.onanyscreen) {
+                let alpha = chr_render_alpha(c);
+                if alpha > 0.0 {
+                    world_fx.extend(shield::chr_shield_batch(world, ci, alpha));
+                }
+            }
         }
         let gun_fx = fx::gun_fx(p, cam.pos);
         // nbomb_render_overlay (`player.c:4475`), after the gun.
@@ -309,25 +399,20 @@ impl Renderer {
             objdraws.push((def, o.vis.clone(), joints, frame, None, xlu));
         }
 
-        // The simulants (`chr_render`, `chr.c:3378`): the body, its head and the
-        // held guns, posed by the sim in world space. A dying chr's corpse fades
+        // The simulants and the other players' bodies (`chr_render`,
+        // `chr.c:3378`; `player_render`): the body, its head and the held guns,
+        // posed by the sim in world space. A dying chr's corpse fades
         // (`fadealpha`), a new life fades in over 2 s (`aibot->fadeintimer60`),
         // and a cloak thins it to its shimmer (`chr_get_cloak_alpha`), all drawn
-        // see-through.
+        // see-through. No player sees its own body.
         // SUBST: PD lights a chr by its room (`chr_render`'s shade colour) /
         // lit as the objects are, from the chr's floor room's brightness.
-        // Another human's body is not posed in M6 (see `pd_sim::gun::shot`).
-        for (ci, c) in world.chrs.iter().enumerate().filter(|(_, c)| c.player.is_none() && c.onanyscreen) {
-            let mut alpha = if c.fadealpha < 0.0 { 255.0 } else { c.fadealpha };
-            if let Some(a) = c.aibot.as_ref().filter(|a| a.fadeintimer60 > 0) {
-                alpha = alpha * (120 - a.fadeintimer60) as f32 * (1.0 / 120.0);
-            }
-            // chr.c:3424 (no IR scanner in a match).
-            let cloak = c.cloak.alpha() as f32 / 255.0;
-            alpha = (alpha * cloak).trunc();
+        for (ci, c) in world.chrs.iter().enumerate().filter(|(_, c)| c.player != Some(pi) && c.onanyscreen) {
+            let alpha = chr_render_alpha(c);
             if alpha <= 0.0 {
                 continue;
             }
+            let cloak = c.cloak.alpha() as f32 / 255.0;
             let lights = gun_lights(world.lights.brightness(c.floorroom), false);
             let mut frame = lit_frame(world_proj, p.look, p.up, lights, env);
             tint_frame(&mut frame, c.rooms.first().and_then(|&r| world.scenario_highlight_room(r)));
@@ -429,13 +514,21 @@ impl Renderer {
         let obj_cmds = self.models.prepare(device, queue, &mut self.combiner, &to_instances(&objdraws));
         let cmds = self.models.prepare(device, queue, &mut self.combiner, &to_instances(&defs));
 
-        // The 2D layer.
-        self.hud_gfx = hud::layer(p.cam.c_screenwidth as usize, p.cam.c_screenheight as usize);
+        // The 2D layer, in PD's framebuffer pixels (every element is placed
+        // from the view's rectangle), then cut to the view.
+        let rect = [p.cam.c_screenleft as i32, p.cam.c_screentop as i32, p.cam.c_screenwidth as i32, p.cam.c_screenheight as i32];
+        let (fbw, fbh) = ((rect[0] + rect[2]).max(view::VIEW_W as i32) as usize, (rect[1] + rect[3]).max(view::VIEW_H as i32) as usize);
+        if self.hud_scratch.w != fbw || self.hud_scratch.h != fbh {
+            self.hud_scratch = hud::layer(fbw, fbh);
+        } else {
+            self.hud_scratch.fb.fill([0.0; 4]);
+            self.hud_scratch.full_scissor();
+        }
         if let Some(fonts) = self.fonts.as_ref().filter(|_| !riding) {
             let hin = hud::HudIn {
                 gun,
                 gset: &res.gset,
-                view: [p.cam.c_screenleft as i32, p.cam.c_screentop as i32, p.cam.c_screenwidth as i32, p.cam.c_screenheight as i32],
+                view: rect,
                 playercount: world.players.len(),
                 isdead: p.isdead,
                 sighton: p.insightaimmode && !p.health.sightoff_damage,
@@ -449,19 +542,28 @@ impl Renderer {
                 hudmsgs: world.mp.hudmsgs.msgs.iter().filter(|m| m.playernum == pi).collect(),
                 scenario: world.scenario_hud(pi),
                 playernum: pi,
+                screensplit: world.setup.screensplit,
+                targetboxes: world.sight_target_boxes(pi),
+                lookingat_friendly: world.sight_is_prop_friendly(pi, None),
+                radar: world.radar_render_in(pi),
+                radartex: self.radar_ring.as_ref(),
+                displayteam: world.scenario_display_team(pi),
+                shieldflash: p.shieldflash,
+                shieldtex: self.shield_tex.as_ref(),
                 activemenu: world.am_render_in(pi),
             };
-            let mut t = TextCtx { gfx: &mut self.hud_gfx, ts: &mut self.text, fonts, frac20: world.frac20 };
+            let mut t = TextCtx { gfx: &mut self.hud_scratch, ts: &mut self.text, fonts, frac20: world.frac20 };
             hud::draw(&mut t, &hin);
         }
         // lv_render: menu_render (the pause and end-of-match menus), then
         // mp_render_modal_text (`lv.c:1643`).
-        hud::composite_over(&mut self.hud_gfx, &self.menu_layer);
+        hud::composite_over_rect(&mut self.hud_scratch, &self.menu_layer, view::VIEW_W as usize, rect);
         if let Some(fonts) = self.fonts.as_ref() {
-            let view = [p.cam.c_screenleft as i32, p.cam.c_screentop as i32, p.cam.c_screenwidth as i32, p.cam.c_screenheight as i32];
-            let mut t = TextCtx { gfx: &mut self.hud_gfx, ts: &mut self.text, fonts, frac20: world.frac20 };
-            hudmsg::mp_render_modal_text(&mut t, &world.res.lang, view, world.mp_modal_text(pi));
+            let mut t = TextCtx { gfx: &mut self.hud_scratch, ts: &mut self.text, fonts, frac20: world.frac20 };
+            hudmsg::mp_render_modal_text(&mut t, &world.res.lang, rect, world.mp_modal_text(pi));
         }
+        self.hud_gfx = hud::crop(&self.hud_scratch, rect);
+        hud::paste(&mut self.hud_frame, &self.hud_gfx, rect);
         self.overlay.prepare(device, queue, &self.hud_gfx);
 
         let bgframe = Self::bg_frame(world, pi, target.width, target.height);
@@ -528,6 +630,17 @@ impl Renderer {
         // lv_render's framebuffer effects, over the HUD (`lv.c:1439`).
         self.post.draw(device, queue, encoder, target, &p.viewfx, p.cam.c_screenheight, p.cam.c_screenwidth, world.frac20);
     }
+}
+
+/// `chr_render`'s alpha (0..255): the corpse's fade (`fadealpha`), a new
+/// life's 2-second fade-in (`aibot->fadeintimer60`), the cloak's
+/// (`chr_get_cloak_alpha`, `chr.c:3424`; no IR scanner in a match).
+fn chr_render_alpha(c: &pd_sim::chr::Chr) -> f32 {
+    let mut alpha = if c.fadealpha < 0.0 { 255.0 } else { c.fadealpha };
+    if let Some(a) = c.aibot.as_ref().filter(|a| a.fadeintimer60 > 0) {
+        alpha = alpha * (120 - a.fadeintimer60) as f32 * (1.0 / 120.0);
+    }
+    (alpha * (c.cloak.alpha() as f32 / 255.0)).trunc()
 }
 
 /// A model to draw: (model, visibility, joints (eye space), frame, cull, xlu).

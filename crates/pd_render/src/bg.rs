@@ -193,6 +193,9 @@ pub struct BgFrame<'a> {
     pub tints: Vec<(u16, [f32; 3])>,
     /// PD pixels (the player's view, 320 × 220 for one) to target pixels.
     pub scale: [f32; 2],
+    /// The view's top left in PD's framebuffer (`c_screenleft`, `c_screentop`):
+    /// the portals' boxes are in framebuffer pixels, the target is the view.
+    pub origin: [f32; 2],
     /// The target's size, for clamping the scissors.
     pub target: [u32; 2],
 }
@@ -498,10 +501,12 @@ impl StageBg {
 /// resolution no longer covers the columns a neighbouring wall starts short of,
 /// and the sky showed through. At 1× the box is PD's.
 fn set_scissor(rp: &mut wgpu::RenderPass<'_>, s: &DrawSlot, f: &BgFrame) {
-    let x0 = ((s.rect.xmin.max(0) as f32) * f.scale[0]).floor() as u32;
-    let y0 = ((s.rect.ymin.max(0) as f32) * f.scale[1]).floor() as u32;
-    let x1 = (((s.rect.xmax.max(0) as f32 + 1.0) * f.scale[0]).ceil() as u32).saturating_sub(1);
-    let y1 = (((s.rect.ymax.max(0) as f32 + 1.0) * f.scale[1]).ceil() as u32).saturating_sub(1);
+    let (ox, oy) = (f.origin[0], f.origin[1]);
+    let x0 = ((s.rect.xmin as f32 - ox).max(0.0) * f.scale[0]).floor() as u32;
+    let y0 = ((s.rect.ymin as f32 - oy).max(0.0) * f.scale[1]).floor() as u32;
+    let x1 = (((s.rect.xmax as f32 - ox).max(0.0) + 1.0) * f.scale[0]).ceil() as u32;
+    let y1 = (((s.rect.ymax as f32 - oy).max(0.0) + 1.0) * f.scale[1]).ceil() as u32;
+    let (x1, y1) = (x1.saturating_sub(1), y1.saturating_sub(1));
     let (x0, y0) = (x0.min(f.target[0]), y0.min(f.target[1]));
     let (x1, y1) = (x1.min(f.target[0]), y1.min(f.target[1]));
     rp.set_scissor_rect(x0, y0, x1.saturating_sub(x0), y1.saturating_sub(y0));

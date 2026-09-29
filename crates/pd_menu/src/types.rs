@@ -152,8 +152,7 @@ pub const MENUROOT_START_MP_MATCH: i32 = -5;
 pub const MENUROOT_END_MP_MATCH: i32 = -6;
 
 /// `SCREENSPLIT_*` (constants.h:3686).
-pub const SCREENSPLIT_HORIZONTAL: u8 = 0;
-pub const SCREENSPLIT_VERTICAL: u8 = 1;
+pub use pd_core::ids::{SCREENSPLIT_HORIZONTAL, SCREENSPLIT_VERTICAL};
 
 pub const MENUREPEATMODE_RELEASED: i16 = -1;
 pub const MENUREPEATMODE_SLOW: i16 = 0;

@@ -598,8 +598,7 @@ impl GunCtx<'_> {
             self.b.hands[h].lastdirvalid = false;
             self.b.hands[h].shotremainder = 0.0;
             if self.bgun_is_ready_to_switch(h) && self.bgun_set_state(h, HANDSTATE_CHANGEGUN) {
-                // playermgr_delete_weapon(handnum): the player chr's held
-                // model, which only another player would see (M12).
+                self.b.events.push(super::GunEvent::DeleteHeldWeapon { hand: h });
                 self.b.events.push(super::GunEvent::FreeHeldRocket { hand: h });
                 self.b.hands[h].mode = HANDMODE_6;
                 self.b.hands[h].stateminor = HANDSTATEMINOR_AUTOSWITCH_2;
@@ -968,6 +967,9 @@ impl GunCtx<'_> {
             let hand = &mut self.b.hands[h];
             hand.statevar1 = hand.stateframes;
             hand.stateflags |= HANDSTATEFLAG_FIRED | HANDSTATEFLAG_BUSY;
+            // bgun_rumble (`bondgun.c:1765`).
+            self.b.events.push(super::GunEvent::Rumble);
+            let hand = &mut self.b.hands[h];
             if usesammo && func.ammoindex >= 0 {
                 let ai = func.ammoindex as usize;
                 hand.loadedammo[ai] -= hand.shotstotake;

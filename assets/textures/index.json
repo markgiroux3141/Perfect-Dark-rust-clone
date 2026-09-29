@@ -109,6 +109,17 @@
   "soundsurfacetype": 0,
   "surfacetype": 0
  },
+ "000d": {
+  "w": 32,
+  "h": 32,
+  "format": "IA8",
+  "codec": "non-zlib",
+  "numcolours": 0,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
  "000e": {
   "w": 54,
   "h": 54,
@@ -498,6 +509,17 @@
   "w": 14,
   "h": 14,
   "format": "RGBA16",
+  "codec": "non-zlib",
+  "numcolours": 0,
+  "numlods": 0,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "003c": {
+  "w": 64,
+  "h": 64,
+  "format": "I8",
   "codec": "non-zlib",
   "numcolours": 0,
   "numlods": 0,

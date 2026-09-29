@@ -106,6 +106,9 @@ impl World {
         let cyls = self.chr_perims_except(i);
         let floors = self.prop_floors();
         let level = self.level.clone();
+        // A player's body (`PROPTYPE_PLAYER`): its ground and floor are the
+        // player's (`chr.c:823`: `vv_manground`, `floortype`).
+        let player = self.chrs[i].player.map(|p| (self.players[p].manground, self.players[p].floortype));
         let c = &mut self.chrs[i];
         let manground = c.manground;
         let mut yincrement = 0.0f32;
@@ -155,7 +158,16 @@ impl World {
             yincrement += (xdiff * xdiff + zdiff * zdiff).sqrt().min(100.0);
             c.floortype = FLOORTYPE_METAL;
         }
-        self.chr_calculate_push_pos(i, arg2, &cyls);
+        // chr.c:745: a player's body stays at the player's position.
+        let playerbody = c.player.is_some() && c.actiontype == Act::BondMulti;
+        if playerbody {
+            arg2.x = c.pos.x;
+            arg2.z = c.pos.z;
+            c.invalidmove = 0;
+            c.lastmoveok60 = lv.lvframe60;
+        } else {
+            self.chr_calculate_push_pos(i, arg2, &cyls);
+        }
 
         let mut forced = false;
         let mut die = false;
@@ -171,17 +183,18 @@ impl World {
             arg2.y -= c.manground;
         } else {
             // chr.c:830: probe from 69 above manground, the step height.
-            let probe = if arg2.y - manground < 69.0 { Vec3::new(arg2.x, manground + 69.0, arg2.z) } else { *arg2 };
-            let g = level.cd_find_ground_at_cyl_ctfril(probe, c.radius, &floors);
-            let mut ground = g.y;
-            c.floorroom = g.room;
-            c.floortype = g.floortype;
-            let floorflags = g.flags;
-            c.lift = g.lift();
-            c.inlift = c.lift.is_some();
-            if ground < -100_000.0 {
-                ground = -100_000.0;
-            }
+            let (ground, floorflags) = if let Some((vv_manground, floortype)) = player {
+                c.floortype = floortype;
+                (vv_manground, 0)
+            } else {
+                let probe = if arg2.y - manground < 69.0 { Vec3::new(arg2.x, manground + 69.0, arg2.z) } else { *arg2 };
+                let g = level.cd_find_ground_at_cyl_ctfril(probe, c.radius, &floors);
+                c.floorroom = g.room;
+                c.floortype = g.floortype;
+                c.lift = g.lift();
+                c.inlift = c.lift.is_some();
+                (g.y.max(-100_000.0), g.flags)
+            };
             c.ground = ground;
             if c.forcetoground {
                 arg2.y += yincrement + c.ground - manground;
@@ -191,7 +204,7 @@ impl World {
                 forced = true;
             } else {
                 if c.fallspeed.y != 0.0 || c.ground < c.manground {
-                    if c.manground <= -30_000.0 {
+                    if c.player.is_none() && c.manground <= -30_000.0 {
                         die = true;
                     }
                     let mut fallspeed = c.fallspeed.y;
@@ -234,6 +247,10 @@ impl World {
         *ground_out = c.manground;
         let oldpos = c.pos;
         c.pos = Vec3::new(arg2.x, arg2.y + c.manground, arg2.z);
+        if playerbody {
+            // The body keeps the player's rooms (`rooms_copy(prop->rooms, spfc)`).
+            return forced;
+        }
         // prop->rooms: the rooms the move ends in (`los_find_final_room_exhaustive`),
         // cut to the floor's room when that is one of them (`chr.c:1004`), then
         // those the chr's box enters (`chr_detect_rooms`, `chr.c:1934`: ±50 cm
@@ -248,7 +265,7 @@ impl World {
         self.stage.rooms.bg_find_entered_rooms(pos - Vec3::new(50.0, 110.0, 50.0), pos + Vec3::new(50.0, 110.0, 50.0), &mut rooms, 7, true, &self.portalflags);
         let c = &mut self.chrs[i];
         c.rooms = rooms;
-        if die {
+        if die && c.aibot.is_some() {
             let shooter = if c.lastshooter.is_some() && c.timeshooter > 0 { c.lastshooter } else { Some(i) };
             self.chr_die(i, shooter);
         }

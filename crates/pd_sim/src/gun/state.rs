@@ -510,6 +510,7 @@ impl GunCtx<'_> {
             let throwing = self.b.ctrl.throwing || (self.b.hands[h].ejecttype == EJECTTYPE_GUN && (self.b.hands[h].ejectstate == EJECTSTATE_INIT || self.b.hands[h].ejectstate == EJECTSTATE_AIRBORNE));
             if self.b.hands[h].stateframes >= delay {
                 if !throwing {
+                    self.b.events.push(GunEvent::DeleteHeldWeapon { hand: h });
                     self.b.events.push(GunEvent::FreeHeldRocket { hand: h });
                     self.b.hands[h].mode = HANDMODE_6;
                     self.b.hands[h].stateminor += 1;
@@ -567,6 +568,7 @@ impl GunCtx<'_> {
                 delay = 1;
             }
             if self.b.hands[h].count == 0 {
+                self.b.events.push(GunEvent::CreateHeldWeapon { hand: h });
                 self.bgun_load_all_clips(h);
                 if self.gset.has_flag(weaponnum, WEAPONFLAG_THROWABLE)
                     && (weaponnum != WEAPON_REMOTEMINE || h != HAND_LEFT)
@@ -779,8 +781,9 @@ impl GunCtx<'_> {
                 }
             }
         }
-        // bondgun.c:5262. Without it the launcher's rocket, recreated by the
-        // lowering frame's pose, rode along on the next gun.
+        // bondgun.c:5258. Without the rocket's free, the launcher's rocket,
+        // recreated by the lowering frame's pose, rode along on the next gun.
+        self.b.events.push(GunEvent::DeleteHeldWeapon { hand: h });
         self.b.events.push(GunEvent::FreeHeldRocket { hand: h });
     }
 

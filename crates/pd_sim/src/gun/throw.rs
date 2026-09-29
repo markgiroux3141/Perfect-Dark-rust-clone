@@ -405,8 +405,13 @@ impl World {
             } else if func.flags & FUNCFLAG_PROJECTILE_POWERED != 0 {
                 p.flags |= PROJECTILEFLAG_POWERED;
             }
-            // M6: trackedprops[0], the rocket launcher's lock.
-            p.targetprop = None;
+            // The rocket launcher's lock (`bondgun.c:4752`): trackedprops[0],
+            // always a chr in a match (the sight lets go of any object without
+            // OBJFLAG3_REACTTOSIGHT, `lv.c:1218`).
+            p.targetprop = match self.players[pi].sight.trackedprops[0].prop {
+                Some(crate::gun::shot::AimedAt::Chr(j)) => Some(j),
+                _ => None,
+            };
         }
         if proj.scale != 1.0 {
             o.scale *= proj.scale;

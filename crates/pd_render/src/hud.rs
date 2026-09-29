@@ -58,6 +58,20 @@ pub struct HudIn<'a> {
     pub hudmsgs: Vec<&'a pd_sim::mp::HudMessage>,
     /// The scenario's part (`scenario_render_hud`).
     pub scenario: pd_sim::mp::scenario::ScenarioHud,
+    /// `g_ScreenSplit`.
+    pub screensplit: u8,
+    /// The tracked props' boxes (`sight_draw_default`), and whether what the
+    /// crosshair is on is a teammate (`sight_is_prop_friendly(NULL)`).
+    pub targetboxes: Vec<pd_sim::gun::sight::TargetBox>,
+    pub lookingat_friendly: bool,
+    /// `radar_render`'s dots (none: no radar), and its ring's texture.
+    pub radar: Option<pd_sim::mp::radar::RadarIn>,
+    pub radartex: Option<&'a n64::rdp::Texture>,
+    /// Display Team's line: the player's team colour as a 5551 fill word.
+    pub displayteam: Option<u32>,
+    /// The first-person shield flash (`player_render_shield`), and its texture.
+    pub shieldflash: Option<pd_sim::player::health::ShieldFlash>,
+    pub shieldtex: Option<&'a n64::rdp::Texture>,
     /// The player's number, and its active menu (open, and the ordered
     /// simulant's bars).
     pub playernum: usize,
@@ -67,6 +81,11 @@ pub struct HudIn<'a> {
 impl HudIn<'_> {
     fn option(&self, o: u16) -> bool {
         self.options & o != 0
+    }
+
+    /// `options_get_screen_split() == SCREENSPLIT_VERTICAL`.
+    fn vsplit(&self) -> bool {
+        self.screensplit == SCREENSPLIT_VERTICAL
     }
 }
 
@@ -117,17 +136,76 @@ fn sight_draw_aimer(gfx: &mut Gfx, h: &HudIn, x: i32, y: i32, radius: i32, corne
     }
 }
 
-/// `sight_draw_default` (`sight.c:615`) for `SIGHTTRACKTYPE_DEFAULT`: the aimer
-/// while R is held, red and tighter over a prop. M5: the rocket launcher's and
-/// the CMP150's tracked-prop boxes (`sight_draw_target_box`).
+/// `sight_draw_default` (`sight.c:615`): the aimer while R is held, tighter
+/// over a prop, red (blue over a teammate, `sight_is_prop_friendly`). The
+/// tracked props' boxes that come first are [`sight_draw_target_boxes`].
 fn sight_draw_default(gfx: &mut Gfx, h: &HudIn, sighton: bool) {
     if !sighton {
         return;
     }
     let [x, y] = crosspos(h);
-    // M6: sight_is_prop_friendly (0x0000ff60 for a teammate).
-    let (colour, radius, cornergap) = if h.hasprop { (0xff000060, 6, 3) } else { (0x00ff0028, 8, 5) };
+    let over = if h.lookingat_friendly { 0x0000ff60 } else { 0xff000060 };
+    let (colour, radius, cornergap) = if h.hasprop { (over, 6, 3) } else { (0x00ff0028, 8, 5) };
     sight_draw_aimer(gfx, h, x, y, radius, cornergap, colour);
+}
+
+/// `sight_calculate_box_bound` (`sight.c:317`): a box edge closing in from
+/// the view's edge over `timeend` ticks.
+fn sight_calculate_box_bound(targetx: i32, viewleft: i32, timeelapsed: i32, timeend: i32) -> i32 {
+    let t = timeelapsed.min(timeend);
+    viewleft + (targetx - viewleft) * t / timeend
+}
+
+/// `sight_draw_target_box` (`sight.c:344`): a red (blue: a teammate) box round
+/// a tracked prop, its edges sliding in from the view's over 80 ticks, and its
+/// label at its top right while the right and top edges show.
+fn sight_draw_target_box(t: &mut TextCtx, view: [i32; 4], b: &pd_sim::gun::sight::TargetBox) {
+    let [viewleft, viewtop, viewwidth, viewheight] = view;
+    let viewright = viewleft + viewwidth - 1;
+    let viewbottom = viewtop + viewheight - 1;
+    let time = b.time.min(512);
+    let tp = &b.tp;
+    let boxleft = sight_calculate_box_bound(tp.x1 as i32, viewleft, time, 80);
+    let boxtop = sight_calculate_box_bound(tp.y1 as i32, viewtop, time, 80);
+    let boxright = sight_calculate_box_bound(tp.x2 as i32, viewright, time, 80);
+    let boxbottom = sight_calculate_box_bound(tp.y2 as i32, viewbottom, time, 80);
+    let colour = if b.friendly { 0x0000ff60 } else { 0xff000060 };
+    let mut textonscreen = true;
+    let gfx = &mut *t.gfx;
+    if boxleft >= viewleft && boxleft <= viewright && boxtop <= viewbottom && boxbottom >= viewtop {
+        hud_rect(gfx, boxleft, boxtop.max(viewtop), boxleft, boxbottom.min(viewbottom), colour);
+    }
+    if boxright >= viewleft && boxright <= viewright && boxtop <= viewbottom && boxbottom >= viewtop {
+        hud_rect(gfx, boxright, boxtop.max(viewtop), boxright, boxbottom.min(viewbottom), colour);
+    } else {
+        textonscreen = false;
+    }
+    if boxtop >= viewtop && boxtop <= viewbottom && boxleft <= viewright && boxright >= viewleft {
+        hud_rect(gfx, boxleft.max(viewleft), boxtop, boxright.min(viewright), boxtop, colour);
+    } else {
+        textonscreen = false;
+    }
+    if boxbottom >= viewtop && boxbottom <= viewbottom && boxleft <= viewright && boxright >= viewleft {
+        hud_rect(gfx, boxleft.max(viewleft), boxbottom, boxright.min(viewright), boxbottom, colour);
+    }
+    let Some(label) = b.label.as_ref().filter(|_| textonscreen) else { return };
+    let (mut x, mut y) = (boxright + 3, boxtop + 3);
+    let (w, hgt) = (t.gfx.w as i32, t.gfx.h as i32);
+    match label {
+        pd_sim::gun::sight::TargetLabel::Digit(c) => {
+            let s = format!("{c}\n");
+            t.render_v1(&mut x, &mut y, &s, FontId::Numeric, 0x00ff00a0, 0x000000a0, w, hgt, 0, 0);
+        }
+        pd_sim::gun::sight::TargetLabel::Text(s) => t.render_v1(&mut x, &mut y, s, FontId::Xs, 0x00ff00a0, 0x000000a0, w, hgt, 0, 0),
+    }
+}
+
+/// The tracked props' boxes of `sight_draw_default` (the rocket launcher's
+/// lock, the CMP150's, the Threat Detector's), before its aimer.
+pub fn sight_draw_target_boxes(t: &mut TextCtx, h: &HudIn) {
+    for b in &h.targetboxes {
+        sight_draw_target_box(t, h.view, b);
+    }
 }
 
 /// `sight_draw_maian` (`sight.c:1278`): four shaded triangles from the middle of
@@ -432,21 +510,30 @@ pub fn bgun_draw_hud(t: &mut TextCtx, h: &HudIn) {
         return;
     }
     let [viewleft, viewtop, viewwidth, viewheight] = h.view;
+    let (playercount, playernum, vsplit) = (h.playercount, h.playernum, h.vsplit());
     let mut bottom = viewtop + viewheight - BOTTOM_MARGIN;
     let (mut barwidth, mut reserveheight, mut clipheight) = (BARWIDTH, RESERVEHEIGHT, CLIPHEIGHT);
-    if h.playercount >= 2 {
-        // M12: the split screen's placement (the player's quarter).
+    if playercount >= 2 {
         barwidth = 5;
         reserveheight = 26;
         clipheight = 47;
-        bottom += 10;
+        // The views that meet another's bottom edge sit lower.
+        if playercount == 2 {
+            bottom += if !vsplit && playernum == 0 { 10 } else { 2 };
+        } else {
+            bottom += if playernum < 2 { 10 } else { 2 };
+        }
     }
+    // The right edge's gauges move out for a view with another to its right,
+    // the left hand's in for one with another to its left.
+    let rightshift = if (playercount == 2 && vsplit && playernum == 0) || (playercount >= 3 && playernum % 2 == 0) { 15 } else { 0 };
+    let leftshift = if (playercount == 2 && vsplit && playernum == 1) || (playercount >= 3 && playernum % 2 == 1) { -14 } else { 0 };
     let ctrl = &h.gun.ctrl;
     let hand = &h.gun.hands[HAND_RIGHT];
     let lefthand = &h.gun.hands[HAND_LEFT];
     let weapon = h.gset.weapon(ctrl.weaponnum);
     let funcnum = st.funcnum;
-    let mut xpos = viewleft + viewwidth - barwidth - 24;
+    let mut xpos = viewleft + viewwidth - barwidth - 24 + rightshift;
 
     // The function square.
     let mut fncolour: u32 = 0xff000040;
@@ -513,7 +600,7 @@ pub fn bgun_draw_hud(t: &mut TextCtx, h: &HudIn) {
 
     // The left hand's magazine.
     if lefthand.inuse && weapon.ammos[ai].is_some() && lefthand.weaponnum != WEAPON_REMOTEMINE {
-        let lx = viewleft + 24;
+        let lx = viewleft + 24 + leftshift;
         let a = weapon.ammos[ai].as_ref().unwrap();
         if lefthand.clipsizes[ai] > 0 && a.flags & AMMOFLAG_EQUIPPEDISRESERVE == 0 {
             bgun_draw_hud_gauge(t.gfx, lx, bottom - reserveheight - clipheight - 3, lx + barwidth, bottom - reserveheight - 3, &st.abmag[HAND_LEFT], lefthand.clipsizes[ai], 0x00300080, 0x00ff0040, false);
@@ -524,7 +611,7 @@ pub fn bgun_draw_hud(t: &mut TextCtx, h: &HudIn) {
     // The right hand's magazine, the reserve and the Combat Boost timer.
     let ammotype = ctrl.ammotypes[ai];
     if hand.inuse && ammotype >= 0 {
-        xpos = viewleft + viewwidth - barwidth - 24;
+        xpos = viewleft + viewwidth - barwidth - 24 + rightshift;
         let ammoheld = h.gun.ammoheld(ammotype);
         let a = weapon.ammos[ai].as_ref();
         if hand.clipsizes[ai] > 0 && a.is_some_and(|a| a.flags & AMMOFLAG_EQUIPPEDISRESERVE == 0) {
@@ -564,25 +651,79 @@ pub fn bgun_draw_hud(t: &mut TextCtx, h: &HudIn) {
 /// The whole 2D layer for one player: `bgun_draw_sight`, then `bgun_draw_hud`
 /// if "ammo on screen" is on (`player.c:4731`), into a transparent `gfx`.
 /// `player_render_hud`'s 2D part (`player.c:4536`): the health bar, the
-/// sight, the ammo, the HUD messages (`hudmsgs_render`; `// M12:` the radar
-/// before them), then the stored fade over it all.
+/// sight, the ammo, the radar, the HUD messages (`hudmsgs_render`) and the
+/// zoom range, then the stored fade over it all.
 pub fn draw(t: &mut TextCtx, h: &HudIn) {
+    // player_render_shield, after the gun and before the health bar.
+    if let (Some(f), Some(tex)) = (h.shieldflash.as_ref(), h.shieldtex) {
+        crate::shield::player_render_shield(t.gfx, tex, f);
+    }
     if let Some((apparent, armour, heightfrac)) = h.health {
         crate::health::draw_health_bar(t.gfx, h.view, apparent, armour, heightfrac, h.fovy);
     }
-    // No sight while the active menu is open (sight.c:1418).
+    // No sight while the active menu is open (sight.c:1418). The default
+    // sight (and the zoom's, which ends with it) draws its boxes first.
     if h.activemenu.0.is_none() {
+        let right = &h.gun.hands[HAND_RIGHT];
+        let sight = if h.playercount >= 2 { SIGHT_DEFAULT } else { h.gset.gset_get_sight(h.gun.bgun_get_weapon_num(HAND_RIGHT), right.weaponfunc) };
+        if sight != SIGHT_NONE && sight != SIGHT_MAIAN {
+            sight_draw_target_boxes(t, h);
+        }
         sight_draw(t.gfx, h);
     }
     if h.option(OPTION_AMMOONSCREEN) {
         bgun_draw_hud(t, h);
     }
-    crate::hudmsg::hudmsgs_render(t, &h.hudmsgs);
+    // radar_render, then hudmsgs_render (NTSC 1.0+, `player.c:4742`).
+    if let Some(r) = &h.radar {
+        crate::radar::radar_render(t.gfx, h.view, (h.playercount, h.playernum, h.vsplit()), h.radartex, r);
+    }
+    let timerthing = crate::hudmsg::hudmsgs_render(t, &h.hudmsgs);
+    if timerthing {
+        if let Some((cur, max)) = zoom_range(h) {
+            crate::hudmsg::hudmsg_render_zoom_range(t, h.view, (h.playercount, h.playernum, h.vsplit()), cur, max);
+        }
+    }
     crate::health::draw_fade(t.gfx, h.view, h.fade.0, h.fade.1);
     // lv_render (`lv.c:1595`): the scenario's HUD after the player's, then
     // (after the sky's overexposure) the active menu (`lv.c:1639`).
     scenario_render_hud(t, h.view, &h.scenario);
+    if let Some(colour) = h.displayteam {
+        scenario_render_display_team(t.gfx, h.view, h.playercount, h.playernum, colour);
+    }
     crate::activemenu::am_render(t, h.activemenu.0.as_ref(), h.activemenu.1, h.view, h.playercount, h.playernum);
+}
+
+/// Display Team's line (`scenario_render_hud`, `scenarios.c:589`): one pixel
+/// of the team's colour (`gDPFillRectangle` in fill mode, both corners
+/// inclusive) along the view's bottom for a view above another, else its top.
+/// PD's @bug kept: a vertical split draws it at the top or bottom too.
+pub fn scenario_render_display_team(gfx: &mut Gfx, view: [i32; 4], playercount: usize, playernum: usize, fill: u32) {
+    let [viewleft, viewtop, viewwidth, viewheight] = view;
+    let viewright = viewleft + viewwidth;
+    let y = if (playercount >= 3 && playernum <= 1) || (playercount == 2 && playernum == 0) { viewheight + viewtop - 1 } else { viewtop };
+    // The fill word's first RGBA5551 pixel, opaque.
+    let c = fill >> 16;
+    let ch = |v: u32| (v << 3) | (v >> 2);
+    let rgba = ch((c >> 11) & 0x1f) << 24 | ch((c >> 6) & 0x1f) << 16 | ch((c >> 1) & 0x1f) << 8 | 0xff;
+    gfx.fill_rect(viewleft, y, viewright, y + 1, rgba);
+}
+
+/// `hudmsg_is_zoom_range_visible` (`hudmsg.c:91`) and the zoom levels
+/// `hudmsg_render_zoom_range` shows: one player, "show zoom range" on, a zoom
+/// sight; the Sniper Rifle unzoomed reads 1.00X / 1.00X.
+fn zoom_range(h: &HudIn) -> Option<(f32, f32)> {
+    let right = &h.gun.hands[HAND_RIGHT];
+    let weaponnum = h.gun.bgun_get_weapon_num(HAND_RIGHT);
+    if !h.option(OPTION_SHOWZOOMRANGE) || h.playercount != 1 || h.gset.gset_get_sight(weaponnum, right.weaponfunc) != SIGHT_ZOOM {
+        return None;
+    }
+    let zoomfov = h.gun.gset_get_gun_zoom_fov(h.gset);
+    if zoomfov == 0.0 || zoomfov == 60.0 {
+        return (right.weaponnum == WEAPON_SNIPERRIFLE).then_some((1.0, 1.0));
+    }
+    let maxzoom = 60.0 / zoomfov;
+    Some((maxzoom - 1.0 / (zoomfov / h.zoominfovy) + 1.0, maxzoom))
 }
 
 /// `scenario_render_hud`'s scenario part (`scenarios.c:557`): a countdown
@@ -625,15 +766,57 @@ pub fn scenario_render_hud(t: &mut TextCtx, view: [i32; 4], s: &pd_sim::mp::scen
     }
 }
 
-/// Lay a premultiplied layer of the same size over `gfx` ("over").
-pub fn composite_over(gfx: &mut n64::rdp::Gfx, layer: &[[f32; 4]]) {
-    if layer.len() != gfx.fb.len() {
+/// Lay the part of a premultiplied layer `layer_w` pixels wide that falls in
+/// `rect` (left, top, width, height) over the same pixels of `gfx`.
+pub fn composite_over_rect(gfx: &mut n64::rdp::Gfx, layer: &[[f32; 4]], layer_w: usize, rect: [i32; 4]) {
+    if layer.is_empty() || layer_w == 0 {
         return;
     }
-    for (d, s) in gfx.fb.iter_mut().zip(layer) {
-        let ia = 1.0 - s[3];
-        for i in 0..4 {
-            d[i] = s[i] + d[i] * ia;
+    let layer_h = layer.len() / layer_w;
+    let [left, top, w, h] = rect;
+    for y in top.max(0)..(top + h).min(layer_h as i32).min(gfx.h as i32) {
+        for x in left.max(0)..(left + w).min(layer_w as i32).min(gfx.w as i32) {
+            let s = layer[y as usize * layer_w + x as usize];
+            let d = &mut gfx.fb[y as usize * gfx.w + x as usize];
+            let ia = 1.0 - s[3];
+            for i in 0..4 {
+                d[i] = s[i] + d[i] * ia;
+            }
+        }
+    }
+}
+
+/// The `rect` (left, top, width, height) of a layer as a layer of its own.
+pub fn crop(gfx: &Gfx, rect: [i32; 4]) -> Gfx {
+    let [left, top, w, h] = rect;
+    let mut out = layer(w.max(0) as usize, h.max(0) as usize);
+    for y in 0..out.h {
+        let sy = y as i32 + top;
+        if sy < 0 || sy >= gfx.h as i32 {
+            continue;
+        }
+        for x in 0..out.w {
+            let sx = x as i32 + left;
+            if sx >= 0 && sx < gfx.w as i32 {
+                out.fb[y * out.w + x] = gfx.fb[sy as usize * gfx.w + sx as usize];
+            }
+        }
+    }
+    out
+}
+
+/// Copy a view's layer into the framebuffer's at `rect`'s top left.
+pub fn paste(frame: &mut Gfx, view: &Gfx, rect: [i32; 4]) {
+    for y in 0..view.h {
+        let dy = y as i32 + rect[1];
+        if dy < 0 || dy >= frame.h as i32 {
+            continue;
+        }
+        for x in 0..view.w {
+            let dx = x as i32 + rect[0];
+            if dx >= 0 && dx < frame.w as i32 {
+                frame.fb[dy as usize * frame.w + dx as usize] = view.fb[y * view.w + x];
+            }
         }
     }
 }

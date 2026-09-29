@@ -179,6 +179,14 @@ pub struct Chr {
     pub maxdamage: f32,
     /// `chr->cshield`: 0 to 8 (a full shield); a player's is `player_get_shield_frac` × 8.
     pub cshield: f32,
+    /// `cmcount`: frames through a 300-frame cycle whose first 10 show the
+    /// shield crawling over the body; `cmnum`..`cmnum4`: the last four bones it
+    /// lit (`chr_render_shield`); `CHRH2FLAG_SHIELDHIT`: a hit still shows.
+    pub cmcount: u16,
+    /// Blood on the level (`splat_reset_chr`'s fields).
+    pub splat: crate::fx::splat::SplatState,
+    pub cmnum: [i32; 4],
+    pub shieldhit: bool,
     /// `CHRCFLAG_SHIELDDAMAGED`: a hit met the shield (`chr_damage`).
     pub shielddamaged: bool,
     /// `chr->flinchcnt` (-1 idle) and `(hidden2 >> 13) & 7`, and
@@ -228,6 +236,8 @@ pub struct Chr {
     /// A player chr's `chr_get_theta` (`BADDTOR2(360 − vv_theta)`) and eye
     /// height, kept in step with its player by the world.
     pub playertheta: f32,
+    /// A player chr's `player->angleoffset`, copied by `player_tick_third_person`.
+    pub playerangleoffset: f32,
     pub eyeheight: f32,
     /// `chr->blurdrugamount`, `blurnumtimesdied`: the dizziness a punch or a
     /// tranquilizer leaves (a simulant's aim wobbles, a player's view blurs).
@@ -272,10 +282,10 @@ impl Chr {
         self.held[hand].is_some()
     }
 
-    /// `aibot->angleoffset`: how far the body's animation turns it from its
-    /// facing (a player chr's is 0).
+    /// `aibot->angleoffset`, or a player chr's player's (`chr.c:1737`): how
+    /// far the body's animation turns it from its facing.
     pub fn angleoffset(&self) -> f32 {
-        self.aibot.as_ref().map_or(0.0, |a| a.angleoffset)
+        self.aibot.as_ref().map_or(self.playerangleoffset, |a| a.angleoffset)
     }
 
     /// `chr_get_bbox` (`chr.c:4995`) relative to `prop->pos.y`, the way every

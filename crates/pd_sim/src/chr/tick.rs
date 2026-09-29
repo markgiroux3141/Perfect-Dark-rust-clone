@@ -1,4 +1,5 @@
-//! `chr_tick` (`chr.c:2375`) for a simulant, once per player pass: on the full
+//! `chr_tick` (`chr.c:2375`) for a simulant, or a player's body in the other
+//! players' passes (`player_tick_third_person`), once per frame: on the full
 //! tick (the first player's) the action (`chra_tick`: the go-to, the death,
 //! the corpse's fade, the footsteps), the animation and position
 //! (`chr_update_anim` → `model_update_chr_info` → `chr_update_position`), the
@@ -90,8 +91,11 @@ impl World {
                     c.drugheadsway = (c.drugheadsway + 0.04375 * lv240 as f32).min(0.0);
                 }
             }
-            // chr_update_cloak (chr_tick_poisoned is solo's).
-            self.chr_update_cloak_bot(i);
+            // chr_update_cloak (chr_tick_poisoned is solo's); a player's body
+            // takes its player's cloak (`sync_player_chr`).
+            if self.chrs[i].aibot.is_some() {
+                self.chr_update_cloak_bot(i);
+            }
             self.chra_tick(i);
         }
         // Which animations advance (`chr.c:2466`): a go-to's, a standing chr's in

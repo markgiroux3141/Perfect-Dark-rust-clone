@@ -9,10 +9,12 @@
 //! Shields (`chr->cshield`, `chr_set_shield`): a hit on a shield takes it
 //! from the shield and none from the chr, whatever the shield had left.
 //!
+//! A shield's hit glows where it met the chr (`shieldhit_create`,
+//! [`crate::fx::shieldhit`]), and a player's view flashes
+//! (`player_display_shield`).
+//!
 //! Not yet: disarming (`FUNCFLAG_DISARM`, `bgun_disarm` / `bot_disarm`), the
-//! shield's glow where it was hit (`shieldhit_create`) and the player's
-//! first-person shield flash (`player_display_shield`, `player_render_shield`),
-//! the solo-only branches (knockouts, argh animations, difficulty scaling).
+//! solo-only branches (knockouts, argh animations, difficulty scaling).
 //!
 //! Source: the old repo's `pd_spike/chraction.rs` (damage) and
 //! `pd_complex/fight.rs` (`player_damage`), checked against
@@ -51,11 +53,19 @@ pub struct DamageFrom {
     pub attacker: Option<usize>,
     pub weaponnum: u8,
     pub weaponfunc: usize,
+    /// The part box, face and point a round met (`prop2`, `node`, `side`,
+    /// `hitpos`): where a shield hit glows from; none, the whole shield.
+    pub at: Option<crate::fx::shieldhit::ShieldHitAt>,
 }
 
 impl DamageFrom {
     pub fn new(attacker: Option<usize>, weaponnum: u8, weaponfunc: usize) -> DamageFrom {
-        DamageFrom { attacker, weaponnum, weaponfunc }
+        DamageFrom { attacker, weaponnum, weaponfunc, at: None }
+    }
+
+    pub fn at(mut self, at: Option<crate::fx::shieldhit::ShieldHitAt>) -> DamageFrom {
+        self.at = at;
+        self
     }
 }
 
@@ -132,6 +142,10 @@ impl World {
             damageshield = true;
             damage *= 10.0;
         }
+        // Apply rumble (`chraction.c:4471`): a player hit, a steady quarter second.
+        if let Some(pi) = vplayer {
+            self.players[pi].rumble.pak_rumble(0.25, -1, -1);
+        }
         // The shield (`chraction.c:4539`): it takes the whole hit.
         let mut usedshield = false;
         if damageshield {
@@ -144,6 +158,9 @@ impl World {
                 let handicap = self.setup.players.get(cur).map_or(128, |p| p.handicap);
                 damage /= mp_handicap_to_value(handicap);
                 self.chrs[victim].shielddamaged = true;
+                // chr_try_create_shieldhit, or the whole shield (`chraction.c:4560`).
+                let now = self.chr_get_shield(victim);
+                self.shieldhit_create(victim, now, from.at);
                 if self.setup.options & MPOPTION_ONEHITKILLS != 0 {
                     damage = 0.0;
                     self.chr_set_shield(victim, 0.0);
@@ -273,6 +290,11 @@ impl World {
                     let boostscale = if ismelee && from.weaponnum == WEAPON_REAPER { 0.1 } else { 0.75 };
                     self.players[pi].shotspeed.x += vector.x * boostscale;
                     self.players[pi].shotspeed.z += vector.z * boostscale;
+                }
+                // showshield (`chraction.c:4847`): the shield took the hit.
+                if usedshield {
+                    let t = self.lv.thisframestart240;
+                    self.players[pi].shieldshow.player_display_shield(&mut self.rng, t);
                 }
                 // A player's shot: was it in the back? (`chraction.c:4851`)
                 if let Some(ap) = from.attacker.and_then(|a| self.chrs[a].player) {
@@ -504,7 +526,7 @@ impl World {
         } else {
             // ps_create(..., PSTYPE_CHRCHOKE), unless one is already playing.
             // SUBST: PD keeps one choke per chr / every grunt plays (no
-            // per-prop sound channels yet, M12).
+            // per-prop sound channels).
             let pos = c.pos;
             self.sound_at(sound, 1.0, pos, crate::propsnd::DEFAULT_DISTS);
         }

@@ -39,9 +39,11 @@ fn hudmsg_render_box(t: &mut TextCtx, x1: i32, y1: i32, x2: i32, y2: i32, bgopac
 }
 
 /// `hudmsgs_render` (`hudmsg.c:1355`): every showing message of this player,
-/// in slot order.
-pub fn hudmsgs_render(t: &mut TextCtx, msgs: &[&HudMessage]) {
+/// in slot order. Returns `timerthing`: false once a bottom-aligned message
+/// was drawn (the zoom range then stays off).
+pub fn hudmsgs_render(t: &mut TextCtx, msgs: &[&HudMessage]) -> bool {
     let (vw, vh) = (t.gfx.w as i32, t.gfx.h as i32);
+    let mut timerthing = true;
     for msg in msgs {
         if msg.opacity == 0 || msg.state == HUDMSGSTATE_FREE || msg.state == HUDMSGSTATE_QUEUED {
             continue;
@@ -68,6 +70,9 @@ pub fn hudmsgs_render(t: &mut TextCtx, msgs: &[&HudMessage]) {
                 t.render_v1(x, y, &msg.text, msg.font, textcolour, glowcolour, vw, vh, 0, 0);
             }
         };
+        if matches!(msg.state, HUDMSGSTATE_FADINGIN | HUDMSGSTATE_ONSCREEN | HUDMSGSTATE_FADINGOUT) && msg.alignv == HUDMSGALIGN_BOTTOM {
+            timerthing = false;
+        }
         match msg.state {
             HUDMSGSTATE_FADINGIN => {
                 let spc0 = (msg.timer as f32 / hudmsg_fadein_time(msg).min(30.0)).clamp(0.0, 1.0);
@@ -86,6 +91,40 @@ pub fn hudmsgs_render(t: &mut TextCtx, msgs: &[&HudMessage]) {
             _ => {}
         }
     }
+    timerthing
+}
+
+/// `hudmsg_render_zoom_range` (`hudmsg.c:198`): the zoom (`curzoom`) and its
+/// most (`maxzoom`) in the numeric font, "1.00X / 5.00X", centred over the
+/// view's bottom on black boxes, at `hudmsgs_render`'s full alpha.
+/// `view` is left, top, width, height; `placement` the player count, the
+/// player and the vertical split (the bottom edge's shift).
+pub fn hudmsg_render_zoom_range(t: &mut TextCtx, view: [i32; 4], placement: (usize, usize, bool), curzoom: f32, maxzoom: f32) {
+    let [viewleft, viewtop, viewwidth, viewheight] = view;
+    let (playercount, playernum, vsplit) = placement;
+    let colour = (255 * 0xa0 / 255) | 0x00ff0000;
+    let viewhalfwidth = viewwidth >> 1;
+    let mut texty = viewheight + viewtop - 1 - 17;
+    if playercount == 2 {
+        texty += if !vsplit && playernum == 0 { 10 } else { 2 };
+    } else if playercount >= 3 {
+        texty += if playernum < 2 { 10 } else { 2 };
+    }
+    let (fw, fh) = (t.gfx.w as i32, t.gfx.h as i32);
+    let piece = |t: &mut TextCtx, text: &str, x: i32| {
+        let (th, tw) = measure(t.fonts.get(FontId::Numeric), text, 0);
+        let (mut x, mut y) = (x, texty);
+        // text_draw_black_uibox: black at alpha 0 behind the text.
+        t.gfx.fill_rect(x, y, x + tw, y + th, 0x00000000);
+        t.render_v1(&mut x, &mut y, text, FontId::Numeric, colour, 0x000000a0, fw, fh, 0, 0);
+        tw
+    };
+    let cur = format!("{curzoom:4.2}X");
+    let (_, tw) = measure(t.fonts.get(FontId::Numeric), &cur, 0);
+    piece(t, &cur, viewleft + viewhalfwidth - tw - 5);
+    let (_, sw) = measure(t.fonts.get(FontId::Numeric), "/", 0);
+    piece(t, "/", viewleft + viewhalfwidth - (sw >> 1));
+    piece(t, &format!("{maxzoom:4.2}X"), viewleft + viewhalfwidth + 5);
 }
 
 /// `mp_render_modal_text` (`mplayer.c:1196`) over a view (`[left, top, width,

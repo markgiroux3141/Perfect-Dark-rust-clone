@@ -338,7 +338,8 @@ impl super::Player {
         }
         if !self.deathanimfinished {
             if !self.isdead2 {
-                // pak_disable_rumble_for_player; music_start_mp_death (M12).
+                // pak_disable_rumble_for_player; music_start_mp_death (M13).
+                self.rumble.disable();
                 self.isdead2 = true;
             } else if self.redbloodfinished {
                 self.health.player_set_fade_colour([0x96, 0, 0], 0.705_882_37);
@@ -367,6 +368,9 @@ impl super::Player {
         self.isdead2 = false;
         self.bondhealth = 1.0;
         self.health = Health::default();
+        self.shieldshow.time = -1.0;
+        // player_start_new_life's pak_enable_rumble_for_player (`player.c:500`).
+        self.rumble.enable();
         self.health.colourfadetime60 = -1.0;
         self.bondfadetime60 = -1.0;
         self.bondfadetimemax60 = -1.0;
@@ -423,5 +427,105 @@ mod tests {
         }
         assert!(h.player_is_fade_complete());
         assert_eq!((h.colourscreen, h.colourscreenfrac), ([0, 0, 0], 1.0));
+    }
+}
+
+/// The first-person shield flash (`shieldshowtime`, `shieldshowrnd`,
+/// `shieldshowrot`): a hit the shield took washes the view with its shimmer
+/// for a second (`player_display_shield`, `player_render_shield`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShieldShow {
+    /// Ticks into the flash; -1: none.
+    pub time: f32,
+    pub rnd: u32,
+    pub rot: f32,
+}
+
+impl Default for ShieldShow {
+    fn default() -> Self {
+        // player_reset_...: shieldshowtime = -1 (`player.c:726`).
+        ShieldShow { time: -1.0, rnd: 0, rot: 0.0 }
+    }
+}
+
+/// What `player_render_shield` draws this frame, in the view's pixels: the
+/// shield texture stretched over a box centred at `centre` with half-sizes
+/// `half`, flipped and mirrored by `rnd`'s low bits, `TEXEL0 × ENV` over the
+/// view with the prim alpha as the floor of the coverage.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShieldFlash {
+    pub centre: [f32; 2],
+    pub half: [f32; 2],
+    pub flip: bool,
+    pub mirror_s: bool,
+    pub mirror_t: bool,
+    /// ENV rgb, ENV alpha, PRIM alpha.
+    pub env: [i32; 4],
+    pub primalpha: i32,
+}
+
+impl ShieldShow {
+    /// `player_display_shield` (`player.c:4334`): (re)start the flash; a new
+    /// one draws a new pattern.
+    pub fn player_display_shield(&mut self, rng: &mut pd_core::rng::Rng, thisframestart240: i32) {
+        if self.time < 0.0 {
+            let r = ((self.rnd >> 16) % 200) * 4 + 800;
+            self.rnd = rng.random();
+            self.rot = (thisframestart240.rem_euclid(r as i32)) as f32;
+        }
+        self.time = 0.0;
+    }
+
+    /// `player_render_shield` (`player.c:4349`) for a view `[left, top,
+    /// width, height]` with the shield at `shield` (0..8): the frame's flash,
+    /// and the flash moved on by `lvupdate60freal`.
+    pub fn player_render_shield(&mut self, view: [f32; 4], shield: f32, lvupdate60freal: f32) -> Option<ShieldFlash> {
+        if self.time < 0.0 {
+            return None;
+        }
+        let [left, top, width, height] = view;
+        let rnd = self.rnd;
+        let maxrotf = (((rnd >> 16) % 200) * 4 + 800) as f32;
+        let mut f20 = (60.0 - self.time) * (1.0 / 60.0);
+        self.rot += lvupdate60freal * (0.8 + 2.0 * f20 * f20);
+        if self.rot >= maxrotf {
+            self.rot -= maxrotf;
+        }
+        let tau = pd_core::math::baddtor(360.0);
+        f20 = ((self.rot * (tau / maxrotf)).sin() + 1.0) * 0.5;
+        let cx = left + width * f20;
+        f20 = ((self.rot * (tau / maxrotf)).cos() + 1.0) * 0.5;
+        let cy = top + height * f20;
+        let t = self.time;
+        let hx = width * (1.0 + 0.002 * ((rnd >> 20) % 100) as f32 + (t * (0.2 + 0.002 * (rnd % 100) as f32) * (1.0 / 60.0)));
+        let hy = height * (1.0 + 0.002 * ((rnd >> 24) % 100) as f32 + (t * (0.2 + 0.002 * ((rnd >> 8) % 100) as f32) * (1.0 / 60.0)));
+        let [mut r, mut g, mut b] = crate::fx::shieldhit::shieldhit_health_to_rgb(shield);
+        // PD leaves f20 as the pattern's y when the time is 60 or more.
+        if t < 30.0 {
+            let f = 1.0 - t * (1.0 / 120.0);
+            f20 = 50.0 * f * f * f;
+        } else if t < 60.0 {
+            f20 = (t - (1.0 / 120.0)) * (1.0 / 120.0);
+            f20 *= -30.0;
+        }
+        let add = f20 as i32;
+        r = (r + add).clamp(0, 255);
+        g = (g + add).clamp(0, 255);
+        b = (b + add).clamp(0, 255);
+        let fade = 1.0 - t * (1.0 / 60.0);
+        let flash = ShieldFlash {
+            centre: [cx, cy],
+            half: [hx, hy],
+            flip: rnd & 1 != 0,
+            mirror_s: rnd & 2 != 0,
+            mirror_t: rnd & 4 != 0,
+            env: [r, g, b, (200.0 * fade) as i32],
+            primalpha: (175.0 * fade * fade) as i32,
+        };
+        self.time += lvupdate60freal;
+        if self.time > 60.0 {
+            self.time = -1.0;
+        }
+        Some(flash)
     }
 }

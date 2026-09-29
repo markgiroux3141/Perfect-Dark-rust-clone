@@ -2247,6 +2247,18 @@ pub const MODEL_BUDDYBRIDGE: i32 = 0x1b8;
 pub const MODEL_JPNLOGO: i32 = 0x1b9;
 pub const MODEL_JPNPD: i32 = 0x1ba;
 
+// `g_ScreenSplit`: two players' viewports (`options_get_screen_split`).
+pub const SCREENSPLIT_HORIZONTAL: u8 = 0;
+pub const SCREENSPLIT_VERTICAL: u8 = 1;
+
+// `invaimsettings.tracktype`: what a sight tracks (`sight_tick`).
+pub const SIGHTTRACKTYPE_NONE: u8 = 0;
+pub const SIGHTTRACKTYPE_DEFAULT: u8 = 1;
+pub const SIGHTTRACKTYPE_BETASCANNER: u8 = 2;
+pub const SIGHTTRACKTYPE_ROCKETLAUNCHER: u8 = 3;
+pub const SIGHTTRACKTYPE_FOLLOWLOCKON: u8 = 4;
+pub const SIGHTTRACKTYPE_THREATDETECTOR: u8 = 5;
+
 /// Each `g_Stages` row's stage and code (its BG file, `stagetable.c`): the
 /// name of `assets/stages/<code>/`.
 pub const STAGE_CODES: &[(u8, &str)] = &[

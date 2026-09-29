@@ -100,6 +100,8 @@ struct PdGame {
     blur_pending: bool,
     /// A menu was open over the match last tick.
     menu_was_open: bool,
+    /// The F1 panel's rumble switch (the Rumble Pak in the controllers).
+    rumble: bool,
 }
 
 impl PdGame {
@@ -136,6 +138,7 @@ impl PdGame {
             next_seed,
             blur_pending: false,
             menu_was_open: false,
+            rumble: true,
         })
     }
 
@@ -160,6 +163,11 @@ impl PdGame {
     fn end_match(&mut self, ctx: &mut Ctx) {
         if let Some(sfx) = &mut self.sfx {
             sfx.stop_all(ctx.audio.as_deref_mut());
+        }
+        if let Some(pads) = ctx.input.pads.as_mut() {
+            for i in 0..MAX_PADS {
+                pads.set_rumble(i, false);
+            }
         }
         self.menu.return_from_match();
         self.screen = Screen::Menus;
@@ -240,6 +248,12 @@ impl PdGame {
             inputs[kb].select = p.gun.p.inventory.weapons().get(slot).copied();
         }
         let out = pd_game::session::step(world, &mut self.menu, &self.lv, 4 * self.rate as i32, &inputs);
+        // The Rumble Pak: pad k is player k's controller.
+        if let Some(pads) = ctx.input.pads.as_mut() {
+            for pi in 0..world.players.len() {
+                pads.set_rumble(pi, world.rumble_motor(pi) && self.rumble);
+            }
+        }
         for e in &out.events {
             if let Event::Kill { killer, victim } = *e {
                 let name = |i: u8| world.chrs.get(i as usize).map_or("?".to_string(), |c| c.name.clone());
@@ -413,6 +427,7 @@ impl Game for PdGame {
                     }
                 });
                 ui.checkbox(&mut self.n64_colour, "RGBA5551 framebuffer (menus)");
+                ui.checkbox(&mut self.rumble, "Rumble Pak (pads with force feedback)");
                 ui.separator();
                 ui.label("Save file (unlocks)");
                 ui.radio_value(&mut profile, Profile::Complete, "Complete (everything unlocked)");
@@ -476,11 +491,14 @@ impl Game for PdGame {
             let video = self.video;
             let n64 = video.active();
             let (device, queue) = (&ctx.gpu.device, &ctx.gpu.queue);
+            let single = world.players.len() == 1;
             renderer.three_point = n64 && video.three_point;
             renderer.hud_in_frame = !n64;
-            renderer.world_depth_copy = (n64 && video.aa).then(|| nv.world_depth(device, target.width, target.height));
-            // M12: split screen. The first player's view fills the window.
-            renderer.render_player(device, queue, &mut frame.encoder, target, world, 0);
+            // SUBST: the VI's anti-aliasing reads the coverage PD's single
+            // framebuffer keeps / its depth estimate needs one view's depth,
+            // so split screen goes through the chain without it.
+            renderer.world_depth_copy = (n64 && video.aa && single).then(|| nv.world_depth(device, target.width, target.height));
+            renderer.render_views(device, queue, &mut frame.encoder, target, world);
             if std::mem::take(&mut self.blur_pending) {
                 // menugfx_create_blur's screenshot: this frame, as it stands.
                 let enc = std::mem::replace(&mut frame.encoder, device.create_command_encoder(&Default::default()));
@@ -491,11 +509,11 @@ impl Game for PdGame {
             if n64 {
                 // SUBST: PD draws lv_render's framebuffer effects over the HUD /
                 // the chain lays the HUD on after them, in its RDP pass.
-                let hud = &renderer.hud_gfx;
+                let hud = &renderer.hud_frame;
                 nv.upload_hud(device, queue, Some((&pd_render::hud::premultiplied_rgba8(hud), hud.w as u32, hud.h as u32)));
                 let (znear, zfar) = renderer.z_range();
-                let depth = &target.depth.as_ref().expect("the match target has depth").1;
-                let vf = VideoFrame { color: &target.view, color_srgb: false, size: (target.width, target.height), gun_depth: Some(depth), world_near_far: (znear, zfar), gun_near_far: (1.5, 1000.0) };
+                let depth = target.depth.as_ref().filter(|_| single).map(|d| &d.1);
+                let vf = VideoFrame { color: &target.view, color_srgb: false, size: (target.width, target.height), gun_depth: depth, world_near_far: (znear, zfar), gun_near_far: (1.5, 1000.0) };
                 clear(&mut frame.encoder, &frame.view);
                 let rect = tube_rect(frame.size.0, frame.size.1, frame.viewport[0]);
                 nv.run(device, queue, &mut frame.encoder, &vf, &frame.view, rect, &video);

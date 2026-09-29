@@ -138,46 +138,15 @@ impl Model {
     /// `// SUBST:` PD stops at the first display list with a hit
     /// (`bg_find_hitthing_by_gfx_tris`) / the nearest triangle of all of them.
     pub fn hit_tris(&self, node: usize, pos: Vec3, dir: Vec3) -> Option<(f32, Vec3, Vec3)> {
-        let def = &self.def;
-        let end = def.nodes.get(node)?.subtree_end;
-        let mut best: Option<(f32, Vec3, Vec3)> = None;
-        for n in node..end {
-            if !self.node_visible(n) {
-                continue;
-            }
-            for &bi in &def.nodes[n].batches {
-                let b = &def.batches[bi];
-                let at = |k: u16| {
-                    let v = &b.verts[k as usize];
-                    self.matrices.get(v.mtx as usize).map_or(v.pos, |m| m.transform_point3(v.pos))
-                };
-                for t in b.idx.chunks_exact(3) {
-                    let (p0, p1, p2) = (at(t[0]), at(t[1]), at(t[2]));
-                    let (e1, e2) = (p1 - p0, p2 - p0);
-                    let h = dir.cross(e2);
-                    let det = e1.dot(h);
-                    if det.abs() < 1e-12 {
-                        continue;
-                    }
-                    let inv = 1.0 / det;
-                    let s = pos - p0;
-                    let u = s.dot(h) * inv;
-                    if !(0.0..=1.0).contains(&u) {
-                        continue;
-                    }
-                    let q = s.cross(e1);
-                    let v = dir.dot(q) * inv;
-                    if v < 0.0 || u + v > 1.0 {
-                        continue;
-                    }
-                    let tt = e2.dot(q) * inv;
-                    if tt >= 0.0 && best.is_none_or(|(bt, _, _)| tt < bt) {
-                        best = Some((tt, pos + dir * tt, e1.cross(e2)));
-                    }
-                }
-            }
-        }
-        best
+        tri_walk(&self.def, node, |n| self.node_visible(n), |v| self.matrices.get(v as usize).copied(), pos, dir)
+    }
+
+    /// [`Model::hit_tris`] over the head hung on the headspot (PD's head is a
+    /// subtree of the body, so `projectile_0f06bea0` from the root reaches
+    /// it): its triangles by the headspot's matrix.
+    pub fn hit_tris_head(&self, pos: Vec3, dir: Vec3) -> Option<(f32, Vec3, Vec3)> {
+        let (head, hm) = (self.head.as_deref()?, self.head_matrix()?);
+        tri_walk(head, 0, |n| self.head_node_visible(n), |_| Some(hm), pos, dir)
     }
 
     fn hit_walk(&self, head: bool, from: usize, pos: Vec3, dir: Vec3, pad: HitPad) -> Option<(i32, HitNode)> {
@@ -217,4 +186,48 @@ impl Model {
         }
         None
     }
+}
+
+/// The nearest of `def`'s triangles under `node` the ray `pos + t·dir` meets,
+/// each vertex by the matrix `mtx(vertex's matrix index)` (or as it is).
+fn tri_walk(def: &super::ModelDef, node: usize, visible: impl Fn(usize) -> bool, mtx: impl Fn(u16) -> Option<glam::Mat4>, pos: Vec3, dir: Vec3) -> Option<(f32, Vec3, Vec3)> {
+    let end = def.nodes.get(node)?.subtree_end;
+    let mut best: Option<(f32, Vec3, Vec3)> = None;
+    for n in node..end {
+        if !visible(n) {
+            continue;
+        }
+        for &bi in &def.nodes[n].batches {
+            let b = &def.batches[bi];
+            let at = |k: u16| {
+                let v = &b.verts[k as usize];
+                mtx(v.mtx).map_or(v.pos, |m| m.transform_point3(v.pos))
+            };
+            for t in b.idx.chunks_exact(3) {
+                let (p0, p1, p2) = (at(t[0]), at(t[1]), at(t[2]));
+                let (e1, e2) = (p1 - p0, p2 - p0);
+                let h = dir.cross(e2);
+                let det = e1.dot(h);
+                if det.abs() < 1e-12 {
+                    continue;
+                }
+                let inv = 1.0 / det;
+                let s = pos - p0;
+                let u = s.dot(h) * inv;
+                if !(0.0..=1.0).contains(&u) {
+                    continue;
+                }
+                let q = s.cross(e1);
+                let v = dir.dot(q) * inv;
+                if v < 0.0 || u + v > 1.0 {
+                    continue;
+                }
+                let tt = e2.dot(q) * inv;
+                if tt >= 0.0 && best.is_none_or(|(bt, _, _)| tt < bt) {
+                    best = Some((tt, pos + dir * tt, e1.cross(e2)));
+                }
+            }
+        }
+    }
+    best
 }

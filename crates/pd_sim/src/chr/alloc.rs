@@ -94,6 +94,7 @@ impl Chr {
             timeshooter: 0,
             aibot: None,
             playertheta: 0.0,
+            playerangleoffset: 0.0,
             eyeheight: 0.0,
             blurdrugamount: 0,
             blurnumtimesdied: 0,
@@ -110,6 +111,10 @@ impl Chr {
             team: 1,
             mpslot: 0,
             cshield: 0.0,
+            cmcount: 0,
+            splat: Default::default(),
+            cmnum: [0; 4],
+            shieldhit: false,
             shielddamaged: false,
         }
     }
@@ -151,6 +156,8 @@ pub fn botmgr_allocate_bots(store: &ModelStore, bodies: &Bodies, setup: &MatchSe
             let (bodynum, headnum) = mp_chr_body_head(bodies, &sim.chr);
             let (model, animscale, height, ismale) = body::chr_body(store, bodies, bodynum, headnum, Some(rng))?;
             let mut c = Chr::new(chrnum, None, sim.chr.name.clone(), bodynum, headnum, model, animscale, height, ismale);
+            // chr_create_with_model → chr_allocate (`chr.c:1218`).
+            c.cmcount = (rng.random() % 300) as u16;
             c.team = 1 << (sim.chr.team & 7);
             c.voicebox = (rng.random() % 3) as u8;
             if !ismale {

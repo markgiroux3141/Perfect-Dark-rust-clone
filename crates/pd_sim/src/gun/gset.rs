@@ -185,13 +185,15 @@ pub struct AimDef {
     pub guntransdown: f32,
     pub guntransside: f32,
     pub aimdamp: f32,
+    /// `SIGHTTRACKTYPE_*`: what the sight tracks (`sight_tick`).
+    pub tracktype: u8,
     pub flags: u32,
 }
 
 impl Default for AimDef {
     /// `invaimsettings_default` (`invitems.c:90`).
     fn default() -> Self {
-        AimDef { zoomfov: 0.0, guntransup: 3.0, guntransdown: 8.0, guntransside: 15.0, aimdamp: 0.9767, flags: INVAIMFLAG_AUTOAIM }
+        AimDef { zoomfov: 0.0, guntransup: 3.0, guntransdown: 8.0, guntransside: 15.0, aimdamp: 0.9767, tracktype: SIGHTTRACKTYPE_DEFAULT, flags: INVAIMFLAG_AUTOAIM }
     }
 }
 
@@ -344,6 +346,7 @@ struct RawAim {
     guntransdown: f32,
     guntransside: f32,
     aimdamp: f32,
+    tracktype: u8,
     flags: Value,
 }
 
@@ -393,6 +396,7 @@ impl Gset {
                     guntransdown: a.guntransdown,
                     guntransside: a.guntransside,
                     aimdamp: a.aimdamp,
+                    tracktype: a.tracktype,
                     flags: a.flags.as_u64().unwrap_or(0) as u32,
                 })
                 .unwrap_or_default();

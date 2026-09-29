@@ -64,9 +64,11 @@ impl MatchPlayer {
 
 impl Default for MatchPlayer {
     /// A fresh player config (`mp_init_player`, `mplayer.c:370`): control style
-    /// 1.1, PD's default options, no handicap.
+    /// 1.1, PD's default options, the radar and the team highlight on
+    /// (`mplayer.c:408`), no handicap.
     fn default() -> Self {
-        MatchPlayer { slot: 0, chr: MatchChr::default(), controlmode: 0, options: Self::DEFAULT_OPTIONS, handicap: 128, career: MpCareer::default() }
+        let chr = MatchChr { displayoptions: MPDISPLAYOPTION_RADAR | MPDISPLAYOPTION_HIGHLIGHTTEAMS, ..MatchChr::default() };
+        MatchPlayer { slot: 0, chr, controlmode: 0, options: Self::DEFAULT_OPTIONS, handicap: 128, career: MpCareer::default() }
     }
 }
 
@@ -110,6 +112,10 @@ pub struct MatchSetup {
     /// Hill Options' Time slider; `mp_init` sets 10, 20 s).
     #[serde(default = "default_mphilltime")]
     pub mphilltime: u8,
+    /// `g_ScreenSplit` (`SCREENSPLIT_*`): two players one above the other or
+    /// side by side (the Combat Simulator's Screen Split option).
+    #[serde(default)]
+    pub screensplit: u8,
 }
 
 fn default_mphilltime() -> u8 {
@@ -213,6 +219,7 @@ impl Default for MatchSetup {
             teamnames: Vec::new(),
             challenge: false,
             mphilltime: 10,
+            screensplit: SCREENSPLIT_HORIZONTAL,
         }
     }
 }

@@ -29,12 +29,16 @@ mod bondhead;
 mod bondmove;
 mod bondwalk;
 pub mod activemenu;
+mod body;
 pub mod health;
 pub mod camera;
 pub mod rooms;
+pub mod rumble;
 pub mod slayer;
 mod spawn;
 pub mod vision;
+#[cfg(test)]
+mod splitscreen_tests;
 #[cfg(test)]
 mod tests;
 
@@ -231,6 +235,9 @@ pub struct Player {
     pub dostartnewlife: bool,
     /// The health bar, the damage flash and the screen's fades.
     pub health: health::Health,
+    /// The first-person shield flash, and what it draws this frame.
+    pub shieldshow: health::ShieldShow,
+    pub shieldflash: Option<health::ShieldFlash>,
     /// `bondfade*` (`player_start_chr_fade`): the player's chr's alpha as
     /// others see it, 0..1.
     bondfadetime60: f32,
@@ -326,14 +333,33 @@ pub struct Player {
     pub mouseaimspeed: f32,
     pub crosshairsway: f32,
     pub crosshairedgeboundary: f32,
-    /// The view: `player_get_viewport_width/height` and `player_get_aspect_ratio`
-    /// (320 × 220 at 320/220 for one player).
+    /// The view: `player_get_viewport_left/top/width/height` and
+    /// `player_get_aspect_ratio` (320 × 220 at 320/220 for one player; see
+    /// [`Player::set_viewport`]).
+    pub viewleft: f32,
+    pub viewtop: f32,
     pub viewwidth: f32,
     pub viewheight: f32,
     pub aspect: f32,
 
     /// The hands and `gunctrl` (`bondgun.c`).
     pub gun: Bgun,
+    /// The controller's Rumble Pak.
+    pub rumble: rumble::Rumble,
+    /// What the sight tracks (`trackedprops`, `targetset`, `sighttracktype`).
+    pub sight: crate::gun::sight::Sight,
+    /// `shootrotx`, `shootroty`: the crosshair's direction in the world, up
+    /// and around (`player_update_shoot_rot`), which the player's body aims
+    /// along in the other players' views.
+    pub shootrotx: f32,
+    pub shootroty: f32,
+    /// `angleoffset`: how far the body's legs turn from its facing
+    /// (`player_choose_third_person_animation`).
+    pub angleoffset: f32,
+    /// `chrmuzzlelastpos`, `chrmuzzlelast`: where the body's guns were last
+    /// posed, and on which frame; the other players see its tracers start there.
+    pub chrmuzzlelastpos: [Vec3; 2],
+    pub chrmuzzlelast: [i32; 2],
     /// `camera.c`'s state.
     pub cam: Camera,
 
@@ -429,6 +455,8 @@ impl Player {
             startnewbonddie: true,
             dostartnewlife: false,
             health: health::Health::default(),
+            shieldshow: health::ShieldShow::default(),
+            shieldflash: None,
             bondfadetime60: 0.0,
             bondfadetimemax60: -1.0,
             bondfadefracold: 1.0,
@@ -506,10 +534,19 @@ impl Player {
             mouseaimspeed: 0.7,
             crosshairsway: 1.0,
             crosshairedgeboundary: 0.7,
+            viewleft: 0.0,
+            viewtop: 0.0,
             viewwidth: SCREEN_W,
             viewheight: SCREEN_H,
             aspect: SCREEN_W / SCREEN_H,
             gun,
+            sight: Default::default(),
+            rumble: Default::default(),
+            shootrotx: 0.0,
+            shootroty: 0.0,
+            angleoffset: 0.0,
+            chrmuzzlelastpos: [Vec3::ZERO; 2],
+            chrmuzzlelast: [0; 2],
             cam: Camera::default(),
             visionmode: VISIONMODE_NORMAL,
             cameramode: CAMERAMODE_DEFAULT,
@@ -581,6 +618,40 @@ impl Player {
         self.up = Vec3::Y;
     }
 
+    /// The view `player_tick` gives player `playernum` of `playercount`
+    /// (`player.c:3194`: `playermgr_set_view_size`, `_position`, the aspect),
+    /// and the camera's screen at once (the first tick sets it again).
+    pub fn set_viewport(&mut self, playernum: usize, playercount: usize, screensplit: u8) {
+        let v = camera::Viewport::player_get_viewport(playernum, playercount, screensplit);
+        self.viewleft = v.left as f32;
+        self.viewtop = v.top as f32;
+        self.viewwidth = v.width as f32;
+        self.viewheight = v.height as f32;
+        self.aspect = v.aspect();
+        self.cam.vi_set_fov_aspect_and_size(PLAYER_DEFAULT_FOV, self.aspect, self.viewwidth, self.viewheight);
+        self.cam.cam_set_screen_position(self.viewleft, self.viewtop);
+    }
+
+    /// `player_update_shoot_rot` (`player.c:4291`), at the start of the
+    /// player's `lv_render` pass: the camera's matrices again, then the
+    /// crosshair's ray (`bgun0f0a0c08`) as a pitch (with `vv_verta`) and a yaw.
+    pub fn player_update_shoot_rot(&mut self) {
+        self.cam.player_allocate_matrices(self.cam.pos(), self.look, self.up);
+        let sp3c = self.cam.cam0f0b4c3c(self.gun.p.crosspos, 1.0);
+        let value = (sp3c.z * sp3c.z + sp3c.x * sp3c.x).sqrt();
+        let mut rotx = pd_core::math::atan2f(sp3c.y, value);
+        rotx += pd_core::math::baddtor3(self.verta);
+        if rotx >= pd_core::math::dtor(180.0) {
+            rotx -= pd_core::math::baddtor(360.0);
+        }
+        self.shootrotx = rotx;
+        let mut roty = pd_core::math::atan2f(-sp3c.x, -sp3c.z);
+        if roty >= pd_core::math::dtor(180.0) {
+            roty -= pd_core::math::baddtor(360.0);
+        }
+        self.shootroty = roty;
+    }
+
     /// Put the crouch straight at `offset` (−90 squat, −45 duck, 0 stand), as if
     /// `bwalk_update_crouch_offset` had finished getting there (a harness and
     /// spawn helper; PD tweens it).
@@ -600,7 +671,7 @@ impl Player {
         self.die_request = false;
         self.landed = None;
         self.cam.vi_set_fov_aspect_and_size(PLAYER_DEFAULT_FOV, self.aspect, self.viewwidth, self.viewheight);
-        self.cam.cam_set_screen_position(0.0, 0.0);
+        self.cam.cam_set_screen_position(self.viewleft, self.viewtop);
         self.health.player_update_colour_screen_properties(lv.lvupdate60freal);
         self.player_tick_chr_fade(lv.lvupdate60freal);
         self.health.player_tick_damage_and_health(self.bondhealth, env.shieldfrac, self.isdead, env.menuopen, lv.lvupdate60freal, lv.diffframe60freal);

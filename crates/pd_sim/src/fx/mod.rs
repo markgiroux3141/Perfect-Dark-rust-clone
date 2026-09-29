@@ -13,6 +13,8 @@ pub mod beam;
 pub mod boltbeam;
 pub mod casing;
 pub mod shards;
+pub mod shieldhit;
+pub mod splat;
 pub mod smoke;
 pub mod sparks;
 pub mod wallhit;
@@ -35,6 +37,7 @@ pub struct Fx {
     pub casing_cooldown240: i32,
     pub boltbeams: boltbeam::BoltBeams,
     pub shards: shards::Shards,
+    pub shieldhits: shieldhit::ShieldHits,
 }
 
 impl Fx {

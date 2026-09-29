@@ -812,9 +812,7 @@ impl World {
             height: c.c_screenheight as i32,
             playercount: self.players.len(),
             playernum: pi,
-            // SUBST: PD reads the split option (`options_get_screen_split`) /
-            // horizontal until split screen (M12).
-            vsplit: false,
+            vsplit: self.setup.screensplit == pd_core::ids::SCREENSPLIT_VERTICAL,
         }
     }
 

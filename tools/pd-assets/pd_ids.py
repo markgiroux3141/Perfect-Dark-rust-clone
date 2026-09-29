@@ -111,6 +111,9 @@ GROUPS = [
     ("AIBOTCMD_", "u8", False, "`aibot->command`: a simulant's orders (a human's, or the scenario's own)."),
     ("COVERFLAG_", "u16", True, "`cover.flags`."),
     ("MODEL_", "i32", True, "`g_ModelStates` rows (`models/index.json` maps each to its file)."),
+    # Presentation (player.c's viewports, sight.c).
+    ("SCREENSPLIT_", "u8", False, "`g_ScreenSplit`: two players' viewports (`options_get_screen_split`)."),
+    ("SIGHTTRACKTYPE_", "u8", False, "`invaimsettings.tracktype`: what a sight tracks (`sight_tick`)."),
 ]
 
 

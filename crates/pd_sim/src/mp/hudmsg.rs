@@ -177,10 +177,9 @@ impl World {
         (result, extra)
     }
 
-    /// Two players side by side (`options_get_screen_split`). M12's split
-    /// screen: always horizontal until then.
+    /// Two players side by side (`options_get_screen_split`).
     fn setup_screensplit_vertical(&self) -> bool {
-        false
+        self.setup.screensplit == pd_core::ids::SCREENSPLIT_VERTICAL
     }
 
     /// `hudmsg_calculate_position` (`hudmsg.c:828`, NTSC 1.0+).

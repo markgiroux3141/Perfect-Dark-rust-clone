@@ -13,9 +13,8 @@
 //! shot sentry breaks; the pickups on the pads, sparks and a thump) and the
 //! simulants, by part box (`chr_test_hit`, `chr_hit`).
 //!
-//! `// SUBST:` PD's shots and punches also test another human's body / a
-//! player's chr isn't posed (M6 draws no third-person player body), so only
-//! the perimeter tests (sentries, explosions, simulants' rounds) reach it.
+//! Another player's body is a chr like a simulant (posed by
+//! `player_tick_third_person`); a player's own never meets its shots.
 //!
 //! Source: the shot half of the old repo's `pd_guns/sim.rs`.
 
@@ -50,6 +49,8 @@ enum ShotTarget {
 pub enum AimedAt {
     Board(usize),
     Chr(usize),
+    /// An object, by id (the Threat Detector's explosives and sentries).
+    Obj(u32),
 }
 
 /// A shot's round meeting a prop, `t` along the ray.
@@ -189,7 +190,7 @@ impl World {
         let spfc = [(cross[0] - cam.c_screenleft) / (cam.c_screenwidth * 0.5) - 1.0, (cross[1] - cam.c_screentop) / (cam.c_screenheight * 0.5) - 1.0];
         let spf4 = [cam.c_screenheight * 0.166_666_67, cam.c_screenheight * 0.125];
         let mut order: Vec<(f32, usize)> = (0..self.chrs.len())
-            .filter(|&j| self.chrs[j].player.is_none())
+            .filter(|&j| self.chrs[j].player != Some(pi))
             .filter(|&j| crate::chr::body::pos_is_onscreen(&self.players[pi].cam, self.chrs[j].pos, self.chrs[j].effective_scale()))
             .map(|j| (-w2s.transform_point3(self.chrs[j].pos).z, j))
             .filter(|&(z, _)| z < 500.0)
@@ -268,14 +269,27 @@ impl World {
 
     /// `chr_hit` (`chr.c:4602`): the hit position, the prop hit sound, the
     /// blood and `chr_damage_by_impact` with the shooter's gun.
-    /// `// M12:` the splats and bruises (`splats_create_for_chr_hit`, `chr_bruise`).
+    /// And the blood behind it (`splats_create_for_chr_hit`).
     fn chr_hit(&mut self, pi: usize, h: usize, j: usize, hit: &crate::chr::body::ChrHit, gundir3d: Vec3) {
         let (weaponnum, func) = (self.players[pi].gun.hands[h].weaponnum, self.players[pi].gun.hands[h].weaponfunc);
         self.players[pi].gun.bgun_set_hit_pos(hit.pos);
         self.bgun_play_prop_hit_sound_chr(weaponnum, func, hit.pos);
         self.chr_emit_sparks(j, hit.hitpart, hit.pos, gundir3d);
+        // chr_hit's blood (`chr.c:4759`): not the Tranquilizer's dart (a round
+        // here is never a melee blow).
+        // SUBST: PD also bruises the body (`chr_bruise`: the nearest vertex's
+        // colour alpha set to 20-70, which PD's chr shading reads as darker) /
+        // no bruise: our chrs are lit by a room light instead of PD's shade
+        // pipeline, which is what reads that alpha.
+        if weaponnum != WEAPON_TRANQUILIZER {
+            let gunpos = self.players[pi].cam.pos();
+            self.splats_create_for_chr_hit(j, gunpos, hit.pos, gundir3d, Some(pi));
+        }
         let damage = self.player_gset_damage(pi, h);
-        self.chr_damage_by_impact(j, damage, gundir3d, crate::chr::DamageFrom::new(Some(pi), weaponnum, func), hit.hitpart);
+        // hit->bboxnode, hitthing.unk28 / 2 and hitthing.pos as s16s: where a
+        // shield glows from (`chr.c:4640`).
+        let at = hit.face.map(|(side, p)| crate::fx::shieldhit::ShieldHitAt { node: hit.node, side, hitpos: [p.x as i16, p.y as i16, p.z as i16] });
+        self.chr_damage_by_impact(j, damage, gundir3d, crate::chr::DamageFrom::new(Some(pi), weaponnum, func).at(at), hit.hitpart);
     }
 
     /// `prop_find_aiming_at` (`prop.c:979`): a shot, or with `isshooting`
@@ -380,7 +394,7 @@ impl World {
         // chr_test_hit on the chrs this player sees (not a melee attack's).
         if !ismelee {
             for (j, c) in self.chrs.iter().enumerate() {
-                if c.player.is_some() || !crate::chr::body::pos_is_onscreen(&self.players[pi].cam, c.pos, c.effective_scale()) {
+                if c.player == Some(pi) || !crate::chr::body::pos_is_onscreen(&self.players[pi].cam, c.pos, c.effective_scale()) {
                     continue;
                 }
                 if -w2s.transform_point3(c.pos).z - c.chr_get_hit_radius() >= distance {
@@ -478,7 +492,7 @@ impl World {
     /// `obj_hit` (`propobj.c:14765`) on one of the guns' objects: sparks, the
     /// prop hit sound and `obj_damage_by_gunfire`, which sets an explosive off
     /// or breaks a sentry. `// SUBST:` PD also leaves a bullet hole on the
-    /// object's model / none (wallhits riding props: M12).
+    /// object's model / none (no wallhit rides a prop).
     fn obj_hit(&mut self, pi: usize, id: u32, hit: &PropHit, func: &Option<super::gset::FuncDef>) {
         let ismelee = func.as_ref().is_some_and(|f| f.kind() == INVENTORYFUNCTYPE_MELEE);
         self.players[pi].gun.bgun_set_hit_pos(hit.pos);
@@ -699,6 +713,9 @@ impl World {
                     }
                 }
                 GunEvent::FreeHeldRocket { hand } => self.bgun_free_held_rocket(pi, hand),
+                GunEvent::CreateHeldWeapon { hand } => self.playermgr_create_weapon(pi, hand),
+                GunEvent::DeleteHeldWeapon { hand } => self.chrs[pi].held[hand] = None,
+                GunEvent::Rumble => self.players[pi].rumble.pak_rumble(0.2, 2, 4),
                 GunEvent::UpdateRocketLauncher { hand } => self.bgun_update_rocket_launcher(pi, hand),
                 GunEvent::UncloakTemporarily => self.chr_uncloak_temporarily(pi),
             }
@@ -725,5 +742,34 @@ impl World {
             // mm_lasertype: the charge.
             beam.weaponnum = -3 - lasertype.clamp(0, 5);
         }
+        // The tracer the other players see, from the body's gun (`gunfx.c:131`),
+        // unless it points more than 5° off the first-person one.
+        if self.players.len() >= 2 {
+            let last = self.players[pi].chrmuzzlelastpos[h];
+            let a = (to - last).normalize_or_zero();
+            let b = (to - from).normalize_or_zero();
+            let radians = a.dot(b).clamp(-1.0, 1.0).acos();
+            if !(radians > pd_core::math::baddtor(5.0)) || weaponnum == BEAM_LASERSTREAM {
+                let beam = &mut self.chrs[pi].fireslots[h].beam;
+                beam.create(&mut self.rng, weaponnum, last, to);
+                if beam.weaponnum == WEAPON_MAULER as i32 {
+                    beam.weaponnum = -3 - lasertype.clamp(0, 5);
+                }
+            }
+        }
+    }
+
+    /// `playermgr_create_weapon` (`playermgr.c:776`): the hand's weapon in
+    /// the player's body's hand, if it has none yet (the left hand's remote
+    /// mine has no model).
+    pub(crate) fn playermgr_create_weapon(&mut self, pi: usize, hand: usize) {
+        if self.chrs[pi].held[hand].is_some() {
+            return;
+        }
+        let weaponnum = self.players[pi].gun.bgun_get_weapon_num(hand);
+        if hand == HAND_LEFT && weaponnum == WEAPON_REMOTEMINE {
+            return;
+        }
+        self.chr_give_weapon(pi, weaponnum, hand);
     }
 }

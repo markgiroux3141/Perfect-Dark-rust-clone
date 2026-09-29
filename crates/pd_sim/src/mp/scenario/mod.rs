@@ -18,10 +18,7 @@
 //! (the drawing is `pd_render`'s, from [`World::scenario_hud`]).
 //!
 //! The radar's scenario parts (`scenario_radar_extra`, `scenario_radar_chr`)
-//! wait for the radar (M12): Hold the Briefcase draws the case (green, or its
-//! carrier in its team's colour), Hacker Central the uplink and the terminal,
-//! Pop a Cap the victim, King of the Hill the hill, Capture the Case each
-//! team's case.
+//! are in [`crate::mp::radar`].
 //!
 //! Source: `reference/pd-decomp/src/game/mplayer/scenarios.c` and
 //! `scenarios/*.inc` (NTSC final). Not in any spike.

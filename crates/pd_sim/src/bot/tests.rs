@@ -79,7 +79,7 @@ pub(crate) fn step(w: &mut World, input: &PlayerInput) {
 /// spike's stage-3 baseline.
 #[test]
 fn bots_fight_across_complex_on_pds_graph_without_stalling() {
-    let w = complex_world(0, 4, BOTDIFF_NORMAL, harness::M10_SEED);
+    let w = complex_world(0, 4, BOTDIFF_NORMAL, harness::M12_SEED);
     let m = abtest::run_match(w, 120);
     let up = (m.band_frames[2] + m.band_frames[3]) as f32 / m.alive_frames as f32;
     println!("kills {}, upstairs {:.0}% of alive time, stalls {}, rounds {} hits {}", m.kills, up * 100.0, m.stalls, m.shots, m.hits);

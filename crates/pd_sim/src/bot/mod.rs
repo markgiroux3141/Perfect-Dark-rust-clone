@@ -711,9 +711,7 @@ impl World {
     /// the animation chooser, then the model turned to `theta − angleoffset`.
     fn bot_apply_movement(&mut self, i: usize) {
         let freal = self.lv.lvupdate60freal;
-        // `random() % g_NumDeathAnimations` is only drawn on the dead branch.
         let dead = self.chr_is_dead(i);
-        let death_pick = if dead { self.rng.random() } else { 0 };
         let res = self.res.clone();
         let wm = wieldmode(&res.gset, &self.chrs[i]);
         let c = &mut self.chrs[i];
@@ -728,7 +726,7 @@ impl World {
         let crouchpos = bot_guess_crouch_pos(c.height);
         let mut ctx = c.model.anim_ctx(&res.bank);
         if dead {
-            thirdperson::choose_death(&mut c.anim, &mut ctx, death_pick);
+            thirdperson::choose_death(&mut c.anim, &mut ctx, &mut self.rng);
             c.aibot.as_mut().unwrap().attackanimconfig = None;
         } else {
             let mut off = c.aibot.as_ref().unwrap().angleoffset;
@@ -1382,6 +1380,8 @@ impl World {
     /// facing the way its old body did.
     pub(crate) fn bot_spawn(&mut self, i: usize, respawning: bool) {
         self.bot_reset(i, respawning);
+        // splat_reset_chr (bot.c:287).
+        self.chrs[i].splat = Default::default();
         let (pos, angle) = self.chr_choose_spawn_location(i);
         self.chr_move_to_pos(i, pos, angle);
         let yaw = self.chrs[i].model.chrinfo.yrot;

@@ -206,6 +206,8 @@ pub struct World {
     /// `g_Rooms[].flags`' ONSCREEN/STANDBY bits as the latest `bg_tick` left
     /// them (the last player's pass, until the next pass redoes them).
     pub roomflags: Vec<u16>,
+    /// `var80084010` (`lv.c:2425`): the pause the rumble last saw.
+    pub(crate) rumble_paused: bool,
     events: Vec<Event>,
 }
 
@@ -250,8 +252,10 @@ impl World {
         let mut rng = Rng::new(seed);
         let n = setup.players.len();
         let mut players = Vec::with_capacity(n);
-        for _ in 0..n {
-            players.push(Player::new(&res, Vec3::ZERO, 0.0, n, &mut rng)?);
+        for i in 0..n {
+            let mut p = Player::new(&res, Vec3::ZERO, 0.0, n, &mut rng)?;
+            p.set_viewport(i, n, setup.screensplit);
+            players.push(p);
         }
         let mut chrs = Vec::with_capacity(n + setup.simulants.len());
         for (i, p) in setup.players.iter().enumerate() {
@@ -311,6 +315,7 @@ impl World {
             portalflags: stage_portalflags,
             mp_room_visibility: vec![0; nrooms],
             roomflags: vec![0; nrooms],
+            rumble_paused: false,
             events: Vec::new(),
         };
         // mp_reset's active menu orders (mplayer.c:286).
@@ -324,6 +329,9 @@ impl World {
             let before: Vec<usize> = (0..i).collect();
             w.spawn_player(i, &before);
             w.player_spawn_inventory(i);
+            // The end of the first player_spawn (`player.c:1103`): the body is
+            // made (player_tick_chr_body → chr_place → chr_allocate).
+            w.chrs[i].cmcount = (w.rng.random() % 300) as u16;
             if w.setup.teams_enabled() {
                 w.playermgr_calculate_ai_buddy_nums(i);
             }
@@ -392,6 +400,8 @@ impl World {
     /// in `others` (at the match start, the players already spawned; later,
     /// every other chr).
     fn spawn_player(&mut self, i: usize, others: &[usize]) {
+        // player_start_new_life's splat_reset_chr (`player.c:518`).
+        self.chrs[i].splat = Default::default();
         let judged: Vec<SpawnOther> = others
             .iter()
             .filter(|&&j| self.chr_compare_teams(i, j, crate::mp::Compare::Enemies))
@@ -417,6 +427,7 @@ impl World {
         c.pos = p.pos;
         c.manground = p.manground;
         c.ground = p.ground;
+        c.sumground = p.manground * 9.999_998;
         c.radius = perim.radius;
         c.height = perim.ymax - perim.ymin;
         // chr_get_theta: BADDTOR2(360 - vv_theta).
@@ -492,8 +503,13 @@ impl World {
     /// One PD frame `diffframe240` quarter-ticks long (4 at 60 Hz, 8 at 30,
     /// 12 at 20), with each player's controls (missing inputs are idle).
     pub fn step(&mut self, diffframe240: i32, inputs: &[PlayerInput]) {
+        // The main loop's joy_debug_joy → joys_tick_rumble, before the frame.
+        for p in self.players.iter_mut() {
+            p.rumble.tick();
+        }
         // lv_tick: paused, the match's slow motion, a boost's cap.
         let paused = self.mp_is_paused();
+        self.lv_tick_rumble_pause(paused);
         let tickin = LvTickIn { paused, speedpillon: self.speedpill.on, slowmo: self.setup.slowmotion(), enemy_on_screen: self.lv_smart_slowmo_enemy_on_screen() };
         self.lv.frame(diffframe240, tickin);
         if paused {
@@ -522,6 +538,8 @@ impl World {
         self.tick_casings();
         self.fx.shards.shards_tick(self.lv.lvupdate60);
         self.fx.sparks.tick(&self.lv);
+        // wallhits_tick (lv.c:2302): the splats grow in and fade.
+        self.wallhits_tick();
         if self.props.nbombs.active {
             self.nbombs_tick();
         }
@@ -594,7 +612,10 @@ impl World {
 
         // lv_render, per player.
         let n = self.players.len();
+        let mut bodies_ticked = vec![false; n];
         for i in 0..n {
+            // player_update_shoot_rot (lv.c:1187).
+            self.players[i].player_update_shoot_rot();
             let motion_blur = self.lv_render_blur(i);
             // SUBST: bgun_render draws a fired rocket at the muzzle once more and
             // then lets go of it (`bondgun.c:8334`, and at once in x-ray) / the
@@ -611,6 +632,8 @@ impl World {
             if i == 0 {
                 self.chrs_tick();
             }
+            // player_tick_third_person: the other players' bodies.
+            self.players_tick_bodies(i, &mut bodies_ticked);
             // scenario_tick_chr(NULL) (`lv.c:1195`).
             self.scenario_tick_chr(None, i);
             if i == 0 {
@@ -620,7 +643,7 @@ impl World {
                 // once the first pass has ticked the mines (the same with one).
                 self.props.detonating = 0;
             }
-            // player_tick_third_person: the player's chr (M6: its body).
+            // player_tick_third_person's own-pass branch: the player's cloak.
             self.chr_update_cloak(i);
             if i + 1 == n {
                 // alarm_tick (`propobj.c:20051`).
@@ -631,6 +654,14 @@ impl World {
             // targets PD lets the sight react to (`MODEL_TARGET` in CI training).
             let aimtrack = self.res.gset.has_flag(self.players[i].gun.bgun_get_weapon_num(HAND_RIGHT), WEAPONFLAG_AIMTRACK) && self.players[i].insightaimmode;
             self.lookingatprop[i] = if self.players.len() == 1 || aimtrack { self.prop_find_aiming_at(i, HAND_RIGHT, false, false) } else { None };
+            // A cloaked chr isn't looked at (no IR scanner in a match).
+            if let Some(crate::gun::shot::AimedAt::Chr(j)) = self.lookingatprop[i] {
+                if self.chrs[j].cloak.cloaked {
+                    self.lookingatprop[i] = None;
+                }
+            }
+            // The Threat Detector and the aim-tracking weapons' boxes (lv.c:1238).
+            self.lv_tick_tracked_props(i);
             // Opening doors and reloading (`lv.c:1293`).
             if self.players[i].bondactivateorreload && self.current_player_interact(i) {
                 let res = self.res.clone();
@@ -641,7 +672,24 @@ impl World {
             self.props_test_for_pickup(i);
             // player_render_hud (`player.c`): in the third person (riding a
             // Slayer rocket) no gun, no HUD, and bgun_tick_gameplay2 doesn't run.
+            // player_render_hud's player_render_shield (`player.c:4482`), after
+            // the gun: the view's shield flash, moved on a frame.
+            self.players[i].shieldflash = None;
             if self.players[i].cameramode != CAMERAMODE_THIRDPERSON {
+                let c = &self.players[i].cam;
+                let view = [c.c_screenleft, c.c_screentop, c.c_screenwidth, c.c_screenheight];
+                let shield = self.player_get_shield_frac(i) * 8.0;
+                let freal = self.lv.lvupdate60freal;
+                self.players[i].shieldflash = self.players[i].shieldshow.player_render_shield(view, shield, freal);
+            }
+            if self.players[i].cameramode != CAMERAMODE_THIRDPERSON {
+                // bgun_draw_sight → sight_draw → sight_tick (not while the
+                // active menu is open): aiming, no damage flash, no menu.
+                if self.players[i].activemenumode == crate::player::activemenu::AMMODE_CLOSED {
+                    let menuopen = self.mp.menuopen.get(i).copied().unwrap_or(false);
+                    let sighton = self.players[i].insightaimmode && !self.players[i].health.sightoff_damage && !menuopen;
+                    self.sight_tick(i, sighton);
+                }
                 self.bgun_tick_vision(i);
                 {
                     let res = self.res.clone();
@@ -679,6 +727,12 @@ impl World {
                 self.player_spawn_inventory(i);
             }
         }
+        // chr_render_shield's bookkeeping for every chr drawn this frame.
+        for ci in 0..self.chrs.len() {
+            if self.chrs[ci].onanyscreen {
+                self.chr_shield_crawl_tick(ci);
+            }
+        }
         if n == 0 {
             // A headless match (the harness, not PD): no player pass to tick
             // the doors, lifts and chrs in, or to free the objects taken.
@@ -707,7 +761,13 @@ impl World {
             }
         }
         for b in (first..self.chrs.len()).rev() {
+            // props_tick_player: splat_tick_chr, then the chr's own tick.
+            self.splat_tick_chr(b);
             self.bot_tick(b, true);
+        }
+        // The players' props: splat_tick_chr before player_tick_third_person.
+        for p in 0..first {
+            self.splat_tick_chr(p);
         }
     }
 
@@ -739,9 +799,16 @@ impl World {
     /// `props_tick` (`proptick.c:48`): the players' tracers (`player_tick_beams`),
     /// the sentries' (`obj_tick`), the explosions, the smoke.
     fn props_tick(&mut self) {
-        for p in self.players.iter_mut() {
+        // shieldhits_tick (`proptick.c:62`) before the props.
+        self.shieldhits_tick();
+        // player_tick_beams (`player.c:5255`): the hands' tracers, and in a
+        // match the body's (the ones the other players see).
+        for (pi, p) in self.players.iter_mut().enumerate() {
             for h in 0..2 {
                 p.gun.hands[h].beam.tick(&mut self.rng, &self.lv);
+            }
+            for slot in self.chrs[pi].fireslots.iter_mut() {
+                slot.beam.tick(&mut self.rng, &self.lv);
             }
         }
         // chr_tick_beams (`chr.c:2343`), newest prop first.

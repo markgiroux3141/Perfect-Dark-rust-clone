@@ -132,7 +132,8 @@ pub struct Projectile {
     pub unk0b8: [f32; 3],
     pub lastwooshframe: i32,
     pub startframe: i32,
-    /// `targetprop`: what a homing rocket steers at (`trackedprops[0]`). M6.
+    /// `targetprop`: the chr a homing rocket steers at (a player's lock,
+    /// `trackedprops[0]`, or a simulant's target).
     pub targetprop: Option<usize>,
     /// A simulant's Slayer rocket (`rocket_tick_fbw`): its speed and heading
     /// (`fbwrotx` pitch, `fbwroty` yaw), the tail smoke's timer, and its route

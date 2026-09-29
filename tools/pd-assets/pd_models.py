@@ -99,6 +99,9 @@ FX_TEXTURES = [
     0x08F0, 0x0B53, 0x0C27, 0x0C28, 0x0C32, 0x0C97, 0x0DA5,
     # g_TcSkyWaterConfigs[TEX_ENV_00] (textureconfig.c:233): the clouds.
     0x0013,
+    # g_TcShieldConfigs[TEX_SHIELD_00] (textureconfig.c:125): the shield's
+    # shimmer; g_TcRadarConfigs[TEX_RADAR_BG] (:324): the radar's disc.
+    0x000D, 0x003C,
 ]
 
 # ---------------------------------------------------------------------------

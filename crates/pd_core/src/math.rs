@@ -37,6 +37,12 @@ pub fn baddtor2(deg: f32) -> f32 {
     deg * (M_BADPI / 180.0)
 }
 
+/// `BADDTOR3(deg)` = `deg * M_BADTAU / 360` (`math.h:16`).
+#[inline]
+pub fn baddtor3(deg: f32) -> f32 {
+    deg * M_BADTAU / 360.0
+}
+
 /// `BADDTOR4(deg)` = `deg / 360 * M_BADTAU` (`math.h:17`).
 #[inline]
 pub fn baddtor4(deg: f32) -> f32 {
@@ -289,21 +295,6 @@ pub fn mtx4_load_y_rotation(angle: f32) -> Mat4 {
 pub fn mtx4_load_z_rotation(angle: f32) -> Mat4 {
     let (c, s) = (angle.cos(), angle.sin());
     Mat4::from_cols(Vec4::new(c, s, 0.0, 0.0), Vec4::new(-s, c, 0.0, 0.0), Vec4::Z, Vec4::W)
-}
-
-/// `mtx4_load_rotation` (`mtx.c:187`): the rotation by Euler angles `rot`
-/// (radians), as PD composes them.
-pub fn mtx4_load_rotation(rot: Vec3) -> Mat4 {
-    let (xcos, xsin) = (rot.x.cos(), rot.x.sin());
-    let (ycos, ysin) = (rot.y.cos(), rot.y.sin());
-    let (zcos, zsin) = (rot.z.cos(), rot.z.sin());
-    let (a, b, c, d) = (xsin * zsin, xcos * zsin, xsin * zcos, xcos * zcos);
-    Mat4::from_cols(
-        Vec4::new(ycos * zcos, ycos * zsin, -ysin, 0.0),
-        Vec4::new(c * ysin - xcos * zsin, a * ysin + xcos * zcos, xsin * ycos, 0.0),
-        Vec4::new(d * ysin + xsin * zsin, b * ysin - xsin * zcos, xcos * ycos, 0.0),
-        Vec4::W,
-    )
 }
 
 /// `mtx00016874` (`mtx.c:285`): the *inverse* of `look_basis`, a world-to-camera

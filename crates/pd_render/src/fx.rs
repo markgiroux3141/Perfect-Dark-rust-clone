@@ -75,7 +75,14 @@ pub enum FxKind {
     XrayBg,
     /// A prop in x-ray drawn as flat colour (the boards), no z.
     Xray,
+    /// A shield's glow on a chr (`shieldhit_render`): `TEX_SHIELD_00` (IA8,
+    /// wrapped) × shade (`G_CC_MODULATEIA`), `G_RM_ZB_CLD_SURF`, back faces
+    /// culled.
+    Shield,
 }
+
+/// `g_TcShieldConfigs[TEX_SHIELD_00]` (TEXTURE_000D).
+pub const TEX_SHIELD: u16 = 0x000d;
 
 /// `g_TcGeneralConfigs[TEX_GENERAL_NBOMBDOME]` (TEXTURE_063B).
 pub const TEX_NBOMBDOME: u16 = 0x063b;
@@ -86,7 +93,7 @@ impl FxKind {
         match self {
             FxKind::Beam(_) => 0,
             FxKind::Spark => 1,
-            FxKind::Wallhit(_) | FxKind::Smoke | FxKind::Nbomb | FxKind::GunFire(_) => 2,
+            FxKind::Wallhit(_) | FxKind::Smoke | FxKind::Nbomb | FxKind::GunFire(_) | FxKind::Shield => 2,
             FxKind::Flat | FxKind::Shard | FxKind::XrayBg | FxKind::Xray => 3,
             FxKind::Explosion(_) => 4,
         }
@@ -101,6 +108,7 @@ impl FxKind {
             FxKind::Flat | FxKind::Shard | FxKind::XrayBg | FxKind::Xray => (None, None, false),
             FxKind::Smoke => (Some(TEX_SMOKE), None, false),
             FxKind::Nbomb => (Some(TEX_NBOMBDOME), None, false),
+            FxKind::Shield => (Some(TEX_SHIELD), None, false),
             FxKind::GunFire(t) => (Some(t), None, true),
             FxKind::Explosion(i) => {
                 let (a, b) = texture_pair(i as usize);
@@ -114,6 +122,7 @@ impl FxKind {
             FxKind::Flat => FxPipe::Opaque,
             FxKind::Wallhit(_) => FxPipe::Decal,
             FxKind::XrayBg | FxKind::Xray => FxPipe::NoZ,
+            FxKind::Shield => FxPipe::XluCull,
             _ => FxPipe::Xlu,
         }
     }
@@ -248,7 +257,7 @@ pub fn shards_geometry(shards: &pd_sim::fx::shards::Shards, campos: Vec3, xray: 
         if d.abs().max_element() >= 10000.0 {
             continue;
         }
-        let mut m = pd_core::math::mtx4_load_rotation(s.rot);
+        let mut m = pd_core::math::load_rotation(s.rot);
         m.w_axis = s.pos.extend(1.0);
         let col = |k: usize| -> Option<[f32; 4]> {
             match xray {
@@ -396,7 +405,8 @@ pub const WALLHIT_TEX: [(u16, f32, f32); 18] = [
 pub fn wallhit_tris(wh: &Wallhit, out: &mut Vec<FxVert>) {
     let (_, tw, th) = WALLHIT_TEX[wh.texnum];
     let st = [[0.0, th], [0.0, 0.0], [tw, 0.0], [tw, th]];
-    let v = |i: usize| fv(wh.corners[i], st[i], wh.cols[i]);
+    let corners = wh.draw_corners();
+    let v = |i: usize| fv(corners[i], st[i], wh.cols[i]);
     out.extend_from_slice(&[v(0), v(1), v(2), v(0), v(2), v(3)]);
 }
 
@@ -771,6 +781,9 @@ pub struct FxCam {
     pub world_to_screen: Mat4,
     /// `room_get_final_brightness_for_player`.
     pub brightness: f32,
+    /// The viewing player (`g_Vars.currentplayernum`): its own body's tracers
+    /// and flashes are not drawn.
+    pub viewer: usize,
 }
 
 /// The world pass's effects in PD's order: the boards, the bullet holes, the
@@ -828,10 +841,8 @@ pub fn world_fx(world: &pd_sim::world::World, cam: &FxCam, xray: Option<&Eraser>
         out.extend(bs);
     }
     // props_render_beams (`propobj.c:11450`): the simulants' tracers
-    // (`chr->fireslots[]`) and the sentries'. SUBST: another human's tracers
-    // are their chr's fireslot beams in PD / theirs are drawn only in their
-    // own gun pass until M6 poses a player's body.
-    for c in world.chrs.iter().filter(|c| c.player.is_none()) {
+    // (`chr->fireslots[]`), the other players' bodies', and the sentries'.
+    for c in world.chrs.iter().filter(|c| c.player != Some(cam.viewer)) {
         for slot in &c.fireslots {
             out.extend(beam_geometry(&slot.beam, cam.pos));
         }
@@ -844,7 +855,7 @@ pub fn world_fx(world: &pd_sim::world::World, cam: &FxCam, xray: Option<&Eraser>
     // A simulant's muzzle flash: its held gun's CHRGUNFIRE node
     // (`model_render_node_chr_gunfire`), while `weapon_set_gunfire_visible`.
     if xray.is_none() {
-        for (k, c) in world.chrs.iter().enumerate().filter(|(_, c)| c.player.is_none() && c.onanyscreen) {
+        for (k, c) in world.chrs.iter().enumerate().filter(|(_, c)| c.player != Some(cam.viewer) && c.onanyscreen) {
             for (h, held) in c.held.iter().enumerate() {
                 let Some(held) = held.as_ref().filter(|g| g.gunfire) else { continue };
                 if let Some(node) = held.model.def.get_part(pd_core::ids::MODELPART_0000) {
@@ -904,6 +915,8 @@ enum FxPipe {
     Xlu,
     /// Translucent, no z at all (the x-ray).
     NoZ,
+    /// Translucent, z test, no write, back faces culled (`G_CULL_BACK`).
+    XluCull,
 }
 
 #[repr(C)]
@@ -1045,7 +1058,12 @@ impl FxRenderer {
                 })],
                 compilation_options: Default::default(),
             }),
-            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, cull_mode: None, ..Default::default() },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: (key == FxPipe::XluCull).then_some(wgpu::Face::Back),
+                ..Default::default()
+            },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: self.depth_format,
                 depth_write_enabled: key == FxPipe::Opaque,

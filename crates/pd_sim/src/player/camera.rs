@@ -15,6 +15,70 @@ use pd_core::math::{self, dtor};
 pub const SCREEN_W: f32 = 320.0;
 pub const SCREEN_H: f32 = 220.0;
 
+/// A player's viewport in framebuffer pixels: left, top, width, height.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Viewport {
+    pub left: i16,
+    pub top: i16,
+    pub width: i16,
+    pub height: i16,
+}
+
+impl Viewport {
+    /// `player_get_viewport_width/left/height/top` (`player.c:2800-2997`) for
+    /// player `playernum` of `playercount` in a match: `g_ViModes[VIRES_LO]`
+    /// (320 × 220, `fulltop` 0), the Expansion Pak's layouts (`IS4MB()` and
+    /// `fourmeg2player` false), the full screen size, no cutscene. The views
+    /// leave a black line between them (the left and top players are a pixel
+    /// short).
+    pub fn player_get_viewport(playernum: usize, playercount: usize, screensplit: u8) -> Viewport {
+        use pd_core::ids::SCREENSPLIT_VERTICAL;
+        let (fbwidth, vwidth, fullheight, fulltop) = (320i16, 320i16, 220i16, 0i16);
+        let vertical = screensplit == SCREENSPLIT_VERTICAL;
+        let pn = playernum;
+        let width = if playercount >= 3 {
+            vwidth / 2 - (pn == 0 || pn == 2) as i16
+        } else if playercount == 2 && vertical {
+            vwidth / 2 - (pn == 0) as i16
+        } else {
+            vwidth
+        };
+        let left = if playercount >= 3 && (pn == 1 || pn == 3) || playercount == 2 && vertical && pn == 1 {
+            vwidth / 2 + fbwidth - vwidth
+        } else {
+            fbwidth - vwidth
+        };
+        let height = if playercount >= 2 {
+            let tmp = fullheight;
+            let mut height = tmp / 2;
+            if playercount == 2 {
+                if vertical {
+                    height = tmp;
+                } else if pn == 0 {
+                    // IS8MB()
+                    height -= 1;
+                }
+            } else if pn == 0 || pn == 1 {
+                height -= 1;
+            }
+            height
+        } else {
+            fullheight
+        };
+        let mut top = fulltop;
+        if playercount >= 2 && (!vertical || playercount != 2) && (playercount == 2 && pn == 1 && !vertical || pn == 2 || pn == 3) {
+            top = fulltop + fullheight / 2;
+        }
+        Viewport { left, top, width, height }
+    }
+
+    /// `player_get_aspect_ratio` (`player.c:2999`): width / height × the VI
+    /// mode's `yscale` (1).
+    pub fn aspect(&self) -> f32 {
+        self.width as f32 / self.height as f32
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Camera {
     pub c_screenwidth: f32,
