@@ -107,6 +107,10 @@ GROUPS = [
     ("DROPTYPE_", "u8", False, "`projectile->droptype`: how `obj_drop` throws a dropped object."),
     ("BOTFLAG_", "u32", True, "`aibot->flags`."),
     ("MA_AIBOT", "i32", False, "A simulant's `chr->myaction`."),
+    # The scenarios (mplayer/scenarios.c, bot.c, botroom.c).
+    ("AIBOTCMD_", "u8", False, "`aibot->command`: a simulant's orders (a human's, or the scenario's own)."),
+    ("COVERFLAG_", "u16", True, "`cover.flags`."),
+    ("MODEL_", "i32", True, "`g_ModelStates` rows (`models/index.json` maps each to its file)."),
 ]
 
 

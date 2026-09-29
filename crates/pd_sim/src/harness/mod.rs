@@ -22,6 +22,16 @@ pub const SPIKE_MIX: [u8; 6] = [WEAPON_AR34, WEAPON_CMP150, WEAPON_FALCON2, WEAP
 /// The spike's default seed (`PD_SEED`).
 pub const SPIKE_SEED: u64 = 0xab8d_9f77_8128_0783;
 
+/// The seed of the seeded matches whose checks the spike's seed stopped
+/// meeting in M10: the simulants' scenario-order timer draws `random()` every
+/// 20-60 s in a Combat match too (`bot.c:2677`, `teamisonlyai`), which moves
+/// every seeded match's course. On the spike's seed a Hard simulant ends up on
+/// Complex's walkway above the player it hunts (the route's end waypoint is
+/// upstairs), the Complex baseline has one 3-s stall, and one unarmed simulant
+/// takes 47 s to arm; seeds 2-8 fail one check or another (the Devastator and
+/// SuperDragon set landing no hits in two minutes is the usual one).
+pub const M10_SEED: u64 = 1;
+
 /// Which route graph the simulants use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NavChoice {

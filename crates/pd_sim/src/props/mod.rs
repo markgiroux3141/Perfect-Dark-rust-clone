@@ -245,6 +245,8 @@ pub struct Obj {
     pub tinted: Option<glass::TintedGlass>,
     /// A hover prop's float (`OBJTYPE_HOVERPROP`).
     pub hov: Option<hover::Hov>,
+    /// `weaponobj->team`: a Capture the Case briefcase's team.
+    pub team: u8,
     /// `prop->rooms[0]` for a setup object (its floors' room). `// SUBST:`
     /// PD keeps the rooms the object's box enters, followed as it moves /
     /// the room its position is in when placed.
@@ -293,6 +295,7 @@ impl Obj {
             lift: None,
             tinted: None,
             hov: None,
+            team: 0,
             room: None,
         };
         // weapon_init (`propobj.c:17353`): the gunfire hidden.

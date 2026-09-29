@@ -1891,6 +1891,7 @@ pub fn scenario_scenario_menu_handler(pd: &mut MenuSystem, op: i32, item: &'stat
             if let Some(&i) = list.get(data.value.max(0) as usize) {
                 pd.mp.setup.scenario = i as u8;
             }
+            pd.scenario_init();
         }
         MENUOP_GET_SELECTED_INDEX => {
             if let Some(p) = list.iter().position(|&i| i == pd.mp.setup.scenario as usize) {

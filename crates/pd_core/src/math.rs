@@ -44,6 +44,12 @@ pub fn badrtod4(rad: f32) -> f32 {
     rad * 360.0 / M_BADTAU
 }
 
+/// `RTOD2(rad)` = `rad * (180 / M_PI)` (`math.h:20`): true radians to degrees.
+#[inline]
+pub fn rtod2(rad: f32) -> f32 {
+    rad * (180.0 / std::f32::consts::PI)
+}
+
 /// `DTOR(deg)`: a true degree conversion.
 #[inline]
 pub fn dtor(deg: f32) -> f32 {

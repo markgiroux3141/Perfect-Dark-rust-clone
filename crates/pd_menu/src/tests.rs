@@ -176,6 +176,29 @@ fn every_menu_model_draws() {
     let _ = pd.draw.text.holoray_fromx;
 }
 
+/// Choosing King of the Hill in the Scenario list turns teams on
+/// (`koh_init`); Capture the Case too, and folds every chr's team into its four
+/// (`ctc_init`). The Hill Options' time goes into the match.
+#[test]
+fn choosing_a_team_scenario_turns_teams_on() {
+    let mut pd = pd();
+    pd.mp.setup.options &= !(gd::MPOPTION_TEAMSENABLED as u32);
+    pd.mp.setup.chrslots = 0x31;
+    pd.mp.bots[1].base.team = 6;
+    let item = &gd::G_MP_SCENARIO_MENU_ITEMS[0];
+    // Everything unlocked, not a quick team game: the list is the six in order.
+    let mut data = HandlerData { value: gd::MPSCENARIO_KINGOFTHEHILL, ..HandlerData::default() };
+    super::handlers::scenario_scenario_menu_handler(&mut pd, MENUOP_CONFIRM, item, &mut data);
+    assert_eq!(pd.mp.setup.scenario as i32, gd::MPSCENARIO_KINGOFTHEHILL);
+    assert!(pd.mp.setup.options & gd::MPOPTION_TEAMSENABLED as u32 != 0);
+    assert_eq!(pd.mp.bots[1].base.team, 6);
+    let mut data = HandlerData { value: gd::MPSCENARIO_CAPTURETHECASE, ..HandlerData::default() };
+    super::handlers::scenario_scenario_menu_handler(&mut pd, MENUOP_CONFIRM, item, &mut data);
+    assert_eq!(pd.mp.bots[1].base.team, 2);
+    pd.vars.mphilltime = 50;
+    assert_eq!(pd.match_setup(pd_core::ids::STAGE_MP_COMPLEX).mphilltime, 50);
+}
+
 /// Start Game on the Stuff layer, then A on the Ready dialog: the menus close
 /// and hand back PD's `g_MpSetup` as a `MatchSetup`, and come back after it.
 #[test]

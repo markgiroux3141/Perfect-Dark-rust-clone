@@ -29,6 +29,7 @@
 //! sound, the dizzy wobble and the model's turn in `bot_apply_movement`.
 
 pub mod botact;
+mod mainloop;
 pub mod botcmd;
 pub mod botinv;
 
@@ -85,13 +86,21 @@ impl BotConfig {
     }
 }
 
-/// `chr->myaction` values a free-for-all general sim uses.
+/// `chr->myaction`: what a simulant is doing (`MA_AIBOT*`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MyAction {
     MainLoop,
     Attack,
-    /// `MA_AIBOTGETITEM`: going to `aibot->gotoprop`.
+    /// `MA_AIBOTGETITEM`: going to `aibot->gotoprop`, a pickup.
     GetItem,
+    /// `MA_AIBOTFOLLOW`: keeping near `followingplayernum`.
+    Follow,
+    /// `MA_AIBOTGOTOPOS`: going to `aibot->gotopos` (a hill, a case's spot).
+    GotoPos,
+    /// `MA_AIBOTGOTOPROP`: going to `aibot->gotoprop`, a scenario prop.
+    GotoProp,
+    /// `MA_AIBOTDOWNLOAD`: standing at Hacker Central's terminal.
+    Download,
 }
 
 /// `struct aibot` (the Combat fields).
@@ -111,7 +120,8 @@ pub struct Aibot {
     pub items: [Option<botinv::BotInvItem>; botinv::MAX_BOTINV_ITEMS],
     /// `BOTFLAG_*`.
     pub flags: u32,
-    /// `aibot->gotoprop`: the pickup it is going for (an object id).
+    /// `aibot->gotoprop`: the pickup or scenario object (a case, the uplink,
+    /// the terminal) it is going for (an object id).
     pub gotoprop: Option<u32>,
     pub throwtimer60: i32,
     /// What it has learnt of the set's weapons, by slot and function
@@ -188,6 +198,34 @@ pub struct Aibot {
     /// `lastkilledbyplayernum`: the chr index of whoever last killed this
     /// simulant (`mpstats_record_death`), -1 none.
     pub lastkilledbyplayernum: i32,
+    /// `aibot->command` (`AIBOTCMD_*`): its orders, a human's or (with
+    /// `teamisonlyai`) its own from the scenario every 20-60 s
+    /// (`commandtimer60`).
+    pub command: u8,
+    pub commandtimer60: i32,
+    /// No human on its team (`mp_calculate_team_is_only_ai`).
+    pub teamisonlyai: bool,
+    /// The % chance of following a teammate (`bot_find_teammate_to_follow`),
+    /// by difficulty.
+    pub followchance: i32,
+    /// `MA_AIBOTFOLLOW`'s chr index, and whether a target may pull it away.
+    pub followingplayernum: Option<usize>,
+    pub canbreakfollow: bool,
+    /// `MA_AIBOTGOTOPOS`'s destination.
+    pub gotopos: Vec3,
+    pub gotorooms: Vec<u16>,
+    /// King of the Hill: heading into the hill, the spot's pad or cover, and
+    /// the hill it was going to.
+    pub inhill: bool,
+    pub hillpadnum: i32,
+    pub hillcovernum: i32,
+    pub lastknownhill: Option<u16>,
+    /// Hold the Briefcase's case, Capture the Case's, Hacker Central's uplink.
+    pub hasbriefcase: bool,
+    pub hascase: bool,
+    pub hasuplink: bool,
+    /// Hold the Briefcase: time held towards the next point.
+    pub htbheldtimer60: i32,
 }
 
 impl Aibot {
@@ -268,6 +306,28 @@ impl Aibot {
             last_dist: 0.0,
             last_choice: None,
             lastkilledbyplayernum: -1,
+            command: AIBOTCMD_NORMAL,
+            commandtimer60: 0,
+            teamisonlyai: false,
+            followchance: match config.difficulty {
+                BOTDIFF_MEAT | BOTDIFF_DARK => 0,
+                BOTDIFF_EASY => 10,
+                BOTDIFF_HARD => 40,
+                BOTDIFF_PERFECT => 60,
+                _ => 20,
+            },
+            followingplayernum: None,
+            canbreakfollow: false,
+            gotopos: Vec3::ZERO,
+            gotorooms: Vec::new(),
+            inhill: false,
+            hillpadnum: -1,
+            hillcovernum: -1,
+            lastknownhill: None,
+            hasbriefcase: false,
+            hascase: false,
+            hasuplink: false,
+            htbheldtimer60: 0,
         }
     }
 }
@@ -328,7 +388,8 @@ pub fn botinv_get_dist_config(gset: &Gset, weaponnum: u8, func: usize) -> usize 
 /// `bot_calculate_max_speed` (`bot.c:1096`), cm per 60 Hz tick.
 pub fn bot_calculate_max_speed(c: &Chr) -> f32 {
     let Some(a) = &c.aibot else { return 0.0 };
-    let mut speed = c.bodyheight * (1.0 / 159.0);
+    // A case's carrier is as slow as a player carrying it (bondwalk.c:1472).
+    let mut speed = if a.hascase || a.hasbriefcase { -63.600_006 } else { c.bodyheight * (1.0 / 159.0) };
     speed = speed * 0.002_830_188_954_249 + 1.0;
     speed *= match a.config.difficulty {
         BOTDIFF_MEAT => 5.0,
@@ -433,13 +494,27 @@ impl World {
             let target_pos = self.chrs[i].target.map(|t| self.chrs[t].pos);
             let lvframe60 = self.lv.lvframe60;
             let freal = self.lv.lvupdate60freal;
+            // bot.c:963: a downloader faces the terminal; a follower near its
+            // leader (seen lately, not a MeatSim) faces the leader's way.
+            let htm = &self.mp.scenariodata.htm;
+            let terminal_pos = (htm.dlterminalnum != -1).then(|| htm.terminals[htm.dlterminalnum as usize].prop.and_then(|id| self.props.get(id)).map(|o| o.pos)).flatten();
+            let a = self.ab(i);
+            let leader_theta = a
+                .followingplayernum
+                .filter(|&f| a.myaction == MyAction::Follow && a.chrdistances[f] < 300.0 && a.realignangleframe >= lvframe60 - 60 && a.config.difficulty != BOTDIFF_MEAT)
+                .map(|f| self.chrs[f].theta());
             let c = &mut self.chrs[i];
             let oldangle = c.theta();
+            let myaction = c.aibot.as_ref().unwrap().myaction;
             let mut targetangle = if dead {
                 c.theta()
             } else if about {
                 let a = c.chr_get_angle_to_pos(target_pos.unwrap());
                 oldangle + a + c.aibot.as_ref().unwrap().zeroangle
+            } else if let (MyAction::Download, Some(tp)) = (myaction, terminal_pos) {
+                oldangle + c.chr_get_angle_to_pos(tp)
+            } else if let Some(t) = leader_theta {
+                t
             } else {
                 c.roty()
             };
@@ -528,7 +603,10 @@ impl World {
         }
         self.bot_apply_movement(i);
         self.chr_tick(i, fulltick);
-        // bot.c:1085: (scenario_tick_chr, M10) then what it walked over.
+        // bot.c:1083: the scenario's tick, then what it walked over.
+        if self.lv.lvframe60 >= 145 && updateable {
+            self.scenario_tick_chr(Some(i), 0);
+        }
         if self.lv.lvframe60 >= 145 && updateable && !self.chr_is_dead(i) {
             self.bot_check_pickups(i);
         }
@@ -668,80 +746,9 @@ impl World {
         }
         // Switching weapons (`bot.c:2491`).
         self.bot_tick_changegun(i);
-        // (bot.c:2522-2680: the laser's ammo, cloaks, KazeSim, the scenarios'
-        // commands: M10/M11.)
-
-        // The main loop (`bot.c:2681`): pickups it needs, else attack the
-        // target, else anything to pick up. (Commands and personalities: M11;
-        // following a teammate with no target, `bot_find_teammate_to_follow`: M11.)
-        if self.ab(i).myaction == MyAction::MainLoop || self.ab(i).forcemainloop {
-            {
-                let a = self.ab_mut(i);
-                a.forcemainloop = false;
-                a.attackingplayernum = None;
-            }
-            let mut newaction = None;
-            let gotoprop = self.bot_find_pickup(i, botinv::PICKUPCRITERIA_DEFAULT);
-            self.ab_mut(i).gotoprop = gotoprop;
-            if gotoprop.is_some() {
-                newaction = Some(MyAction::GetItem);
-            }
-            if newaction.is_none() && self.chrs[i].target.is_some() {
-                newaction = Some(MyAction::Attack);
-                self.ab_mut(i).abortattacktimer60 = -1;
-            }
-            if newaction.is_none() {
-                let gotoprop = self.bot_find_pickup(i, botinv::PICKUPCRITERIA_ANY);
-                self.ab_mut(i).gotoprop = gotoprop;
-                if gotoprop.is_some() {
-                    newaction = Some(MyAction::GetItem);
-                }
-            }
-            match newaction {
-                Some(MyAction::GetItem) => {
-                    // chr_go_to_prop(chr, gotoprop, GOPOSFLAG_RUN).
-                    if let Some((pos, room)) = self.ab(i).gotoprop.and_then(|id| self.props.get(id)).map(|o| (o.pos, o.room)) {
-                        let rooms: Vec<u16> = room.into_iter().collect();
-                        self.chr_go_to_room_pos(i, pos, &rooms);
-                        self.ab_mut(i).myaction = MyAction::GetItem;
-                    }
-                }
-                Some(MyAction::Attack) => {
-                    let a = self.ab_mut(i);
-                    if a.myaction != MyAction::Attack {
-                        a.myaction = MyAction::Attack;
-                        a.distmode = None;
-                    }
-                }
-                _ => {}
-            }
-        }
-        // The action is no longer valid: back to the main loop (`bot.c:3225`).
-        if self.ab(i).myaction == MyAction::GetItem {
-            let gone = self.ab(i).gotoprop.and_then(|id| self.props.get(id)).is_none_or(|o| o.timetoregen != 0 || o.is_gone());
-            if self.chrs[i].actiontype != crate::chr::Act::GoPos || gone {
-                self.ab_mut(i).myaction = MyAction::MainLoop;
-            }
-        } else if self.ab(i).myaction == MyAction::Attack {
-            let invalid = match self.ab(i).attackingplayernum {
-                Some(p) => self.chr_is_dead(p),
-                None => self.chrs[i].target.is_none_or(|t| self.chr_is_dead(t)),
-            };
-            if invalid {
-                self.ab_mut(i).myaction = MyAction::MainLoop;
-            } else {
-                self.botcmd_tick_dist_mode(i);
-                if self.bot_find_pickup(i, botinv::PICKUPCRITERIA_CRITICAL).is_some() {
-                    // bot_can_do_critical_pickup.
-                    self.ab_mut(i).myaction = MyAction::MainLoop;
-                } else {
-                    let a = self.ab(i);
-                    if a.abortattacktimer60 >= 0 && a.targetlastseen60 < lvframe60 - a.abortattacktimer60 {
-                        self.ab_mut(i).myaction = MyAction::MainLoop;
-                    }
-                }
-            }
-        }
+        // The scenario orders, the main loop and the actions' checks
+        // (`bot.c:2522-3340`).
+        self.bot_tick_mainloop(i);
 
         self.bot_choose_general_target(i);
 
@@ -1270,6 +1277,16 @@ impl World {
             a.realignangleframe = old.realignangleframe;
             a.attackingplayernum = old.attackingplayernum;
             a.abortattacktimer60 = old.abortattacktimer60;
+            // Kept too: its orders, its team's make-up and follow chance, who
+            // it follows and where it was going (bot_reset clears only the
+            // rest, `bot.c:121`).
+            a.command = old.command;
+            a.teamisonlyai = old.teamisonlyai;
+            a.followchance = old.followchance;
+            a.followingplayernum = old.followingplayernum;
+            a.canbreakfollow = old.canbreakfollow;
+            a.gotopos = old.gotopos;
+            a.gotorooms = old.gotorooms.clone();
             a.random2 = r2;
             a.randomfrac = rf;
             a.random2ttl60 = 0;

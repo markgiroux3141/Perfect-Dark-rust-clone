@@ -151,6 +151,8 @@ impl World {
                 cmd_to_obj[cmd] = self.props.objs.last().map(|o| o.id);
             }
         }
+        // setup.c:1997: after the setup's objects and the simulants.
+        self.scenario_init_props();
         self.doors_link_siblings(&cmd_to_obj, &door_cmds);
         self.lifts_link_doors(&props, &cmd_to_obj, &lift_cmds, &liftdoor_cmds);
         // SUBST: PD runs the setup's background AI lists on BG chrs (their

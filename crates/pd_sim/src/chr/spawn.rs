@@ -111,7 +111,9 @@ impl crate::world::World {
             .collect();
         let cyls = self.chr_perims_except(i);
         let radius = self.chrs[i].radius;
-        crate::player::player_choose_spawn_location(&self.level, &self.stage, radius, &others, &cyls, &self.mp_room_visibility, &mut self.rng)
+        // scenario_choose_spawn_location (`bot.c:288`).
+        let pads = self.scenario_spawn_pads(i);
+        crate::player::player_choose_spawn_location(&self.level, &self.stage, &pads, radius, &others, &cyls, &self.mp_room_visibility, &mut self.rng)
     }
 
     /// `chr_move_to_pos(chr, pos, rooms, angle, force = true)` (`chraction.c`):

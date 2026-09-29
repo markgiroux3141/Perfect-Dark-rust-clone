@@ -116,7 +116,7 @@ impl Lights {
             *f |= ROOMFLAG_ONSCREEN;
         }
         let mut rng = Rng::new(0);
-        l.lighting_tick(&flags, 0, &mut rng);
+        l.lighting_tick(&flags, 0, &mut rng, &[]);
         l
     }
 
@@ -251,8 +251,11 @@ impl Lights {
     }
 
     /// `lighting_tick` / `rooms_tick_lighting` (`dlights.c:1166`, `:1248`),
-    /// with `roomflags` the latest portal tick's ONSCREEN/STANDBY bits.
-    pub fn lighting_tick(&mut self, roomflags: &[u16], lvupdate240: i32, rng: &mut Rng) {
+    /// with `roomflags` the latest portal tick's ONSCREEN/STANDBY bits and
+    /// `highlight` the scenario's tints of its `LIGHTOP_HIGHLIGHT` rooms
+    /// (`scenario_highlight_room`: King of the Hill's hill, Capture the Case's
+    /// bases).
+    pub fn lighting_tick(&mut self, roomflags: &[u16], lvupdate240: i32, rng: &mut Rng, highlight: &[(u16, [f32; 3])]) {
         if self.transfer.is_none() {
             return;
         }
@@ -366,9 +369,12 @@ impl Lights {
                 r.br_settled_regional = sum.min(255) as u8;
                 r.flags |= ROOMFLAG_BRIGHTNESS_CALCED | ROOMFLAG_NEEDRESHADE;
                 r.flags &= !(ROOMFLAG_BRIGHTNESS_DIRTY_PERM | ROOMFLAG_BRIGHTNESS_DIRTY_TEMP);
-                // LIGHTOP_HIGHLIGHT's scenario tint is King of the Hill's (M10).
-                let f = self.room_get_final_brightness_for_player(i) as f32 * (1.0 / 255.0);
-                self.rooms[i].highlightfrac = [f; 3];
+                let b = self.room_get_final_brightness_for_player(i) as i32;
+                let tint = if self.rooms[i].lightop == LIGHTOP_HIGHLIGHT { highlight.iter().find(|h| h.0 as usize == i).map(|h| h.1) } else { None };
+                self.rooms[i].highlightfrac = match tint {
+                    Some(t) => t.map(|t| ((b as f32 * t) as i32) as f32 * (1.0 / 255.0)),
+                    None => [b as f32 * (1.0 / 255.0); 3],
+                };
             }
         }
     }
@@ -572,7 +578,7 @@ mod tests {
         }
         assert_eq!(l.room_get_final_brightness_for_player(1), 255);
         let mut rng = Rng::new(1);
-        l.lighting_tick(&flags, 4, &mut rng);
+        l.lighting_tick(&flags, 4, &mut rng, &[]);
         assert_eq!(l.rooms[1].br_flash, 72);
     }
 
@@ -592,7 +598,7 @@ mod tests {
         assert!(!l.lights[first].healthy && !l.lights[first].on);
         assert!(l.lights_handle_hit(&s.rooms, centre + n * 100.0, centre, room).is_none() && l.lights_handle_hit(&s.rooms, centre - n * 100.0, centre, room).is_none(), "broke twice");
         let flags = vec![ROOMFLAG_ONSCREEN; s.rooms.roomcount()];
-        l.lighting_tick(&flags, 4, &mut Rng::new(1));
+        l.lighting_tick(&flags, 4, &mut Rng::new(1), &[]);
         assert!(l.rooms[room].br_settled_local < before, "{} -> {}", before, l.rooms[room].br_settled_local);
     }
 }

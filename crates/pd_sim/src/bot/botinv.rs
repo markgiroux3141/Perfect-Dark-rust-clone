@@ -523,8 +523,11 @@ impl World {
         let mut newweaponnum = WEAPON_UNARMED;
         let mut newfuncnum = FUNC_PRIMARY;
         let mut keepcurrentweapon = false;
-        // (MA_AIBOTDOWNLOAD: Hacker Central, M10.)
-        if a.config.bottype == BOTTYPE_PEACE {
+        // Downloading: the fists (the uplink in hand), not the best gun.
+        if a.myaction == super::MyAction::Download {
+            keepcurrentweapon = true;
+        }
+        if !keepcurrentweapon && a.config.bottype == BOTTYPE_PEACE {
             newfuncnum = FUNC_SECONDARY;
             keepcurrentweapon = true;
         }
@@ -684,7 +687,8 @@ impl World {
         let gset = self.res.gset.clone();
         let items = self.ab(i).items;
         for it in items.iter().flatten() {
-            if (it.ty == INVITEMTYPE_WEAP || it.ty == INVITEMTYPE_DUAL) && (dropall || weaponnum == it.weapon1) && !gset.has_flag(it.weapon1, WEAPONFLAG_UNDROPPABLE) && gset.weapon(it.weapon1).is_some_and(|d| d.tp_model.is_some()) {
+            let droppable = !gset.has_flag(it.weapon1, WEAPONFLAG_UNDROPPABLE) || (self.setup.scenario == MPSCENARIO_HACKERCENTRAL && it.weapon1 == WEAPON_DATAUPLINK);
+            if (it.ty == INVITEMTYPE_WEAP || it.ty == INVITEMTYPE_DUAL) && (dropall || weaponnum == it.weapon1) && droppable && gset.weapon(it.weapon1).is_some_and(|d| d.tp_model.is_some()) {
                 self.weapon_create_for_chr_drop(i, it.weapon1);
             }
         }
@@ -791,8 +795,7 @@ impl World {
                 }
             }
             OBJTYPE_SHIELD => {
-                // (Hold the Briefcase: M10.)
-                if o.shieldamount <= self.chr_get_shield(i) * 0.125 {
+                if o.shieldamount <= self.chr_get_shield(i) * 0.125 || (self.setup.scenario == MPSCENARIO_HOLDTHEBRIEFCASE && a.hasbriefcase) {
                     return false;
                 }
             }
@@ -834,7 +837,13 @@ impl World {
             }
             OBJTYPE_WEAPON => {
                 let itemtype = self.ab(i).botinv_get_item_type(o.weaponnum);
-                // (The briefcase and the data uplink: M10.)
+                // bot.c:414: the scenarios' own.
+                if o.weaponnum == WEAPON_BRIEFCASE2 {
+                    return self.scenario_pick_up_briefcase(i, id);
+                }
+                if o.weaponnum == WEAPON_DATAUPLINK {
+                    return self.scenario_pick_up_uplink(i, id);
+                }
                 // prop_play_pickup_sound: the same list as a player's but the bolt.
                 self.sound_at(weapon_pickup_sound(o.weaponnum), 1.0, o.pos, DEFAULT_DISTS);
                 let ammotype = Bgun::bgun_get_ammo_type_for_weapon(&gset, o.weaponnum, FUNC_PRIMARY);
@@ -879,8 +888,19 @@ impl World {
         let mut ammoproplist: [Option<u32>; 33] = [None; 33];
         let mut ammodistlist = [0f32; 33];
         let invitems: Vec<bool> = weaponnums.iter().map(|&w| self.ab(i).botinv_get_item(w).is_some()).collect();
-        // (King of the Hill's barelydominatinghill: M10.)
-        let barelydominatinghill = false;
+        // A team of simulants holding the hill with no more than two over the
+        // opponents in it keeps its defenders there (`bot.c:1896`).
+        let mut barelydominatinghill = false;
+        let hill = self.mp.scenariodata.koh.hillroom;
+        if self.ab(i).teamisonlyai && self.setup.scenario == MPSCENARIO_KINGOFTHEHILL && hill.is_some() && self.chr_room0(i) == hill {
+            let numteam = self.bot_get_num_teammates_defending_hill(i);
+            let numopponents = self.bot_get_num_opponents_in_hill(i);
+            if numteam >= numopponents && numteam <= numopponents + 2 {
+                barelydominatinghill = true;
+            }
+        }
+        let ctcreturn = self.setup.scenario == MPSCENARIO_CAPTURETHECASE && self.bot_should_return_ctc_token(i);
+        let downloading = self.ab(i).myaction == super::MyAction::Download;
         let cpos = self.chrs[i].pos;
         // The active props, newest first (`prop_activate` puts a prop at the head).
         let props: Vec<(u32, u8, u8, u32, [i32; 19], glam::Vec3)> = self
@@ -970,7 +990,8 @@ impl World {
             if done {
                 break;
             }
-            if weaponnums[k] != WEAPON_MPSHIELD {
+            // Hold the Briefcase's carrier takes no shields.
+            if weaponnums[k] != WEAPON_MPSHIELD || (self.setup.scenario == MPSCENARIO_HOLDTHEBRIEFCASE && a.hasbriefcase) {
                 continue;
             }
             let mut triggerathealth = 8.1f32;
@@ -985,8 +1006,14 @@ impl World {
             } else if barelydominatinghill {
                 triggerathealth = 4.0 - (rf + rf);
                 desiredshield = 1.0 - rf;
+            } else if ctcreturn {
+                // Less likely while taking a case home, or downloading.
+                triggerathealth = 3.0 - (rf + rf);
+                desiredshield = 0.0;
+            } else if downloading {
+                triggerathealth = 4.0 - (rf + rf);
+                desiredshield = 1.0;
             } else {
-                // (Capture the Case's carrier and Hacker Central's downloader: M10.)
                 desiredshield = match criteria {
                     PICKUPCRITERIA_ANY => 7.9,
                     PICKUPCRITERIA_DEFAULT => 4.0 - (rf + rf),
@@ -1052,6 +1079,11 @@ impl World {
             if weaponnums[k] == WEAPON_MPSHIELD || !invitems[k] || (cfg.haspriammogoal == 0 && cfg.hassecammogoal == 0) || scores2[k] < bestscore1 {
                 continue;
             }
+            // No ammo runs while taking a case home or downloading.
+            if ctcreturn || downloading {
+                done = true;
+                break;
+            }
             let (desiredpriammo, desiredsecammo);
             let mut include_equipped = true;
             let w = weaponnums[k];
@@ -1104,6 +1136,10 @@ impl World {
         // The best weapon it doesn't have.
         for k in 0..NUM_MPWEAPONSLOTS {
             if done {
+                break;
+            }
+            if weaponnums[k] != WEAPON_MPSHIELD && (ctcreturn || downloading) {
+                done = true;
                 break;
             }
             if weaponnums[k] != WEAPON_MPSHIELD && !barelydominatinghill && (self.botinv_allows_weapon(i, weaponnums[k], FUNC_PRIMARY) || self.botinv_allows_weapon(i, weaponnums[k], FUNC_SECONDARY)) && !invitems[k] && weapproplist[k].is_some() {

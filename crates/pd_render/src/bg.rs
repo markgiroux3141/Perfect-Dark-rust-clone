@@ -177,7 +177,9 @@ pub struct StageBg {
 
 /// A room's last written brightness (`br`, flash, black flashes) and which of
 /// its animated kinds have initialised.
-type RoomState = (Option<(u8, i32, bool)>, Vec<bool>);
+/// A room's colour table's inputs (brightness, flash, black flashes, the
+/// scenario's tint as bits) and its animated textures' initialisation.
+type RoomState = (Option<(u8, i32, bool, [u32; 3])>, Vec<bool>);
 
 /// What a frame of the BG needs from the world: the rooms on screen and their
 /// lighting, and the 80-second clock the animated textures run on.
@@ -185,6 +187,10 @@ pub struct BgFrame<'a> {
     pub portals: &'a PortalView,
     pub lights: &'a Lights,
     pub frac80: f32,
+    /// The scenario's tinted rooms (`scenario_highlight_room` on the
+    /// `LIGHTOP_HIGHLIGHT` rooms: King of the Hill's hill, Capture the Case's
+    /// bases).
+    pub tints: Vec<(u16, [f32; 3])>,
     /// PD pixels (the player's view, 320 × 220 for one) to target pixels.
     pub scale: [f32; 2],
     /// The target's size, for clamping the scissors.
@@ -383,10 +389,11 @@ impl StageBg {
             // room_get_settled_regional_brightness_for_player; the flash; and
             // whether a black colour takes the flash too (dlights.c:1717).
             let regional = if rl.flags & ROOMFLAG_BRIGHTNESS_CALCED != 0 { rl.br_settled_regional } else { 255 };
-            let key = (regional, rl.br_flash as i32, rl.lightop_cur_frac == 0.0 || rl.flags & ROOMFLAG_LIGHTSOFF != 0);
+            let tint = frame.tints.iter().find(|t| t.0 as usize == r).map(|t| t.1);
+            let key = (regional, rl.br_flash as i32, rl.lightop_cur_frac == 0.0 || rl.flags & ROOMFLAG_LIGHTSOFF != 0, tint.map_or([0; 3], |t| t.map(f32::to_bits)));
             if state[r].0 != Some(key) {
                 state[r].0 = Some(key);
-                let table = room_highlight(&rd.base, &rd.alpha_only, key.0, key.1, key.2);
+                let table = room_highlight(&rd.base, &rd.alpha_only, key.0, key.1, key.2, tint);
                 for &(vi, ci) in &rd.verts {
                     if let Some(c) = table.get(ci as usize) {
                         verts[vi].col = c.map(|x| x as f32);
@@ -549,8 +556,10 @@ fn push_ranges(out: &mut Vec<(usize, usize)>, idx: impl Iterator<Item = usize>) 
 /// room is scaled down to it; the flash adds to every channel, capped so the
 /// brightest reaches 285 (PD's `extra` stays capped for the colours after, a
 /// quirk kept); a black colour takes the flash only when `black_flashes` (the
-/// light op at 0 or the lights off).
-pub fn room_highlight(base: &[[u8; 4]], alpha_only: &[bool], br_settled_regional: u8, flash: i32, black_flashes: bool) -> Vec<[u8; 4]> {
+/// light op at 0 or the lights off). A `LIGHTOP_HIGHLIGHT` room's colours are
+/// then multiplied by the scenario's `tint` (`scenario_highlight_room`,
+/// truncated), before the clamp.
+pub fn room_highlight(base: &[[u8; 4]], alpha_only: &[bool], br_settled_regional: u8, flash: i32, black_flashes: bool, tint: Option<[f32; 3]>) -> Vec<[u8; 4]> {
     let br = br_settled_regional as i32;
     let mut extra = flash;
     base.iter()
@@ -574,6 +583,11 @@ pub fn room_highlight(base: &[[u8; 4]], alpha_only: &[bool], br_settled_regional
                 red += extra;
                 green += extra;
                 blue += extra;
+            }
+            if let Some(t) = tint {
+                red = (red as f32 * t[0]) as i32;
+                green = (green as f32 * t[1]) as i32;
+                blue = (blue as f32 * t[2]) as i32;
             }
             [red.clamp(0, 255) as u8, green.clamp(0, 255) as u8, blue.clamp(0, 255) as u8, src[3]]
         })
@@ -720,17 +734,20 @@ mod tests {
     fn room_highlight_scales_and_flashes() {
         let base = [[255u8, 128, 0, 255], [0, 0, 0, 255], [60, 60, 60, 200]];
         let alpha = [false, false, true];
-        let full = super::room_highlight(&base, &alpha, 255, 0, false);
+        let full = super::room_highlight(&base, &alpha, 255, 0, false, None);
         assert_eq!(full[0], base[0]);
         assert_eq!(full[2], [60, 60, 60, 200]);
-        let dim = super::room_highlight(&base, &alpha, 128, 0, false);
+        let dim = super::room_highlight(&base, &alpha, 128, 0, false, None);
         assert_eq!(dim[0], [128, 64, 0, 255]);
         assert_eq!(dim[2], [60, 60, 60, 100]);
-        let flash = super::room_highlight(&base, &alpha, 128, 50, false);
+        let flash = super::room_highlight(&base, &alpha, 128, 50, false, None);
         assert_eq!(flash[0], [178, 114, 50, 255]);
         assert_eq!(flash[1], [0, 0, 0, 255], "black takes no flash");
-        let off = super::room_highlight(&base, &alpha, 128, 50, true);
+        let off = super::room_highlight(&base, &alpha, 128, 50, true, None);
         assert_eq!(off[1], [50, 50, 50, 255]);
+        // King of the Hill's green hill: red and blue at a quarter.
+        let hill = super::room_highlight(&base, &alpha, 255, 0, false, Some([0.25, 1.0, 0.25]));
+        assert_eq!(hill[0], [63, 128, 0, 255]);
     }
 
     /// The BG through the combiner on a headless GPU, from Complex's first spawn

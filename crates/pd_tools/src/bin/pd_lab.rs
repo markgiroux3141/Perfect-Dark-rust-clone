@@ -23,6 +23,7 @@ use pd_sim::world::{World, WorldRes};
 use pd_tools::lab::{self, LabOpts, Prim};
 
 const DIFFS: [&str; 6] = ["Meat", "Easy", "Normal", "Hard", "Perfect", "Dark"];
+const SCENARIOS: [&str; 6] = ["Combat", "Hold the Briefcase", "Hacker Central", "Pop a Cap", "King of the Hill", "Capture the Case"];
 
 struct Lab {
     stage: Arc<Stage>,
@@ -34,6 +35,9 @@ struct Lab {
     nav: NavChoice,
     seed: u64,
     mix: bool,
+    /// `MPSCENARIO_*`; King of the Hill and Capture the Case put the
+    /// simulants on two teams in turn.
+    scenario: u8,
     paused: bool,
     speed: u32,
     step_once: bool,
@@ -62,6 +66,7 @@ impl Lab {
             nav: NavChoice::Pd,
             seed: harness::SPIKE_SEED,
             mix: false,
+            scenario: pd_core::ids::MPSCENARIO_COMBAT,
             paused: false,
             speed: 1,
             step_once: false,
@@ -73,7 +78,15 @@ impl Lab {
     }
 
     fn restart(&mut self) {
-        let setup = harness::with_weapons(harness::setup(0, self.bots, self.diff), &harness::DEFAULT_SET);
+        let mut setup = harness::with_weapons(harness::setup(0, self.bots, self.diff), &harness::DEFAULT_SET);
+        setup.stagenum = self.stage.stagenum;
+        setup.scenario = self.scenario;
+        if matches!(self.scenario, pd_core::ids::MPSCENARIO_KINGOFTHEHILL | pd_core::ids::MPSCENARIO_CAPTURETHECASE) {
+            setup.options |= pd_core::ids::MPOPTION_TEAMSENABLED;
+            for (k, s) in setup.simulants.iter_mut().enumerate() {
+                s.chr.team = (k % 2) as u8;
+            }
+        }
         match harness::world(self.stage.clone(), self.level.clone(), self.res.clone(), setup, self.nav, self.seed, self.mix) {
             Ok(w) => {
                 self.world = w;
@@ -113,6 +126,11 @@ impl Lab {
             ui.radio_value(&mut self.nav, NavChoice::Ours, "ours");
         });
         ui.checkbox(&mut self.mix, "the spike's weapon mix (else PD's start: unarmed, the pads hold the set)");
+        egui::ComboBox::from_label("scenario").selected_text(SCENARIOS[self.scenario as usize]).show_ui(ui, |ui| {
+            for (k, name) in SCENARIOS.iter().enumerate() {
+                ui.selectable_value(&mut self.scenario, k as u8, *name);
+            }
+        });
         let mut seed = format!("{:#x}", self.seed);
         if ui.add(egui::TextEdit::singleline(&mut seed).desired_width(160.0)).changed() {
             if let Ok(s) = u64::from_str_radix(seed.trim_start_matches("0x"), 16) {

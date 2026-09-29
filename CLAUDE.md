@@ -14,6 +14,7 @@ cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # off
                                             #   `out menu --combat w40 down down down a w50 shot:setup` (script format in pd_menu::script),
                                             #   `out stage ref` (the 8 spawn-pad views, on the GPU; `--full` adds objects, sky, HUD),
                                             #   `out match --duel`, `out lab` (a match with simulants; the pd_lab map), `out pickups [--bots]`,
+                                            #   `out scenario htb` (htm, pac, koh, ctc: a scenario's props, HUD, highlights, room tints),
                                             #   `out flow start w30 shot:pause kill wend shot:end` (the pause menu and
                                             #   end screens over a match; steps in pd_tools::snapshot::flow))
 cargo run --release -p pd_tools --bin pd_lab # the simulant/route viewer (a window: for the user, not for Claude to drive)

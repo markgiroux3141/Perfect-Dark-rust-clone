@@ -28,14 +28,24 @@ OLD_DEFAULT = r"D:\Claude Code Projects\Hide and Seek Level Builder"
 #: Intended differences, each with its reason.
 KNOWN = {
     "unarmed": "invitem_unarmed joins the export for the fists (M4); g_MpWeapons does not list it",
+    "scenario weapons": "the briefcase and the data uplink join the export for the scenarios (M10), with "
+                        "the uplink's equip/unequip scripts",
     "sfx envelope": "the spikes exported some sounds raw (the menu set, grunts, footstep impacts) and "
                     "the gun set with the envelope; the pool bakes PD's playback envelope into every "
                     "non-looping sound (n_sndplayer.c applies it to all voices)",
     "ticks": "the weapon exporter resolves `TICKS(n)` to n (NTSC; M6), where the spikes kept the "
              "string (the cloaking device's simulant ammo goal)",
+    "8bit inline": "inline textures are decoded in the format the display list renders them "
+                   "(the render tile's G_SETTILE, M10): the casings' second texture is IA8, which "
+                   "the spikes read as RGBA16 and dropped as running past the file",
     "bbox rodata": "the gun spike's chrcloaker/chrspeedpill/xrayspecs were exported before export_model "
                    "read BBOX rodata; their BBOX nodes now carry hitpart + box",
 }
+
+#: Models whose 8-bit inline textures (KNOWN["8bit inline"]) the spikes dropped.
+KNOWN_8BIT_INLINE = {"pd_fp/cartridge", "pd_fp/cartshell"}
+#: ... and the one the gun spike kept, decoded as RGBA16 (noise).
+KNOWN_8BIT_INLINE_TEX = {"tex_cartblue_001.png"}
 
 fails: list[str] = []
 notes: list[str] = []
@@ -65,7 +75,10 @@ def check_textures(old: str) -> None:
             if not os.path.exists(new):
                 fails.append(f"texture {d}/{f}: missing at {os.path.relpath(new, out())}")
             elif not same_bytes(os.path.join(folder, f), new):
-                fails.append(f"texture {d}/{f}: bytes differ from {os.path.relpath(new, out())}")
+                if f in KNOWN_8BIT_INLINE_TEX:  # KNOWN["8bit inline"]
+                    notes.append(f"texture {d}/{f}: now decoded as IA8 ({KNOWN['8bit inline']})")
+                else:
+                    fails.append(f"texture {d}/{f}: bytes differ from {os.path.relpath(new, out())}")
             else:
                 moved += 1
     notes.append(f"textures: {moved}/{n} old PNGs byte-identical in the pool")
@@ -150,8 +163,8 @@ def check_weapons(old: str) -> None:
     b = json.load(open(out("data", "weapons.json"), encoding="utf-8"))
     # Intended: the export now has `invitem_unarmed` (the fists every player holds,
     # which g_MpWeapons does not list), and so its scripts and animations too.
-    added = [w for w in b["weapons"] if w["weapon"] == "WEAPON_UNARMED"]
-    b_weapons = [w for w in b["weapons"] if w["weapon"] != "WEAPON_UNARMED"]
+    added = [w for w in b["weapons"] if w["weapon"] == "WEAPON_UNARMED" or w.get("scenario")]
+    b_weapons = [w for w in b["weapons"] if w["weapon"] != "WEAPON_UNARMED" and not w.get("scenario")]
     for k in sorted(set(a) - {"anims", "models"}):  # now the anim bank and models/index.json
         if k == "weapons":
             for x, y in zip(a[k], b_weapons):
@@ -175,7 +188,7 @@ def check_weapons(old: str) -> None:
             if any(b[k].get(n) != v for n, v in a[k].items()):
                 fails.append("weapons.json scripts differ")
             extra = sorted(set(b[k]) - set(a[k]))
-            if extra and not all(n.startswith("invanim_punch") for n in extra):
+            if extra and not all(n.startswith(("invanim_punch", "invanim_datauplink")) for n in extra):
                 fails.append(f"weapons.json has unexpected new scripts {extra}")
         elif k == "anim_ids":
             if not set(a[k]) <= set(b[k]):
@@ -184,8 +197,8 @@ def check_weapons(old: str) -> None:
             fails.append(f"weapons.json {k} differs")
     notes.append(
         f"weapons.json: {len(b_weapons)} weapons and {len(a['scripts'])} gun scripts identical; "
-        f"added {len(added)} (unarmed) and {len(b['scripts']) - len(a['scripts'])} punch scripts "
-        f"({KNOWN['unarmed']})"
+        f"added {len(added)} (unarmed, briefcase, uplink) and {len(b['scripts']) - len(a['scripts'])} punch "
+        f"and uplink scripts ({KNOWN['unarmed']}; {KNOWN['scenario weapons']})"
     )
 
 
@@ -309,7 +322,8 @@ def compare_model(stem: str, old: dict, where: str, dirpath: str | None = None) 
                 bad(f"batch {i} vertices differ")
             if not ok:
                 break
-    if set(old["textures"]) != set(new["textures"]):
+    added_tex = set(new["textures"]) - set(old["textures"])
+    if set(old["textures"]) - set(new["textures"]) or (added_tex and f"{where}/{stem}" not in KNOWN_8BIT_INLINE):
         bad(f"texture ids differ: {sorted(old['textures'])} vs {sorted(new['textures'])}")
     return ok
 

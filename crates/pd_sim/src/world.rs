@@ -233,15 +233,20 @@ impl ExpWorld for StageExp<'_> {
 }
 
 impl World {
-    /// Start a match: the simulants are allocated (`setup.c:1961`), every
-    /// player spawns in turn, each choosing a pad away from those already
-    /// placed (`player_choose_spawn_location`), unarmed; the setup's pickups
-    /// are placed from the weapon set (`setup_create_props`); the simulants
-    /// spawn on the first frame (`bot_spawn_all`).
-    pub fn new(setup: MatchSetup, stage: Arc<Stage>, level: Arc<TileLevel>, res: Arc<WorldRes>, seed: u64) -> Result<World, String> {
+    /// Start a match, in `lv_reset`'s order (`lv.c:345`): the simulants are
+    /// allocated (`setup.c:1961`); the scenario's stage state is read from the
+    /// setup (`scenario_reset`); the setup's props are placed, the pickups from
+    /// the weapon set, and then the scenario's (`setup_create_props`,
+    /// `scenario_init_props`); every player spawns in turn, each choosing a pad
+    /// away from those already placed (`player_choose_spawn_location`),
+    /// unarmed; the simulants learn whether their team has a human
+    /// (`mp_calculate_team_is_only_ai`) and spawn on the first frame
+    /// (`bot_spawn_all`).
+    pub fn new(mut setup: MatchSetup, stage: Arc<Stage>, level: Arc<TileLevel>, res: Arc<WorldRes>, seed: u64) -> Result<World, String> {
         if stage.spawn_pads.is_empty() {
             return Err(format!("stage {} has no spawn pads", stage.code));
         }
+        crate::mp::scenario::scenario_init_setup(&mut setup);
         let mut rng = Rng::new(seed);
         let n = setup.players.len();
         let mut players = Vec::with_capacity(n);
@@ -308,12 +313,14 @@ impl World {
             roomflags: vec![0; nrooms],
             events: Vec::new(),
         };
+        w.scenario_reset();
+        w.setup_create_props();
         for i in 0..n {
             let before: Vec<usize> = (0..i).collect();
             w.spawn_player(i, &before);
             w.player_spawn_inventory(i);
         }
-        w.setup_create_props();
+        w.mp_calculate_team_is_only_ai();
         Ok(w)
     }
 
@@ -363,10 +370,14 @@ impl World {
         self.chr_perims_except(except)
     }
 
-    /// The rest of player `i`'s [`WalkEnv`]: fast movement, its shield, its menu.
-    pub(crate) fn walk_opts(&self, i: usize) -> (bool, f32, bool) {
+    /// The rest of player `i`'s [`WalkEnv`]: fast movement, its shield, its
+    /// menu, and whether it carries a case (`bondwalk.c:1472`: Hold the
+    /// Briefcase and Capture the Case slow the carrier).
+    pub(crate) fn walk_opts(&self, i: usize) -> (bool, f32, bool, bool) {
         let fastmovement = self.setup.options & pd_core::ids::MPOPTION_FASTMOVEMENT != 0;
-        (fastmovement, self.player_get_shield_frac(i), self.mp.menuopen.get(i).copied().unwrap_or(false))
+        let s = self.setup.scenario;
+        let briefcase = self.inv_has_briefcase(i) && (s == pd_core::ids::MPSCENARIO_HOLDTHEBRIEFCASE || s == pd_core::ids::MPSCENARIO_CAPTURETHECASE);
+        (fastmovement, self.player_get_shield_frac(i), self.mp.menuopen.get(i).copied().unwrap_or(false), briefcase)
     }
 
     /// Spawn player `i`, judging the pads against the enemies among the chrs
@@ -379,7 +390,8 @@ impl World {
             .map(|&j| SpawnOther { pos: self.chrs[j].pos, rooms: self.chrs[j].rooms.clone(), player: self.chrs[j].player })
             .collect();
         let cyls: Vec<PropGeo> = others.iter().filter_map(|&j| self.chrs[j].perim()).collect();
-        let (pos, angle) = player_choose_spawn_location(&self.level, &self.stage, 30.0, &judged, &cyls, &self.mp_room_visibility, &mut self.rng);
+        let pads = self.scenario_spawn_pads(i);
+        let (pos, angle) = player_choose_spawn_location(&self.level, &self.stage, &pads, 30.0, &judged, &cyls, &self.mp_room_visibility, &mut self.rng);
         let floors = self.prop_floors();
         self.players[i].start_new_life(&self.level, &floors, pos, angle);
         self.mp.players[i].killsthislife = 0;
@@ -507,7 +519,8 @@ impl World {
         }
         self.lv_update_misc_sfx();
         // lighting_tick (lv.c:2316).
-        self.lights.lighting_tick(&self.roomflags, self.lv.lvupdate240, &mut self.rng);
+        let highlight = self.scenario_highlighted_rooms();
+        self.lights.lighting_tick(&self.roomflags, self.lv.lvupdate240, &mut self.rng, &highlight);
         self.fx.boltbeams.tick(self.lv.lvupdate60freal);
         self.scenario_tick();
         if !self.mp.endscreen {
@@ -525,8 +538,8 @@ impl World {
             let input = &input;
             let cyls = self.perims_except(i);
             let floors = self.prop_floors();
-            let (fastmovement, shieldfrac, menuopen) = self.walk_opts(i);
-            let env = WalkEnv { level: &self.level, cyls: &cyls, floors: &floors, fastmovement, shieldfrac, menuopen };
+            let (fastmovement, shieldfrac, menuopen, briefcase) = self.walk_opts(i);
+            let env = WalkEnv { level: &self.level, cyls: &cyls, floors: &floors, fastmovement, shieldfrac, menuopen, briefcase };
             // player.c:3302: a rocket that is gone loses its signal.
             if self.players[i].visionmode == VISIONMODE_SLAYERROCKET && self.players[i].slayerrocket.is_none() {
                 self.players[i].visionmode = VISIONMODE_SLAYERROCKETSTATIC;
@@ -583,6 +596,8 @@ impl World {
             if i == 0 {
                 self.chrs_tick();
             }
+            // scenario_tick_chr(NULL) (`lv.c:1195`).
+            self.scenario_tick_chr(None, i);
             if i == 0 {
                 // SUBST: PD clears g_PlayersDetonatingMines in alarm_tick after the
                 // last player's props, which with two players loses the first
@@ -649,8 +664,9 @@ impl World {
         }
         if n == 0 {
             // A headless match (the harness, not PD): no player pass to tick
-            // the doors, lifts and chrs in.
+            // the doors, lifts and chrs in, or to free the objects taken.
             self.props_tick_machines();
+            self.props_free_deleting();
             self.chrs_tick();
         }
         for b in self.boards.iter_mut() {

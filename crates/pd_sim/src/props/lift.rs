@@ -445,8 +445,8 @@ impl World {
                     } else {
                         let cyls = self.perims_except(pi);
                         let floors = self.prop_floors();
-                        let (fastmovement, shieldfrac, menuopen) = self.walk_opts(pi);
-                        let env = crate::player::WalkEnv { level: &self.level, cyls: &cyls, floors: &floors, fastmovement, shieldfrac, menuopen };
+                        let (fastmovement, shieldfrac, menuopen, briefcase) = self.walk_opts(pi);
+                        let env = crate::player::WalkEnv { level: &self.level, cyls: &cyls, floors: &floors, fastmovement, shieldfrac, menuopen, briefcase };
                         let pl = &mut self.players[pi];
                         if pl.bwalk_try_move_upwards(&env, ydist) == crate::stage::CdResult::NoCollision {
                             pl.manground += ydist;

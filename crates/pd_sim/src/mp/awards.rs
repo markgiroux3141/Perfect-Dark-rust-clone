@@ -51,7 +51,8 @@ impl World {
         self.mp.alarm = false;
         let rankings = self.mp_get_player_rankings();
         let numchrs = rankings.rankings.len();
-        let numteams = if self.setup.teams_enabled() { self.mp_scoring().mp_get_team_rankings().len() } else { 0 };
+        let scenario = self.scenario_scores();
+        let numteams = if self.setup.teams_enabled() { self.mp_scoring(&scenario).mp_get_team_rankings().len() } else { 0 };
         let chrslots = self.setup.chrslots();
         let teams = self.setup.teams_enabled();
         let mut metrics = [AwardMetrics::default(); 4];

@@ -655,6 +655,11 @@ POOL_SFXNUM = [
     # Pickups: the shield's (SFXNUM_01CD_PICKUP_SHIELD, propobj.c:16466) and the
     # chime of a pickup coming back (SFXNUM_0052_REGEN, propobj.c:11023).
     0x01CD, 0x0052,
+    # The scenarios: Hacker Central's download loop on the terminal, its
+    # success and its broken/refused beep (htm_tick_chr, hackthatmac.inc:447),
+    # the point scored and the hill entered (SFXNUM_05B8_MP_SCOREPOINT,
+    # _05B9_MP_HILLENTERED: holdthebriefcase.inc:358, kingofthehill.inc:413).
+    0x01BF, 0x01C1, 0x01CC, 0x05B8, 0x05B9,
     # Reached through the weapon set already; requested so their SFXNUM names
     # are manifest keys too.
     0x0005, 0x0006, 0x00AF, 0x00B0, 0x018B, 0x018C, 0x018D, 0x018E, 0x018F,

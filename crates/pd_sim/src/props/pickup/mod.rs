@@ -139,6 +139,7 @@ impl World {
         o.hidden = 0;
         o.flags = flags;
         o.pad = pad;
+        o.modelnum = self.res.models.index.get(stem).and_then(|e| e.modelnum).unwrap_or(-1);
         o.hidden2 |= OBJH2FLAG_CANREGEN;
         if ty != OBJTYPE_WEAPON {
             o.vis.clear();
@@ -298,8 +299,8 @@ impl World {
                 }
             }
             OBJTYPE_SHIELD => {
-                // (Hold the Briefcase's briefcase carrier: M10.)
-                if o.shieldamount <= self.player_get_shield_frac(pi) {
+                // propobj.c:16690: nor for Hold the Briefcase's carrier.
+                if o.shieldamount <= self.player_get_shield_frac(pi) || (self.setup.scenario == MPSCENARIO_HOLDTHEBRIEFCASE && self.inv_has_briefcase(pi)) {
                     return false;
                 }
             }
@@ -341,7 +342,15 @@ impl World {
                 let w = o.weaponnum;
                 let mut sp70 = false;
                 let count;
-                // (The briefcase and the data uplink: M10's scenarios.)
+                // propobj.c:16314: the scenarios' own (the pickup sound twice
+                // in Hold the Briefcase, as PD plays it).
+                if w == WEAPON_BRIEFCASE2 || w == WEAPON_DATAUPLINK {
+                    let op = if w == WEAPON_BRIEFCASE2 { self.scenario_pick_up_briefcase(pi, id) } else { self.scenario_pick_up_uplink(pi, id) };
+                    if op != TICKOP_NONE {
+                        self.sound(weapon_pickup_sound(w), 1.0);
+                    }
+                    return op == TICKOP_FREE;
+                }
                 self.sound(weapon_pickup_sound(w), 1.0);
                 let mut showhudmsg = showhudmsg;
                 if w == WEAPON_BOLT {
@@ -451,7 +460,7 @@ impl World {
     }
 
     /// `current_player_queue_pickup_weapon_hudmsg` (`propobj.c:16237`).
-    fn current_player_queue_pickup_weapon_hudmsg(&mut self, pi: usize, weaponnum: u8, dual: bool) {
+    pub(crate) fn current_player_queue_pickup_weapon_hudmsg(&mut self, pi: usize, weaponnum: u8, dual: bool) {
         let text = self.weapon_get_pickup_text(weaponnum, dual);
         self.hudmsg_create_with_flags(pi, &text, HUDMSGTYPE_DEFAULT, HUDMSGFLAG_ONLYIFALIVE | HUDMSGFLAG_ALLOWDUPES);
     }
@@ -602,13 +611,15 @@ impl World {
 
 impl World {
     /// `current_player_drop_all_items` (`propobj.c:20130`): each weapon player
-    /// `pi` holds (one of each; not the fists or anything undroppable) falls
-    /// from where the player stands (`weapon_create_for_player_drop`).
+    /// `pi` holds (one of each; not the fists or anything undroppable but
+    /// Hacker Central's uplink, which has no model to drop anyway) falls from
+    /// where the player stands (`weapon_create_for_player_drop`).
     pub(crate) fn current_player_drop_all_items(&mut self, pi: usize) {
         let gset = self.res.gset.clone();
         for w in WEAPON_UNARMED..=WEAPON_SUICIDEPILL {
             let hasmodel = gset.weapon(w).is_some_and(|d| d.tp_model.is_some());
-            if hasmodel && self.players[pi].gun.p.inventory.inv_has_single_weapon_exc_all_guns(w) && !gset.has_flag(w, WEAPONFLAG_UNDROPPABLE) {
+            let droppable = !gset.has_flag(w, WEAPONFLAG_UNDROPPABLE) || (self.setup.scenario == MPSCENARIO_HACKERCENTRAL && w == WEAPON_DATAUPLINK);
+            if hasmodel && self.players[pi].gun.p.inventory.inv_has_single_weapon_exc_all_guns(w) && droppable {
                 self.weapon_create_for_chr_drop(pi, w);
             }
         }
@@ -641,6 +652,9 @@ impl World {
         o.realrot = Mat3::from_diagonal(Vec3::splat(o.scale));
         o.hidden |= OBJHFLAG_SUSPICIOUS;
         self.props.objs.push(o);
+        // obj_init's scenario tokens (`propobj.c:2134`), and a dropped
+        // briefcase's scenario_handle_dropped_token (`propobj.c:20220`).
+        self.scenario_weapon_dropped(ci, id, weaponnum);
     }
 }
 

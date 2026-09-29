@@ -26,7 +26,8 @@ use pd_sim::player::PlayerInput;
 use pd_sim::stage::{Stage, TileLevel};
 use pd_sim::world::{World, WorldRes};
 
-struct Gpu {
+/// A headless GPU with the renderer on a stage and a `w` × `h` target.
+pub(crate) struct Gpu {
     gpu: HeadlessGpu,
     renderer: Renderer,
     target: RenderTarget,
@@ -35,7 +36,17 @@ struct Gpu {
 }
 
 impl Gpu {
-    fn shot(&mut self, world: &World, path: PathBuf) -> Result<PathBuf, String> {
+    pub(crate) fn new(assets: &pd_core::assets::AssetDir, code: &str, w: u32, h: u32) -> Result<Gpu, String> {
+        let gpu = HeadlessGpu::new()?;
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let mut renderer = Renderer::new(&gpu.device, &gpu.queue, format);
+        renderer.load_stage(&gpu.device, &gpu.queue, assets, code)?;
+        let target = RenderTarget::on_device(&gpu.device, w, h, format, true);
+        Ok(Gpu { gpu, renderer, target, w, h })
+    }
+
+    /// Player 0's frame as `path`.
+    pub(crate) fn shot(&mut self, world: &World, path: PathBuf) -> Result<PathBuf, String> {
         let mut enc = self.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("snapshot") });
         self.renderer.render_player(&self.gpu.device, &self.gpu.queue, &mut enc, &self.target, world, 0);
         self.gpu.queue.submit(Some(enc.finish()));
@@ -46,7 +57,7 @@ impl Gpu {
 }
 
 /// `vv_theta` (degrees; forward = (−sin, 0, cos)) from `a` to `b`, and the pitch.
-fn face(a: Vec3, b: Vec3) -> (f32, f32) {
+pub(crate) fn face(a: Vec3, b: Vec3) -> (f32, f32) {
     let d = b - a;
     let t = (-d.x).atan2(d.z).to_degrees();
     let pitch = d.y.atan2((d.x * d.x + d.z * d.z).sqrt()).to_degrees();
@@ -86,12 +97,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let stage = Arc::new(Stage::load(&assets, &code)?);
     let level = Arc::new(TileLevel::for_stage(&stage));
     let res = Arc::new(WorldRes::load(&assets)?);
-    let gpu = HeadlessGpu::new()?;
-    let format = wgpu::TextureFormat::Rgba8Unorm;
-    let mut renderer = Renderer::new(&gpu.device, &gpu.queue, format);
-    renderer.load_stage(&gpu.device, &gpu.queue, &assets, &code)?;
-    let target = RenderTarget::on_device(&gpu.device, w, h, format, true);
-    let mut g = Gpu { gpu, renderer, target, w, h };
+    let mut g = Gpu::new(&assets, &code, w, h)?;
     if duel {
         return run_duel(outdir, &code, stage, level, res, &mut g, seed, dist, gun);
     }

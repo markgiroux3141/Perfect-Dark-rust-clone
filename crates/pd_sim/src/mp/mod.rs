@@ -19,11 +19,12 @@
 
 pub mod awards;
 pub mod hudmsg;
+pub mod scenario;
 
 use pd_core::events::Event;
 use pd_core::ids::*;
 use pd_core::lang::{tx, LANGBANK_GUN, LANGBANK_MISC};
-use pd_core::mp::{mp_get_player_rankings, MatchSetup, MpChrStats, MpPlayerResult, MpScoring, PlayerRankings, MAX_MPCHRS};
+use pd_core::mp::{mp_get_player_rankings, MatchSetup, MpChrStats, MpPlayerResult, MpScoring, PlayerRankings, ScenarioScores, MAX_MPCHRS};
 
 pub use hudmsg::{HudMessage, HudMsgs};
 
@@ -194,6 +195,8 @@ pub struct MpMatch {
     pub hudmsgs: HudMsgs,
     /// What the end of the match wrote back to each player's file.
     pub results: Vec<MpPlayerResult>,
+    /// `g_ScenarioData`: the scenario's state.
+    pub scenariodata: scenario::ScenarioData,
 }
 
 impl MpMatch {
@@ -227,6 +230,7 @@ impl MpMatch {
             alarm: false,
             hudmsgs: HudMsgs::default(),
             results: Vec::new(),
+            scenariodata: scenario::ScenarioData::default(),
         }
     }
 }
@@ -437,20 +441,22 @@ impl World {
     }
 
     /// The name `g_MpAllChrConfigPtrs[chrnum]->name` holds (with its line break).
-    fn mp_chr_name(&self, chrnum: usize) -> String {
+    pub(crate) fn mp_chr_name(&self, chrnum: usize) -> String {
         format!("{}\n", self.chrs.get(chrnum).map_or("", |c| c.name.as_str()))
     }
 
-    /// The scoring's view of the match.
-    pub fn mp_scoring(&self) -> MpScoring<'_> {
-        MpScoring { chrslots: self.setup.chrslots(), teams_enabled: self.setup.teams_enabled(), teams: &self.mp.teams, stats: &self.mp.chrs }
+    /// The scoring's view of the match, with the scenario's counters
+    /// ([`World::scenario_scores`]) in `scenario`.
+    pub fn mp_scoring<'a>(&'a self, scenario: &'a ScenarioScores) -> MpScoring<'a> {
+        MpScoring { chrslots: self.setup.chrslots(), teams_enabled: self.setup.teams_enabled(), teams: &self.mp.teams, stats: &self.mp.chrs, scenario }
     }
 
     /// `mp_get_player_rankings` (`mplayer.c:640`) on the match's counters
     /// (writing the chrs' placements).
     pub fn mp_get_player_rankings(&mut self) -> PlayerRankings {
         let (slots, teams) = (self.setup.chrslots(), self.setup.teams_enabled());
-        mp_get_player_rankings(slots, teams, &self.mp.teams, &mut self.mp.chrs)
+        let scenario = self.scenario_scores();
+        mp_get_player_rankings(slots, teams, &self.mp.teams, &mut self.mp.chrs, &scenario)
     }
 
     /// `chr_compare_teams` (`chraction.c:14853`) in a normal match: friends
@@ -562,7 +568,8 @@ impl World {
             }
             if self.mp.teamscorelimit > 0 {
                 let limit = self.mp.teamscorelimit;
-                let n = self.mp_scoring().mp_get_team_rankings().iter().filter(|x| x.score >= limit).count() as i32;
+                let scenario = self.scenario_scores();
+                let n = self.mp_scoring(&scenario).mp_get_team_rankings().iter().filter(|x| x.score >= limit).count() as i32;
                 self.mp.numreasonstoend += n;
             }
             if self.mp.numreasonstoend > 0 && numdying == 0 {
@@ -604,12 +611,14 @@ impl World {
         self.push_event(Event::MpEndMatch);
     }
 
-    /// `scenario_tick` (`scenarios.c:528`), Combat: on the fifth frame, the
-    /// scenario's name for every player (`scenario_create_match_start_hudmsgs`).
+    /// `scenario_tick` (`scenarios.c:528`): on the fifth frame, the
+    /// scenario's name for every player (`scenario_create_match_start_hudmsgs`);
+    /// then the scenario's own tick ([`scenario`]).
     pub(crate) fn scenario_tick(&mut self) {
         if self.lv.lvframenum == 5 {
             self.scenario_create_match_start_hudmsgs();
         }
+        self.scenario_tick_callback();
     }
 
     /// `scenario_create_match_start_hudmsgs` (`scenarios.c:485`). `// M12:`
@@ -628,7 +637,9 @@ impl World {
     /// chr slot, the players are told ("Killed by", "Killed", the counts),
     /// and a killed simulant remembers who did it.
     pub(crate) fn mpstats_record_death(&mut self, aplayernum: i32, vplayernum: i32) {
-        // (Pop a Cap's pac_handle_death: M10.)
+        if self.setup.scenario == MPSCENARIO_POPACAP {
+            self.pac_handle_death(aplayernum, vplayernum);
+        }
         let ampindex = if aplayernum >= 0 { self.mp_chrindex_to_chrslot(aplayernum as usize) } else { None };
         let vmpindex = if vplayernum >= 0 { self.mp_chrindex_to_chrslot(vplayernum as usize) } else { None };
         let playercount = self.players.len() as i32;
@@ -889,11 +900,15 @@ pub fn radar_get_team_index(team: u8) -> usize {
 
 impl World {
     /// `scenario_highlight_prop` (`scenarios.c:712`) for chr `i` as player
-    /// `pi` sees it: with teams on and the player's "highlight teams", the
+    /// `pi` sees it: the scenario's own highlight first (a case's carrier, the
+    /// victim); then with teams on and the player's "highlight teams", the
     /// team's colour at 75/255; else with "highlight players", a pulsing blue;
     /// none with Combat's "No Player Highlight". `// M11:` the simulant being
     /// given orders pulses.
     pub fn scenario_highlight_chr(&self, pi: usize, i: usize) -> Option<[u8; 4]> {
+        if let Some(c) = self.scenario_highlight_prop_callback(scenario::PropRef::Chr(i)) {
+            return Some(c);
+        }
         let displayoptions = self.setup.players.get(pi).map_or(0, |p| p.chr.displayoptions);
         if self.setup.scenario == MPSCENARIO_COMBAT && self.setup.options & MPOPTION_NOPLAYERHIGHLIGHT != 0 {
             return None;
@@ -917,6 +932,9 @@ impl World {
     /// Pickup Highlight is on in a Combat match, a player with "highlight
     /// pickups" sees weapons, crates and shields in a pulsing blue.
     pub fn scenario_highlight_obj(&self, pi: usize, o: &crate::props::Obj) -> Option<[u8; 4]> {
+        if let Some(c) = self.scenario_highlight_prop_callback(scenario::PropRef::Obj(o.id)) {
+            return Some(c);
+        }
         let displayoptions = self.setup.players.get(pi).map_or(0, |p| p.chr.displayoptions);
         if (self.setup.scenario != MPSCENARIO_COMBAT || self.setup.options & MPOPTION_NOPICKUPHIGHLIGHT == 0)
             && displayoptions & MPDISPLAYOPTION_HIGHLIGHTPICKUPS != 0

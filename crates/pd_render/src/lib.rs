@@ -101,6 +101,18 @@ fn lit_frame(proj: Mat4, look: Vec3, up: Vec3, lights: (f32, f32, Vec3), envcol:
     f
 }
 
+/// `prop_calculate_shade_colour`'s `scenario_highlight_room(prop->rooms[0])`
+/// (`propobj.c:1647`): a prop in King of the Hill's hill or a Capture the Case
+/// base takes the room's tint on its light.
+fn tint_frame(f: &mut FrameUniform, tint: Option<[f32; 3]>) {
+    if let Some(t) = tint {
+        for (k, &m) in t.iter().enumerate() {
+            f.ambient[k] *= m;
+            f.diffuse[k] *= m;
+        }
+    }
+}
+
 impl Renderer {
     /// `color_format` must not be sRGB: the combiner writes display-space values.
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, color_format: wgpu::TextureFormat) -> Renderer {
@@ -175,6 +187,7 @@ impl Renderer {
             portals: &p.portalview,
             lights: &world.lights,
             frac80: world.frac80,
+            tints: world.scenario_highlighted_rooms(),
             scale: [w as f32 / p.cam.c_screenwidth, h as f32 / p.cam.c_screenheight],
             target: [w, h],
         })
@@ -250,6 +263,7 @@ impl Renderer {
                 continue;
             }
             let mut frame = lit_frame(world_proj, p.look, p.up, obj_lights, env);
+            tint_frame(&mut frame, o.room.and_then(|r| world.scenario_highlight_room(r)));
             let mut xlu = false;
             // obj_render (`propobj.c:12701`): the last second of a respawn fades in.
             if o.timetoregen > 0 && o.timetoregen < 60 {
@@ -311,6 +325,7 @@ impl Renderer {
             }
             let lights = gun_lights(world.lights.brightness(c.floorroom), false);
             let mut frame = lit_frame(world_proj, p.look, p.up, lights, env);
+            tint_frame(&mut frame, c.rooms.first().and_then(|&r| world.scenario_highlight_room(r)));
             // The fog colour: the highlight (scenario_highlight_prop,
             // chr.c:3482) in place of the shade colour.
             if let Some(h) = world.scenario_highlight_chr(pi, ci) {
@@ -427,6 +442,7 @@ impl Renderer {
                 fovy: view.fovy,
                 fade: (p.health.colourscreen, p.health.colourscreenfrac),
                 hudmsgs: world.mp.hudmsgs.msgs.iter().filter(|m| m.playernum == pi).collect(),
+                scenario: world.scenario_hud(pi),
             };
             let mut t = TextCtx { gfx: &mut self.hud_gfx, ts: &mut self.text, fonts, frac20: world.frac20 };
             hud::draw(&mut t, &hin);

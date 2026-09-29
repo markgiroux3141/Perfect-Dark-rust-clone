@@ -169,6 +169,15 @@
   "modelnum": 257,
   "statescale": 409
  },
+ "chrbriefcase": {
+  "filenum": 134,
+  "file": "FILE_PCHRBRIEFCASE",
+  "kind": "held",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrbriefcase.bin",
+  "tris": 22,
+  "modelnum": 17,
+  "statescale": 409
+ },
  "chrcloaker": {
   "filenum": 1231,
   "file": "FILE_PCHRCLOAKER",
@@ -212,6 +221,15 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/props/chrcyclone.bin",
   "tris": 67,
   "modelnum": 258,
+  "statescale": 409
+ },
+ "chrdatathief": {
+  "filenum": 136,
+  "file": "FILE_PCHRDATATHIEF",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/chrdatathief.bin",
+  "tris": 134,
+  "modelnum": 19,
   "statescale": 409
  },
  "chrdevastator": {
@@ -571,6 +589,13 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/guns/combathandslod.bin",
   "tris": 478
  },
+ "commsuplink": {
+  "filenum": 1870,
+  "file": "FILE_GCOMMSUPLINK",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/commsuplink.bin",
+  "tris": 134
+ },
  "connery": {
   "filenum": 409,
   "file": "FILE_CCONNERY",
@@ -831,6 +856,13 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/guns/falcon2.bin",
   "tris": 565
  },
+ "falcon2lod": {
+  "filenum": 924,
+  "file": "FILE_GFALCON2LOD",
+  "kind": "gun",
+  "source": "pd-decomp/src/assets/ntsc-final/files/guns/falcon2lod.bin",
+  "tris": 192
+ },
  "fbiguy": {
   "filenum": 457,
   "file": "FILE_CFBIGUY",
@@ -874,6 +906,15 @@
   "tris": 2,
   "modelnum": 227,
   "statescale": 409
+ },
+ "goodpc": {
+  "filenum": 1290,
+  "file": "FILE_PGOODPC",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/goodpc.bin",
+  "tris": 50,
+  "modelnum": 342,
+  "statescale": 4096
  },
  "grenade": {
   "filenum": 912,

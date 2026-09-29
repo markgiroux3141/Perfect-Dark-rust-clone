@@ -181,6 +181,10 @@ def consts() -> gen.Consts:
     return c
 
 
+#: The scenarios' own objects (`mplayer/scenarios/*.inc`).
+SCENARIO_MODELS = ("MODEL_CHRBRIEFCASE", "MODEL_CHRDATATHIEF", "MODEL_GOODPC")
+
+
 def model_list(weapons: dict, c: gen.Consts) -> list[tuple[str, str]]:
     """(ROM path, kind) for every model to export, in a fixed order."""
     files: list[tuple[str, str]] = []
@@ -218,6 +222,12 @@ def model_list(weapons: dict, c: gen.Consts) -> list[tuple[str, str]]:
         fname = rows[modelnum][0]
         if fname not in by_name:
             raise SystemExit(f"MODEL {modelnum:#x} is {fname}, which is not in files/list.c")
+        add(by_name[fname], "prop")
+    # The scenarios' objects (M10): the briefcase and the data uplink lying on
+    # the ground (htb_create_token, htb_create_uplink, ctc_init_props) and
+    # Hacker Central's terminal (htm_init_props' scenario_create_obj).
+    for name in SCENARIO_MODELS:
+        fname = rows[c.eval(name)][0]
         add(by_name[fname], "prop")
     for n in sorted(chr_filenums(c)):
         rel = by_num.get(n)

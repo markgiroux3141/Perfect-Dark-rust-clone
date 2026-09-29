@@ -76,29 +76,45 @@ impl World {
         }
     }
 
+    /// Not PD: a headless world's (no player to tick the objects in) freeing
+    /// of the objects marked for it (`obj_tick_player`'s first step): a
+    /// taken scenario token, a removed crate.
+    pub(crate) fn props_free_deleting(&mut self) {
+        let mut objs = std::mem::take(&mut self.props.objs);
+        objs.retain_mut(|o| !o.is_deleting() || self.obj_free_deleting(o));
+        objs.append(&mut self.props.objs);
+        self.props.objs = objs;
+    }
+
+    /// `obj_tick_player`'s `OBJHFLAG_DELETING` step (`obj_free`,
+    /// `propobj.c:2453`). False: the object goes.
+    fn obj_free_deleting(&mut self, o: &mut Obj) -> bool {
+        // obj_free: a bolt's trail lets go of it.
+        if o.weaponnum == WEAPON_BOLT {
+            if let Some(i) = self.fx.boltbeams.find(BoltOwner::Prop(o.id)) {
+                self.fx.boltbeams.set_automatic(i, 1400.0);
+            }
+        }
+        // obj_free: a held rocket's hand lets go of it.
+        for p in self.players.iter_mut() {
+            for h in p.gun.hands.iter_mut() {
+                if h.rocket == Some(o.id) {
+                    h.rocket = None;
+                }
+            }
+        }
+        // A setup object (broken glass) waits to come back; anything else goes.
+        if o.hidden2 & OBJH2FLAG_CANREGEN != 0 {
+            self.obj_free_to_regen(o);
+            return true;
+        }
+        false
+    }
+
     /// `obj_tick_player` (`propobj.c:11054`) for a gun's object. False: free it.
     fn obj_tick_player(&mut self, o: &mut Obj, pi: usize) -> bool {
         if o.is_deleting() {
-            // obj_free (`propobj.c:2453`): a bolt's trail lets go of it.
-            if o.weaponnum == WEAPON_BOLT {
-                if let Some(i) = self.fx.boltbeams.find(BoltOwner::Prop(o.id)) {
-                    self.fx.boltbeams.set_automatic(i, 1400.0);
-                }
-            }
-            // obj_free: a held rocket's hand lets go of it.
-            for p in self.players.iter_mut() {
-                for h in p.gun.hands.iter_mut() {
-                    if h.rocket == Some(o.id) {
-                        h.rocket = None;
-                    }
-                }
-            }
-            // A setup object (broken glass) waits to come back; anything else goes.
-            if o.hidden2 & OBJH2FLAG_CANREGEN != 0 {
-                self.obj_free_to_regen(o);
-                return true;
-            }
-            return false;
+            return self.obj_free_deleting(o);
         }
         let mut fulltick = o.notyetticked;
         o.notyetticked = false;

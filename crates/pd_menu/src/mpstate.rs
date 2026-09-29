@@ -733,11 +733,18 @@ impl MenuSystem {
         std::array::from_fn(|i| self.mpchr(i).map_or_else(Default::default, |c| c.stats))
     }
 
+    /// The scenario's own counters for the scores (the match's, through
+    /// [`crate::MatchView`]), with the menus' scenario and options.
+    fn mp_scenario_scores(&self) -> pd_core::mp::ScenarioScores {
+        pd_core::mp::ScenarioScores { scenario: self.mp.setup.scenario, options: self.mp.setup.options, ..self.matchview.scenario }
+    }
+
     /// `mp_get_team_rankings` (mplayer.c:810) over the mpchrconfigs.
     pub fn mp_get_team_rankings(&self) -> Vec<pd_core::mp::Ranking> {
         let (teams, stats) = (self.mp_teams(), self.mp_chr_stats());
         let teams_enabled = self.mp.setup.options & MPOPTION_TEAMSENABLED as u32 != 0;
-        pd_core::mp::MpScoring { chrslots: self.mp.setup.chrslots, teams_enabled, teams: &teams, stats: &stats }.mp_get_team_rankings()
+        let scenario = self.mp_scenario_scores();
+        pd_core::mp::MpScoring { chrslots: self.mp.setup.chrslots, teams_enabled, teams: &teams, stats: &stats, scenario: &scenario }.mp_get_team_rankings()
     }
 
     /// `mp_get_player_rankings` (mplayer.c:640) over the mpchrconfigs: it also
@@ -745,7 +752,8 @@ impl MenuSystem {
     pub fn mp_get_player_rankings(&mut self) -> Vec<pd_core::mp::Ranking> {
         let (teams, mut stats) = (self.mp_teams(), self.mp_chr_stats());
         let teams_enabled = self.mp.setup.options & MPOPTION_TEAMSENABLED as u32 != 0;
-        let r = pd_core::mp::mp_get_player_rankings(self.mp.setup.chrslots, teams_enabled, &teams, &mut stats);
+        let scenario = self.mp_scenario_scores();
+        let r = pd_core::mp::mp_get_player_rankings(self.mp.setup.chrslots, teams_enabled, &teams, &mut stats, &scenario);
         for (i, s) in stats.iter().enumerate() {
             if let Some(c) = self.mpchr_mut(i) {
                 c.stats = *s;
@@ -1259,10 +1267,39 @@ impl MenuSystem {
         (0..MP_PRESETS.len()).filter(|&i| self.mp_is_preset_unlocked(i)).nth(slot.max(0) as usize).map(|i| self.lang(MP_PRESETS[i].name)).unwrap_or_default()
     }
 
+    /// `scenario_init` (scenarios.c:449), the menus' half: King of the Hill
+    /// turns teams on (`koh_init`, kingofthehill.inc:160); Capture the Case
+    /// does too and folds every chr's team into its four (`ctc_init`,
+    /// capturethecase.inc:120).
+    ///
+    /// `// SUBST:` PD's init callbacks also reset `g_ScenarioData` here (and
+    /// `pac_init`'s `pac_reset` draws `random()` for a victim list) / the
+    /// world starts its scenario data with the match (`pd_sim::mp::scenario`),
+    /// where `pac_init_props` draws the victims again anyway.
+    pub fn scenario_init(&mut self) {
+        let s = self.mp.setup.scenario as i32;
+        if s == MPSCENARIO_KINGOFTHEHILL || s == MPSCENARIO_CAPTURETHECASE {
+            self.mp.setup.options |= MPOPTION_TEAMSENABLED as u32;
+        }
+        if s == MPSCENARIO_CAPTURETHECASE {
+            let max = self.scenario_get_max_teams() as u8;
+            for k in 0..pd_core::mp::MAX_MPCHRS {
+                if self.mp.setup.chrslots & (1 << k) != 0 {
+                    if let Some(c) = self.mpchr_mut(k) {
+                        while c.team >= max {
+                            c.team -= max;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// `mp_apply_config` (mplayer.c:3716).
     pub fn mp_apply_config(&mut self, confignum: usize) {
         let cfg = self.draw.res.mpconfigs[confignum].clone();
         self.mp.setup.scenario = cfg.setup.scenario;
+        self.scenario_init();
         let chrslots = self.mp.setup.chrslots;
         self.mp.setup = MpSetup { chrslots: cfg.setup.chrslots, ..cfg.setup.clone() };
         let _ = chrslots;

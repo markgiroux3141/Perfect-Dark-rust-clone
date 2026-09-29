@@ -97,6 +97,7 @@ pub fn match_view(w: &World) -> MatchView {
         endscreen: w.mp.endscreen,
         stagetime60: w.mp.stagetime60,
         chrs: w.mp.chrs,
+        scenario: w.scenario_scores(),
         players: (0..w.players.len())
             .map(|i| {
                 let p = &w.players[i];

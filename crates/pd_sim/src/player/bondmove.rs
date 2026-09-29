@@ -319,8 +319,17 @@ impl Player {
         if self.waitforzrelease && !input.fire {
             self.waitforzrelease = false;
         }
-        // Z doesn't fire while A is held (bondmove.c:1432).
-        let triggeron = !self.waitforzrelease && input.fire && !input.a_held;
+        // Z doesn't fire while A is held (bondmove.c:1432). A
+        // WEAPONFLAG_FIRETOACTIVATE weapon (the data uplink) never fires: Z
+        // pressed is a use tap (btapcount++, bondmove.c:1425).
+        let triggeron = if res.gset.has_flag(self.gun.bgun_get_weapon_num(HAND_RIGHT), WEAPONFLAG_FIRETOACTIVATE) {
+            if fire_pressed {
+                self.bondactivateorreload = true;
+            }
+            false
+        } else {
+            !self.waitforzrelease && input.fire && !input.a_held
+        };
         self.gun_ctx(res, rng, lv).bgun_tick_gameplay(triggeron);
 
         // The manual zoom (bondmove.c:1320 → gset_zoom_out / gset_zoom_in,

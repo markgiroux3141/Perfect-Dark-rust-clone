@@ -75,6 +75,9 @@ pub struct WalkEnv<'a> {
     pub shieldfrac: f32,
     /// `current_player_is_menu_open_in_solo_or_mp`.
     pub menuopen: bool,
+    /// Carrying a case in Hold the Briefcase or Capture the Case
+    /// (`bondwalk.c:1472`): the walk as if the eye were at -63.6 cm.
+    pub briefcase: bool,
 }
 
 /// The collision results PD keeps in globals after a test that collided

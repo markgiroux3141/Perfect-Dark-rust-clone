@@ -56,6 +56,8 @@ pub struct HudIn<'a> {
     pub fade: ([i32; 3], f32),
     /// The player's HUD messages (`g_HudMessages` of this player, by slot).
     pub hudmsgs: Vec<&'a pd_sim::mp::HudMessage>,
+    /// The scenario's part (`scenario_render_hud`).
+    pub scenario: pd_sim::mp::scenario::ScenarioHud,
 }
 
 impl HudIn<'_> {
@@ -570,6 +572,48 @@ pub fn draw(t: &mut TextCtx, h: &HudIn) {
     }
     crate::hudmsg::hudmsgs_render(t, &h.hudmsgs);
     crate::health::draw_fade(t.gfx, h.view, h.fade.0, h.fade.1);
+    // lv_render (`lv.c:1595`): the scenario's HUD after the player's.
+    scenario_render_hud(t, h.view, &h.scenario);
+}
+
+/// `scenario_render_hud`'s scenario part (`scenarios.c:557`): a countdown
+/// (`htb_render_hud`, `pac_render_hud`, `koh_render_hud`) centred at the
+/// view's top + 10 — measured in HandelGothic XS but drawn in the numeric font,
+/// as PD does, over a black box of alpha 0 (drawn, invisible) — or Hacker
+/// Central's bar (`htm_render_hud`): a third of the view wide at its top, rows
+/// 8..16, dark red with 1-pixel strips every 2 for the downloaded part.
+pub fn scenario_render_hud(t: &mut TextCtx, view: [i32; 4], s: &pd_sim::mp::scenario::ScenarioHud) {
+    use pd_sim::mp::scenario::ScenarioHud;
+    let [viewleft, viewtop, viewwidth, _] = view;
+    match s {
+        ScenarioHud::None => {}
+        ScenarioHud::Countdown { text } => {
+            let mut x = viewleft + viewwidth / 2;
+            let mut y = viewtop + 10;
+            let (textheight, textwidth) = text::measure(t.fonts.get(FontId::Xs), text, 0);
+            x -= textwidth / 2;
+            // PD's @bug: the box's "width" is its right edge, so it reaches
+            // past the text; black at alpha 0 either way.
+            let (right, bottom) = (textwidth + x, textheight + y);
+            t.gfx.fill_rect(x - 1, y - 1, right + x + 1, bottom + y + 1, 0x00000000);
+            let (w, hgt) = (t.gfx.w as i32, t.gfx.h as i32);
+            t.render_v1(&mut x, &mut y, text, FontId::Numeric, 0x00ff00a0, 0x000000a0, w, hgt, 0, 0);
+        }
+        ScenarioHud::DownloadBar { frac } => {
+            let t6 = (viewleft + viewleft + viewwidth) / 2;
+            let a1 = viewwidth / 3;
+            let barleft = t6 - a1 / 2;
+            let barright = t6 + a1 / 2;
+            let s1 = barleft + (a1 as f32 * frac) as i32;
+            t.gfx.fill_rect(barleft, viewtop + 8, barright, viewtop + 16, 0x60000060);
+            let (mut a0, mut v1) = (barleft, barleft + 1);
+            while v1 < s1 {
+                t.gfx.fill_rect(a0, viewtop + 8, v1, viewtop + 16, 0xc00000d0);
+                v1 += 2;
+                a0 += 2;
+            }
+        }
+    }
 }
 
 /// Lay a premultiplied layer of the same size over `gfx` ("over").

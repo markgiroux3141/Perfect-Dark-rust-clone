@@ -174,6 +174,56 @@ pub fn pickups(w: &World, o: &LabOpts) -> Vec<Prim> {
     out
 }
 
+/// The scenario's props (M10): King of the Hill's hill (a ring in the
+/// holding team's colour, green while nobody holds it), the briefcase, the
+/// uplink and the terminal (green squares, a Capture the Case case in its
+/// team's colour), a ring round each carrier, and the simulants' scenario
+/// go-tos (to a prop, a spot, or the teammate they follow).
+pub fn scenario(w: &World, o: &LabOpts) -> Vec<Prim> {
+    use pd_core::ids::*;
+    use pd_sim::bot::MyAction;
+    let mut out = Vec::new();
+    let team_col = |t: usize| {
+        let c = pd_sim::mp::G_TEAM_COLOURS[t & 7];
+        [(c >> 24) as u8, (c >> 16) as u8, (c >> 8) as u8, 255]
+    };
+    let green = [60, 255, 60, 255];
+    let d = &w.mp.scenariodata;
+    if w.setup.scenario == MPSCENARIO_KINGOFTHEHILL && d.koh.hillindex >= 0 {
+        let col = if d.koh.occupiedteam >= 0 { team_col(d.koh.occupiedteam as usize) } else { green };
+        out.push(Prim::Circle { c: Vec2::new(d.koh.hillpos.x, d.koh.hillpos.z), r: 150.0, col, filled: false });
+    }
+    for ob in w.props.objs.iter().filter(|ob| ob.pos.y >= o.ymin && ob.pos.y <= o.ymax) {
+        let col = if ob.ty == OBJTYPE_WEAPON && ob.weaponnum == WEAPON_BRIEFCASE2 {
+            if w.setup.scenario == MPSCENARIO_CAPTURETHECASE { team_col(ob.team as usize) } else { green }
+        } else if (ob.ty == OBJTYPE_WEAPON && ob.weaponnum == WEAPON_DATAUPLINK) || ob.flags3 & OBJFLAG3_HTMTERMINAL != 0 {
+            green
+        } else {
+            continue;
+        };
+        let c = Vec2::new(ob.pos.x, ob.pos.z);
+        let h = if ob.flags3 & OBJFLAG3_HTMTERMINAL != 0 { 45.0 } else { 32.0 };
+        out.push(Prim::Poly { pts: vec![c + Vec2::new(-h, -h), c + Vec2::new(h, -h), c + Vec2::new(h, h), c + Vec2::new(-h, h)], fill: col });
+    }
+    for c in &w.chrs {
+        let p = Vec2::new(c.pos.x, c.pos.z);
+        let Some(a) = c.aibot.as_ref() else { continue };
+        if a.hasbriefcase || a.hascase || a.hasuplink {
+            out.push(Prim::Circle { c: p, r: 70.0, col: green, filled: false });
+        }
+        let to = match a.myaction {
+            MyAction::GotoProp => a.gotoprop.and_then(|id| w.props.get(id)).map(|ob| Vec2::new(ob.pos.x, ob.pos.z)),
+            MyAction::GotoPos => Some(Vec2::new(a.gotopos.x, a.gotopos.z)),
+            MyAction::Follow => a.followingplayernum.map(|f| Vec2::new(w.chrs[f].pos.x, w.chrs[f].pos.z)),
+            _ => None,
+        };
+        if let Some(b) = to {
+            out.push(Prim::Line { a: p, b, col: [60, 255, 60, 170], width_px: 1.5 });
+        }
+    }
+    out
+}
+
 /// The whole picture, back to front.
 pub fn picture(w: &World, o: &LabOpts) -> Vec<Prim> {
     let mut out = floors(&w.level, o);
@@ -181,6 +231,7 @@ pub fn picture(w: &World, o: &LabOpts) -> Vec<Prim> {
         out.extend(graph(&w.nav, o));
     }
     out.extend(pickups(w, o));
+    out.extend(scenario(w, o));
     out.extend(chrs(w, o));
     out
 }

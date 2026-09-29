@@ -20,8 +20,9 @@ pub struct SpawnOther {
     pub player: Option<usize>,
 }
 
-/// `player_choose_spawn_location(chrradius, ..., pads = g_SpawnPoints)`
-/// (`player.c:225`). Each spawn pad is scored by the nearest other chr and
+/// `player_choose_spawn_location(chrradius, ..., pads, numpads)` (`player.c:225`)
+/// over `spawnpads` (`g_SpawnPoints`, or Capture the Case's team pads,
+/// `ctc_choose_spawn_location`). Each spawn pad is scored by the nearest other chr and
 /// marked "very bad" (a chr in the pad's room) or "bad" (in a neighbouring
 /// room). A 4-slot shortlist fills in three passes: pads over 10 m from
 /// everyone and not bad, walking circularly from a random pad; the same
@@ -31,15 +32,16 @@ pub struct SpawnOther {
 ///
 /// Returns the spot (at pad height, not on the floor) and
 /// `atan2f(pad.look.x, pad.look.z)`. `cyls` are the other chrs' perimeters.
-pub fn player_choose_spawn_location(level: &TileLevel, stage: &Stage, chrradius: f32, others: &[SpawnOther], cyls: &[PropGeo], mp_room_visibility: &[u8], rng: &mut Rng) -> (Vec3, f32) {
-    let pads: Vec<Vec3> = stage.spawn_pads.iter().map(|&p| stage.pads[p].pos).collect();
-    let angles: Vec<f32> = stage.spawn_pads.iter().map(|&p| stage.pads[p].look_angle()).collect();
+#[allow(clippy::too_many_arguments)]
+pub fn player_choose_spawn_location(level: &TileLevel, stage: &Stage, spawnpads: &[usize], chrradius: f32, others: &[SpawnOther], cyls: &[PropGeo], mp_room_visibility: &[u8], rng: &mut Rng) -> (Vec3, f32) {
+    let pads: Vec<Vec3> = spawnpads.iter().map(|&p| stage.pads[p].pos).collect();
+    let angles: Vec<f32> = spawnpads.iter().map(|&p| stage.pads[p].look_angle()).collect();
     let numpads = pads.len();
     let mut padsqdists = vec![u32::MAX as f32; numpads];
     let mut verybad = vec![false; numpads];
     let mut bad = vec![false; numpads];
     for p in 0..numpads {
-        let padroom = stage.pads[stage.spawn_pads[p]].room;
+        let padroom = stage.pads[spawnpads[p]].room;
         let neighbours = padroom.map(|r| stage.rooms.bg_room_get_neighbours(r as usize, 20)).unwrap_or_default();
         for o in others {
             let sq = o.pos.distance_squared(pads[p]);

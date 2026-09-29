@@ -232,7 +232,7 @@ fn unarmed_simulants_go_for_the_weapons_and_fight_with_them() {
     for (s, w) in [WEAPON_FALCON2, WEAPON_CMP150, WEAPON_AR34, WEAPON_SHOTGUN, WEAPON_DY357MAGNUM, WEAPON_MPSHIELD].iter().enumerate() {
         setup.weapons[s] = mpweapon_index(*w).unwrap();
     }
-    let mut w = World::new(setup, stage, level, res(), harness::SPIKE_SEED).unwrap();
+    let mut w = World::new(setup, stage, level, res(), harness::M10_SEED).unwrap();
     let n = w.chrs.len();
     let mut fetched = vec![false; n];
     let mut armed_at = vec![None; n];
@@ -282,7 +282,7 @@ fn simulants_arm_up_and_fight_with_every_preset_set() {
         for (s, &wn) in set.iter().enumerate() {
             setup.weapons[s] = mpweapon_index(wn).unwrap();
         }
-        let mut w = World::new(setup, stage.clone(), level.clone(), res(), harness::SPIKE_SEED).unwrap();
+        let mut w = World::new(setup, stage.clone(), level.clone(), res(), harness::M10_SEED).unwrap();
         let mut held = std::collections::BTreeSet::new();
         let mut kills = 0;
         for _ in 0..60 * 120 {

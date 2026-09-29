@@ -544,6 +544,11 @@ impl World {
         self.mpstats_record_death(attacker.map_or(-1, |a| a as i32), victim as i32);
         let w = self.ab(victim).weaponnum;
         self.botinv_drop(victim, w, true);
+        // chraction.c:5122: the case or the uplink is gone with it.
+        let a = self.ab_mut(victim);
+        a.hasbriefcase = false;
+        a.hascase = false;
+        a.hasuplink = false;
     }
 
     /// `chr_tick_die` (`chraction.c:8295`): when the death animation reaches its

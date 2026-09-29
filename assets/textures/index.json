@@ -1682,6 +1682,17 @@
   "soundsurfacetype": 1,
   "surfacetype": 8
  },
+ "0200": {
+  "w": 64,
+  "h": 64,
+  "format": "RGBA16_CI4",
+  "codec": "zlib",
+  "numcolours": 16,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
  "0202": {
   "w": 64,
   "h": 64,
@@ -1721,6 +1732,17 @@
   "format": "RGBA16_CI4",
   "codec": "zlib",
   "numcolours": 16,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "020d": {
+  "w": 32,
+  "h": 32,
+  "format": "RGBA16_CI4",
+  "codec": "zlib",
+  "numcolours": 2,
   "numlods": 5,
   "hasloddata": false,
   "soundsurfacetype": 0,
@@ -11373,6 +11395,17 @@
   "soundsurfacetype": 3,
   "surfacetype": 3
  },
+ "06bc": {
+  "w": 32,
+  "h": 32,
+  "format": "RGBA16_CI4",
+  "codec": "zlib",
+  "numcolours": 16,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 3,
+  "surfacetype": 3
+ },
  "06c0": {
   "w": 64,
   "h": 16,
@@ -17060,6 +17093,61 @@
   "soundsurfacetype": 0,
   "surfacetype": 0
  },
+ "0b2d": {
+  "w": 48,
+  "h": 32,
+  "format": "RGBA16_CI4",
+  "codec": "zlib",
+  "numcolours": 16,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0b31": {
+  "w": 48,
+  "h": 32,
+  "format": "RGBA16_CI4",
+  "codec": "zlib",
+  "numcolours": 16,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0b32": {
+  "w": 48,
+  "h": 32,
+  "format": "RGBA16_CI4",
+  "codec": "zlib",
+  "numcolours": 16,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0b33": {
+  "w": 32,
+  "h": 32,
+  "format": "RGBA16_CI4",
+  "codec": "zlib",
+  "numcolours": 16,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0b34": {
+  "w": 32,
+  "h": 32,
+  "format": "RGBA16_CI4",
+  "codec": "zlib",
+  "numcolours": 16,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
  "0b53": {
   "w": 64,
   "h": 64,
@@ -17162,6 +17250,17 @@
  "0c22": {
   "w": 32,
   "h": 48,
+  "format": "RGBA16_CI4",
+  "codec": "zlib",
+  "numcolours": 16,
+  "numlods": 5,
+  "hasloddata": false,
+  "soundsurfacetype": 0,
+  "surfacetype": 0
+ },
+ "0c26": {
+  "w": 32,
+  "h": 24,
   "format": "RGBA16_CI4",
   "codec": "zlib",
   "numcolours": 16,

@@ -831,10 +831,18 @@ impl World {
         }
     }
 
-    /// `current_player_interact` (`prop.c:1488`) for player `pi`'s use press:
-    /// the nearest door on screen that `door_test_for_interact` accepts is
-    /// activated (`propdoor_interact`: MP doors have no locks). True: nothing
-    /// was there to use (so the guns reload).
+    /// `current_player_interact` (`prop.c:1494`) for player `pi`'s use press,
+    /// through `prop_find_for_interact` (`prop.c:1432`): the on-screen props
+    /// near to far, an object `obj_test_for_interact` accepts becoming the
+    /// choice and the walk going on, a door `door_test_for_interact` accepts
+    /// ending it. A door is activated (`propdoor_interact`: MP doors have no
+    /// locks); an object is used (`propobj_interact`: Hacker Central's
+    /// terminal remembers who, `scenario_handle_activated_prop`). True:
+    /// nothing was there to use (so the guns reload).
+    ///
+    /// `// SUBST:` PD's objects to use also count the alarms, a player's
+    /// thrown Laptop (picked up again) and the lift doors / only the
+    /// interactable ones (the terminal); a sentry isn't picked up by use yet.
     pub(crate) fn current_player_interact(&mut self, pi: usize) -> bool {
         let p = &self.players[pi];
         let (pos, theta) = (p.pos, p.theta);
@@ -847,19 +855,59 @@ impl World {
             // PROPFLAG_ONTHISSCREENTHISTICK. `// SUBST:` PD's is set by
             // the prop's on-screen test (its rooms on screen, its bounds in
             // the view) / one of its rooms on screen.
-            .filter(|(_, o)| o.door.as_ref().is_some_and(|d| d.rooms.iter().any(|&r| p.portalview.is_onscreen(r as usize))))
+            .filter(|(_, o)| match o.door.as_ref() {
+                Some(d) => d.rooms.iter().any(|&r| p.portalview.is_onscreen(r as usize)),
+                None => o.flags3 & (OBJFLAG3_HTMTERMINAL | OBJFLAG3_INTERACTABLE) != 0 && !o.is_gone() && o.room.is_some_and(|r| p.portalview.is_onscreen(r as usize)),
+            })
             .map(|(i, o)| (o.pos.distance_squared(pos), i))
             .collect();
         cands.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut interact = None;
         for (_, i) in cands {
-            if self.door_test_for_interact(i, pos, theta) {
-                let pos = self.players[pi].pos;
-                self.doors_choose_swing_direction(pos, i);
-                self.doors_activate(i, true);
-                return false;
+            if self.props.objs[i].door.is_some() {
+                if self.door_test_for_interact(i, pos, theta) {
+                    interact = Some(i);
+                    break;
+                }
+            } else if self.obj_test_for_interact(i, pos, theta) {
+                interact = Some(i);
             }
         }
-        true
+        let Some(i) = interact else { return true };
+        if self.props.objs[i].door.is_some() {
+            let pos = self.players[pi].pos;
+            self.doors_choose_swing_direction(pos, i);
+            self.doors_activate(i, true);
+        } else {
+            // propobj_interact (`propobj.c:15170`) → scenario_handle_activated_prop.
+            let id = self.props.objs[i].id;
+            self.scenario_handle_activated_prop(pi, id);
+        }
+        false
+    }
+
+    /// `obj_test_for_interact` (`propobj.c:15044`) for an interactable object:
+    /// healthy, not `OBJFLAG_CANNOT_ACTIVATE`, within 2 m (1 m with
+    /// `OBJFLAG3_INTERACTSHORTRANGE`) across and up or down, within 22.5° of
+    /// the player's facing, and (with `OBJFLAG2_INTERACTCHECKLOS`) in sight.
+    fn obj_test_for_interact(&self, i: usize, playerpos: Vec3, theta: f32) -> bool {
+        let o = &self.props.objs[i];
+        if o.flags & OBJFLAG_CANNOT_ACTIVATE != 0 || o.hidden2 & OBJH2FLAG_DESTROYED != 0 {
+            return false;
+        }
+        let d = o.pos - playerpos;
+        let range = if o.flags3 & OBJFLAG3_INTERACTSHORTRANGE != 0 { 100.0 } else { 200.0 };
+        if !(d.x * d.x + d.z * d.z < range * range && d.y < range && d.y > -range) {
+            return false;
+        }
+        let mut angle = pd_core::math::atan2f(d.x, d.z) - (360.0 - theta) * baddtor(360.0) / 360.0;
+        if angle < 0.0 {
+            angle += baddtor(360.0);
+        }
+        if angle > baddtor(180.0) {
+            angle = baddtor(360.0) - angle;
+        }
+        angle <= baddtor(22.5) && (o.flags2 & OBJFLAG2_INTERACTCHECKLOS == 0 || self.level.los(playerpos, o.pos))
     }
 
     /// `door_test_for_interact` (`propobj.c:19623`): a usable door within 2 m

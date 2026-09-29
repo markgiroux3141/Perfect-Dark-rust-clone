@@ -106,6 +106,14 @@ pub struct MatchSetup {
     /// A challenge is being played (`g_BossFile.locktype == MPLOCKTYPE_CHALLENGE`).
     #[serde(default)]
     pub challenge: bool,
+    /// `g_Vars.mphilltime`: King of the Hill's seconds to score, less 10 (the
+    /// Hill Options' Time slider; `mp_init` sets 10, 20 s).
+    #[serde(default = "default_mphilltime")]
+    pub mphilltime: u8,
+}
+
+fn default_mphilltime() -> u8 {
+    10
 }
 
 /// `struct mpweapon` (`types.h:4933`): a row of `g_MpWeapons`
@@ -204,6 +212,7 @@ impl Default for MatchSetup {
             simulants: Vec::new(),
             teamnames: Vec::new(),
             challenge: false,
+            mphilltime: 10,
         }
     }
 }
@@ -384,8 +393,33 @@ pub struct Ranking {
     pub score: i32,
 }
 
+/// What the scenario's score callback reads beyond the mpchrconfigs: the
+/// scenario and its options, and Hacker Central's and Pop a Cap's own counters
+/// (`g_ScenarioData.htm.numpoints`, `.pac.killcounts`, `.pac.survivalcounts`).
+/// PD keeps those by chr index and looks each chr slot's up
+/// (`mp_chrslot_to_chrindex`); they are held here by chr slot, looked up the
+/// same way by whoever fills them in.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ScenarioScores {
+    /// `MPSCENARIO_*`.
+    pub scenario: u8,
+    /// `g_MpSetup.options` (`MPOPTION_KILLSSCORE`).
+    pub options: u32,
+    pub htm_numpoints: [i32; MAX_MPCHRS],
+    pub pac_killcounts: [i32; MAX_MPCHRS],
+    pub pac_survivalcounts: [i32; MAX_MPCHRS],
+}
+
+impl ScenarioScores {
+    /// A scenario with no counters of its own yet.
+    pub fn new(scenario: u8, options: u32) -> ScenarioScores {
+        ScenarioScores { scenario, options, ..Default::default() }
+    }
+}
+
 /// What the scoring reads of `g_MpSetup` and the mpchrconfigs: the chrs taking
-/// part, whether teams are on, each chr slot's team and counters.
+/// part, whether teams are on, each chr slot's team and counters, and the
+/// scenario's own.
 #[derive(Clone, Copy, Debug)]
 pub struct MpScoring<'a> {
     pub chrslots: u16,
@@ -393,6 +427,7 @@ pub struct MpScoring<'a> {
     /// `mpchrconfig.team` by chr slot.
     pub teams: &'a [u8; MAX_MPCHRS],
     pub stats: &'a [MpChrStats; MAX_MPCHRS],
+    pub scenario: &'a ScenarioScores,
 }
 
 /// `(score + 0x8000) << 16 | (0xffff - deaths)`: the score, fewer deaths
@@ -402,17 +437,18 @@ fn rankable(score: i32, deaths: i32) -> u32 {
 }
 
 impl MpScoring<'_> {
-    /// `scenario_calculate_player_score` (`scenarios.c:651`) with no scenario
-    /// callback (Combat has none): a kill scores a point, a suicide or (with
-    /// teams on) a teammate's death costs one. Also the chr's deaths.
-    pub fn scenario_calculate_player_score(&self, chrnum: usize) -> (i32, i32) {
+    /// The kills half every score shares (`scenarios.c:661`): a kill scores a
+    /// point, a suicide or a teammate's death costs one; `teamcheck` is
+    /// whether teammates count against (King of the Hill and Capture the Case
+    /// check always, the others with teams on).
+    fn kills_score(&self, chrnum: usize, teamcheck: bool) -> i32 {
         let mpchr = &self.stats[chrnum];
         let mut score = 0i32;
         for i in 0..MAX_MPCHRS {
             let k = mpchr.killcounts[i] as i32;
             if i == chrnum {
                 score -= k;
-            } else if self.teams_enabled {
+            } else if teamcheck {
                 if self.teams[i] == self.teams[chrnum] {
                     score -= k;
                 } else {
@@ -422,6 +458,31 @@ impl MpScoring<'_> {
                 score += k;
             }
         }
+        score
+    }
+
+    /// `scenario_calculate_player_score` (`scenarios.c:651`): the scenario's
+    /// callback, else Combat's (the kills). The scenarios score their own
+    /// points, plus the kills with Kills Score on: Hold the Briefcase and King
+    /// of the Hill a point each (`htb_calculate_player_score`,
+    /// `holdthebriefcase.inc:440`; `koh_`, `kingofthehill.inc:605`), Hacker
+    /// Central two a download (`htm_`, `hackthatmac.inc:619`), Pop a Cap two a
+    /// victim popped and one a minute survived (`pac_`, `popacap.inc:334`),
+    /// Capture the Case three a capture (`ctc_`, `capturethecase.inc:346`).
+    /// Also the chr's deaths.
+    pub fn scenario_calculate_player_score(&self, chrnum: usize) -> (i32, i32) {
+        let mpchr = &self.stats[chrnum];
+        let sc = self.scenario;
+        let killsscore = sc.options & MPOPTION_KILLSSCORE != 0;
+        let kills = |teamcheck: bool| if killsscore { self.kills_score(chrnum, teamcheck) } else { 0 };
+        let score = match sc.scenario {
+            MPSCENARIO_HOLDTHEBRIEFCASE => mpchr.numpoints as i32 + kills(self.teams_enabled),
+            MPSCENARIO_HACKERCENTRAL => sc.htm_numpoints[chrnum] * 2 + kills(self.teams_enabled),
+            MPSCENARIO_POPACAP => sc.pac_killcounts[chrnum] * 2 + sc.pac_survivalcounts[chrnum] + kills(self.teams_enabled),
+            MPSCENARIO_KINGOFTHEHILL => mpchr.numpoints as i32 + kills(true),
+            MPSCENARIO_CAPTURETHECASE => mpchr.numpoints as i32 * 3 + kills(true),
+            _ => self.kills_score(chrnum, self.teams_enabled),
+        };
         (score, mpchr.numdeaths as i32)
     }
 
@@ -491,8 +552,8 @@ pub struct PlayerRankings {
 /// first (a later slot goes after the ones it ties with). It writes each chr's
 /// `placement` and `rankablescore`: in a team game, the team's place and 255 −
 /// that place.
-pub fn mp_get_player_rankings(chrslots: u16, teams_enabled: bool, teams: &[u8; MAX_MPCHRS], stats: &mut [MpChrStats; MAX_MPCHRS]) -> PlayerRankings {
-    let scoring = MpScoring { chrslots, teams_enabled, teams, stats };
+pub fn mp_get_player_rankings(chrslots: u16, teams_enabled: bool, teams: &[u8; MAX_MPCHRS], stats: &mut [MpChrStats; MAX_MPCHRS], scenario: &ScenarioScores) -> PlayerRankings {
+    let scoring = MpScoring { chrslots, teams_enabled, teams, stats, scenario };
     let teamrankings = if teams_enabled { scoring.mp_get_team_rankings() } else { Vec::new() };
     let mut rows: Vec<(u32, i32, usize)> = Vec::new();
     for i in 0..MAX_MPCHRS {
@@ -547,7 +608,8 @@ mod tests {
         stats[4].numdeaths = 2;
         stats[5].numdeaths = 1;
         let slots = 0b11_0001;
-        let r = mp_get_player_rankings(slots, false, &[0; MAX_MPCHRS], &mut stats);
+        let combat = ScenarioScores::default();
+        let r = mp_get_player_rankings(slots, false, &[0; MAX_MPCHRS], &mut stats, &combat);
         let order: Vec<(Option<usize>, i32)> = r.rankings.iter().map(|x| (x.mpchr, x.score)).collect();
         // Slot 0: 2 - 1 = 1 with 1 death; slot 4: 1 with 2 deaths; slot 5: 0.
         assert_eq!(order, [(Some(0), 1), (Some(4), 1), (Some(5), 0)]);
@@ -561,12 +623,42 @@ mod tests {
         teams[0] = 2;
         teams[5] = 2;
         teams[4] = 1;
-        let sc = MpScoring { chrslots: slots, teams_enabled: true, teams: &teams, stats: &stats };
+        let sc = MpScoring { chrslots: slots, teams_enabled: true, teams: &teams, stats: &stats, scenario: &combat };
         let t: Vec<(usize, i32)> = sc.mp_get_team_rankings().iter().map(|x| (x.teamnum, x.score)).collect();
         assert_eq!(t, [(1, 1), (2, 1)]);
-        mp_get_player_rankings(slots, true, &teams, &mut stats);
+        mp_get_player_rankings(slots, true, &teams, &mut stats, &combat);
         assert_eq!((stats[4].placement, stats[0].placement, stats[5].placement), (0, 1, 1));
         assert_eq!(stats[0].rankablescore, 254);
+    }
+
+    /// Slot 0 (team 0) scored 2 points, killed slot 4 (team 1) three times,
+    /// its teammate slot 5 once and itself once. Each scenario's points, with
+    /// and without Kills Score (Combat's count kills only).
+    #[test]
+    fn each_scenario_scores_its_own_points_and_the_kills_with_kills_score() {
+        let mut stats = [MpChrStats::default(); MAX_MPCHRS];
+        stats[0].numpoints = 2;
+        stats[0].killcounts[4] = 3;
+        stats[0].killcounts[5] = 1;
+        stats[0].killcounts[0] = 1;
+        let mut teams = [0u8; MAX_MPCHRS];
+        teams[4] = 1;
+        let score = |scenario: u8, options: u32, teams_enabled: bool| {
+            let mut sc = ScenarioScores::new(scenario, options);
+            sc.htm_numpoints[0] = 5;
+            sc.pac_killcounts[0] = 1;
+            sc.pac_survivalcounts[0] = 4;
+            MpScoring { chrslots: 0x31, teams_enabled, teams: &teams, stats: &stats, scenario: &sc }.scenario_calculate_player_score(0).0
+        };
+        let ks = MPOPTION_KILLSSCORE;
+        // Combat: 3 + 1 - 1 without teams, 3 - 1 - 1 with.
+        assert_eq!((score(MPSCENARIO_COMBAT, 0, false), score(MPSCENARIO_COMBAT, 0, true)), (3, 1));
+        assert_eq!((score(MPSCENARIO_HOLDTHEBRIEFCASE, 0, false), score(MPSCENARIO_HOLDTHEBRIEFCASE, ks, false)), (2, 5));
+        assert_eq!((score(MPSCENARIO_HACKERCENTRAL, 0, false), score(MPSCENARIO_HACKERCENTRAL, ks, true)), (10, 11));
+        assert_eq!((score(MPSCENARIO_POPACAP, 0, false), score(MPSCENARIO_POPACAP, ks, false)), (6, 9));
+        // King of the Hill and Capture the Case count teammates against, teams or not.
+        assert_eq!((score(MPSCENARIO_KINGOFTHEHILL, 0, true), score(MPSCENARIO_KINGOFTHEHILL, ks, false)), (2, 3));
+        assert_eq!((score(MPSCENARIO_CAPTURETHECASE, 0, true), score(MPSCENARIO_CAPTURETHECASE, ks, false)), (6, 7));
     }
 
     #[test]
@@ -597,5 +689,6 @@ mod tests {
         assert_eq!(s.chrslots(), 0x11);
         let back: MatchSetup = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(back, s);
+        assert_eq!(s.mphilltime, 10);
     }
 }

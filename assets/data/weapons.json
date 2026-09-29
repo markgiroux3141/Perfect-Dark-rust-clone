@@ -6697,6 +6697,200 @@
    "sectopri_animation": null,
    "aimsettings": "invaimsettings_unarmed",
    "gunviscmds_symbol": null
+  },
+  {
+   "mp_index": null,
+   "mpweapon": null,
+   "weapon": "WEAPON_DATAUPLINK",
+   "weaponnum": 54,
+   "symbol": "invitem_datauplink",
+   "source": "invitems.c:5558",
+   "equipment_only": false,
+   "name_text": "Data Uplink",
+   "short_text": "",
+   "manufacturer_text": "",
+   "description_text": "Capable of remote interrogation of almost any type of stored data, which is sent directly back to the Institute computer hackers. A variant of this device provides the hackers with a direct link into the local system.",
+   "muzzlez": 1,
+   "posx": 8,
+   "posy": -16.2,
+   "posz": -17.5,
+   "sway": 1,
+   "weapon_flags": 2281840712,
+   "weapon_flag_names": [
+    "WEAPONFLAG_ONEHANDED",
+    "WEAPONFLAG_00000040",
+    "WEAPONFLAG_HASGUNSCRIPT",
+    "WEAPONFLAG_HASHANDS",
+    "WEAPONFLAG_UNDROPPABLE",
+    "WEAPONFLAG_FIRETOACTIVATE"
+   ],
+   "ai_can_use": false,
+   "assets": {
+    "fp_model_symbol": "FILE_GCOMMSUPLINK",
+    "fp_model": "guns/commsuplink.bin",
+    "tp_model_symbol": null,
+    "tp_model": null,
+    "tp_model_const": null,
+    "extrascale": null
+   },
+   "mp": null,
+   "part_visibility": [],
+   "gun_vis": [],
+   "editor": null,
+   "export": null,
+   "bot": {
+    "score1": 0,
+    "score2": 0,
+    "dualscore1": 0,
+    "dualscore2": 0,
+    "haspriammogoal": 0,
+    "hassecammogoal": 0,
+    "pridistconfig": 2,
+    "secdistconfig": 2,
+    "targetammopri": 0,
+    "targetammosec": 0,
+    "criticalammopri": 0,
+    "criticalammosec": 0,
+    "reloaddelay": 1,
+    "allowpartialreloaddelay": 0,
+    "source": "botinv.c:74"
+   },
+   "functions": [
+    {
+     "symbol": "invfunc_datauplink_primary",
+     "struct": "funcdef_special",
+     "line": 5545,
+     "source": "invitems.c:5545",
+     "type": 4,
+     "name": "L_GUN_141",
+     "unk06": 0,
+     "ammoindex": -1,
+     "noisesettings": "invnoisesettings_silent",
+     "fire_animation": null,
+     "flags": 1056768,
+     "specialfunc": "HANDATTACKTYPE_UPLINK",
+     "recoverytime60": 30,
+     "soundnum": 0,
+     "name_text": "Connect",
+     "flag_names": [
+      "FUNCFLAG_NOMUZZLEFLASH",
+      "FUNCFLAG_AUTOSWITCHUNSELECTABLE"
+     ]
+    },
+    null
+   ],
+   "ammo": [
+    null,
+    null
+   ],
+   "scenario": true,
+   "equip_animation": "invanim_datauplink_equip",
+   "unequip_animation": "invanim_datauplink_unequip",
+   "pritosec_animation": null,
+   "sectopri_animation": null,
+   "aimsettings": "invaimsettings_default",
+   "gunviscmds_symbol": null
+  },
+  {
+   "mp_index": null,
+   "mpweapon": null,
+   "weapon": "WEAPON_BRIEFCASE2",
+   "weaponnum": 87,
+   "symbol": "invitem_briefcase2",
+   "source": "invitems.c:4698",
+   "equipment_only": false,
+   "name_text": "Briefcase",
+   "short_text": "Briefcase",
+   "manufacturer_text": "",
+   "description_text": "",
+   "muzzlez": 1,
+   "posx": 12.5,
+   "posy": -17,
+   "posz": -27.5,
+   "sway": 1,
+   "weapon_flags": 26478600,
+   "weapon_flag_names": [
+    "WEAPONFLAG_ONEHANDED",
+    "WEAPONFLAG_00000800",
+    "WEAPONFLAG_HIDEMENUMODEL",
+    "WEAPONFLAG_DONTCOUNTSHOTS",
+    "WEAPONFLAG_DETERMINER_S_THE",
+    "WEAPONFLAG_DETERMINER_F_THE"
+   ],
+   "ai_can_use": false,
+   "assets": {
+    "fp_model_symbol": "FILE_GFALCON2LOD",
+    "fp_model": "guns/falcon2lod.bin",
+    "tp_model_symbol": "FILE_PCHRBRIEFCASE",
+    "tp_model": "props/chrbriefcase.bin",
+    "tp_model_const": "MODEL_CHRBRIEFCASE",
+    "extrascale": null
+   },
+   "mp": null,
+   "part_visibility": [],
+   "gun_vis": [],
+   "editor": null,
+   "export": null,
+   "bot": {
+    "score1": 0,
+    "score2": 0,
+    "dualscore1": 0,
+    "dualscore2": 0,
+    "haspriammogoal": 0,
+    "hassecammogoal": 0,
+    "pridistconfig": 2,
+    "secdistconfig": 2,
+    "targetammopri": 0,
+    "targetammosec": 0,
+    "criticalammopri": 0,
+    "criticalammosec": 0,
+    "reloaddelay": 1,
+    "allowpartialreloaddelay": 0,
+    "source": "botinv.c:107"
+   },
+   "functions": [
+    {
+     "symbol": "invfunc_briefcase_use",
+     "struct": "funcdef",
+     "line": 4683,
+     "source": "invitems.c:4683",
+     "type": 0,
+     "name": "L_GUN_000",
+     "unk06": 0,
+     "ammoindex": 0,
+     "noisesettings": "invnoisesettings_silent",
+     "fire_animation": null,
+     "flags": 0,
+     "name_text": "",
+     "flag_names": []
+    },
+    {
+     "symbol": "invfunc_briefcase_use",
+     "struct": "funcdef",
+     "line": 4683,
+     "source": "invitems.c:4683",
+     "type": 0,
+     "name": "L_GUN_000",
+     "unk06": 0,
+     "ammoindex": 0,
+     "noisesettings": "invnoisesettings_silent",
+     "fire_animation": null,
+     "flags": 0,
+     "name_text": "",
+     "flag_names": []
+    }
+   ],
+   "ammo": [
+    null,
+    null
+   ],
+   "scenario": true,
+   "equip_animation": null,
+   "unequip_animation": null,
+   "pritosec_animation": null,
+   "sectopri_animation": null,
+   "aimsettings": "invaimsettings_default",
+   "gunviscmds_symbol": null
   }
  ],
  "scripts": {
@@ -7372,6 +7566,32 @@
     {
      "op": "waitforzreleased",
      "keyframe": 5
+    },
+    {
+     "op": "end"
+    }
+   ]
+  },
+  "invanim_datauplink_equip": {
+   "line": 5530,
+   "cmds": [
+    {
+     "op": "playanimation",
+     "anim": 1081,
+     "params": 10000
+    },
+    {
+     "op": "end"
+    }
+   ]
+  },
+  "invanim_datauplink_unequip": {
+   "line": 5535,
+   "cmds": [
+    {
+     "op": "playanimation",
+     "anim": 1082,
+     "params": 10000
     },
     {
      "op": "end"
@@ -10728,6 +10948,8 @@
   1075,
   1077,
   1078,
+  1081,
+  1082,
   1084,
   1085,
   1086

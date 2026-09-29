@@ -7,4 +7,5 @@ pub mod matchsnap;
 pub mod menu;
 pub mod model;
 pub mod pickups;
+pub mod scenario;
 pub mod stage;

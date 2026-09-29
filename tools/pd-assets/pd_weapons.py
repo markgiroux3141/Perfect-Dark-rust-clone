@@ -641,10 +641,19 @@ EQUIPMENT_ONLY = {
 }
 
 
-def build(include_unarmed: bool = False) -> dict:
+#: The scenarios' own weapons (M10), which `g_MpWeapons` does not list: Hacker
+#: Central's data uplink and the briefcase of Hold the Briefcase and Capture the
+#: Case. Their third-person model is `playermgr_get_model_of_weapon`'s
+#: (playermgr.c:750): the briefcase's MODEL_CHRBRIEFCASE; the uplink has none
+#: (its default case returns -1 past WEAPON_PSYCHOSISGUN), so it is never dropped.
+SCENARIO_WEAPONS = (("WEAPON_DATAUPLINK", None), ("WEAPON_BRIEFCASE2", "MODEL_CHRBRIEFCASE"))
+
+
+def build(include_unarmed: bool = False, include_scenario: bool = False) -> dict:
     """The MP weapon table. `include_unarmed` adds `invitem_unarmed` (the fists every
     player holds, `WEAPON_UNARMED`), which `g_MpWeapons` does not list; its row has
-    no `mp_index`, `mp` or `export`."""
+    no `mp_index`, `mp` or `export`. `include_scenario` adds [`SCENARIO_WEAPONS`]
+    the same way, each row marked `"scenario": true`."""
     require_decomp()
     consts = Consts()
     strings = load_gun_strings()
@@ -1024,6 +1033,19 @@ def build(include_unarmed: bool = False) -> dict:
         if "functions" not in wdef:
             wdef["functions"] = [wdef.pop("pri_function", None), wdef.pop("sec_function", None)]
         rows.append(make_row(None, None, {}, weaponnum, wsym, wdef_entry, wdef))
+
+    if include_scenario:
+        for wname, modelname in SCENARIO_WEAPONS:
+            weaponnum = consts.value(wname)
+            wsym = weapon_symbols[weaponnum]
+            wdef_entry = inv[wsym]
+            wdef = map_fields(wdef_entry["body"], weapondef_fields(wdef_entry["body"]), consts)
+            if "functions" not in wdef:
+                wdef["functions"] = [wdef.pop("pri_function", None), wdef.pop("sec_function", None)]
+            mp = {"model": consts.value(modelname)} if modelname else {}
+            row = make_row(None, None, mp, weaponnum, wsym, wdef_entry, wdef)
+            row["scenario"] = True
+            rows.append(row)
 
     # Resolve the editor dump per row, falling back to whichever gun shares the
     # same first-person model file (the Falcon variants).

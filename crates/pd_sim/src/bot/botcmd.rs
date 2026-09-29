@@ -3,7 +3,7 @@
 //!
 //! Source: the old repo's `pd_spike/botcmd.rs`.
 
-use pd_core::ids::{BOTDIFF_EASY, BOTDIFF_MEAT};
+use pd_core::ids::{BOTDIFF_EASY, BOTDIFF_MEAT, BOTTYPE_KAZE};
 
 use super::{botinv_get_dist_config, MyAction};
 use crate::chr::Act;
@@ -51,21 +51,38 @@ pub const BOT_DIST_CONFIGS: [DistConfig; 8] = [
 ];
 
 pub const BOTDISTCFG_CLOSE: usize = 0;
+pub const BOTDISTCFG_KAZE: usize = 4;
+pub const BOTDISTCFG_FOLLOW: usize = 6;
 
 impl World {
-    /// `botcmd_tick_dist_mode` (`botcmd.c:61`), the free-for-all branch (no
-    /// follow, no KazeSim).
+    /// `botcmd_tick_dist_mode` (`botcmd.c:61`): how near to keep to the chr
+    /// it attacks, or follows (`BOTDISTCFG_FOLLOW`; a close-range fighter
+    /// takes on a target within 5 m of its leader).
     pub(crate) fn botcmd_tick_dist_mode(&mut self, i: usize) {
         let gset = self.res.gset.clone();
         let a = self.ab(i);
-        let confignum = botinv_get_dist_config(&gset, a.weaponnum, a.gunfunc);
-        let (targetprop, insight) = match (a.myaction, a.attackingplayernum) {
-            (MyAction::Attack, Some(p)) => (Some(p), a.chrsinsight[p]),
-            _ => (self.chrs[i].target, a.targetinsight),
+        let confignum = if a.config.bottype == BOTTYPE_KAZE { BOTDISTCFG_KAZE } else { botinv_get_dist_config(&gset, a.weaponnum, a.gunfunc) };
+        let (limits, targetprop, insight) = match (a.myaction, a.followingplayernum, a.attackingplayernum) {
+            (MyAction::Follow, Some(f), _) => {
+                let (mut limits, mut t, mut insight) = (BOT_DIST_CONFIGS[BOTDISTCFG_FOLLOW], f, a.chrsinsight[f]);
+                if let Some(target) = self.chrs[i].target {
+                    if (confignum == BOTDISTCFG_CLOSE || confignum == BOTDISTCFG_KAZE) && self.chrs[f].pos.distance_squared(self.chrs[target].pos) < 500.0 * 500.0 {
+                        limits = BOT_DIST_CONFIGS[confignum];
+                        t = target;
+                        insight = a.targetinsight;
+                    }
+                }
+                (limits, Some(t), insight)
+            }
+            (MyAction::Attack, _, Some(p)) => (BOT_DIST_CONFIGS[confignum.min(7)], Some(p), a.chrsinsight[p]),
+            _ => (BOT_DIST_CONFIGS[confignum.min(7)], self.chrs[i].target, a.targetinsight),
         };
         let prevmode = a.distmode;
         let Some(targetprop) = targetprop else { return };
-        let limits = BOT_DIST_CONFIGS[confignum.min(7)];
+        // bot_has_ground.
+        if self.chrs[targetprop].ground < -20000.0 {
+            return;
+        }
         let target_pos = self.chrs[targetprop].pos;
         // chr_get_distance_to_coord: 3D, from the root.
         let distance = self.chrs[i].pos.distance(target_pos);

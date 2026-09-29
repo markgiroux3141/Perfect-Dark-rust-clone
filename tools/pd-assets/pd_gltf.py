@@ -536,8 +536,53 @@ def resolve_texture(m: ModelDef, cfg: TexConfig, texnum: int) -> tuple[int, int,
         return w, h, rgba, "editor"
 
 
+#: `G_IM_FMT_*` / `G_IM_SIZ_*` (gbi.h).
+G_IM_FMT_RGBA, G_IM_FMT_IA, G_IM_FMT_I = 0, 3, 4
+G_IM_SIZ_8b, G_IM_SIZ_16b = 1, 2
+
+
+def inline_texture_formats(m: ModelDef) -> dict[int, tuple[int, int]]:
+    """Each inline texture's `(fmt, siz)` as the display lists render it: the
+    render tile's (tile 0) `G_SETTILE` after the `G_SETTIMG` that loads it, or,
+    when the load reuses the tile set up before (chrbriefcase's third and
+    fourth textures), the last tile 0 set up. The `G_SETTIMG` itself always
+    says 16b (a `G_LOADBLOCK` moves 16-bit words whatever the texels are).
+
+    Walks the file as 8-byte commands from the first `G_SETTIMG` of a texture
+    pointer on (the display lists follow the textures and vertices)."""
+    ptrs = {cfg.ptr for cfg in read_texconfigs(m).values() if cfg.inline}
+    out: dict[int, tuple[int, int]] = {}
+    if not ptrs:
+        return out
+    d = m.data
+    cmds = [struct.unpack_from(">II", d, o) for o in range(0, len(d) - 7, 8)]
+    start = next((i for i, (w0, w1) in enumerate(cmds) if w0 >> 24 == 0xFD and w1 in ptrs), None)
+    if start is None:
+        return out
+    last = None
+    pending: list[int] = []
+    for w0, w1 in cmds[start:]:
+        op = w0 >> 24
+        if op == 0xFD and w1 in ptrs:
+            # A new load: the textures still waiting take the tile as it is.
+            for p in pending:
+                out.setdefault(p, last)
+            pending = [w1]
+        elif op == 0xF5 and (w1 >> 24) & 7 == 0:
+            last = ((w0 >> 21) & 7, (w0 >> 19) & 3)
+            for p in pending:
+                out.setdefault(p, last)
+            pending = []
+    for p in pending:
+        out.setdefault(p, last)
+    return {p: f for p, f in out.items() if f is not None}
+
+
 def decode_inline_texture(m: ModelDef, cfg: TexConfig) -> bytes:
-    """Level 0 of an inline RGBA5551 texture, as tightly-packed RGBA8.
+    """Level 0 of an inline texture, as tightly-packed RGBA8. Every body's is
+    RGBA5551 (below); a prop's may be I8 or IA8 ([`inline_texture_formats`]:
+    chrbriefcase), unswizzled the same way with 8-bit rows
+    ([`decode_inline_texture_8b`]).
 
     Two storage details, both taken from `tex_swizzle` (`texdecompress.c:1927`)
     and both independently confirmed on screen before that function was found:
@@ -556,6 +601,9 @@ def decode_inline_texture(m: ModelDef, cfg: TexConfig) -> bytes:
     `248`), which otherwise greys down a whole character. The single alpha bit
     becomes 0 or 255.
     """
+    fmt = inline_texture_formats(m).get(cfg.ptr, (G_IM_FMT_RGBA, G_IM_SIZ_16b))
+    if fmt[1] == G_IM_SIZ_8b and fmt[0] in (G_IM_FMT_I, G_IM_FMT_IA):
+        return decode_inline_texture_8b(m, cfg, fmt[0])
     base = seg_off(cfg.ptr)
     stride = rgba16_row_bytes(cfg.width)
     if base + stride * cfg.height > len(m.data):
@@ -572,6 +620,31 @@ def decode_inline_texture(m: ModelDef, cfg: TexConfig) -> bytes:
             px[d + 1] = ((v >> 6) & 31) * 255 // 31
             px[d + 2] = ((v >> 1) & 31) * 255 // 31
             px[d + 3] = 255 if v & 1 else 0
+    return bytes(px)
+
+
+def decode_inline_texture_8b(m: ModelDef, cfg: TexConfig, fmt: int) -> bytes:
+    """Level 0 of an inline I8 or IA8 texture. `tex_swizzle` (`texdecompress.c:1927`)
+    pads an 8-bit row to 8 bytes (`((width + 7) & 0xff8) >> 2` words) and swaps
+    each odd row's u32 pairs, which at 8bpp is `x ^ 4`. I8 is the intensity in
+    every channel, alpha too (the RDP's I); IA8 is 4-bit intensity over 4-bit
+    alpha, each scaled `* 17`."""
+    base = seg_off(cfg.ptr)
+    stride = ((cfg.width + 7) & 0xFF8)
+    if base + stride * cfg.height > len(m.data):
+        raise SystemExit(f"{m.name}: texture at {cfg.ptr:#x} runs past the end of the file")
+    px = bytearray(cfg.width * cfg.height * 4)
+    for y in range(cfg.height):
+        row = base + y * stride
+        swap = y & 1
+        for x in range(cfg.width):
+            v = m.data[row + ((x ^ 4) if swap else x)]
+            d = (y * cfg.width + x) * 4
+            if fmt == G_IM_FMT_I:
+                px[d:d + 4] = bytes((v, v, v, v))
+            else:
+                i, a = (v >> 4) * 17, (v & 15) * 17
+                px[d:d + 4] = bytes((i, i, i, a))
     return bytes(px)
 
 

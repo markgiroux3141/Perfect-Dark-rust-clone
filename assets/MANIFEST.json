@@ -9,31 +9,31 @@
  "rom_md5": "e03b088b6ac9e0080440efed07c1e40f",
  "exporters": {
   "build_assets.py": "6897b5857efb0e52e70e64581733f652496b6b380476b96a1101dd9528be291a",
-  "check_against_spikes.py": "5a45d31669fb9b9b79a181bff4226eb3e99806f9abc82ac070a277fc361b8c7f",
+  "check_against_spikes.py": "abc745da424b3b64a794b0d3f2e8fd7c37c33cd1291419bf07a5eb89c9a5929e",
   "pd_anim.py": "85e2ec9a1b2d0fdcdee787909647e654364437652f0339fa9e34571135ba1785",
   "pd_animmap.py": "804be1a12ad6e530eab690de10f3fa3954858a87958f1af5249d9b570ae1f6ff",
   "pd_bg.py": "e025f1e4b3c763761f476245304d9264d793ab88af54bddc8bb7ef85b41de7e7",
   "pd_bg_preview.py": "73172f4ba61b94f948b1bd140d31e1b6f2c113c453c3df7208641d2b91998155",
-  "pd_fpgun.py": "828b6ce627b54b452a65850036a75c58b5baad5bcdfd4fafd43e86424ef91367",
-  "pd_gltf.py": "ae6da6c7b14e283701973d65e80615fb1200667aabe777e875dff02848d410ce",
-  "pd_ids.py": "fe1da14a685439dceeb6336362f9abbc4a8c1dfc0c58da01ed0c2999732e6b20",
+  "pd_fpgun.py": "19c110ceea19a1e539b085c5514e38b41f92f20e71a98c7acc3ae7e39ffbb6e9",
+  "pd_gltf.py": "96cde0e1069ad09b6c3105a06c0677a7928d77498e8259a5cb56f30821811b0b",
+  "pd_ids.py": "6cb333f8d3faead76f7a763fc4aa073a2ac1dfd03f6a127e05a1d3f32c00bac4",
   "pd_menu_gen.py": "02e16bebdc3e7d6a48579706fc7319110bde5e4bd10131277c1fe2e40e0dc0e5",
   "pd_model.py": "296358e46218e3c3df08e3809db18614ccdd998f28b681859162de9684a3983c",
-  "pd_models.py": "e3621878862caf7677cd346c8ac35f9fc37ea02e896f65971782aa2a7f70cb87",
+  "pd_models.py": "6b6b95c50f0d376ebf87bf25658cad3654164c7734456f44ee01029f8572638c",
   "pd_paths.py": "bce54ee9800c28d0d6c5b152ef53d909fd33622459d0152c046efdcf5e31430a",
   "pd_pose.py": "38400087d82a55f27975064e5a477800f95273cfab526efdb823b3e9301b66de",
   "pd_preview.py": "1ac546d8fe6dc1df13f2db5f947f35f8d8cd50d7a432852ff9c8de9787e76dfe",
-  "pd_sfx.py": "acf44dbcfd7b6b0ed56b81e7d6ce811178c3825a9a7c09e737cef5564531a532",
+  "pd_sfx.py": "b4397e5060bbd93b3912a777299539fcbab3de39fd66b8c662764c792dff095a",
   "pd_stage.py": "7ad7b6396c4dafbf3768ce89f03ad2b2901a4f703f27be5c9c363c61d09e40e5",
   "pd_tex.py": "547674a91e44c255fa656e13bfcccacc7c6a289800744ccfc495758a0e5ef65f",
   "pd_triage.py": "66077a025a4191827bc7996f21d559e1d0818c9465d30d9a48ccfad25e7777d9",
-  "pd_weapons.py": "0d70b2b0c5f120fd17b624734fccf0e4722d23b0e2e277e94de19f697e1d9b5e"
+  "pd_weapons.py": "8c29027dd75e4c60622b54a0a1aa1e197398872c95bee3b299822a0d8e62d8a6"
  },
  "counts": {
-  "weapons": 38,
-  "gun_scripts": 100,
-  "models": 243,
-  "model_textures": 23,
+  "weapons": 40,
+  "gun_scripts": 102,
+  "models": 248,
+  "model_textures": 30,
   "headsandbodies": 152,
   "stages": {
    "arec": {
@@ -245,21 +245,21 @@
     "props": 35
    }
   },
-  "pool_textures": 1692,
+  "pool_textures": 1701,
   "anims": 1207,
   "fonts": 5,
   "langbanks": 68,
-  "sounds": 254,
-  "keys": 627
+  "sounds": 259,
+  "keys": 637
  },
  "dirs": {
   "models": {
-   "files": 510,
-   "sha256": "ecd76d89910531a366f050c0d57e16e985b571e5d902e2bdcf4b154e16cc711e"
+   "files": 527,
+   "sha256": "043deaf1ccbe741a8dc15b3675c6515f4b444d9974a29771b7d53e5e38ee88f9"
   },
   "textures": {
-   "files": 1693,
-   "sha256": "f1166a230dd2eeb1764d2bc823e2164ab6ca60584e83e06baafcfffcf8abe25c"
+   "files": 1702,
+   "sha256": "99df8cb8921886ab4dd12dd99172f73598089e343a6869678be39d140cace2bb"
   },
   "anims": {
    "files": 1208,
@@ -275,11 +275,11 @@
   },
   "data": {
    "files": 3,
-   "sha256": "25fade935e333dd0ddddc234e42db69bbe9d8903c8467ea8ff536275f0ce4e2b"
+   "sha256": "004bda7066ea71861a1e27bf54ee8dda20644c95e16c9103601c9232f97ccd68"
   },
   "sfx": {
-   "files": 255,
-   "sha256": "f9c68ccbe9f419797910b3434a38a975d76a0a79e977229c3abba51b987413a4"
+   "files": 260,
+   "sha256": "be0cb1ef7c127da36ebc8650ac27415f7c8ec56def207625150a59826f7d5577"
   },
   "stages": {
    "files": 80,

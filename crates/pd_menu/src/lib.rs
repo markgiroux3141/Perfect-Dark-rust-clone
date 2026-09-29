@@ -283,6 +283,8 @@ pub struct MatchView {
     pub stagetime60: i32,
     /// The mpchrconfigs' counters, by chr slot.
     pub chrs: [pd_core::mp::MpChrStats; pd_core::mp::MAX_MPCHRS],
+    /// The scenario's own counters (`g_ScenarioData`), for the scores.
+    pub scenario: pd_core::mp::ScenarioScores,
     /// By player number (`g_Vars.players[i]`).
     pub players: Vec<MatchViewPlayer>,
 }
@@ -664,6 +666,7 @@ impl MenuSystem {
             simulants,
             teamnames: self.mp.bossfile.teamnames.iter().map(|t| t.trim_end().to_string()).collect(),
             challenge: self.mp.bossfile.locktype == generated::MPLOCKTYPE_CHALLENGE as u8,
+            mphilltime: self.vars.mphilltime,
         }
     }
 

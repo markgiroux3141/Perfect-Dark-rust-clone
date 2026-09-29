@@ -20,7 +20,9 @@
 //!   the end screens, back to the menus (M7; the steps are in
 //!   `pd_tools::snapshot::flow`);
 //! * `pickups [<code>] [--weapons w,...] [--bots n] [--highlight]`: a match as
-//!   PD starts it, each weapon location's pickup, a pickup and its respawn (M8).
+//!   PD starts it, each weapon location's pickup, a pickup and its respawn (M8);
+//! * `scenario <htb|htm|pac|koh|ctc> [<code>] [--seed s]`: a scenario's props,
+//!   HUD, highlights and room tints from the player's view (M10).
 
 use std::path::Path;
 
@@ -42,7 +44,8 @@ fn main() {
         "lab" => pd_tools::snapshot::matchsnap::run_lab(outdir, rest),
         "flow" => pd_tools::snapshot::flow::run(outdir, rest),
         "pickups" => pd_tools::snapshot::pickups::run(outdir, rest),
-        other => Err(format!("unknown target {other:?} (model, menu, stage, guns, match, lab, flow, pickups)")),
+        "scenario" => pd_tools::snapshot::scenario::run(outdir, rest),
+        other => Err(format!("unknown target {other:?} (model, menu, stage, guns, match, lab, flow, pickups, scenario)")),
     };
     match result {
         Ok(paths) => {

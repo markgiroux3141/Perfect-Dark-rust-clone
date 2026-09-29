@@ -251,7 +251,8 @@ pub struct WeaponDef {
 /// The whole table plus the scripts (`g_Weapons` and every `invanim_*`).
 pub struct Gset {
     pub weapons: HashMap<u8, WeaponDef>,
-    /// Weapon numbers in the export's order (the MP menu's, then unarmed).
+    /// Weapon numbers in the export's order (the MP menu's, then unarmed; not
+    /// the scenarios' briefcase and uplink, which are in `weapons`).
     pub order: Vec<u8>,
     pub scripts: Vec<Vec<GunCmd>>,
     pub script_names: Vec<String>,
@@ -294,6 +295,9 @@ struct RawWeapon {
     functions: Vec<Option<Value>>,
     #[serde(default)]
     ammo: Vec<Option<RawAmmo>>,
+    /// One of the scenarios' own weapons (the briefcase, the data uplink).
+    #[serde(default)]
+    scenario: bool,
     equip_animation: Option<String>,
     unequip_animation: Option<String>,
     pritosec_animation: Option<String>,
@@ -490,7 +494,9 @@ impl Gset {
                 flags: rw.weapon_flags,
                 mp_ammo,
             };
-            order.push(rw.weaponnum);
+            if !rw.scenario {
+                order.push(rw.weaponnum);
+            }
             weapons.insert(rw.weaponnum, def);
         }
         // var80070200 = { PLAYANIMATION(ANIM_0434, 10000), END }.

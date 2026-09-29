@@ -44,8 +44,10 @@ fn anim_at(num: u16, frame: f32, speed: f32) -> Anim {
 fn every_model_loads_in_preorder_with_its_parts_and_textures() {
     let s = store();
     // 225 through M7; M8 adds the MP ammo crate (multi_ammo_crate); M9 the 17
-    // other models the arenas' setups place (doors, lifts, glass, crates).
-    assert_eq!(s.index.len(), 243);
+    // other models the arenas' setups place (doors, lifts, glass, crates); M10
+    // the scenarios' briefcase, uplink and terminal, and the first-person
+    // uplink and briefcase guns.
+    assert_eq!(s.index.len(), 248);
     for stem in s.index.keys() {
         let d = s.get(stem).unwrap_or_else(|e| panic!("{e}"));
         for (i, n) in d.nodes.iter().enumerate() {
@@ -64,12 +66,8 @@ fn every_model_loads_in_preorder_with_its_parts_and_textures() {
         }
         for m in &d.materials {
             if let Some(t) = &m.texture {
-                // Two casings' second textures run past the end of their files
-                // (the old export dropped them too); everything else resolves.
-                if !(stem.starts_with("cart") && t.id == 0x10001) {
-                    let info = d.textures.get(&t.id).unwrap_or_else(|| panic!("{stem}: texture {:#x} missing", t.id));
-                    assert!(assets().path(&info.file).exists(), "{stem}: {}", info.file);
-                }
+                let info = d.textures.get(&t.id).unwrap_or_else(|| panic!("{stem}: texture {:#x} missing", t.id));
+                assert!(assets().path(&info.file).exists(), "{stem}: {}", info.file);
             }
         }
     }

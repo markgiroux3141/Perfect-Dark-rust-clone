@@ -237,6 +237,12 @@ impl World {
         true
     }
 
+    /// `chr_stand` (`chraction.c:1745`) for a standing human: `chr_stand_immediate(chr, 16)`,
+    /// as [`Self::chr_try_stop`] does.
+    pub(crate) fn chr_stand(&mut self, i: usize) -> bool {
+        self.chr_try_stop(i)
+    }
+
     /// The pad of loaded waypoint `k`, and its `PADFLAG_AI*` bits.
     fn gopos_pad(&self, i: usize, k: usize) -> Option<(Vec3, PadFlags)> {
         self.chrs[i].act_gopos.waypoints.get(k).map(|&w| (self.nav.waypoint_pos(w), self.nav.waypoint_flags(w)))
