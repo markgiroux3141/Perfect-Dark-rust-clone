@@ -22,8 +22,8 @@
 //!   by `tools/pd-assets/pd_menu_gen.py` ([`generated`]); fonts, strings,
 //!   textures, presets and challenges come from `assets/`.
 //! * **Where we must substitute, say so at the call site** (`SUBST:`). There is
-//!   no Controller Pak, no N64 music sequencer and no solo game file
-//!   ([`mpstate::Profile`]).
+//!   no Controller Pak and no solo game file ([`mpstate::Profile`]). The music
+//!   the menus ask for goes out as `Event::Music` (`pd_core::music`).
 //!
 //! Module map: [`types`] (the C structs), [`generated`] (the tables),
 //! [`gfx`] (`menugfx.c`), [`menu`], [`item`] (`menuitem.c`), [`mpstate`]
@@ -400,6 +400,8 @@ impl MenuSystem {
     /// Open the Perfect Menu (the CI main menu) as PD does after file select.
     pub fn open_main_menu(&mut self) {
         self.mpplayernum = 0;
+        // menu_push_root_dialog_and_pause starts the music for this dialog (menu.c:3571).
+        self.music_start_menu();
         self.menu_push_root_dialog(&generated::G_CI_MENU_VIA_PC_MENU_DIALOG, MENUROOT_MAINMENU);
     }
 
@@ -411,6 +413,7 @@ impl MenuSystem {
         self.vars.mpsetupmenu = generated::MPSETUPMENU_GENERAL;
         self.menu_push_root_dialog(&generated::G_COMBAT_SIMULATOR_MENU_DIALOG, MENUROOT_MPSETUP);
         self.play_sound(generated::SFXMAP_8098_EXPLOSION, 1.0, 1.0);
+        self.music_start_menu();
     }
 
     pub fn tc(&mut self) -> TextCtx<'_> {
@@ -420,6 +423,31 @@ impl MenuSystem {
     /// `joy_get_connected_controllers` as a bit mask.
     pub fn connected_pads(&self) -> u32 {
         self.pads.iter().enumerate().filter(|(_, p)| p.connected).fold(0, |m, (i, _)| m | 1 << i)
+    }
+
+    /// A call into PD's music, for the game's music player.
+    pub fn music(&mut self, call: pd_core::music::MusicCall) {
+        self.events.push(Event::Music(call));
+    }
+
+    /// `menu_choose_music` (`menu.c:5514`) for the Combat Simulator: the menus
+    /// outside a match run on CI (`STAGE_CITRAINING`), so the Perfect Menu is
+    /// `MUSIC_MAINMENU`. The solo, co-op and counter-op end screens aren't here.
+    pub fn menu_choose_music(&self) -> i32 {
+        use pd_core::ids::*;
+        match self.menudata.root {
+            MENUROOT_FILEMGR => MUSIC_MAINMENU,
+            MENUROOT_MPSETUP => MUSIC_COMBATSIM_MENU,
+            MENUROOT_MPPAUSE => MUSIC_COMBATSIM_COMPLETE,
+            _ if self.in_match => MUSIC_COMBATSIM_COMPLETE,
+            _ => MUSIC_MAINMENU,
+        }
+    }
+
+    /// `music_start_menu` (`game/music.c:424`).
+    pub fn music_start_menu(&mut self) {
+        let t = self.menu_choose_music();
+        self.music(pd_core::music::MusicCall::StartTrackAsMenu(t));
     }
 
     /// Queue a sound: `snd_start(sound)` with PD's pitch and volume, centred.
@@ -675,7 +703,20 @@ impl MenuSystem {
             challenge: self.mp.bossfile.locktype == generated::MPLOCKTYPE_CHALLENGE as u8,
             mphilltime: self.vars.mphilltime,
             screensplit: self.vars.screensplit,
+            music: self.match_music(),
         }
+    }
+
+    /// The Soundtrack settings, over the unlocked tracks in slot order.
+    pub fn match_music(&self) -> pd_core::mp::MatchMusic {
+        let tracks = (0..self.mp_get_num_unlocked_tracks())
+            .map(|slot| {
+                let t = self.mp_get_track_num_at_slot_index(slot);
+                let row = &generated::MP_TRACKS[t];
+                pd_core::mp::MatchTrack { tracknum: t as i32, musicnum: row.musicnum, duration: row.duration, enabled: self.mp_is_multi_track_slot_enabled(slot) }
+            })
+            .collect();
+        pd_core::mp::MatchMusic { slot: self.mp_get_current_track_slot_num(), usingmultipletunes: self.mp.bossfile.usingmultipletunes, tracks }
     }
 
     /// A match as text lines, in the menus' own words (the log, and the game's
@@ -741,6 +782,9 @@ impl MenuSystem {
             self.open_combat_simulator();
         }
         self.play_sound(generated::SFXMAP_8098_EXPLOSION, 1.0, 1.0);
+        // player_pause(MENUROOT_MPSETUP): the setup opens, paused, and its
+        // music starts (player.c:2208).
+        self.music_start_menu();
     }
 
     /// Switch the pretend save file and re-derive the unlocks.

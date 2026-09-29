@@ -1,8 +1,9 @@
 //! Audio on kira: load and cache sounds by file path, then play them as voices
 //! with a playback rate, volume and pan, looping or not; a voice can be stopped by
-//! id. DSP tracks run a caller-supplied stereo processor on the audio thread. The
-//! engine does not know what the sounds mean. The game maps its sound events onto
-//! voices.
+//! id. DSP tracks run a caller-supplied stereo processor on the audio thread. A
+//! stream plays stereo frames the caller pushes at its own rate (a synth the
+//! game runs), resampled to the device's. The engine does not know what the
+//! sounds mean. The game maps its sound events onto voices.
 //!
 //! Everything is best-effort: no output device, or a missing or undecodable file,
 //! logs a warning and plays nothing, so the game still runs silently.
@@ -12,11 +13,14 @@
 //! are the caller's (the old one resolved names against a compile-time root);
 //! the background-music track is dropped (a game's music is its own).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use kira::effect::Effect;
 use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle};
+use kira::sound::{Sound, SoundData};
 use kira::track::{TrackBuilder, TrackHandle};
 use kira::{AudioManager, AudioManagerSettings, Decibels, DefaultBackend, Frame, Panning, PlaybackRate, Tween};
 
@@ -52,6 +56,104 @@ impl<T: TrackDsp> Effect for DspEffect<T> {
             f.left = l;
             f.right = r;
         }
+    }
+}
+
+struct StreamShared {
+    /// Frames pushed and not yet taken by the audio thread.
+    queue: Mutex<VecDeque<[f32; 2]>>,
+    /// How many the audio thread holds.
+    held: AtomicUsize,
+    volume: AtomicU32,
+    stop: AtomicBool,
+}
+
+/// The caller's side of a stream made by [`Audio::play_stream`]: push
+/// frames, keep [`Stream::buffered`] above what a frame of the game lasts.
+#[derive(Clone)]
+pub struct Stream(Arc<StreamShared>);
+
+impl Stream {
+    /// Queue stereo frames (at the stream's rate).
+    pub fn push(&self, frames: impl IntoIterator<Item = [f32; 2]>) {
+        if let Ok(mut q) = self.0.queue.lock() {
+            q.extend(frames);
+        }
+    }
+
+    /// Frames waiting to play (the queue and what the audio thread holds).
+    pub fn buffered(&self) -> usize {
+        self.0.queue.lock().map_or(0, |q| q.len()) + self.0.held.load(Ordering::Relaxed)
+    }
+
+    /// A linear gain.
+    pub fn set_volume(&self, v: f32) {
+        self.0.volume.store(v.to_bits(), Ordering::Relaxed);
+    }
+
+    /// Stop playing (the voice ends on the next block).
+    pub fn stop(&self) {
+        self.0.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+/// The audio thread's side: takes what was pushed at the start of each block
+/// (`try_lock`, never waiting), and reads it at `rate` with linear
+/// interpolation. Running dry plays silence and waits for more.
+struct StreamSound {
+    shared: Arc<StreamShared>,
+    held: VecDeque<[f32; 2]>,
+    rate: f64,
+    pos: f64,
+}
+
+impl Sound for StreamSound {
+    fn on_start_processing(&mut self) {
+        if let Ok(mut q) = self.shared.queue.try_lock() {
+            let room = self.held.capacity() - self.held.len();
+            let n = q.len().min(room);
+            self.held.extend(q.drain(..n));
+        }
+        self.shared.held.store(self.held.len(), Ordering::Relaxed);
+    }
+
+    fn process(&mut self, out: &mut [Frame], dt: f64, _info: &kira::info::Info) {
+        let step = self.rate * dt;
+        let vol = f32::from_bits(self.shared.volume.load(Ordering::Relaxed));
+        for f in out {
+            if self.held.len() < 2 {
+                *f = Frame::ZERO;
+                continue;
+            }
+            let (a, b) = (self.held[0], self.held[1]);
+            let t = self.pos as f32;
+            *f = Frame::new((a[0] + (b[0] - a[0]) * t) * vol, (a[1] + (b[1] - a[1]) * t) * vol);
+            self.pos += step;
+            while self.pos >= 1.0 && self.held.len() >= 2 {
+                self.held.pop_front();
+                self.pos -= 1.0;
+            }
+        }
+    }
+
+    fn finished(&self) -> bool {
+        self.shared.stop.load(Ordering::Relaxed)
+    }
+}
+
+struct StreamData {
+    shared: Arc<StreamShared>,
+    rate: f64,
+}
+
+impl SoundData for StreamData {
+    type Error = ();
+    type Handle = ();
+
+    fn into_sound(self) -> Result<(Box<dyn Sound>, ()), ()> {
+        // A second of frames, allocated here rather than on the audio thread.
+        let cap = self.rate.ceil() as usize;
+        Ok((Box::new(StreamSound { shared: self.shared, held: VecDeque::with_capacity(cap), rate: self.rate, pos: 0.0 }), ()))
     }
 }
 
@@ -151,6 +253,24 @@ impl Audio {
         }
     }
 
+    /// Start a stream of stereo frames at `rate` Hz on `track` (`None` is the
+    /// main track); the caller pushes frames through the returned [`Stream`].
+    pub fn play_stream(&mut self, track: Option<TrackId>, rate: f64) -> Option<Stream> {
+        let shared = Arc::new(StreamShared { queue: Mutex::new(VecDeque::new()), held: AtomicUsize::new(0), volume: AtomicU32::new(1.0f32.to_bits()), stop: AtomicBool::new(false) });
+        let data = StreamData { shared: shared.clone(), rate };
+        let played = match track.and_then(|t| self.tracks.get_mut(t.0)) {
+            Some(t) => t.play(data).map(|_| ()),
+            None => self.manager.play(data).map(|_| ()),
+        };
+        match played {
+            Ok(()) => Some(Stream(shared)),
+            Err(e) => {
+                log::warn!("audio: play stream failed: {e:?}");
+                None
+            }
+        }
+    }
+
     /// Retune a playing voice: `volume` (linear) and playback `rate`.
     pub fn set_voice(&mut self, id: VoiceId, volume: f32, rate: f64) {
         if let Some(h) = self.voices.get_mut(&id) {
@@ -164,5 +284,31 @@ impl Audio {
         if let Some(mut h) = self.voices.remove(&id) {
             h.stop(Tween::default());
         }
+    }
+}
+
+#[cfg(test)]
+mod stream_tests {
+    use super::*;
+
+    /// A stream at half the device's rate reads each pushed frame twice,
+    /// interpolating between; dry, it plays silence and resumes.
+    #[test]
+    fn a_stream_resamples_and_waits_when_dry() {
+        let shared = Arc::new(StreamShared { queue: Mutex::new(VecDeque::new()), held: AtomicUsize::new(0), volume: AtomicU32::new(1.0f32.to_bits()), stop: AtomicBool::new(false) });
+        let stream = Stream(shared.clone());
+        let (mut sound, ()) = StreamData { shared, rate: 24_000.0 }.into_sound().unwrap();
+        stream.push([[0.0, 0.0], [1.0, -1.0], [0.0, 0.0]]);
+        assert_eq!(stream.buffered(), 3);
+        sound.on_start_processing();
+        let info = kira::info::MockInfoBuilder::new().build();
+        let mut out = [Frame::ZERO; 6];
+        sound.process(&mut out, 1.0 / 48_000.0, &info);
+        let l: Vec<f32> = out.iter().map(|f| f.left).collect();
+        assert_eq!(&l[..4], &[0.0, 0.5, 1.0, 0.5]);
+        assert_eq!(&l[4..], &[0.0, 0.0], "dry");
+        assert!(!sound.finished());
+        stream.stop();
+        assert!(sound.finished());
     }
 }

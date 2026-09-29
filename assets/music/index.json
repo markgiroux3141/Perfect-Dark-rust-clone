@@ -1,0 +1,1830 @@
+{
+ "source": "pd-decomp/src/assets/ntsc-final/sequences.json",
+ "volumes": "pd-decomp/src/lib/snd.c",
+ "sequences": [
+  {
+   "num": 0,
+   "id": "MUSIC_NONE",
+   "file": "dummy.seq",
+   "seq": "seq/00.seq",
+   "volume": 26213,
+   "bytes": 97,
+   "check": {
+    "events": 5,
+    "notes": 0,
+    "ticks": 307202,
+    "division": 384
+   }
+  },
+  {
+   "num": 1,
+   "id": "MUSIC_TITLE2",
+   "file": "title-part1.seq",
+   "seq": "seq/01.seq",
+   "volume": 22936,
+   "bytes": 946,
+   "check": {
+    "events": 268,
+    "notes": 14,
+    "ticks": 7682,
+    "division": 384
+   }
+  },
+  {
+   "num": 2,
+   "id": "MUSIC_EXTRACTION",
+   "file": "extraction-pri.seq",
+   "seq": "seq/02.seq",
+   "volume": 24575,
+   "bytes": 9108,
+   "check": {
+    "events": 4337,
+    "notes": 3319,
+    "ticks": 156674,
+    "division": 384
+   }
+  },
+  {
+   "num": 3,
+   "id": "MUSIC_PAUSEMENU",
+   "file": "pause.seq",
+   "seq": "seq/03.seq",
+   "volume": 19660,
+   "bytes": 2443,
+   "check": {
+    "events": 788,
+    "notes": 669,
+    "ticks": 36866,
+    "division": 384
+   }
+  },
+  {
+   "num": 4,
+   "id": "MUSIC_DEFENSE",
+   "file": "defense-pri.seq",
+   "seq": "seq/04.seq",
+   "volume": 24575,
+   "bytes": 6852,
+   "check": {
+    "events": 3495,
+    "notes": 3062,
+    "ticks": 165890,
+    "division": 384
+   }
+  },
+  {
+   "num": 5,
+   "id": "MUSIC_INVESTIGATION_SFX",
+   "file": "investigation-amb.seq",
+   "seq": "seq/05.seq",
+   "volume": 11468,
+   "bytes": 805,
+   "check": {
+    "events": 252,
+    "notes": 143,
+    "ticks": 140546,
+    "division": 384
+   }
+  },
+  {
+   "num": 6,
+   "id": "MUSIC_ESCAPE",
+   "file": "escape-pri.seq",
+   "seq": "seq/06.seq",
+   "volume": 22936,
+   "bytes": 6919,
+   "check": {
+    "events": 5015,
+    "notes": 3663,
+    "ticks": 144386,
+    "division": 384
+   }
+  },
+  {
+   "num": 7,
+   "id": "MUSIC_DEEPSEA",
+   "file": "deepsea-pri.seq",
+   "seq": "seq/07.seq",
+   "volume": 26213,
+   "bytes": 4889,
+   "check": {
+    "events": 2161,
+    "notes": 1796,
+    "ticks": 192002,
+    "division": 384
+   }
+  },
+  {
+   "num": 8,
+   "id": "MUSIC_DDTOWER_SFX",
+   "file": "defection-amb.seq",
+   "seq": "seq/08.seq",
+   "volume": 19660,
+   "bytes": 9429,
+   "check": {
+    "events": 3424,
+    "notes": 73,
+    "ticks": 101378,
+    "division": 384
+   }
+  },
+  {
+   "num": 9,
+   "id": "MUSIC_DEFECTION",
+   "file": "defection-pri.seq",
+   "seq": "seq/09.seq",
+   "volume": 22936,
+   "bytes": 9680,
+   "check": {
+    "events": 5050,
+    "notes": 4557,
+    "ticks": 172034,
+    "division": 384
+   }
+  },
+  {
+   "num": 10,
+   "id": "MUSIC_DEATH_SOLO",
+   "file": "solodeath.seq",
+   "seq": "seq/0a.seq",
+   "volume": 22936,
+   "bytes": 4934,
+   "check": {
+    "events": 3702,
+    "notes": 838,
+    "ticks": 62594,
+    "division": 384
+   }
+  },
+  {
+   "num": 11,
+   "id": "MUSIC_DEFECTION_INTRO_SFX",
+   "file": "defection-intro-effects.seq",
+   "seq": "seq/0b.seq",
+   "volume": 22936,
+   "bytes": 12359,
+   "check": {
+    "events": 3771,
+    "notes": 70,
+    "ticks": 46058,
+    "division": 384
+   }
+  },
+  {
+   "num": 12,
+   "id": "MUSIC_VILLA",
+   "file": "villa-pri.seq",
+   "seq": "seq/0c.seq",
+   "volume": 24575,
+   "bytes": 4880,
+   "check": {
+    "events": 2106,
+    "notes": 1764,
+    "ticks": 147458,
+    "division": 384
+   }
+  },
+  {
+   "num": 13,
+   "id": "MUSIC_CI",
+   "file": "training-pri.seq",
+   "seq": "seq/0d.seq",
+   "volume": 26213,
+   "bytes": 4637,
+   "check": {
+    "events": 1967,
+    "notes": 1569,
+    "ticks": 155117,
+    "division": 384
+   }
+  },
+  {
+   "num": 14,
+   "id": "MUSIC_CHICAGO",
+   "file": "chicago-pri.seq",
+   "seq": "seq/0e.seq",
+   "volume": 26213,
+   "bytes": 3040,
+   "check": {
+    "events": 1066,
+    "notes": 974,
+    "ticks": 99074,
+    "division": 384
+   }
+  },
+  {
+   "num": 15,
+   "id": "MUSIC_G5",
+   "file": "g5building-pri.seq",
+   "seq": "seq/0f.seq",
+   "volume": 24575,
+   "bytes": 4419,
+   "check": {
+    "events": 1912,
+    "notes": 1393,
+    "ticks": 184322,
+    "division": 384
+   }
+  },
+  {
+   "num": 16,
+   "id": "MUSIC_DEFECTION_X",
+   "file": "defection-nrg.seq",
+   "seq": "seq/10.seq",
+   "volume": 22936,
+   "bytes": 3865,
+   "check": {
+    "events": 2254,
+    "notes": 1869,
+    "ticks": 73922,
+    "division": 384
+   }
+  },
+  {
+   "num": 17,
+   "id": "MUSIC_EXTRACTION_X",
+   "file": "extraction-nrg.seq",
+   "seq": "seq/11.seq",
+   "volume": 26213,
+   "bytes": 4577,
+   "check": {
+    "events": 2412,
+    "notes": 1855,
+    "ticks": 86409,
+    "division": 384
+   }
+  },
+  {
+   "num": 18,
+   "id": "MUSIC_INVESTIGATION",
+   "file": "investigation-pri.seq",
+   "seq": "seq/12.seq",
+   "volume": 24575,
+   "bytes": 4038,
+   "check": {
+    "events": 1731,
+    "notes": 1391,
+    "ticks": 165890,
+    "division": 384
+   }
+  },
+  {
+   "num": 19,
+   "id": "MUSIC_INVESTIGATION_X",
+   "file": "investigation-nrg.seq",
+   "seq": "seq/13.seq",
+   "volume": 24575,
+   "bytes": 4419,
+   "check": {
+    "events": 1774,
+    "notes": 1364,
+    "ticks": 79874,
+    "division": 384
+   }
+  },
+  {
+   "num": 20,
+   "id": "MUSIC_INFILTRATION",
+   "file": "infiltration-pri.seq",
+   "seq": "seq/14.seq",
+   "volume": 24575,
+   "bytes": 4053,
+   "check": {
+    "events": 1894,
+    "notes": 1808,
+    "ticks": 105986,
+    "division": 384
+   }
+  },
+  {
+   "num": 21,
+   "id": "MUSIC_DEATH_BETA",
+   "file": "mpdeath-beta.seq",
+   "seq": "seq/15.seq",
+   "volume": 26213,
+   "bytes": 919,
+   "check": {
+    "events": 248,
+    "notes": 56,
+    "ticks": 3074,
+    "division": 384
+   }
+  },
+  {
+   "num": 22,
+   "id": "MUSIC_RESCUE",
+   "file": "rescue-pri.seq",
+   "seq": "seq/16.seq",
+   "volume": 24575,
+   "bytes": 4308,
+   "check": {
+    "events": 1933,
+    "notes": 1284,
+    "ticks": 196615,
+    "division": 384
+   }
+  },
+  {
+   "num": 23,
+   "id": "MUSIC_AIRBASE",
+   "file": "airbase-pri.seq",
+   "seq": "seq/17.seq",
+   "volume": 24575,
+   "bytes": 6155,
+   "check": {
+    "events": 2945,
+    "notes": 2604,
+    "ticks": 118294,
+    "division": 384
+   }
+  },
+  {
+   "num": 24,
+   "id": "MUSIC_AIRFORCEONE",
+   "file": "afo-pri.seq",
+   "seq": "seq/18.seq",
+   "volume": 24575,
+   "bytes": 5539,
+   "check": {
+    "events": 2442,
+    "notes": 2364,
+    "ticks": 158210,
+    "division": 384
+   }
+  },
+  {
+   "num": 25,
+   "id": "MUSIC_DEATH_MP",
+   "file": "mpdeath.seq",
+   "seq": "seq/19.seq",
+   "volume": 29490,
+   "bytes": 556,
+   "check": {
+    "events": 131,
+    "notes": 79,
+    "ticks": 4824,
+    "division": 384
+   }
+  },
+  {
+   "num": 26,
+   "id": "MUSIC_EXTRACTION_OUTRO_SFX",
+   "file": "villa-intro.seq",
+   "seq": "seq/1a.seq",
+   "volume": 24575,
+   "bytes": 1046,
+   "check": {
+    "events": 307,
+    "notes": 4,
+    "ticks": 35306,
+    "division": 384
+   }
+  },
+  {
+   "num": 27,
+   "id": "MUSIC_MISSION_UNKNOWN",
+   "file": "endscreen-missing.seq",
+   "seq": "seq/1b.seq",
+   "volume": 26213,
+   "bytes": 715,
+   "check": {
+    "events": 205,
+    "notes": 114,
+    "ticks": 12290,
+    "division": 384
+   }
+  },
+  {
+   "num": 28,
+   "id": "MUSIC_PELAGIC",
+   "file": "pelagic-pri.seq",
+   "seq": "seq/1c.seq",
+   "volume": 24575,
+   "bytes": 5986,
+   "check": {
+    "events": 2301,
+    "notes": 1975,
+    "ticks": 165890,
+    "division": 384
+   }
+  },
+  {
+   "num": 29,
+   "id": "MUSIC_CRASHSITE",
+   "file": "crashsite-pri.seq",
+   "seq": "seq/1d.seq",
+   "volume": 22936,
+   "bytes": 8370,
+   "check": {
+    "events": 3121,
+    "notes": 1891,
+    "ticks": 135170,
+    "division": 384
+   }
+  },
+  {
+   "num": 30,
+   "id": "MUSIC_CRASHSITE_X",
+   "file": "crashsite-nrg.seq",
+   "seq": "seq/1e.seq",
+   "volume": 22936,
+   "bytes": 5893,
+   "check": {
+    "events": 2311,
+    "notes": 1301,
+    "ticks": 67682,
+    "division": 384
+   }
+  },
+  {
+   "num": 31,
+   "id": "MUSIC_ATTACKSHIP",
+   "file": "attackship-pri.seq",
+   "seq": "seq/1f.seq",
+   "volume": 21298,
+   "bytes": 18014,
+   "check": {
+    "events": 9554,
+    "notes": 4888,
+    "ticks": 130562,
+    "division": 384
+   }
+  },
+  {
+   "num": 32,
+   "id": "MUSIC_ATTACKSHIP_X",
+   "file": "attackship-nrg.seq",
+   "seq": "seq/20.seq",
+   "volume": 21298,
+   "bytes": 5913,
+   "check": {
+    "events": 2913,
+    "notes": 2001,
+    "ticks": 59906,
+    "division": 384
+   }
+  },
+  {
+   "num": 33,
+   "id": "MUSIC_SKEDARRUINS",
+   "file": "skedarruins-pri.seq",
+   "seq": "seq/21.seq",
+   "volume": 24575,
+   "bytes": 4410,
+   "check": {
+    "events": 1912,
+    "notes": 1487,
+    "ticks": 222922,
+    "division": 384
+   }
+  },
+  {
+   "num": 34,
+   "id": "MUSIC_DEFECTION_INTRO",
+   "file": "defection-intro.seq",
+   "seq": "seq/22.seq",
+   "volume": 13106,
+   "bytes": 5333,
+   "check": {
+    "events": 2200,
+    "notes": 1119,
+    "ticks": 39938,
+    "division": 384
+   }
+  },
+  {
+   "num": 35,
+   "id": "MUSIC_DEFECTION_OUTRO",
+   "file": "defection-outro.seq",
+   "seq": "seq/23.seq",
+   "volume": 19660,
+   "bytes": 1089,
+   "check": {
+    "events": 382,
+    "notes": 186,
+    "ticks": 6146,
+    "division": 384
+   }
+  },
+  {
+   "num": 36,
+   "id": "MUSIC_DEFENSE_X",
+   "file": "defense-nrg.seq",
+   "seq": "seq/24.seq",
+   "volume": 24575,
+   "bytes": 3979,
+   "check": {
+    "events": 1636,
+    "notes": 1572,
+    "ticks": 86018,
+    "division": 384
+   }
+  },
+  {
+   "num": 37,
+   "id": "MUSIC_INVESTIGATION_INTRO",
+   "file": "investigation-intro.seq",
+   "seq": "seq/25.seq",
+   "volume": 19660,
+   "bytes": 3962,
+   "check": {
+    "events": 1208,
+    "notes": 324,
+    "ticks": 18050,
+    "division": 384
+   }
+  },
+  {
+   "num": 38,
+   "id": "MUSIC_INVESTIGATION_OUTRO",
+   "file": "investigation-outro.seq",
+   "seq": "seq/26.seq",
+   "volume": 16383,
+   "bytes": 3322,
+   "check": {
+    "events": 1149,
+    "notes": 527,
+    "ticks": 25346,
+    "division": 384
+   }
+  },
+  {
+   "num": 39,
+   "id": "MUSIC_VILLA_X",
+   "file": "villa-nrg.seq",
+   "seq": "seq/27.seq",
+   "volume": 24575,
+   "bytes": 4101,
+   "check": {
+    "events": 1492,
+    "notes": 1211,
+    "ticks": 74057,
+    "division": 384
+   }
+  },
+  {
+   "num": 40,
+   "id": "MUSIC_CHICAGO_X",
+   "file": "chicago-nrg.seq",
+   "seq": "seq/28.seq",
+   "volume": 24575,
+   "bytes": 3998,
+   "check": {
+    "events": 1648,
+    "notes": 1403,
+    "ticks": 67586,
+    "division": 384
+   }
+  },
+  {
+   "num": 41,
+   "id": "MUSIC_G5_X",
+   "file": "g5building-nrg.seq",
+   "seq": "seq/29.seq",
+   "volume": 24575,
+   "bytes": 2980,
+   "check": {
+    "events": 1735,
+    "notes": 1263,
+    "ticks": 58466,
+    "division": 384
+   }
+  },
+  {
+   "num": 42,
+   "id": "MUSIC_INFILTRATION_X",
+   "file": "infiltration-nrg.seq",
+   "seq": "seq/2a.seq",
+   "volume": 24575,
+   "bytes": 4976,
+   "check": {
+    "events": 1482,
+    "notes": 1403,
+    "ticks": 61442,
+    "division": 384
+   }
+  },
+  {
+   "num": 43,
+   "id": "MUSIC_CHICAGO_OUTRO",
+   "file": "chicago-outro.seq",
+   "seq": "seq/2b.seq",
+   "volume": 19660,
+   "bytes": 2781,
+   "check": {
+    "events": 862,
+    "notes": 92,
+    "ticks": 6914,
+    "division": 384
+   }
+  },
+  {
+   "num": 44,
+   "id": "MUSIC_EXTRACTION_OUTRO",
+   "file": "extraction-outro.seq",
+   "seq": "seq/2c.seq",
+   "volume": 19660,
+   "bytes": 5811,
+   "check": {
+    "events": 1984,
+    "notes": 636,
+    "ticks": 27842,
+    "division": 384
+   }
+  },
+  {
+   "num": 45,
+   "id": "MUSIC_EXTRACTION_INTRO",
+   "file": "extraction-intro.seq",
+   "seq": "seq/2d.seq",
+   "volume": 19660,
+   "bytes": 3566,
+   "check": {
+    "events": 1065,
+    "notes": 208,
+    "ticks": 13058,
+    "division": 384
+   }
+  },
+  {
+   "num": 46,
+   "id": "MUSIC_G5_INTRO",
+   "file": "g5building-intro.seq",
+   "seq": "seq/2e.seq",
+   "volume": 19660,
+   "bytes": 1867,
+   "check": {
+    "events": 561,
+    "notes": 190,
+    "ticks": 11522,
+    "division": 384
+   }
+  },
+  {
+   "num": 47,
+   "id": "MUSIC_CHICAGO_INTRO",
+   "file": "chicago-intro.seq",
+   "seq": "seq/2f.seq",
+   "volume": 19660,
+   "bytes": 4510,
+   "check": {
+    "events": 1546,
+    "notes": 405,
+    "ticks": 24194,
+    "division": 384
+   }
+  },
+  {
+   "num": 48,
+   "id": "MUSIC_VILLA_INTRO1",
+   "file": "villa-intro-v1.seq",
+   "seq": "seq/30.seq",
+   "volume": 19660,
+   "bytes": 6500,
+   "check": {
+    "events": 2061,
+    "notes": 552,
+    "ticks": 26498,
+    "division": 384
+   }
+  },
+  {
+   "num": 49,
+   "id": "MUSIC_INFILTRATION_INTRO",
+   "file": "infiltration-intro.seq",
+   "seq": "seq/31.seq",
+   "volume": 19660,
+   "bytes": 1913,
+   "check": {
+    "events": 522,
+    "notes": 337,
+    "ticks": 36482,
+    "division": 384
+   }
+  },
+  {
+   "num": 50,
+   "id": "MUSIC_RESCUE_X",
+   "file": "rescue-nrg.seq",
+   "seq": "seq/32.seq",
+   "volume": 24575,
+   "bytes": 4022,
+   "check": {
+    "events": 2001,
+    "notes": 1670,
+    "ticks": 73922,
+    "division": 384
+   }
+  },
+  {
+   "num": 51,
+   "id": "MUSIC_ESCAPE_X",
+   "file": "escape-nrg.seq",
+   "seq": "seq/33.seq",
+   "volume": 24575,
+   "bytes": 4263,
+   "check": {
+    "events": 1959,
+    "notes": 1430,
+    "ticks": 86210,
+    "division": 384
+   }
+  },
+  {
+   "num": 52,
+   "id": "MUSIC_AIRBASE_X",
+   "file": "airbase-nrg.seq",
+   "seq": "seq/34.seq",
+   "volume": 24575,
+   "bytes": 5548,
+   "check": {
+    "events": 2062,
+    "notes": 1601,
+    "ticks": 76994,
+    "division": 384
+   }
+  },
+  {
+   "num": 53,
+   "id": "MUSIC_AIRFORCEONE_X",
+   "file": "afo-nrg.seq",
+   "seq": "seq/35.seq",
+   "volume": 24575,
+   "bytes": 4337,
+   "check": {
+    "events": 1564,
+    "notes": 1239,
+    "ticks": 73922,
+    "division": 384
+   }
+  },
+  {
+   "num": 54,
+   "id": "MUSIC_PELAGIC_X",
+   "file": "pelagic-nrg.seq",
+   "seq": "seq/36.seq",
+   "volume": 24575,
+   "bytes": 5202,
+   "check": {
+    "events": 2077,
+    "notes": 1666,
+    "ticks": 80066,
+    "division": 384
+   }
+  },
+  {
+   "num": 55,
+   "id": "MUSIC_DEEPSEA_X",
+   "file": "deepsea-nrg.seq",
+   "seq": "seq/37.seq",
+   "volume": 24575,
+   "bytes": 4542,
+   "check": {
+    "events": 1860,
+    "notes": 1480,
+    "ticks": 64514,
+    "division": 384
+   }
+  },
+  {
+   "num": 56,
+   "id": "MUSIC_SKEDARRUINS_X",
+   "file": "skedarruins-nrg.seq",
+   "seq": "seq/38.seq",
+   "volume": 24575,
+   "bytes": 4413,
+   "check": {
+    "events": 1827,
+    "notes": 1310,
+    "ticks": 86082,
+    "division": 384
+   }
+  },
+  {
+   "num": 57,
+   "id": "MUSIC_AIRBASE_OUTRO_LONG",
+   "file": "airbase-intro-part2.seq",
+   "seq": "seq/39.seq",
+   "volume": 19660,
+   "bytes": 2094,
+   "check": {
+    "events": 770,
+    "notes": 338,
+    "ticks": 10370,
+    "division": 384
+   }
+  },
+  {
+   "num": 58,
+   "id": "MUSIC_DARK_COMBAT",
+   "file": "darkcombat.seq",
+   "seq": "seq/3a.seq",
+   "volume": 24575,
+   "bytes": 5367,
+   "check": {
+    "events": 2489,
+    "notes": 2128,
+    "ticks": 161282,
+    "division": 384
+   }
+  },
+  {
+   "num": 59,
+   "id": "MUSIC_SKEDAR_MYSTERY",
+   "file": "skedarmystery.seq",
+   "seq": "seq/3b.seq",
+   "volume": 24575,
+   "bytes": 4828,
+   "check": {
+    "events": 2265,
+    "notes": 1185,
+    "ticks": 73734,
+    "division": 384
+   }
+  },
+  {
+   "num": 60,
+   "id": "MUSIC_DEEPSEA_BETA",
+   "file": "crashsite-intro-amb.seq",
+   "seq": "seq/3c.seq",
+   "volume": 24575,
+   "bytes": 12464,
+   "check": {
+    "events": 6642,
+    "notes": 5778,
+    "ticks": 156674,
+    "division": 384
+   }
+  },
+  {
+   "num": 61,
+   "id": "MUSIC_CI_OPERATIVE",
+   "file": "cioperative.seq",
+   "seq": "seq/3d.seq",
+   "volume": 24575,
+   "bytes": 13564,
+   "check": {
+    "events": 10680,
+    "notes": 2579,
+    "ticks": 102914,
+    "division": 384
+   }
+  },
+  {
+   "num": 62,
+   "id": "MUSIC_DATADYNE_ACTION",
+   "file": "datadyneaction.seq",
+   "seq": "seq/3e.seq",
+   "volume": 24575,
+   "bytes": 9677,
+   "check": {
+    "events": 5829,
+    "notes": 4713,
+    "ticks": 101384,
+    "division": 384
+   }
+  },
+  {
+   "num": 63,
+   "id": "MUSIC_MAIAN_TEARS",
+   "file": "maiantears.seq",
+   "seq": "seq/3f.seq",
+   "volume": 24575,
+   "bytes": 13766,
+   "check": {
+    "events": 9346,
+    "notes": 1425,
+    "ticks": 101378,
+    "division": 384
+   }
+  },
+  {
+   "num": 64,
+   "id": "MUSIC_ALIEN_CONFLICT",
+   "file": "alienconflict.seq",
+   "seq": "seq/40.seq",
+   "volume": 24575,
+   "bytes": 12304,
+   "check": {
+    "events": 8478,
+    "notes": 2611,
+    "ticks": 110598,
+    "division": 384
+   }
+  },
+  {
+   "num": 65,
+   "id": "MUSIC_ESCAPE_INTRO",
+   "file": "escape-intro.seq",
+   "seq": "seq/41.seq",
+   "volume": 19660,
+   "bytes": 2568,
+   "check": {
+    "events": 1003,
+    "notes": 773,
+    "ticks": 47618,
+    "division": 384
+   }
+  },
+  {
+   "num": 66,
+   "id": "MUSIC_RESCUE_OUTRO",
+   "file": "rescue-outro.seq",
+   "seq": "seq/42.seq",
+   "volume": 19660,
+   "bytes": 2504,
+   "check": {
+    "events": 774,
+    "notes": 147,
+    "ticks": 10642,
+    "division": 384
+   }
+  },
+  {
+   "num": 67,
+   "id": "MUSIC_VILLA_INTRO2",
+   "file": "villa-intro-v2.seq",
+   "seq": "seq/43.seq",
+   "volume": 19660,
+   "bytes": 9135,
+   "check": {
+    "events": 2946,
+    "notes": 663,
+    "ticks": 33794,
+    "division": 384
+   }
+  },
+  {
+   "num": 68,
+   "id": "MUSIC_VILLA_INTRO3",
+   "file": "villa-intro-v3.seq",
+   "seq": "seq/44.seq",
+   "volume": 19660,
+   "bytes": 6988,
+   "check": {
+    "events": 2314,
+    "notes": 658,
+    "ticks": 31202,
+    "division": 384
+   }
+  },
+  {
+   "num": 69,
+   "id": "MUSIC_G5_OUTRO",
+   "file": "g5building-outro.seq",
+   "seq": "seq/45.seq",
+   "volume": 19660,
+   "bytes": 4981,
+   "check": {
+    "events": 1550,
+    "notes": 430,
+    "ticks": 29938,
+    "division": 384
+   }
+  },
+  {
+   "num": 70,
+   "id": "MUSIC_G5_MIDCUTSCENE",
+   "file": "g5building-special.seq",
+   "seq": "seq/46.seq",
+   "volume": 19660,
+   "bytes": 5848,
+   "check": {
+    "events": 2144,
+    "notes": 596,
+    "ticks": 63362,
+    "division": 384
+   }
+  },
+  {
+   "num": 71,
+   "id": "MUSIC_MISSION_FAILED",
+   "file": "endscreen-failed.seq",
+   "seq": "seq/47.seq",
+   "volume": 29490,
+   "bytes": 1891,
+   "check": {
+    "events": 691,
+    "notes": 437,
+    "ticks": 30754,
+    "division": 384
+   }
+  },
+  {
+   "num": 72,
+   "id": "MUSIC_COMBATSIM_MENU",
+   "file": "mpsetup.seq",
+   "seq": "seq/48.seq",
+   "volume": 29490,
+   "bytes": 2160,
+   "check": {
+    "events": 748,
+    "notes": 598,
+    "ticks": 34754,
+    "division": 384
+   }
+  },
+  {
+   "num": 73,
+   "id": "MUSIC_MISSION_SUCCESS",
+   "file": "endscreen-completed.seq",
+   "seq": "seq/49.seq",
+   "volume": 29490,
+   "bytes": 3050,
+   "check": {
+    "events": 1584,
+    "notes": 1511,
+    "ticks": 36890,
+    "division": 384
+   }
+  },
+  {
+   "num": 74,
+   "id": "MUSIC_CRASHSITE_INTRO",
+   "file": "crashsite-intro.seq",
+   "seq": "seq/4a.seq",
+   "volume": 19660,
+   "bytes": 2011,
+   "check": {
+    "events": 600,
+    "notes": 220,
+    "ticks": 19202,
+    "division": 384
+   }
+  },
+  {
+   "num": 75,
+   "id": "MUSIC_AIRBASE_INTRO",
+   "file": "airbase-intro.seq",
+   "seq": "seq/4b.seq",
+   "volume": 15400,
+   "bytes": 4111,
+   "check": {
+    "events": 1566,
+    "notes": 915,
+    "ticks": 31682,
+    "division": 384
+   }
+  },
+  {
+   "num": 76,
+   "id": "MUSIC_ATTACKSHIP_INTRO",
+   "file": "attackship-intro.seq",
+   "seq": "seq/4c.seq",
+   "volume": 19660,
+   "bytes": 4520,
+   "check": {
+    "events": 1514,
+    "notes": 357,
+    "ticks": 23426,
+    "division": 384
+   }
+  },
+  {
+   "num": 77,
+   "id": "MUSIC_DEEPSEA_MIDCUTSCENE",
+   "file": "deepsea-special.seq",
+   "seq": "seq/4d.seq",
+   "volume": 19660,
+   "bytes": 6925,
+   "check": {
+    "events": 2170,
+    "notes": 796,
+    "ticks": 43298,
+    "division": 384
+   }
+  },
+  {
+   "num": 78,
+   "id": "MUSIC_AIRFORCEONE_INTRO",
+   "file": "afo-intro.seq",
+   "seq": "seq/4e.seq",
+   "volume": 19660,
+   "bytes": 4988,
+   "check": {
+    "events": 1789,
+    "notes": 582,
+    "ticks": 39554,
+    "division": 384
+   }
+  },
+  {
+   "num": 79,
+   "id": "MUSIC_ATTACKSHIP_OUTRO",
+   "file": "attackship-outro.seq",
+   "seq": "seq/4f.seq",
+   "volume": 19660,
+   "bytes": 3692,
+   "check": {
+    "events": 1157,
+    "notes": 389,
+    "ticks": 19778,
+    "division": 384
+   }
+  },
+  {
+   "num": 80,
+   "id": "MUSIC_ESCAPE_MIDCUTSCENE",
+   "file": "escape-specical.seq",
+   "seq": "seq/50.seq",
+   "volume": 19660,
+   "bytes": 1240,
+   "check": {
+    "events": 338,
+    "notes": 294,
+    "ticks": 28226,
+    "division": 384
+   }
+  },
+  {
+   "num": 81,
+   "id": "MUSIC_RESCUE_INTRO",
+   "file": "rescue-intro.seq",
+   "seq": "seq/51.seq",
+   "volume": 19660,
+   "bytes": 1471,
+   "check": {
+    "events": 382,
+    "notes": 307,
+    "ticks": 27650,
+    "division": 384
+   }
+  },
+  {
+   "num": 82,
+   "id": "MUSIC_DEEPSEA_INTRO",
+   "file": "deepsea-intro.seq",
+   "seq": "seq/52.seq",
+   "volume": 19660,
+   "bytes": 3414,
+   "check": {
+    "events": 1062,
+    "notes": 353,
+    "ticks": 27458,
+    "division": 384
+   }
+  },
+  {
+   "num": 83,
+   "id": "MUSIC_INFILTRATION_OUTRO",
+   "file": "infiltration-outro.seq",
+   "seq": "seq/53.seq",
+   "volume": 19660,
+   "bytes": 1911,
+   "check": {
+    "events": 529,
+    "notes": 414,
+    "ticks": 24578,
+    "division": 384
+   }
+  },
+  {
+   "num": 84,
+   "id": "MUSIC_PELAGIC_INTRO",
+   "file": "pelagic-intro.seq",
+   "seq": "seq/54.seq",
+   "volume": 19660,
+   "bytes": 2147,
+   "check": {
+    "events": 689,
+    "notes": 449,
+    "ticks": 18818,
+    "division": 384
+   }
+  },
+  {
+   "num": 85,
+   "id": "MUSIC_ESCAPE_OUTRO_LONG",
+   "file": "escape-outro-long.seq",
+   "seq": "seq/55.seq",
+   "volume": 19660,
+   "bytes": 4278,
+   "check": {
+    "events": 1339,
+    "notes": 427,
+    "ticks": 9026,
+    "division": 384
+   }
+  },
+  {
+   "num": 86,
+   "id": "MUSIC_DEFENSE_INTRO",
+   "file": "defense-intro.seq",
+   "seq": "seq/56.seq",
+   "volume": 19660,
+   "bytes": 8079,
+   "check": {
+    "events": 2999,
+    "notes": 1080,
+    "ticks": 38786,
+    "division": 384
+   }
+  },
+  {
+   "num": 87,
+   "id": "MUSIC_CRASHSITE_OUTRO",
+   "file": "crashsite-outro.seq",
+   "seq": "seq/57.seq",
+   "volume": 19660,
+   "bytes": 10566,
+   "check": {
+    "events": 3198,
+    "notes": 1023,
+    "ticks": 37307,
+    "division": 384
+   }
+  },
+  {
+   "num": 88,
+   "id": "MUSIC_CREDITS",
+   "file": "credits.seq",
+   "seq": "seq/58.seq",
+   "volume": 29490,
+   "bytes": 9674,
+   "check": {
+    "events": 4424,
+    "notes": 3506,
+    "ticks": 139778,
+    "division": 384
+   }
+  },
+  {
+   "num": 89,
+   "id": "MUSIC_MAINMENU",
+   "file": "mainmenu.seq",
+   "seq": "seq/59.seq",
+   "volume": 29490,
+   "bytes": 4475,
+   "check": {
+    "events": 2238,
+    "notes": 1941,
+    "ticks": 38402,
+    "division": 384
+   }
+  },
+  {
+   "num": 90,
+   "id": "MUSIC_DEEPSEA_OUTRO",
+   "file": "deepsea-outro.seq",
+   "seq": "seq/5a.seq",
+   "volume": 19660,
+   "bytes": 4974,
+   "check": {
+    "events": 1602,
+    "notes": 601,
+    "ticks": 23042,
+    "division": 384
+   }
+  },
+  {
+   "num": 91,
+   "id": "MUSIC_AIRFORCEONE_MIDCUTSCENE",
+   "file": "afo-special.seq",
+   "seq": "seq/5b.seq",
+   "volume": 19660,
+   "bytes": 4015,
+   "check": {
+    "events": 1461,
+    "notes": 444,
+    "ticks": 12418,
+    "division": 384
+   }
+  },
+  {
+   "num": 92,
+   "id": "MUSIC_PELAGIC_OUTRO",
+   "file": "pelagic-outro.seq",
+   "seq": "seq/5c.seq",
+   "volume": 19660,
+   "bytes": 3383,
+   "check": {
+    "events": 1051,
+    "notes": 474,
+    "ticks": 14322,
+    "division": 384
+   }
+  },
+  {
+   "num": 93,
+   "id": "MUSIC_AIRFORCEONE_OUTRO",
+   "file": "afo-outro.seq",
+   "seq": "seq/5d.seq",
+   "volume": 19660,
+   "bytes": 11030,
+   "check": {
+    "events": 3707,
+    "notes": 1043,
+    "ticks": 20454,
+    "division": 384
+   }
+  },
+  {
+   "num": 94,
+   "id": "MUSIC_SKEDARRUINS_INTRO",
+   "file": "skedarruins-intro.seq",
+   "seq": "seq/5e.seq",
+   "volume": 19660,
+   "bytes": 6075,
+   "check": {
+    "events": 1935,
+    "notes": 692,
+    "ticks": 28802,
+    "division": 384
+   }
+  },
+  {
+   "num": 95,
+   "id": "MUSIC_BETA_NOTE",
+   "file": "bloop.seq",
+   "seq": "seq/5f.seq",
+   "volume": 26213,
+   "bytes": 85,
+   "check": {
+    "events": 4,
+    "notes": 1,
+    "ticks": 105,
+    "division": 384
+   }
+  },
+  {
+   "num": 96,
+   "id": "MUSIC_AIRBASE_OUTRO",
+   "file": "airbase-outro.seq",
+   "seq": "seq/60.seq",
+   "volume": 19660,
+   "bytes": 4237,
+   "check": {
+    "events": 1698,
+    "notes": 335,
+    "ticks": 12586,
+    "division": 384
+   }
+  },
+  {
+   "num": 97,
+   "id": "MUSIC_DEFENSE_OUTRO",
+   "file": "defense-outro.seq",
+   "seq": "seq/61.seq",
+   "volume": 19660,
+   "bytes": 9707,
+   "check": {
+    "events": 3725,
+    "notes": 695,
+    "ticks": 16810,
+    "division": 384
+   }
+  },
+  {
+   "num": 98,
+   "id": "MUSIC_SKEDARRUINS_OUTRO",
+   "file": "skedarruins-outro.seq",
+   "seq": "seq/62.seq",
+   "volume": 19660,
+   "bytes": 5948,
+   "check": {
+    "events": 1930,
+    "notes": 911,
+    "ticks": 35430,
+    "division": 384
+   }
+  },
+  {
+   "num": 99,
+   "id": "MUSIC_VILLA_OUTRO",
+   "file": "villa-outro.seq",
+   "seq": "seq/63.seq",
+   "volume": 19660,
+   "bytes": 2540,
+   "check": {
+    "events": 880,
+    "notes": 363,
+    "ticks": 24202,
+    "division": 384
+   }
+  },
+  {
+   "num": 100,
+   "id": "MUSIC_SKEDARRUINS_KING",
+   "file": "skedarruins-king.seq",
+   "seq": "seq/64.seq",
+   "volume": 27851,
+   "bytes": 18043,
+   "check": {
+    "events": 7942,
+    "notes": 4076,
+    "ticks": 317830,
+    "division": 384
+   }
+  },
+  {
+   "num": 101,
+   "id": "MUSIC_CI_TRAINING",
+   "file": "training-session.seq",
+   "seq": "seq/65.seq",
+   "volume": 24575,
+   "bytes": 5160,
+   "check": {
+    "events": 2369,
+    "notes": 1952,
+    "ticks": 119810,
+    "division": 384
+   }
+  },
+  {
+   "num": 102,
+   "id": "MUSIC_CRASHSITE_WIND",
+   "file": "crashsite-amb.seq",
+   "seq": "seq/66.seq",
+   "volume": 22936,
+   "bytes": 3372,
+   "check": {
+    "events": 859,
+    "notes": 97,
+    "ticks": 49154,
+    "division": 384
+   }
+  },
+  {
+   "num": 103,
+   "id": "MUSIC_COMBATSIM_COMPLETE",
+   "file": "mpendscreen-completed.seq",
+   "seq": "seq/67.seq",
+   "volume": 31128,
+   "bytes": 7493,
+   "check": {
+    "events": 3792,
+    "notes": 2397,
+    "ticks": 61442,
+    "division": 384
+   }
+  },
+  {
+   "num": 104,
+   "id": "MUSIC_OCEAN",
+   "file": "ocean.seq",
+   "seq": "seq/68.seq",
+   "volume": 22936,
+   "bytes": 1273,
+   "check": {
+    "events": 410,
+    "notes": 28,
+    "ticks": 43010,
+    "division": 384
+   }
+  },
+  {
+   "num": 105,
+   "id": "MUSIC_WIND",
+   "file": "airbase-wind.seq",
+   "seq": "seq/69.seq",
+   "volume": 22936,
+   "bytes": 2785,
+   "check": {
+    "events": 739,
+    "notes": 32,
+    "ticks": 49154,
+    "division": 384
+   }
+  },
+  {
+   "num": 106,
+   "id": "MUSIC_TRAFFIC",
+   "file": "chicago-traffic.seq",
+   "seq": "seq/6a.seq",
+   "volume": 26213,
+   "bytes": 2940,
+   "check": {
+    "events": 970,
+    "notes": 102,
+    "ticks": 101378,
+    "division": 384
+   }
+  },
+  {
+   "num": 107,
+   "id": "MUSIC_TITLE1",
+   "file": "title-part2.seq",
+   "seq": "seq/6b.seq",
+   "volume": 24575,
+   "bytes": 1378,
+   "check": {
+    "events": 413,
+    "notes": 24,
+    "ticks": 19970,
+    "division": 384
+   }
+  },
+  {
+   "num": 108,
+   "id": "MUSIC_CI_INTRO",
+   "file": "training-intro.seq",
+   "seq": "seq/6c.seq",
+   "volume": 24575,
+   "bytes": 331,
+   "check": {
+    "events": 80,
+    "notes": 4,
+    "ticks": 6151,
+    "division": 384
+   }
+  },
+  {
+   "num": 109,
+   "id": "MUSIC_INFILTRATION_SFX",
+   "file": "infiltration-amb.seq",
+   "seq": "seq/6d.seq",
+   "volume": 29490,
+   "bytes": 150,
+   "check": {
+    "events": 20,
+    "notes": 2,
+    "ticks": 5378,
+    "division": 384
+   }
+  },
+  {
+   "num": 110,
+   "id": "MUSIC_DEEPSEA_SFX",
+   "file": "deepsea-amb.seq",
+   "seq": "seq/6e.seq",
+   "volume": 29490,
+   "bytes": 277,
+   "check": {
+    "events": 49,
+    "notes": 16,
+    "ticks": 58370,
+    "division": 384
+   }
+  },
+  {
+   "num": 111,
+   "id": "MUSIC_AIRFORCEONE_SFX",
+   "file": "afo-amb.seq",
+   "seq": "seq/6f.seq",
+   "volume": 29490,
+   "bytes": 140,
+   "check": {
+    "events": 17,
+    "notes": 8,
+    "ticks": 12290,
+    "division": 384
+   }
+  },
+  {
+   "num": 112,
+   "id": "MUSIC_ATTACKSHIP_SFX",
+   "file": "attackship-amb.seq",
+   "seq": "seq/70.seq",
+   "volume": 29490,
+   "bytes": 125,
+   "check": {
+    "events": 12,
+    "notes": 2,
+    "ticks": 3075,
+    "division": 384
+   }
+  },
+  {
+   "num": 113,
+   "id": "MUSIC_SKEDAR_WIND",
+   "file": "skedarruins-amb.seq",
+   "seq": "seq/71.seq",
+   "volume": 29490,
+   "bytes": 571,
+   "check": {
+    "events": 109,
+    "notes": 22,
+    "ticks": 33794,
+    "division": 384
+   }
+  },
+  {
+   "num": 114,
+   "id": "MUSIC_ESCAPE_OUTRO_SFX",
+   "file": "escape-outro-ufo.seq",
+   "seq": "seq/72.seq",
+   "volume": 19660,
+   "bytes": 2102,
+   "check": {
+    "events": 680,
+    "notes": 254,
+    "ticks": 8098,
+    "division": 384
+   }
+  },
+  {
+   "num": 115,
+   "id": "MUSIC_A51_LOUDSPEAKER1",
+   "file": "rescue-amb.seq",
+   "seq": "seq/73.seq",
+   "volume": 26213,
+   "bytes": 262,
+   "check": {
+    "events": 34,
+    "notes": 20,
+    "ticks": 118274,
+    "division": 384
+   }
+  },
+  {
+   "num": 116,
+   "id": "MUSIC_A51_LOUDSPEAKER2",
+   "file": "escape-amb.seq",
+   "seq": "seq/74.seq",
+   "volume": 26213,
+   "bytes": 260,
+   "check": {
+    "events": 34,
+    "notes": 20,
+    "ticks": 118274,
+    "division": 384
+   }
+  },
+  {
+   "num": 117,
+   "id": "MUSIC_BETA_MELODY",
+   "file": "jingle.seq",
+   "seq": "seq/75.seq",
+   "volume": 26213,
+   "bytes": 161,
+   "check": {
+    "events": 24,
+    "notes": 16,
+    "ticks": 1250,
+    "division": 384
+   }
+  },
+  {
+   "num": 118,
+   "id": "MUSIC_ESCAPE_OUTRO_SHORT",
+   "file": "escape-outro-short.seq",
+   "seq": "seq/76.seq",
+   "volume": 19660,
+   "bytes": 3782,
+   "check": {
+    "events": 1103,
+    "notes": 260,
+    "ticks": 5954,
+    "division": 384
+   }
+  }
+ ],
+ "adpcm_checks": [
+  {
+   "wavetable": 0,
+   "samples": 5248,
+   "first": [
+    -4096,
+    16742,
+    -20692,
+    4886,
+    -14586,
+    -4314,
+    32767,
+    -1616,
+    -5763,
+    1003,
+    1670,
+    -4548,
+    -8307,
+    -6073,
+    7161,
+    1226,
+    1803,
+    15853,
+    -1937,
+    -12866,
+    9908,
+    -5126,
+    5615,
+    -15311,
+    24200,
+    -26109,
+    23560,
+    -26852,
+    23818,
+    -18450,
+    6617,
+    964
+   ],
+   "hash": 2586514363
+  },
+  {
+   "wavetable": 1,
+   "samples": 4080,
+   "first": [
+    0,
+    -1280,
+    -3918,
+    -6947,
+    -10300,
+    -14425,
+    -18430,
+    -22565,
+    -26280,
+    -29613,
+    -31818,
+    -32768,
+    -32162,
+    -30431,
+    -27999,
+    -24721,
+    -21111,
+    -17112,
+    -13291,
+    -9654,
+    -6451,
+    -3781,
+    -1704,
+    -281,
+    440,
+    805,
+    861,
+    650,
+    463,
+    427,
+    393,
+    618
+   ],
+   "hash": 3183745968
+  },
+  {
+   "wavetable": 17,
+   "samples": 2176,
+   "first": [
+    1024,
+    -396,
+    862,
+    -1945,
+    4145,
+    -6447,
+    8108,
+    -8815,
+    1470,
+    9201,
+    -14805,
+    15171,
+    -9727,
+    4997,
+    -3249,
+    -1020,
+    5719,
+    -6200,
+    4624,
+    -6204,
+    4876,
+    -2967,
+    3286,
+    65,
+    -1350,
+    -2271,
+    4085,
+    -3065,
+    4996,
+    -5312,
+    -201,
+    7038
+   ],
+   "hash": 369908489
+  },
+  {
+   "wavetable": 187,
+   "samples": 8304,
+   "first": [
+    0,
+    -128,
+    104,
+    -113,
+    176,
+    -70,
+    235,
+    -84,
+    247,
+    -89,
+    250,
+    -155,
+    207,
+    -341,
+    133,
+    -469,
+    164,
+    -110,
+    54,
+    -31,
+    1040,
+    -333,
+    5353,
+    -1735,
+    -1865,
+    1399,
+    -674,
+    383,
+    -204,
+    113,
+    -60,
+    33
+   ],
+   "hash": 2035856176
+  }
+ ]
+}

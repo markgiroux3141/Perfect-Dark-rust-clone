@@ -238,3 +238,37 @@ fn the_match_summary_names_the_weapons_the_dialog_shows() {
     assert_eq!(pd.describe_match(&m)[2], format!("Weapons: {}", shown.join(", ")));
     assert!(shown.iter().all(|w| !w.is_empty()), "{shown:?}");
 }
+
+/// The menus ask for PD's tunes: the Perfect Menu `MUSIC_MAINMENU`, the
+/// Combat Simulator `MUSIC_COMBATSIM_MENU`; the Soundtrack dialog slows the
+/// queue to 80 and previews each tune the cursor rests on (it opens on
+/// Random, the default; down wraps to Dark Combat, then Skedar Mystery),
+/// and puts the interval back when it closes.
+#[test]
+fn the_menus_ask_for_their_music() {
+    use pd_core::events::Event;
+    use pd_core::ids::*;
+    use pd_core::music::MusicCall;
+    let music = |pd: &mut MenuSystem| -> Vec<MusicCall> { pd.take_events().into_iter().filter_map(|e| if let Event::Music(c) = e { Some(c) } else { None }).collect() };
+    let mut pd = pd();
+    pd.open_main_menu();
+    assert_eq!(music(&mut pd), [MusicCall::StartTrackAsMenu(MUSIC_MAINMENU)]);
+    pd.open_combat_simulator();
+    assert_eq!(music(&mut pd), [MusicCall::StartTrackAsMenu(MUSIC_COMBATSIM_MENU)]);
+    pd.frame1();
+    pd.menu_push_dialog(&gd::G_MP_SELECT_TUNES_MENU_DIALOG);
+    pd.frame1();
+    let opened = music(&mut pd);
+    assert_eq!(opened.first(), Some(&MusicCall::SetInterval(80)), "{opened:?}");
+    tap(&mut pd, n64::pad::D_JPAD);
+    let moved = music(&mut pd);
+    assert!(moved.contains(&MusicCall::StartTrackAsMenu(MUSIC_DARK_COMBAT)), "{moved:?}");
+    tap(&mut pd, n64::pad::D_JPAD);
+    let moved = music(&mut pd);
+    assert!(moved.contains(&MusicCall::StartTrackAsMenu(MUSIC_SKEDAR_MYSTERY)), "{moved:?}");
+    tap(&mut pd, n64::pad::B_BUTTON);
+    for _ in 0..20 {
+        pd.frame1();
+    }
+    assert!(music(&mut pd).contains(&MusicCall::SetInterval(15)));
+}

@@ -250,6 +250,10 @@ impl World {
         }
         crate::mp::scenario::scenario_init_setup(&mut setup);
         let mut rng = Rng::new(seed);
+        // lv_reset's music_set_stage_and_start_music (lv.c:330) draws the
+        // tune before the setup's props and chrs.
+        let mut music = crate::mp::music::MpMusic::new(&setup.music);
+        let first_music = music.music_start_primary(&setup.music, &mut rng, 0.0);
         let n = setup.players.len();
         let mut players = Vec::with_capacity(n);
         for i in 0..n {
@@ -318,6 +322,8 @@ impl World {
             rumble_paused: false,
             events: Vec::new(),
         };
+        w.mp.music = music;
+        w.music_lv_reset(first_music);
         // mp_reset's active menu orders (mplayer.c:286).
         w.am_init_bot_commands();
         w.scenario_reset();
@@ -555,6 +561,7 @@ impl World {
         if !self.mp.endscreen {
             self.props_tick();
         }
+        self.music_tick();
 
         // lv_tick_player: each player's player_tick.
         let idle = PlayerInput::default();
@@ -715,7 +722,9 @@ impl World {
             // player_render_hud's death sequence (`player.c:4546`).
             let input = if self.mp.players[i].withcontrol { inputs.get(i).unwrap_or(&idle) } else { &idle };
             let canrestart = !self.mp_is_paused() && self.mp.numreasonstoend == 0;
-            self.players[i].player_tick_death(input, canrestart);
+            if self.players[i].player_tick_death(input, canrestart) {
+                self.music_start_mp_death();
+            }
             self.lv_render_fx(i, motion_blur);
             // SUBST: chr_render counts each chr it draws in the player's view
             // (chr.c:3570) / the chrs the renderer draws, those on screen.

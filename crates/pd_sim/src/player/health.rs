@@ -332,15 +332,19 @@ impl super::Player {
     /// and the body fading out, then any of A, Z or START (held, `0xb000`)
     /// starts a new life, while the match isn't paused or ending
     /// (`canrestart`: `!mp_is_paused() && g_NumReasonsToEndMpMatch == 0`).
-    pub fn player_tick_death(&mut self, input: &super::PlayerInput, canrestart: bool) {
+    /// True on the frame the death begins: the world starts the death tune
+    /// (`music_start_mp_death`).
+    pub fn player_tick_death(&mut self, input: &super::PlayerInput, canrestart: bool) -> bool {
         if !self.isdead {
-            return;
+            return false;
         }
+        let mut started = false;
         if !self.deathanimfinished {
             if !self.isdead2 {
-                // pak_disable_rumble_for_player; music_start_mp_death (M13).
+                // pak_disable_rumble_for_player, then music_start_mp_death.
                 self.rumble.disable();
                 self.isdead2 = true;
+                started = true;
             } else if self.redbloodfinished {
                 self.health.player_set_fade_colour([0x96, 0, 0], 0.705_882_37);
             } else {
@@ -357,6 +361,7 @@ impl super::Player {
                 self.dostartnewlife = true;
             }
         }
+        started
     }
 
     /// The parts of `player_start_new_life` (`player.c:495`),

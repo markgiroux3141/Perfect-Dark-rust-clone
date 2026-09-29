@@ -92,6 +92,12 @@ impl AssetDir {
         self.root.join("sfx").join("manifest.json")
     }
 
+    /// `music/<name>`: `bank.json`, `seq.tbl`, `index.json`, and the
+    /// sequences `seq/<num>.seq` (as `index.json` names them).
+    pub fn music(&self, name: &str) -> PathBuf {
+        self.root.join("music").join(name)
+    }
+
     /// `data/<name>` (`weapons.json`, `bodies.json`, `mpconfigs.bin`).
     pub fn data(&self, name: &str) -> PathBuf {
         self.root.join("data").join(name)

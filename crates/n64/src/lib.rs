@@ -12,6 +12,7 @@
 pub mod audio;
 #[cfg(feature = "gpu")]
 pub mod gpu;
+pub mod naudio;
 pub mod pad;
 pub mod rdp;
 pub mod rsp;

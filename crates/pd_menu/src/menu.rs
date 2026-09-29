@@ -2804,8 +2804,17 @@ impl MenuSystem {
                     let root = self.menudata.nextroot;
                     self.menu_push_root_dialog(def, root);
                     anyopen2 = true;
+                    let mut startmusic = false;
                     if self.menudata.root == MENUROOT_MPSETUP {
+                        startmusic = true;
                         self.play_sound(gd::SFXMAP_8098_EXPLOSION, 1.0, 1.0);
+                    }
+                    // The Perfect Menu at CI's PC (not in a training room).
+                    if matches!(self.menudata.root, MENUROOT_MAINMENU | MENUROOT_TRAINING) {
+                        startmusic = true;
+                    }
+                    if startmusic {
+                        self.music_start_menu();
                     }
                 }
                 self.menudata.nextdialog = None;

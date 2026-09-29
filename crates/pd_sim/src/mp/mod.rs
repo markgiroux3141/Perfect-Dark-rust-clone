@@ -19,6 +19,7 @@
 
 pub mod awards;
 pub mod hudmsg;
+pub mod music;
 pub mod radar;
 pub mod scenario;
 
@@ -200,6 +201,8 @@ pub struct MpMatch {
     pub scenariodata: scenario::ScenarioData,
     /// `g_AmBotCommands`: the active menu's orders by slot (`mp_reset`).
     pub ambotcommands: [u8; 9],
+    /// `game/music.c`'s match globals.
+    pub music: music::MpMusic,
 }
 
 impl MpMatch {
@@ -235,6 +238,7 @@ impl MpMatch {
             results: Vec::new(),
             scenariodata: scenario::ScenarioData::default(),
             ambotcommands: [AIBOTCMD_NORMAL; 9],
+            music: music::MpMusic::new(&setup.music),
         }
     }
 }
@@ -625,8 +629,9 @@ impl World {
 
     /// `mp_end_match` (`mplayer.c:2426`): over for good (`MPPAUSEMODE_GAMEOVER`),
     /// no one on a Slayer rocket, the awards, then the end screens.
-    /// `// M13:` the menu music; `// M14:` `challenge_consider_marking_complete`.
+    /// `// M14:` `challenge_consider_marking_complete`.
     fn mp_end_match(&mut self) {
+        self.music_start_menu_at_end();
         self.mp_set_paused(MPPAUSEMODE_GAMEOVER);
         for i in 0..self.players.len() {
             self.mp.players[i].award1 = None;

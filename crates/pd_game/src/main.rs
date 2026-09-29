@@ -6,6 +6,7 @@
 //! - `controls`: keyboard, mouse and gamepads to N64 controllers (menus) and to
 //!   each player's `PlayerInput` (a match);
 //! - `audio`: `pd_menu`/`pd_sim` sound events to engine voices, with PD's pitch;
+//! - `music`: PD's music (the synth and its queue) on an engine stream;
 //! - `tvaudio`: the `n64::audio` N64 output + TV speaker chain on a DSP track;
 //! - `presentation`: the panel's video and audio options;
 //! - `states`: the menu and match states.
@@ -15,6 +16,7 @@
 
 mod audio;
 mod controls;
+mod music;
 mod presentation;
 mod states;
 mod tvaudio;
@@ -42,6 +44,7 @@ use n64::gpu::video::{tube_rect, Frame as VideoFrame, N64Video, VideoSettings};
 
 use audio::SfxBank;
 use controls::Controls;
+use music::MusicPlayer;
 use states::{MatchAssets, Screen};
 
 /// The match view's format: not sRGB, the combiner writes display values.
@@ -74,6 +77,11 @@ struct PdGame {
     rate: Rate,
     controls: Controls,
     sfx: Option<SfxBank>,
+    music: Option<MusicPlayer>,
+    /// The F1 panel's music switch and level (not PD's; PD's own volume is
+    /// in the synth).
+    music_on: bool,
+    music_gain: f32,
     profile: Profile,
     /// The match stand-in's frame.
     stand_in: Gfx,
@@ -113,6 +121,7 @@ impl PdGame {
             menu.open_main_menu();
         }
         let sfx = SfxBank::load(&assets).map_err(|e| log::warn!("sfx: {e}; running silent")).ok();
+        let music = MusicPlayer::load(&assets).map_err(|e| log::warn!("music: {e}; no music")).ok();
         let next_seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
         Ok(PdGame {
             match_assets: MatchAssets::new(&assets),
@@ -123,6 +132,9 @@ impl PdGame {
             rate: Rate::Hz60,
             controls: Controls::new(),
             sfx,
+            music,
+            music_on: true,
+            music_gain: 1.0,
             profile,
             stand_in: Gfx::new(FB_W, FB_H),
             target: None,
@@ -145,6 +157,9 @@ impl PdGame {
     fn restart(&mut self) {
         match MenuSystem::new(&self.assets, self.profile) {
             Ok(mut m) => {
+                if let Some(music) = &mut self.music {
+                    music.stage_change();
+                }
                 m.open_main_menu();
                 self.menu = m;
                 self.screen = Screen::Menus;
@@ -163,6 +178,11 @@ impl PdGame {
     fn end_match(&mut self, ctx: &mut Ctx) {
         if let Some(sfx) = &mut self.sfx {
             sfx.stop_all(ctx.audio.as_deref_mut());
+        }
+        // lv_stop's music_stop, then CI's lv_reset; the menus ask for their
+        // tune as they come back (player_pause(MENUROOT_MPSETUP)).
+        if let Some(music) = &mut self.music {
+            music.stage_change();
         }
         if let Some(pads) = ctx.input.pads.as_mut() {
             for i in 0..MAX_PADS {
@@ -191,6 +211,10 @@ impl PdGame {
         match self.load_match(ctx, &setup, code, seed) {
             Ok(world) => {
                 log::info!("match: stage {code}, {} player(s), seed {seed:#x}", world.players.len());
+                // CI's lv_stop: its music stops; the world's lv_reset starts the match's.
+                if let Some(music) = &mut self.music {
+                    music.stage_change();
+                }
                 self.screen = Screen::Match(Box::new(world));
                 self.controls.captured = ctx.set_cursor_captured(true);
             }
@@ -267,6 +291,12 @@ impl PdGame {
             sfx.play(ctx.audio.as_deref_mut(), &out.events);
             sfx.play(ctx.audio.as_deref_mut(), &out.menu_events);
         }
+        // The menus' calls came from menu_tick, before the world's lv_tick
+        // (whose music_tick asks for the queue's tick).
+        if let Some(music) = &mut self.music {
+            music.apply(&out.menu_events);
+            music.apply(&out.events);
+        }
         self.blur_pending |= out.ended;
         // The menus' frame is laid over the HUD while they show anything (not
         // on the frame the end screen's blur is taken from).
@@ -278,6 +308,19 @@ impl PdGame {
             }
         }
         !out.over
+    }
+
+    /// Keep the music's stream ahead of the device, on the TV track while
+    /// the N64 / TV chain is on.
+    fn pump_music(&mut self, ctx: &mut Ctx) {
+        let dt = self.rate as i32 as f64 / 60.0;
+        let Some(music) = &mut self.music else { return };
+        let track = match (ctx.audio.as_deref_mut(), &mut self.sfx) {
+            (Some(a), Some(sfx)) => sfx.track(a),
+            _ => None,
+        };
+        music.pump(ctx.audio.as_deref_mut(), track, dt);
+        music.set_gain(if self.music_on { self.music_gain } else { 0.0 });
     }
 
     fn ensure_match_target(&mut self, ctx: &mut Ctx) {
@@ -367,6 +410,7 @@ impl Game for PdGame {
             if !self.tick_match(ctx) {
                 self.end_match(ctx);
             }
+            self.pump_music(ctx);
             return;
         }
         let (readings, back2) = self.controls.read(ctx.input, self.joined());
@@ -393,6 +437,11 @@ impl Game for PdGame {
         if let Some(sfx) = &mut self.sfx {
             sfx.play(ctx.audio.as_deref_mut(), &events);
         }
+        if let Some(music) = &mut self.music {
+            music.apply(&events);
+            music.tick(self.lv.diffframe240);
+        }
+        self.pump_music(ctx);
     }
 
     fn debug_ui(&mut self, ctx: &mut Ctx, egui: &egui::Context) {
@@ -452,6 +501,23 @@ impl Game for PdGame {
                 ui.label(egui::RichText::new("A second player joins the Combat Simulator by pressing START; then set 'keyboard drives' to that controller.").weak());
                 ui.separator();
                 presentation::video_panel(ui, &mut self.video);
+                if let Some(music) = &self.music {
+                    ui.separator();
+                    ui.label("MUSIC");
+                    ui.checkbox(&mut self.music_on, "Music");
+                    ui.add(egui::Slider::new(&mut self.music_gain, 0.0..=2.0).text("music level (1 = PD's mix)"));
+                    let m = &music.music;
+                    let names = &m.data().names;
+                    for (i, c) in m.channels.iter().enumerate() {
+                        if c.tracktype != 0 {
+                            let t = m.tracknum(i);
+                            let kind = ["-", "primary", "X", "menu", "death", "ambient", "?"].get(c.tracktype as usize).copied().unwrap_or("?");
+                            let name = names.get(t as usize).map_or("?", |n| n.trim_start_matches("MUSIC_"));
+                            let fade = m.audio.players[i].chan_state[0].fadevolcurrent;
+                            ui.label(egui::RichText::new(format!("seq {i}: {kind} {name} · fade {fade}{}", if c.inuse { "" } else { " · releasing" })).weak());
+                        }
+                    }
+                }
                 if let Some(sfx) = &mut self.sfx {
                     ui.separator();
                     let mut a = sfx.tv();

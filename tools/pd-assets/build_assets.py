@@ -18,6 +18,7 @@ exporter change.
 | fonts/, lang/ | pd_menu_gen.py `export_assets` |
 | data/         | pd_menu_gen.py (mpconfigs.bin), pd_fpgun.py `build_weapons` (weapons.json) |
 | sfx/          | pd_sfx.py `export_pool` |
+| music/        | pd_music.py: the instrument bank, its sample data, the sequences |
 | stages/       | pd_stage.py: per stage, the textured BG, collision tiles, pads + waypoints, MP setup |
 
 It also regenerates the Rust that is generated from the decomp:
@@ -41,13 +42,14 @@ import pd_fpgun  # noqa: E402
 import pd_ids  # noqa: E402
 import pd_menu_gen  # noqa: E402
 import pd_models  # noqa: E402
+import pd_music  # noqa: E402
 import pd_sfx  # noqa: E402
 import pd_stage  # noqa: E402
 from pd_paths import ASSETS, DECOMP, OUT, asset, out, require_decomp  # noqa: E402
 
 #: The directories this script owns and clears. README.md and anything else at
 #: the root are left alone.
-OWNED = ["models", "textures", "anims", "fonts", "lang", "data", "sfx", "stages"]
+OWNED = ["models", "textures", "anims", "fonts", "lang", "data", "sfx", "music", "stages"]
 
 #: md5 of the NTSC-final ROM (reference/README.md).
 ROM_MD5 = "e03b088b6ac9e0080440efed07c1e40f"
@@ -161,6 +163,7 @@ def main() -> int:
     counts.update(export_anims())
     counts.update(pd_menu_gen.export_assets())
     counts.update(pd_sfx.export_pool(out("sfx")))
+    counts.update(pd_music.export_all(out("music")))
     pd_ids.main()
     pd_menu_gen.write_rust()
 

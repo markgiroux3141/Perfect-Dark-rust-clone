@@ -8,7 +8,7 @@
  },
  "rom_md5": "e03b088b6ac9e0080440efed07c1e40f",
  "exporters": {
-  "build_assets.py": "6897b5857efb0e52e70e64581733f652496b6b380476b96a1101dd9528be291a",
+  "build_assets.py": "1ba40be3f6457da242052c1784ba9e3d0cf9f981a9db861d224df8c07361eb8e",
   "check_against_spikes.py": "abc745da424b3b64a794b0d3f2e8fd7c37c33cd1291419bf07a5eb89c9a5929e",
   "pd_anim.py": "85e2ec9a1b2d0fdcdee787909647e654364437652f0339fa9e34571135ba1785",
   "pd_animmap.py": "804be1a12ad6e530eab690de10f3fa3954858a87958f1af5249d9b570ae1f6ff",
@@ -16,10 +16,11 @@
   "pd_bg_preview.py": "73172f4ba61b94f948b1bd140d31e1b6f2c113c453c3df7208641d2b91998155",
   "pd_fpgun.py": "19c110ceea19a1e539b085c5514e38b41f92f20e71a98c7acc3ae7e39ffbb6e9",
   "pd_gltf.py": "96cde0e1069ad09b6c3105a06c0677a7928d77498e8259a5cb56f30821811b0b",
-  "pd_ids.py": "345a37c4d3b3de8fab5ea14b965f7f70f5602c5f6968aca9d775697da26b9134",
+  "pd_ids.py": "a05cb93383f8298905689bf5caab97204973129ae945cf2aedf8b7e7278c0180",
   "pd_menu_gen.py": "02e16bebdc3e7d6a48579706fc7319110bde5e4bd10131277c1fe2e40e0dc0e5",
   "pd_model.py": "296358e46218e3c3df08e3809db18614ccdd998f28b681859162de9684a3983c",
   "pd_models.py": "4a4ae941316002ee608cc50030b5f581a8e5d91379e7593574177340a408a458",
+  "pd_music.py": "a38e143b70cb05b1ecda99063850053ae4c4c7e34c68864fb76d5c77b976f398",
   "pd_paths.py": "bce54ee9800c28d0d6c5b152ef53d909fd33622459d0152c046efdcf5e31430a",
   "pd_pose.py": "38400087d82a55f27975064e5a477800f95273cfab526efdb823b3e9301b66de",
   "pd_preview.py": "1ac546d8fe6dc1df13f2db5f947f35f8d8cd50d7a432852ff9c8de9787e76dfe",
@@ -250,7 +251,11 @@
   "fonts": 5,
   "langbanks": 68,
   "sounds": 259,
-  "keys": 637
+  "keys": 637,
+  "music_sequences": 119,
+  "music_instruments": 126,
+  "music_sounds": 256,
+  "music_wavetables": 188
  },
  "dirs": {
   "models": {
@@ -280,6 +285,10 @@
   "sfx": {
    "files": 260,
    "sha256": "be0cb1ef7c127da36ebc8650ac27415f7c8ec56def207625150a59826f7d5577"
+  },
+  "music": {
+   "files": 122,
+   "sha256": "06e882b9dd32ab61cd50830731bdd16beb8571a07dfad2993ed3c889972df534"
   },
   "stages": {
    "files": 80,

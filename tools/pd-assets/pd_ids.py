@@ -7,6 +7,9 @@ defines beside it), `STAGE_*`, `BODY_*`, `HEAD_*`, `MPBODY_*`, `MPHEAD_*`,
 `HITPART_*`, `GEOFLAG_*`, `PADFLAG_*`, `LIFTACTION_*`, `FLOORTYPE_*`, `CROUCHPOS_*`; and from `game/stagetable.c` each stage's code (its BG file,
 `FILE_BG_REF_SEG` -> "ref"), which names `assets/stages/<code>/`.
 
+`MUSIC_*` (a sequence's number in `g_SeqTable`) come from the extract's
+sequences.json, whose order the decomp's build makes the enum from.
+
 Sound ids (`sfx.h`) are keyed in `assets/sfx/manifest.json` and file numbers
 (`files.h`) in `assets/models/index.json`, so neither is generated here.
 
@@ -16,6 +19,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -24,7 +28,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import pd_weapons  # noqa: E402
-from pd_paths import REPO, src  # noqa: E402
+from pd_paths import REPO, asset, src  # noqa: E402
 
 OUT = os.path.join(REPO, "crates", "pd_core", "src", "ids.rs")
 
@@ -114,6 +118,11 @@ GROUPS = [
     # Presentation (player.c's viewports, sight.c).
     ("SCREENSPLIT_", "u8", False, "`g_ScreenSplit`: two players' viewports (`options_get_screen_split`)."),
     ("SIGHTTRACKTYPE_", "u8", False, "`invaimsettings.tracktype`: what a sight tracks (`sight_tick`)."),
+    # Music (lib/music.c, game/music.c, lib/snd.c).
+    ("TRACKTYPE_", "i32", False, "`g_SeqChannels[].tracktype`: what a sequence player is playing."),
+    ("MUSICEVENTTYPE_", "i32", False, "`g_MusicEventQueue[].eventtype`."),
+    ("SOUNDMODE_", "i32", False, "`g_SoundMode`: the Sound option (`snd_set_sound_mode`)."),
+    ("SPEAKERMODE_", "i32", False, "`alSurround_OutputType`'s modes."),
 ]
 
 
@@ -154,6 +163,12 @@ def main() -> int:
             lines.append(f"pub const {n}: {ty} = {lit};")
             total += 1
         lines.append("")
+    seqs = json.load(open(asset("sequences.json"), encoding="utf-8"))
+    lines.append("// `MUSIC_*`: sequence numbers (`g_SeqTable` order, the extract's sequences.json).")
+    for num, e in enumerate(seqs):
+        lines.append(f"pub const {e['id']}: i32 = {num};")
+        total += 1
+    lines.append("")
     stages = stage_codes(values)
     lines.append("/// Each `g_Stages` row's stage and code (its BG file, `stagetable.c`): the")
     lines.append("/// name of `assets/stages/<code>/`.")

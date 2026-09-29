@@ -116,6 +116,37 @@ pub struct MatchSetup {
     /// side by side (the Combat Simulator's Screen Split option).
     #[serde(default)]
     pub screensplit: u8,
+    /// The Soundtrack settings the match's tunes come from.
+    #[serde(default)]
+    pub music: MatchMusic,
+}
+
+/// The Soundtrack settings a match chooses its tunes from (`g_BossFile`'s
+/// `tracknum`, `usingmultipletunes` and `multipletracknums`), over the
+/// unlocked `g_MpTracks` in slot order (`mp_get_track_num_at_slot_index`).
+/// The default has no tracks: no music, and no draws from the RNG for it
+/// (the harness's setups).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MatchMusic {
+    /// `mp_get_current_track_slot_num()`: the chosen tune's slot, or -1 for
+    /// a random one.
+    pub slot: i32,
+    /// `mp_get_using_multiple_tunes()`.
+    pub usingmultipletunes: bool,
+    pub tracks: Vec<MatchTrack>,
+}
+
+/// An unlocked `g_MpTracks` row (`mplayer.c:2679`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MatchTrack {
+    /// Its `g_MpTracks` index.
+    pub tracknum: i32,
+    /// `MUSIC_*`.
+    pub musicnum: i32,
+    /// `duration`, in seconds.
+    pub duration: i32,
+    /// `mp_is_multi_track_slot_enabled`: one of the multiple tunes.
+    pub enabled: bool,
 }
 
 fn default_mphilltime() -> u8 {
@@ -220,6 +251,7 @@ impl Default for MatchSetup {
             challenge: false,
             mphilltime: 10,
             screensplit: SCREENSPLIT_HORIZONTAL,
+            music: MatchMusic::default(),
         }
     }
 }

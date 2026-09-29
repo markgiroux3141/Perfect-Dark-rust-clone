@@ -150,6 +150,8 @@ mod tests {
         lv: Lv,
         over: bool,
         ended: bool,
+        /// Every music call, the menus' then the world's, frame by frame.
+        music: Vec<pd_core::music::MusicCall>,
     }
 
     impl T {
@@ -165,6 +167,11 @@ mod tests {
             let out = step(&mut self.world, &mut self.menu, &self.lv, 4, &[input]);
             self.over |= out.over;
             self.ended |= out.ended;
+            for e in out.menu_events.iter().chain(&out.events) {
+                if let Event::Music(c) = e {
+                    self.music.push(*c);
+                }
+            }
         }
 
         fn tap(&mut self, button: u16) {
@@ -196,8 +203,14 @@ mod tests {
         let Some(Outcome::StartMatch(setup)) = menu.take_outcome() else { panic!("no match") };
         let stage = Stage::load(&assets, "ref").unwrap();
         let level = TileLevel::for_stage(&stage);
-        let world = World::new(setup, Arc::new(stage), Arc::new(level), Arc::new(WorldRes::load(&assets).unwrap()), 5).unwrap();
-        T { world, menu, lv: Lv::new(), over: false, ended: false }
+        let mut world = World::new(setup, Arc::new(stage), Arc::new(level), Arc::new(WorldRes::load(&assets).unwrap()), 5).unwrap();
+        let mut music = Vec::new();
+        for e in world.take_events() {
+            if let Event::Music(c) = e {
+                music.push(c);
+            }
+        }
+        T { world, menu, lv: Lv::new(), over: false, ended: false, music }
     }
 
     /// START opens the pause menu over the match and pauses it; its Control
@@ -241,6 +254,36 @@ mod tests {
             t.menu.frame(&t.lv);
         }
         assert_eq!(t.dialog(), Some("g_CombatSimulatorMenuDialog"));
+    }
+
+    /// The match plays the tune the Soundtrack settings choose: a random one
+    /// by default (drawn by the world), the one picked otherwise; End Game's
+    /// end screens play the Combat Simulator's end tune.
+    #[test]
+    fn the_match_plays_the_chosen_tune_and_the_end_screens_theirs() {
+        use pd_core::music::MusicCall;
+        let starts = |t: &T| -> Vec<i32> { t.music.iter().filter_map(|c| if let MusicCall::Start { tracktype: TRACKTYPE_PRIMARY, tracknum, .. } = c { Some(*tracknum) } else { None }).collect() };
+        let t = start();
+        assert_eq!(t.music.first(), Some(&MusicCall::Reset));
+        let mp: Vec<i32> = pd_menu::generated::MP_TRACKS.iter().map(|x| x.musicnum).collect();
+        let s = starts(&t);
+        assert_eq!(s.len(), 1);
+        assert!(mp.contains(&s[0]), "a Combat Simulator tune: {}", s[0]);
+
+        let mut t = start_with(|m| m.mp.bossfile.tracknum = 3);
+        assert_eq!(starts(&t), [MUSIC_DATADYNE_ACTION], "slot 3: dataDyne Action");
+        for _ in 0..30 {
+            t.frame(0);
+        }
+        t.tap(START_BUTTON);
+        for _ in 0..3 {
+            t.tap(R_JPAD);
+        }
+        t.tap(A_BUTTON);
+        t.tap(D_JPAD);
+        t.tap(A_BUTTON);
+        assert!(t.ended);
+        assert!(t.music.contains(&MusicCall::StartTrackAsMenu(MUSIC_COMBATSIM_COMPLETE)), "{:?}", t.music);
     }
 
     /// The active menu's Attack order (teams on, a simulant teammate):

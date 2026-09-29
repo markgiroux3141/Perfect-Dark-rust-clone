@@ -1184,9 +1184,8 @@ pub fn title_mp_menu_text_select_tune_or_tunes(pd: &mut MenuSystem, _def: &'stat
 // Soundtrack, team names, challenges (setup.c:3841-4700)
 // ---------------------------------------------------------------------------
 
-/// `mp_select_tune_list_handler` (setup.c:3841). **Substitution:** PD starts
-/// the focused track (`music_start_track_as_menu`); the sequenced N64 music
-/// isn't played here.
+/// `mp_select_tune_list_handler` (setup.c:3841): the focused tune plays
+/// (`music_start_track_as_menu`).
 pub fn mp_select_tune_list_handler(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, data: &mut HandlerData) -> R {
     let special = [166u16, 167, 168, 169];
     let numtracks = pd.mp_get_num_unlocked_tracks();
@@ -1224,6 +1223,12 @@ pub fn mp_select_tune_list_handler(pd: &mut MenuSystem, op: i32, _item: &'static
                 data.value = if s < 0 { numtracks } else { s };
             }
         }
+        MENUOP_ON_OPTION_FOCUS => {
+            if data.value < numtracks {
+                let t = pd.mp_get_track_num_at_slot_index(data.value);
+                pd.music(pd_core::music::MusicCall::StartTrackAsMenu(MP_TRACKS[t].musicnum));
+            }
+        }
         MENUOP_IS_OPTION_CHECKED => {
             if multi && data.value < numtracks {
                 data.unk04 = pd.mp_is_multi_track_slot_enabled(data.value) as i32;
@@ -1234,7 +1239,16 @@ pub fn mp_select_tune_list_handler(pd: &mut MenuSystem, op: i32, _item: &'static
     ok()
 }
 
-pub fn menudialog_mp_select_tune(_pd: &mut MenuSystem, _op: i32, _def: &'static MenuDialogDef, _data: &mut HandlerData) -> i32 {
+/// `menudialog_mp_select_tune` (setup.c:3930): the queue runs every 80
+/// quarter-ticks while the dialog is open (so scrolling doesn't restart the
+/// tune at every row), 15 again after.
+pub fn menudialog_mp_select_tune(pd: &mut MenuSystem, op: i32, _def: &'static MenuDialogDef, _data: &mut HandlerData) -> i32 {
+    if op == MENUOP_ON_OPEN {
+        pd.music(pd_core::music::MusicCall::SetInterval(80));
+    }
+    if op == MENUOP_ON_CLOSE {
+        pd.music(pd_core::music::MusicCall::SetInterval(15));
+    }
     0
 }
 

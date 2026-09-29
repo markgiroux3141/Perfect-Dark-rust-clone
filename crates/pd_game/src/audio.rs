@@ -11,6 +11,10 @@
 //! charge) keeps its voice until it is stopped or replaced, and loops if its
 //! sample has a loop in the bank.
 //!
+//! Every voice is scaled by [`SFX_MIX`], the synth's gain for an SFX voice
+//! (`g_SfxVolume` and the centre pan), so the SFX sit against the music
+//! (`crate::music`, which comes out of the synth at PD's level) as PD mixes them.
+//!
 //! With the `n64::audio` chain switched on ([`SfxBank::set_tv`]), new voices play
 //! on its DSP track ([`crate::tvaudio`]); with it off they play on the main track.
 //! A voice stays on the track it started on.
@@ -24,6 +28,12 @@ use pd_core::assets::AssetDir;
 use pd_core::events::Event;
 
 use crate::tvaudio::TvRoute;
+
+/// An SFX voice's gain in PD's synth: `n_sndplayer`'s volume table at
+/// `g_SfxVolume` (0x5000 after `gamefile_load_defaults`, `snd.c:890`), then
+/// the envelope mixer's centre pan (`n_eqpower[64]` = 0x59f2, `n_env.c`). The
+/// manifest's volume is the sound's own (`sampleVolume`, `attackVolume`).
+pub const SFX_MIX: f32 = (0x5000 as f32 / 0x7fff as f32) * (0x59f2 as f32 / 0x7fff as f32);
 
 struct Entry {
     path: PathBuf,
@@ -79,7 +89,7 @@ impl SfxBank {
             match *ev {
                 Event::Sound { sound, pitch, volume, pan } => match self.resolve(sound) {
                     Some(e) => {
-                        audio.play_voice_on(track, &e.path, e.volume * volume, pitch as f64, pan, false);
+                        audio.play_voice_on(track, &e.path, SFX_MIX * e.volume * volume, pitch as f64, pan, false);
                     }
                     None => log::debug!("sfx: no sample for sound {sound:#06x}"),
                 },
@@ -89,7 +99,7 @@ impl SfxBank {
                     }
                     match self.resolve(sound) {
                         Some(e) => {
-                            let base = e.volume;
+                            let base = SFX_MIX * e.volume;
                             if let Some(v) = audio.play_voice_on(track, &e.path, base * volume, pitch as f64, pan, e.looping) {
                                 self.handles.insert(handle, (v, base));
                             }
@@ -115,9 +125,14 @@ impl SfxBank {
                         audio.stop_voice(v);
                     }
                 }
-                Event::Kill { .. } | Event::MpPushPauseDialog { .. } | Event::AmOpenPickTarget { .. } | Event::MpCloseMenus { .. } | Event::MpEndMatch => {}
+                Event::Kill { .. } | Event::MpPushPauseDialog { .. } | Event::AmOpenPickTarget { .. } | Event::MpCloseMenus { .. } | Event::MpEndMatch | Event::Music(_) => {}
             }
         }
+    }
+
+    /// The track new voices (and the music's stream) play on.
+    pub fn track(&mut self, audio: &mut Audio) -> Option<engine::audio::TrackId> {
+        self.tv.track(audio)
     }
 
     /// The N64 output + TV speaker settings in use.

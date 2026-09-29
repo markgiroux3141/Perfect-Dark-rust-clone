@@ -1082,7 +1082,7 @@ impl MenuSystem {
     fn mp_get_track_slot_index(&self, tracknum: usize) -> i32 {
         (0..tracknum).filter(|&i| self.mp_is_track_unlocked(i)).count() as i32
     }
-    fn mp_get_track_num_at_slot_index(&self, slotindex: i32) -> usize {
+    pub fn mp_get_track_num_at_slot_index(&self, slotindex: i32) -> usize {
         (0..MP_TRACKS.len()).filter(|&i| self.mp_is_track_unlocked(i)).nth(slotindex.max(0) as usize).unwrap_or(MP_TRACKS.len() - 1)
     }
     pub fn mp_get_num_unlocked_tracks(&self) -> i32 {

@@ -10,6 +10,11 @@ publish.workspace = true
 name = "pd_snapshot"
 path = "src/bin/pd_snapshot.rs"
 
+# Offline music renders to WAV (the synth and the queue, no device).
+[[bin]]
+name = "pd_music"
+path = "src/bin/pd_music.rs"
+
 # The simulant and route debug viewer (a window: the one tool that isn't headless).
 [[bin]]
 name = "pd_lab"

@@ -20,5 +20,6 @@ pub mod menugfx;
 pub mod model;
 pub mod mp;
 pub mod mpweapons;
+pub mod music;
 pub mod rng;
 pub mod text;

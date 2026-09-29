@@ -20,6 +20,7 @@ cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # off
                                             #   `out flow --teams --mates 2 hold:a:50 shot:am` (the active menu; `hold:a+z:1` next screen),
                                             #   `out flow --players 4 [--vsplit] [--shield] w60 shot:split` (split screen),
                                             #   `out match --duel --lock --dist 900` (the rocket launcher's lock))
+cargo run --release -p pd_tools --bin pd_music -- <out.wav> <tune|--flow> [secs]   # offline music renders (MUSIC_* name or number; --list)
 cargo run --release -p pd_tools --bin pd_lab # the simulant/route viewer (a window: for the user, not for Claude to drive)
 python tools/check_boundaries.py            # headless crates stay headless
 python tools/pd-assets/build_assets.py      # regenerate assets/ (and crates/pd_core/src/ids.rs) from the decomp

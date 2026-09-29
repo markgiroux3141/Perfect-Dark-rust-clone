@@ -30,13 +30,13 @@ Arrows point at what a crate may use. Nothing points back up.
 | Crate | Owns | Must not |
 |---|---|---|
 | **`engine`** | winit runner and `Game` trait (`init`/`tick`/`frame`/`render`/`debug_ui`), `FrameClock` (fixed tick + alpha + pacing), raw input snapshot (keys, mouse, gilrs pads), GPU context + offscreen targets + low-res present, kira voices + DSP tracks, run-time asset root, egui for dev panels; it re-exports `wgpu` and `egui` so the game uses its versions | know about the N64 or PD; depend on workspace crates; use compile-time asset paths |
-| **`n64`** | the console: N64 controller state, RDP (combiner, blender, texture formats, TLUTs, 3-point filter, TRILERP, fill rule, RGBA5551 + dither) as a **CPU reference rasteriser**, RSP semantics (lighting, texgen, matrices), the audio output + TV speaker DSP (pure), and behind `gpu`, the WGSL ports of the combiner and the VI/CRT chain. Both halves take the same `rdp::DrawState` + `rdp::MipTex` | know about PD; depend on `engine` (the `gpu` half uses wgpu directly) |
-| **`pd_core`** | PD maths (BADPI, pdmtx), `random()`, `Lv` timing, PD ids, the animation bank + `struct anim`, the model format + walker + hit test, `text.c` + fonts, language banks, the asset layout, `MatchSetup` (the menu → match handoff), and the one `Event` type the menus and the world publish | render on the GPU, do I/O beyond reading the asset files it is pointed at |
-| **`pd_sim`** | the world: stage collision (`TileLevel`), pads, nav (PD's routing + our generator), chrs, the player (`bondmove`/`bondwalk`), guns (`gset`, `bondgun`, shots), simulants (`bot`, `botcmd`), props (projectiles, mines, explosions, sentry, N-Bomb, pickups), effect state, match rules, events | draw, play sound, read devices |
+| **`n64`** | the console: N64 controller state, RDP (combiner, blender, texture formats, TLUTs, 3-point filter, TRILERP, fill rule, RGBA5551 + dither) as a **CPU reference rasteriser**, RSP semantics (lighting, texgen, matrices), the audio output + TV speaker DSP (pure), the sequenced-audio library as PD links it (`naudio`: Rare's `n_` libultra synth, reverb, compact-MIDI sequence players and the RSP audio ABI they drive, headless), and behind `gpu`, the WGSL ports of the combiner and the VI/CRT chain. Both halves take the same `rdp::DrawState` + `rdp::MipTex` | know about PD; depend on `engine` (the `gpu` half uses wgpu directly) |
+| **`pd_core`** | PD maths (BADPI, pdmtx), `random()`, `Lv` timing, PD ids, the animation bank + `struct anim`, the model format + walker + hit test, `text.c` + fonts, language banks, the asset layout, `MatchSetup` (the menu → match handoff), the one `Event` type the menus and the world publish, and the music player (`music`: the tunes, `lib/music.c`'s queue and `snd.c`'s sequence calls over `n64::naudio`; the menus and the world reach it through `Event::Music`) | render on the GPU, do I/O beyond reading the asset files it is pointed at |
+| **`pd_sim`** | the world: stage collision (`TileLevel`), pads, nav (PD's routing + our generator), chrs, the player (`bondmove`/`bondwalk`), guns (`gset`, `bondgun`, shots), simulants (`bot`, `botcmd`), props (projectiles, mines, explosions, sentry, N-Bomb, pickups), effect state, match rules (and the match's music calls: its tune, the death tune, switching), events | draw, play sound, read devices |
 | **`pd_menu`** | `menu.c`, `menuitem.c`, every Combat Simulator dialog and handler, MP state (presets, locks, challenges, profile), menu graphics and 3D models via the CPU RDP. Output: a framebuffer, sound events, and outcomes such as `StartMatch(MatchSetup)` | depend on `pd_sim` |
 | **`pd_render`** | PD on the GPU: BG, every model through the one combiner path, effects, HUD canvas (radar, sights, shields), x-ray, framebuffer post, a `View` per player laid into the frame (`Renderer::render_views`: split screen) | write to the world |
-| **`pd_game`** | the `perfect_dark` binary: state machine (Menus → Match → Results), device → N64 controller mapping, event → voice routing, presentation settings; its library half, `session`, couples a match with the menus over it (pause, end screens) for the binary and `pd_snapshot` | contain game rules |
-| **`pd_tools`** | `pd_snapshot` (offscreen PNGs of menus, guns, stages, matches, pickups), probes, offline audio renders, the bot/nav debug viewer | ship in the game |
+| **`pd_game`** | the `perfect_dark` binary: state machine (Menus → Match → Results), device → N64 controller mapping, event → voice routing, the music's frames onto an engine stream, presentation settings; its library half, `session`, couples a match with the menus over it (pause, end screens) for the binary and `pd_snapshot` | contain game rules |
+| **`pd_tools`** | `pd_snapshot` (offscreen PNGs of menus, guns, stages, matches, pickups), probes, offline audio renders (`pd_music`: a tune, or a menu → match → death → end flow, to a WAV), the bot/nav debug viewer | ship in the game |
 
 ### Why these boundaries
 
@@ -58,6 +58,9 @@ engine tick ─► pd_game::controls: devices ─► n64::pad state (+ mouse aim
                         ─► hands_tick_attack (hitpos) ─► bgun_tick_gameplay2 ─► chrs/bots
                         ─► props ─► match rules ─► events
             ─► pd_game::audio: events ─► engine voices (PD pitch/pan; optional TV chain)
+            ─► pd_game::music: Event::Music ─► pd_core::music (the queue) ─► n64::naudio
+                 (3 sequence players, 30 voices, reverb) ─► 736-sample frames at 22018 Hz
+                 ─► an engine stream kept ~130 ms ahead of the device
 engine frame ─► pd_render: for each player View: BG, chrs, props, fx, gun + hands, HUD,
                post ─► (n64 video/CRT) ─► present; pause menu framebuffer over it
 ```
@@ -115,7 +118,10 @@ assets/
                              pads.json          pads (PADFLAG bits), waypoints, waygroups, cover
                              setup.json         the MP setup's intro[] (spawns, ...) and props[]
                                                 (weapon and ammo pads, objects), by macro parameter
-  music/                     M13: sequences + soundbank
+  music/                     pd_music.py: bank.json (seq.ctl's instruments, sounds, envelopes, keymaps,
+                             ADPCM wavetables), seq.tbl (the sample data, raw), seq/<num>.seq (each
+                             compact-MIDI sequence by MUSIC_* number), index.json (names, g_SeqVolumes,
+                             the Python reader's counts and decodes as the Rust tests' cross-checks)
 ```
 
 Generated Rust sits beside the code that uses it: `crates/pd_core/src/ids.rs` (`pd_ids.py`: `WEAPON_*`, `STAGE_*` with stage codes, `BODY_*`/`HEAD_*`, `MP*`, `BOT*`, `HITPART_*`) `crates/pd_menu/src/generated.rs` (`pd_menu_gen.py` `write_rust`: the menu dialogs and item arrays, the MP tables) and `crates/pd_core/src/mpweapons.rs` (`pd_menu_gen.py`: `g_MpWeapons`, which the sim's pickups and the menus share). `build_assets.py` regenerates both.
@@ -208,4 +214,4 @@ Where each spike file goes. Paths on the left are under `native/crates/game/src/
 ## Open questions
 
 - **Commit the assets or regenerate them?** The default is commit ([D6](#decisions)). The alternative is to gitignore `assets/` and require the decomp + ROM extraction on each machine.
-- **Music:** PD's sequencer (`n_alseqp` + soundbank) is a milestone of its own, M13 ([MILESTONES.md](MILESTONES.md)). Until then, matches are silent apart from SFX.
+- **Music's RSP half:** the audio microcode isn't in the decomp; `n64::naudio::abi` follows the PC port's CPU version of its ops (`port/src/mixer.c`). Two of Rare's ops (the per-voice low-pass, "noop") have no documented behaviour; nothing in the Combat Simulator reaches them, so they aren't emulated.

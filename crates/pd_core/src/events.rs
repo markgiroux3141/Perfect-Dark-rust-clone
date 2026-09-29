@@ -45,4 +45,7 @@ pub enum Event {
     /// `mp_end_match` has run (`main_end_stage`): the match is over and paused
     /// for good; the menus open the end screens (`MENUROOT_END_MP_MATCH`).
     MpEndMatch,
+    /// A call into PD's music (`game/music.c`, `lib/music.c`), for the one
+    /// music player the game keeps (`pd_core::music::Music`), in order.
+    Music(crate::music::MusicCall),
 }
