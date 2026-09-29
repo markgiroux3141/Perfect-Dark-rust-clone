@@ -115,7 +115,7 @@ assets/
                              pads.json          pads (PADFLAG bits), waypoints, waygroups, cover
                              setup.json         the MP setup's intro[] (spawns, ...) and props[]
                                                 (weapon and ammo pads, objects), by macro parameter
-  music/                     later: sequences + soundbank
+  music/                     M13: sequences + soundbank
 ```
 
 Generated Rust sits beside the code that uses it: `crates/pd_core/src/ids.rs` (`pd_ids.py`: `WEAPON_*`, `STAGE_*` with stage codes, `BODY_*`/`HEAD_*`, `MP*`, `BOT*`, `HITPART_*`) `crates/pd_menu/src/generated.rs` (`pd_menu_gen.py` `write_rust`: the menu dialogs and item arrays, the MP tables) and `crates/pd_core/src/mpweapons.rs` (`pd_menu_gen.py`: `g_MpWeapons`, which the sim's pickups and the menus share). `build_assets.py` regenerates both.
@@ -208,4 +208,4 @@ Where each spike file goes. Paths on the left are under `native/crates/game/src/
 ## Open questions
 
 - **Commit the assets or regenerate them?** The default is commit ([D6](#decisions)). The alternative is to gitignore `assets/` and require the decomp + ROM extraction on each machine.
-- **Music:** PD's sequencer (`n_alseqp` + soundbank) is a milestone of its own. Until then, matches are silent apart from SFX.
+- **Music:** PD's sequencer (`n_alseqp` + soundbank) is a milestone of its own, M13 ([MILESTONES.md](MILESTONES.md)). Until then, matches are silent apart from SFX.

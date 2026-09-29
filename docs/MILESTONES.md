@@ -20,9 +20,13 @@ Each milestone is sized to fit one Claude context and ends in something checkabl
 | M9 | All arenas: doors, lifts, glass, sky, tile flags | **done** (2026-09-28) |
 | M10 | The other five scenarios | **done** (2026-09-28) |
 | M11 | Simulant types, difficulties, commands | **done** (2026-09-28) |
-| M12 | Split-screen, radar, music, challenges, profile | — |
+| M12 | Presentation: split-screen, radar, death camera, rumble | — |
+| M13 | Music | — |
+| M14 | Challenges and the save profile | — |
 
 The first playable path is M2 → M3 → M4 → M6: menus, walking, shooting, then a real match. M5 moves ahead of M6 if the user wants the full arsenal before simulants.
+
+The last stretch was split three ways at the user's request (2026-09-28, after M11): the old "M12: split-screen, radar, music, challenges, profile" was too big for one context. Do them in order, M12 → M13 → M14; each section below lists what earlier milestones left for it. Anything a note elsewhere in this file still calls "M12" for music, challenges or the profile now belongs to M13 or M14.
 
 ---
 
@@ -258,12 +262,12 @@ Checked: `cargo test --workspace --release` green (engine 6, n64 27, pd_core 37,
 - **Frame order** (`pd_game::session::step`, as PD: `lv_tick` runs `menu_tick` before the players' `bmove_tick`): the menus' open state goes to the world (a one-player match pauses; the player loses control), `menu_tick`, `World::step` (`lv_tick`: pause, `bgun_tick_boost`, `hudmsgs_tick`, the end-of-match checks and the clock, ..., `scenario_tick`, `props_tick` unless over; each player: mission clock, `bmove_process_input_mp` (control, `joybutinhibit`, START), walk, distance; the render half: ..., `inv_increment_held_time`, the death sequence's gated respawn, `drawplayercount`), then the world's events to the menus (push pause, close a dying player's menu, `mp_end_match`), the menus' outcomes to the world, `set_match_view`, `menu_render`. The renderer lays the menus' frame over the HUD, then the modal text.
 - **PD facts kept:** `lastshooter`/`timeshooter` are never written in NTSC final (only `chr_init`'s -1/0), so a fall after being shot is a suicide, as in PD; `longestlife` is never updated either (no Longest Life award). Friendly fire is always on (PD's `chr_damage` has no team test; simulants and the sentry just don't aim at teammates). The Team Score Limit line shows in the pause menu even with teams off (PD hides it only at "No Limit"). The KillMaster medal counts suicides and skips chr slot `playercount` (PD's stale index). Titles read "Beginner:21" (PD's strings).
 - **SUBSTs added (all marked):** the Save Player offer comes once per player per run (no player files); `drawplayercount` counts the simulants on screen per pass; smart slow motion's "on screen" is "in the room" until portals (M9); `sndp_stop_all` stops the kept voices and lets one-shots play out. The harness's setups have no limits (not PD; a match that ends would stop the A/B probes).
-- **Left for later:** auto-aim is not ported (`bmove_*_autoaim_*`, `prop.c`'s target search), so No Auto-Aim has nothing to switch off yet; No Pickup Highlight waits for pickups (M8); Display Team's view-edge line and the split-screen placements are 2+-player (M12); challenges' completion (`challenge_consider_marking_complete`) and the menu music (M12); a simulant's `killsbygunfunc` (M8 botinv); the commanding-simulant pulse (M11). Scenario scoring callbacks come with M10 (`MP_SCENARIO_NAMES` and `scenario_calculate_player_score` are Combat's).
+- **Left for later:** auto-aim is not ported (`bmove_*_autoaim_*`, `prop.c`'s target search), so No Auto-Aim has nothing to switch off yet; No Pickup Highlight waits for pickups (M8); Display Team's view-edge line and the split-screen placements are 2+-player (M12); challenges' completion (`challenge_consider_marking_complete`, M14) and the menu music (M13); a simulant's `killsbygunfunc` (M8 botinv); the commanding-simulant pulse (M11). Scenario scoring callbacks come with M10 (`MP_SCENARIO_NAMES` and `scenario_calculate_player_score` are Combat's).
 - **Gotchas:** chr indexes (players then simulants) are not chr slots: the counters are by slot (`Chr::mpslot`, `World::mp_chr_kills/_deaths`). The menus' mpchrconfigs get the match's counters every frame (`set_match_view`), and `mp_get_player_rankings` writes placements on both sides. `Renderer::menu_layer` must be the player's screen size (320 × 220) or it is skipped. `pd_snapshot flow` starts matches through `MenuSystem::start_match`, so the menus' setup is the match's.
 
 ## Backlog
 
-Bugs found in playtests, to fold into the milestone that touches the code (or after M12).
+Bugs found in playtests, to fold into the milestone that touches the code (or after M14). Open now: the shield visuals and the player's rocket-launcher lock (both planned into M12).
 
 - ~~**Simulants' muzzle flash is always drawn**~~ (M7 playtest): fixed in M8. The AR34, Cyclone, Dragon, K7 Avenger and SuperDragon held models carry a `MODELPART_CHRGUN_0002` toggle over a star flash mesh, which started visible; every weapon model now starts with its gunfire hidden (`weapon_init`) and `chr_set_firing` shows it on the frames it fires.
 - ~~**Simulants don't fly the Slayer's rocket**~~ (M8): fixed in M11.
@@ -417,6 +421,35 @@ Checked: `cargo test --workspace --release` green (engine 6, n64 27, pd_core 38,
 - **SUBSTs added (all marked):** the session runs `menu_tick` before `am_tick` (PD: after); PD's `am_render` sets `commandingaibot` a frame before the next one reads it, here the renderer reads the frame's own; the ordering screen with all simulants and no teammates (a PD crash) orders nobody; a flying rocket's rooms are looked up by position; the vertical split for the menu's layout waits for split screen (M12).
 - **Left for later:** the split screen's layouts (`am_is_cramped`, the vertical split: M12), control styles 1.3/1.4 (A and R/L swapped), the co-op buddies' screen (solo). The personalities' weapon preferences and the Kaze/Fist/Rocket/Shield parts were already in (M6/M8).
 
-## M12: Presentation
+## M12: Presentation (split-screen, radar, death camera, rumble)
 
-Split-screen for 2–4 players (one `View` each), the radar, music (PD's sequencer + soundbank), challenges, the save profile, the death camera, and rumble.
+Split-screen for 2–4 players (one `View` each), the radar, the death camera and rumble, plus the presentation items earlier milestones left for "M12". No music (M13), no challenges or player files (M14).
+
+Scope, to survey against the decomp first (PD: `bondview.c`, `camera.c`, `player.c`'s viewports and death sequence, `options.c` (screen split and size), `radar.c`, `pak.c`'s rumble, `mplayer/scenarios.c`'s `radarextra`/`radarchr` callbacks):
+
+- **Split-screen:** a `View` and a HUD layer per player (`c_screenleft`... from PD's viewport layouts for 2, 3 and 4 players, horizontal and vertical splits, `options_get_screen_split`); the renderer draws every player's pass; the menus already place themselves in each player's view (`MatchViewPlayer.view`).
+- **Things that wait on 2+ players:** the other humans' third-person bodies (M6: another human's chr isn't posed, so hitscan, melee and tracers skip it); Display Team's view-edge line (M7, M10); the active menu's split layouts (`am_is_cramped`, and `AmView.vsplit`, a marked SUBST in M11); the HUD's and the menus' split placements; the per-player sound pan (M4: sounds are centred with 2+ players, PD's).
+- **The radar** (`radar.c`, hidden with the No Radar option, M7): the chrs, and each scenario's marks (M10's survey lists them: HTB the case or its carrier, HTM the uplink and terminal, PAC the victim, KOH the hill, CTC each team's case and its carrier).
+- **The death camera** (the view after dying, before the fade) and **rumble** (`pak.c`'s rumble through gilrs).
+- **Also left for here:** splats and bruises on chrs (M6); from the Backlog, the shield visuals (`shieldhit_create`, `shieldhits_tick`, `player_render_shield`) and the player's rocket-launcher lock (`trackedprops`, `lv_update_tracked_prop`: the player's homing rocket flies straight).
+
+## M13: Music
+
+PD's music in the menus and in matches: the sequencer and the soundbank. Nothing plays music yet; matches have only SFX.
+
+Scope, to survey first (PD: `src/lib/naudio/` (the `n_csplayer.c` sequence player, `n_cspchan.c`, ...), `src/lib/music.c`, `src/game/music.c`, `src/game/stagemusic.c` (the per-stage tracks), `mplayer/mplayer.c`'s music tracks and `g_MpEnableMusicSwitching`, the menus' music option and track selection dialog):
+
+- **Exporter:** the sequences and the soundbank into `assets/music/` (ARCHITECTURE.md's asset layout reserves it), from the ROM files `tools/extract` produced, by PD's own ids; `build_assets.py` runs it; two runs byte-identical.
+- **Playback:** the sequencer ported headless (it is pure: events in, samples out), mixed through `engine::audio` like the SFX; tempo and volume as PD sets them; the TV-speaker DSP (M5) applies to it too.
+- **When music plays:** the Perfect Menu and Combat Simulator menus (M7 left "the menu music" for later), each arena's track or the one chosen in the setup, the switching between tracks, and the end-of-match music.
+- **Tests:** the decoder and the sequencer on known sequences; an offline render (`pd_tools`) of a track to a WAV for the user to listen to.
+
+## M14: Challenges and the save profile
+
+The Combat Simulator's challenges played to completion, and PD's player and game files kept between runs.
+
+Scope, to survey first (PD: `challenge.c`, `challengeinit.c`, `gamefile.c`, `bossfile.c`, `file.c`, `savebuffer.c`, `pak.c`, `mplayer/mplayer.c`'s player file read/write, `endscreen.c`'s challenge verdicts, `pd_menu`'s challenge and Save Player dialogs, which already exist):
+
+- **Challenges:** a challenge's setup starts its match (the menus already list and confirm them); `challenge_consider_marking_complete` at the end of the match (M7 left it), the verdict screens, and what completing one unlocks (the lock features the menus already read).
+- **The save profile:** the player files (name, head and body, career statistics, medals, title; M7 keeps them only for the run) and the game file (unlocks, challenge progress), saved and loaded through PD's own `savebuffer` format to a file on disk (not PD: no Controller Pak; mark it). The end screens' Save Player offer then saves for real (M7's marked SUBST: offered once per player per run).
+- **Tests:** a file written and read back bit for bit; a challenge completed in a headless match marks and unlocks what PD does.
