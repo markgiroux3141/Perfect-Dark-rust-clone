@@ -75,7 +75,23 @@ impl World {
     /// `chr_tick` for a simulant; `fulltick` on the frame's first player pass.
     pub(crate) fn chr_tick(&mut self, i: usize, fulltick: bool) {
         if fulltick {
-            // chr_update_cloak: a simulant's cloak is M11's; chr_tick_poisoned: solo.
+            // The dizzy head's roll (chr.c:2415; no cutscenes, and no
+            // ACT_DRUGGEDKO, a solo action, in a match).
+            let lv240 = self.lv.lvupdate240;
+            let c = &mut self.chrs[i];
+            if c.blurdrugamount > 1000 {
+                c.drugheadcount += lv240 >> 1;
+                c.drugheadsway = (c.drugheadcount as f32 / 255.0 * pd_core::math::baddtor(360.0)).cos() * 20.0;
+            } else if c.drugheadsway != 0.0 {
+                c.drugheadcount = 0;
+                if c.drugheadsway > 0.0 {
+                    c.drugheadsway = (c.drugheadsway - 0.04375 * lv240 as f32).max(0.0);
+                } else {
+                    c.drugheadsway = (c.drugheadsway + 0.04375 * lv240 as f32).min(0.0);
+                }
+            }
+            // chr_update_cloak (chr_tick_poisoned is solo's).
+            self.chr_update_cloak_bot(i);
             self.chra_tick(i);
         }
         // Which animations advance (`chr.c:2466`): a go-to's, a standing chr's in

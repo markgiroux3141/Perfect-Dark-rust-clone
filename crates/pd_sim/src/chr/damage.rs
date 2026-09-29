@@ -534,11 +534,7 @@ impl World {
             return;
         }
         self.chrs[victim].chr_stop_firing();
-        if self.chrs[victim].cloaked {
-            self.chrs[victim].cloaked = false;
-            let pos = self.chrs[victim].pos;
-            self.sound_at(0x005c, 1.0, pos, crate::propsnd::DEFAULT_DISTS);
-        }
+        self.chr_uncloak_chr(victim, true);
         self.chrs[victim].actiontype = Act::Die;
         self.chrs[victim].blurnumtimesdied += 1;
         self.mpstats_record_death(attacker.map_or(-1, |a| a as i32), victim as i32);

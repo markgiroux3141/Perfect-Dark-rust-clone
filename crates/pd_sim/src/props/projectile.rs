@@ -95,6 +95,14 @@ impl World {
                 self.fx.boltbeams.set_automatic(i, 1400.0);
             }
         }
+        // obj_free: a simulant's Slayer rocket lets go of its owner (propobj.c:2458).
+        if o.weaponnum == WEAPON_SKROCKET && o.projectile.as_ref().is_some_and(|p| p.ownerprop.is_some()) {
+            for c in self.chrs.iter_mut() {
+                if let Some(a) = c.aibot.as_mut().filter(|a| a.skrocket == Some(o.id)) {
+                    a.skrocket = None;
+                }
+            }
+        }
         // obj_free: a held rocket's hand lets go of it.
         for p in self.players.iter_mut() {
             for h in p.gun.hands.iter_mut() {
@@ -355,12 +363,152 @@ impl World {
         result
     }
 
+    /// `rocket_tick_fbw` (`propobj.c:6047`): a simulant's Slayer rocket. It
+    /// turns towards its next pad (1.5 m over the floor, `botact_get_rocket_next_step_pos`),
+    /// re-routing to the owner's target at the end of the route, and speeds up
+    /// by 0.0018 a tick (0.1 while the owner has no target); it blows up on
+    /// anything in its way, within 2.5 m of an enemy, above 100 m, when no
+    /// route is found, and after 8 s with its owner's target lost. Once the
+    /// owner lets go of it (it died, or fired another) it flies on straight.
+    /// True if it moved.
+    fn rocket_tick_fbw(&mut self, o: &mut Obj, pi: usize) -> bool {
+        let lv = self.lv.clone();
+        let owner = o.projectile.as_ref().and_then(|p| p.ownerprop).filter(|&c| self.chrs.get(c).is_some_and(|c| c.player.is_none()));
+        let d = o.projectile.as_ref().unwrap().nextsteppos - o.pos;
+        if let Some(oc) = owner {
+            if d.length_squared() < 100.0 * 100.0 {
+                let p = o.projectile.as_mut().unwrap();
+                p.step += 1;
+                if p.numwaypads <= 0 || p.step >= p.numwaypads {
+                    let target = self.chr_get_target_chr(oc);
+                    let mut proj = o.projectile.take().unwrap();
+                    let found = target.is_some_and(|t| {
+                        let (tpos, trooms) = (self.chrs[t].pos, self.chrs[t].rooms.clone());
+                        let rooms = self.rocket_rooms(o.pos);
+                        self.botact_find_rocket_route(oc, o.pos, &rooms, tpos, &trooms, &mut proj)
+                    });
+                    o.projectile = Some(proj);
+                    if !found {
+                        o.timer240 = 0;
+                    }
+                } else {
+                    let pad = p.waypads[p.step as usize];
+                    let next = self.botact_get_rocket_next_step_pos(pad);
+                    o.projectile.as_mut().unwrap().nextsteppos = next;
+                }
+            }
+            let xrot = pd_core::math::atan2f(d.x, d.z);
+            let yrot = pd_core::math::atan2f(d.y, (d.x * d.x + d.z * d.z).sqrt());
+            let p = o.projectile.as_mut().unwrap();
+            for _ in 0..lv.lvupdate240 {
+                p.fbwroty = pd_core::math::tween_rot_axis(p.fbwroty, xrot, 0.01875);
+                p.fbwrotx = pd_core::math::tween_rot_axis(p.fbwrotx, yrot, 0.01875);
+            }
+            let m = pd_core::math::mul(&pd_core::math::load_y_rotation(p.fbwroty), &pd_core::math::load_x_rotation(pd_core::math::turn() - p.fbwrotx));
+            o.realrot = glam::Mat3::from_mat4(m) * o.scale;
+        }
+        // The new position.
+        let p = o.projectile.as_mut().unwrap();
+        let dir = Vec3::new(p.fbwroty.sin() * p.fbwrotx.cos(), p.fbwrotx.sin(), p.fbwroty.cos() * p.fbwrotx.cos());
+        let mut newpos = o.pos;
+        let notarget = owner.is_some_and(|oc| self.chrs[oc].target.is_none());
+        for _ in 0..lv.lvupdate60 {
+            p.fbwspeed += 0.0018;
+            let speed = if notarget { 0.10 } else { p.fbwspeed };
+            newpos += dir * speed;
+        }
+        let (mut hit, mut normal) = (Vec3::ZERO, Vec3::ZERO);
+        let (cdresult, _) = self.func0f06cd00(o, pi, newpos, &mut hit, &mut normal);
+        let moved = cdresult == CdResult::NoCollision;
+        if moved {
+            o.pos = newpos;
+        } else {
+            // Boom.
+            o.timer240 = 0;
+        }
+        // The tail's smoke, every 24 ticks.
+        let p = o.projectile.as_mut().unwrap();
+        if p.smoketimer240 <= 0 {
+            p.smoketimer240 = 24;
+            self.fx.smokes.smoke_create_simple(o.pos, SMOKETYPE_ROCKETTAIL);
+        } else {
+            p.smoketimer240 -= lv.lvupdate240;
+        }
+        if o.pos.y > 10000.0 {
+            o.timer240 = 0;
+        }
+        // Near an enemy: boom; its target in plain view (this owner's turn of
+        // the round-robin): straight at it.
+        if let Some(oc) = owner.filter(|_| o.timer240 != 0) {
+            let owntarget = self.chr_get_target_chr(oc);
+            let n = self.chrs.len();
+            for k in 0..n {
+                if k == oc || self.chr_is_dead(k) || !self.chr_compare_teams(oc, k, crate::mp::Compare::Enemies) || self.chrs[k].cloak.cloaked {
+                    continue;
+                }
+                let kpos = self.chrs[k].pos;
+                if (o.pos - kpos).length_squared() < 250.0 * 250.0 {
+                    o.timer240 = 0;
+                    break;
+                }
+                if owntarget == Some(k) && oc == lv.lvframenum.rem_euclid(n as i32) as usize && self.rocket_los(o.pos, kpos) {
+                    let p = o.projectile.as_mut().unwrap();
+                    p.nextsteppos = kpos;
+                    p.numwaypads = 0;
+                }
+            }
+        }
+        // The owner's target lost for 8 s: boom.
+        let p = o.projectile.as_mut().unwrap();
+        if notarget {
+            p.numwaypads = 0;
+            p.losttimer240 += lv.lvupdate240;
+            if p.losttimer240 > 8 * 240 {
+                o.timer240 = 0;
+            }
+        } else {
+            p.losttimer240 = 0;
+        }
+        // Let go of by its owner, or its owner dead: uncontrolled.
+        if let Some(oc) = owner {
+            if self.chrs[oc].aibot.as_ref().is_some_and(|a| a.skrocket != Some(o.id)) || self.chr_is_dead(oc) {
+                o.projectile.as_mut().unwrap().ownerprop = None;
+            }
+        }
+        moved
+    }
+
+    /// The rooms a flying object is in.
+    /// `// SUBST:` PD carries the prop's rooms along its flight
+    /// (`los_find_final_room_exhaustive`) / looked up by position (as the
+    /// ridden Slayer rocket's camera does).
+    pub(crate) fn rocket_rooms(&self, pos: Vec3) -> Vec<u16> {
+        let (inrooms, aboverooms, _) = self.stage.rooms.bg_find_rooms_by_pos(pos, 20);
+        if inrooms.is_empty() {
+            aboverooms
+        } else {
+            inrooms
+        }
+    }
+
+    /// `cd_test_los_oobfail` with the objects, doors, path blockers, the BG
+    /// and AI-opaque geometry (`propobj.c:6190`).
+    fn rocket_los(&self, from: Vec3, to: Vec3) -> bool {
+        if !self.level.los(from, to) {
+            return false;
+        }
+        let types = CDTYPE_OBJS | CDTYPE_DOORS | CDTYPE_PATHBLOCKER | CDTYPE_AIOPAQUE;
+        crate::stage::TileLevel::cd_los_props(from, to, &self.obj_geos(types), &self.prop_floors(), GEOFLAG_BLOCK_SIGHT).is_none()
+    }
+
     /// `projectile_tick` (`propobj.c:6279`).
     pub(crate) fn projectile_tick(&mut self, o: &mut Obj, pi: usize) -> bool {
         if self.lv.lvupdate240 <= 0 || o.projectile.is_none() {
             return false;
         }
-        // WEAPON_SKROCKET flies by rocket_tick_fbw: a solo weapon.
+        if o.ty == OBJTYPE_WEAPON && o.weaponnum == WEAPON_SKROCKET {
+            return self.rocket_tick_fbw(o, pi);
+        }
         o.hidden &= !OBJHFLAG_ATTACHED;
         let mut sp5e8 = Vec3::ZERO;
         let mut sp5f4 = Vec3::ZERO;

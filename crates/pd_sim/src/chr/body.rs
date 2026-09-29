@@ -20,11 +20,11 @@ use std::sync::Arc;
 
 use glam::{Mat4, Vec3};
 use pd_core::ids::*;
-use pd_core::math::{self, baddtor, M_BADTAU};
+use pd_core::math::{self, baddtor, baddtor4, M_BADTAU};
 use pd_core::model::hit::{HitNode, HitPad};
 use pd_core::model::{body_calculate_head_offset, Model, ModelDef, ModelStore, NodeKind, PoseParams, MODELPART_CHR_HEADSPOT, MODELPART_HEAD_HUDPIECE, MODELPART_HEAD_SUNGLASSES, SKEL_CHR, SKEL_HEAD};
 
-use super::Chr;
+use super::{Act, Chr};
 use crate::player::camera::Camera;
 
 /// A gun a chr holds (`weapons_held[hand]`, a `PROPTYPE_WEAPON` child prop):
@@ -124,13 +124,14 @@ pub struct JointFx {
     pub flinch: Option<(f32, u8, bool)>,
     /// `chr_get_aimx_angle`.
     pub aimangle: f32,
+    /// Dizzy (`blurdrugamount > 1000`, alive): `drugheadsway`, in degrees.
+    pub drugheadsway: Option<f32>,
 }
 
 impl JointFx {
     /// `chr_handle_joint_positioned` for a human skeleton (`g_SkelChr`: neck 0,
     /// waist 1, lshoulder 2, rshoulder 3), on a world-space matrix. No DK mode
-    /// (a cheat), no dizzy head sway (`blurdrugamount`, the tranquilizer and
-    /// N-Bomb, `// M11:`).
+    /// (a cheat).
     pub fn apply(&self, joint: usize, mtx: &mut Mat4) {
         if self.skel != SKEL_CHR {
             return;
@@ -163,6 +164,11 @@ impl JointFx {
                 xrot = self.aimuplshoulder;
             } else {
                 xrot = self.aimuprshoulder;
+            }
+            // A dizzy head lolls (chr.c:1756).
+            if let Some(sway) = self.drugheadsway {
+                zrot = baddtor4(sway);
+                xrot -= (28.0 - sway.abs()) / 250.0 * baddtor(360.0);
             }
         }
         // The flinch (humans).
@@ -483,6 +489,7 @@ impl Chr {
             flip: self.anim.flip,
             flinch: (self.flinchcnt >= 0).then(|| (chr_get_flinch_amount(self.flinchcnt, self.headshotted), self.flinchtype, self.headshotted)),
             aimangle: self.chr_get_aimx_angle(),
+            drugheadsway: (self.blurdrugamount > 1000 && !matches!(self.actiontype, Act::Dead | Act::Die)).then_some(self.drugheadsway),
         }
     }
 

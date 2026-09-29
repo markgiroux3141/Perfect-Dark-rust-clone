@@ -14,6 +14,16 @@ use n64::rdp::{rgba, Blend, Cc, Filter, Gfx, TriState, SV};
 
 use crate::text::{colour_blend, TextState};
 
+/// `menu_get_sin_osc_frac` (game_006900.c:94) at `g_20SecIntervalFrac` `frac20`.
+pub fn sin_osc(frac20: f32, freq: f32) -> f32 {
+    ((freq * frac20 + freq * frac20) * std::f32::consts::PI).sin() / 2.0 + 0.5
+}
+
+/// `menu_get_cos_osc_frac` (game_006900.c:106).
+pub fn cos_osc(frac20: f32, freq: f32) -> f32 {
+    ((freq * frac20 + freq * frac20) * std::f32::consts::PI).cos() / 2.0 + 0.5
+}
+
 fn st_shade() -> TriState<'static> {
     TriState { cc: Cc::Shade, tex: None, filter: Filter::Bilerp, blend: Blend::Xlu, env: [1.0; 4], persp: false, zbuf: false, cull_back: false }
 }

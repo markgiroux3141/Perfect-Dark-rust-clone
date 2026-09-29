@@ -246,13 +246,13 @@ impl Player {
         if input.use_held {
             if self.usedowntime >= -1 {
                 let t = self.usedowntime;
-                if input.fire && t > -1 && self.gun_ctx(res, rng, lv).bgun_consider_toggle_gun_function(t, true) != USETIMER_CONTINUE {
+                if input.fire && t > -1 && self.gun_ctx(res, rng, lv).bgun_consider_toggle_gun_function(t, true, false) != USETIMER_CONTINUE {
                     self.usedowntime = -3;
                 }
                 if self.usedowntime > -1 {
                     if self.usedowntime > 25 {
                         let t = self.usedowntime;
-                        let r = self.gun_ctx(res, rng, lv).bgun_consider_toggle_gun_function(t, false);
+                        let r = self.gun_ctx(res, rng, lv).bgun_consider_toggle_gun_function(t, false, false);
                         self.usedowntime = match r {
                             USETIMER_STOP => -1,
                             USETIMER_REPEAT => -2,
@@ -264,7 +264,7 @@ impl Player {
                 }
             } else if self.usedowntime >= -2 {
                 let t = self.usedowntime;
-                self.gun_ctx(res, rng, lv).bgun_consider_toggle_gun_function(t, false);
+                self.gun_ctx(res, rng, lv).bgun_consider_toggle_gun_function(t, false, false);
             }
         } else {
             // B released after a short press: btapcount → bondactivateorreload
@@ -277,8 +277,7 @@ impl Player {
         }
 
         // A (bondmove.c:1236): a tap cycles forward on release, A + Z steps
-        // back; a hold past 15 ticks opens the active menu (M7: not yet, so the
-        // hold is swallowed).
+        // back; a hold past 15 ticks opens the active menu.
         let fire_pressed = input.fire && !self.prev_fire;
         let mut weaponforward = false;
         let mut weaponback = false;
@@ -290,6 +289,8 @@ impl Player {
                 }
                 if self.invdowntime >= 0 && !input.fire {
                     if self.invdowntime > 15 {
+                        // am_open (the world opens it after the tick).
+                        self.am_open_request = true;
                         self.invdowntime = -1;
                     } else {
                         self.invdowntime += lv.lvupdate60.max(1);

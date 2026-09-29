@@ -49,6 +49,7 @@ pub fn step(world: &mut World, menu: &mut MenuSystem, lv: &Lv, diffframe240: i32
     for e in &events {
         match *e {
             Event::MpPushPauseDialog { player } => menu.mp_push_pause_dialog(player as usize),
+            Event::AmOpenPickTarget { player, ref targets } => menu.am_open_pick_target(player as usize, targets.clone()),
             Event::MpCloseMenus { player } => menu.close_player_menus(player as usize),
             Event::MpEndMatch => {
                 menu.set_match_view(match_view(world));
@@ -74,6 +75,7 @@ pub fn step(world: &mut World, menu: &mut MenuSystem, lv: &Lv, diffframe240: i32
             Outcome::SetPaused(mode) => world.mp_set_paused(mode),
             Outcome::EndGame { playernum } => world.mp_end_game(playernum),
             Outcome::Equip { playernum, index } => world.mp_equip_inventory(playernum, index),
+            Outcome::PickTarget { playernum, chrnum } => world.am_pick_target(playernum, chrnum),
             Outcome::ReturnFromMatch => over = true,
             Outcome::StartMatch(_) => {}
         }
@@ -152,10 +154,14 @@ mod tests {
 
     impl T {
         fn frame(&mut self, held: u16) {
-            self.menu.pads[0].next_frame(held, 0, 0);
+            self.frame_stick(held, 0);
+        }
+
+        fn frame_stick(&mut self, held: u16, sticky: i8) {
+            self.menu.pads[0].next_frame(held, 0, sticky);
             self.menu.pads[0].connected = true;
             self.lv.frametime_apply(1, 4);
-            let input = PlayerInput { pad: true, a_held: held & A_BUTTON != 0, start: held & START_BUTTON != 0, fire: held & Z_TRIG != 0, ..PlayerInput::default() };
+            let input = PlayerInput { pad: true, a_held: held & A_BUTTON != 0, start: held & START_BUTTON != 0, fire: held & Z_TRIG != 0, look_y: sticky as i32, ..PlayerInput::default() };
             let out = step(&mut self.world, &mut self.menu, &self.lv, 4, &[input]);
             self.over |= out.over;
             self.ended |= out.ended;
@@ -174,6 +180,10 @@ mod tests {
     }
 
     fn start() -> T {
+        start_with(|_| {})
+    }
+
+    fn start_with(edit: impl FnOnce(&mut MenuSystem)) -> T {
         let assets = AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR"));
         let mut menu = MenuSystem::new(&assets, Profile::Complete).unwrap();
         menu.open_combat_simulator();
@@ -181,6 +191,7 @@ mod tests {
         menu.mp.setup.chrslots = 0b1_0001;
         menu.mp.bots[0].base.name = "Sim 1\n".into();
         menu.mp.bots[0].difficulty = BOTDIFF_NORMAL;
+        edit(&mut menu);
         menu.start_match();
         let Some(Outcome::StartMatch(setup)) = menu.take_outcome() else { panic!("no match") };
         let stage = Stage::load(&assets, "ref").unwrap();
@@ -230,5 +241,55 @@ mod tests {
             t.menu.frame(&t.lv);
         }
         assert_eq!(t.dialog(), Some("g_CombatSimulatorMenuDialog"));
+    }
+
+    /// The active menu's Attack order (teams on, a simulant teammate):
+    /// holding A opens it, Z moves on to the simulant's orders, Z on Attack
+    /// hands over to the menus' Pick Target, and picking the enemy there sends
+    /// the teammate after it.
+    #[test]
+    fn attack_picks_its_target_in_the_menus() {
+        let mut t = start_with(|m| {
+            m.mp.setup.options |= MPOPTION_TEAMSENABLED;
+            m.mp.players[0].base.team = 0;
+            m.mp.bots[0].base.team = 1;
+            m.mp.setup.chrslots |= 1 << 5;
+            m.mp.bots[1].base.name = "Sim 2\n".into();
+            m.mp.bots[1].difficulty = BOTDIFF_NORMAL;
+            m.mp.bots[1].base.team = 0;
+        });
+        for _ in 0..60 {
+            t.frame(0);
+        }
+        let mate = t.world.players[0].aibuddynums[0];
+        let enemy = (1..t.world.chrs.len()).find(|&i| i != mate).unwrap();
+        for _ in 0..20 {
+            t.frame(A_BUTTON);
+        }
+        for _ in 0..4 {
+            if t.world.players[0].am.screenindex == 2 {
+                break;
+            }
+            t.frame(A_BUTTON | Z_TRIG);
+            t.frame(A_BUTTON);
+        }
+        assert_eq!(t.world.players[0].am.screenindex, 2);
+        for _ in 0..3 {
+            t.frame_stick(A_BUTTON, 80);
+        }
+        t.frame_stick(A_BUTTON | Z_TRIG, 80);
+        for _ in 0..10 {
+            t.frame(0);
+        }
+        assert_eq!(t.dialog(), Some("g_AmPickTargetMenuDialog"));
+        // Down to the enemy's row, then A.
+        let row = t.menu.picktargets[0].iter().position(|&(c, _)| c as usize == enemy).unwrap();
+        for _ in 0..row {
+            t.tap(D_JPAD);
+        }
+        t.tap(A_BUTTON);
+        assert_eq!(t.dialog(), None);
+        let a = t.world.chrs[mate].aibot.as_ref().unwrap();
+        assert_eq!((a.command, a.attackpropnum), (AIBOTCMD_ATTACK, Some(enemy)));
     }
 }

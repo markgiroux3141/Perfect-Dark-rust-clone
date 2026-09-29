@@ -1064,8 +1064,9 @@ impl GunCtx<'_> {
         }
     }
 
-    /// `bgun_consider_toggle_gun_function` (`:8963`).
-    pub fn bgun_consider_toggle_gun_function(&mut self, usedowntime: i32, trigpressed: bool) -> i32 {
+    /// `bgun_consider_toggle_gun_function` (`:8963`); `fromactivemenu`: the
+    /// active menu's Function screen asked.
+    pub fn bgun_consider_toggle_gun_function(&mut self, usedowntime: i32, trigpressed: bool, fromactivemenu: bool) -> i32 {
         match self.bgun_get_weapon_num(HAND_RIGHT) {
             WEAPON_SNIPERRIFLE => {
                 self.b.ctrl.invertgunfunc = true;
@@ -1080,6 +1081,9 @@ impl GunCtx<'_> {
             }
             WEAPON_RCP120 | WEAPON_LAPTOPGUN | WEAPON_DRAGON | WEAPON_REMOTEMINE => {
                 self.b.ctrl.invertgunfunc = true;
+                if fromactivemenu && self.b.bgun_is_using_secondary_function() {
+                    self.b.hands[HAND_RIGHT].activatesecondary = true;
+                }
                 USETIMER_STOP
             }
             WEAPON_MAULER | WEAPON_CMP150 | WEAPON_K7AVENGER | WEAPON_AR34 | WEAPON_FARSIGHT | WEAPON_TIMEDMINE => {

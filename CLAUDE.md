@@ -16,7 +16,8 @@ cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # off
                                             #   `out match --duel`, `out lab` (a match with simulants; the pd_lab map), `out pickups [--bots]`,
                                             #   `out scenario htb` (htm, pac, koh, ctc: a scenario's props, HUD, highlights, room tints),
                                             #   `out flow start w30 shot:pause kill wend shot:end` (the pause menu and
-                                            #   end screens over a match; steps in pd_tools::snapshot::flow))
+                                            #   end screens over a match; steps in pd_tools::snapshot::flow),
+                                            #   `out flow --teams --mates 2 hold:a:50 shot:am` (the active menu; `hold:a+z:1` next screen))
 cargo run --release -p pd_tools --bin pd_lab # the simulant/route viewer (a window: for the user, not for Claude to drive)
 python tools/check_boundaries.py            # headless crates stay headless
 python tools/pd-assets/build_assets.py      # regenerate assets/ (and crates/pd_core/src/ids.rs) from the decomp

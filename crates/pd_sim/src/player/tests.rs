@@ -447,3 +447,55 @@ fn a_die_floor_kills_players_and_simulants() {
     }
     assert!(died.is_some(), "the simulant fell onto the die floor and lived: feet {}", w.chrs[sim].manground);
 }
+
+/// On a pad (control style 1.1), R held and C-down pressed ducks, a second
+/// press squats, C-up rises (`bondmove.c:1340`).
+#[test]
+fn r_and_c_down_crouch_on_a_pad() {
+    for weapon in [WEAPON_UNARMED, WEAPON_FALCON2, WEAPON_CMP150] {
+        let mut w = crate::testutil::settled(weapon);
+        let aim = PlayerInput { pad: true, aim: true, ..Default::default() };
+        let down = PlayerInput { c_down: true, ..aim.clone() };
+        crate::testutil::run(&mut w, &aim, 10);
+        crate::testutil::run(&mut w, &down, 2);
+        crate::testutil::run(&mut w, &aim, 40);
+        let once = w.players[0].crouchpos;
+        crate::testutil::run(&mut w, &down, 2);
+        crate::testutil::run(&mut w, &aim, 40);
+        println!("weapon {weapon}: {once} then {}", w.players[0].crouchpos);
+        assert_eq!(once, CROUCHPOS_DUCK, "weapon {weapon}: one press ducks");
+        assert_eq!(w.players[0].crouchpos, CROUCHPOS_SQUAT, "weapon {weapon}: two squat");
+    }
+}
+
+/// The keyboard: C (or Ctrl) crouches a level, aiming or not.
+#[test]
+fn the_crouch_key_crouches_while_aiming() {
+    for aim in [false, true] {
+        let mut w = crate::testutil::settled(WEAPON_FALCON2);
+        let held = PlayerInput { aim, ..Default::default() };
+        crate::testutil::run(&mut w, &held, 10);
+        crate::testutil::run(&mut w, &PlayerInput { crouch_down: true, ..held.clone() }, 1);
+        crate::testutil::run(&mut w, &held, 40);
+        println!("aim {aim}: {}", w.players[0].crouchpos);
+        assert_eq!(w.players[0].crouchpos, CROUCHPOS_DUCK, "aim {aim}");
+    }
+}
+
+/// Felicity (mp11): the links PD marks for crouching (the vents), walked
+/// squatting, and whether a duck (one crouch level) gets through them too.
+#[test]
+#[ignore]
+fn probe_felicity_crouch_links() {
+    let stage = Stage::load(&assets(), "mp11").expect("mp11");
+    let level = TileLevel::for_stage(&stage);
+    let mut w = Walker::new();
+    let links = stage.waypoint_links();
+    let crouch: Vec<_> = links.iter().filter(|&&(a, b, _)| crouch_link(&stage, a, b)).collect();
+    println!("{} links, {} crouch links", links.len(), crouch.len());
+    for &&(a, b, _) in &crouch {
+        let (pa, pb) = (stage.waypoint_pos(a), stage.waypoint_pos(b));
+        let squat = walk_player(&mut w, &level, pa, pb, pd_pad_floor(&level, pb), true);
+        println!("{a:#x} -> {b:#x}: squatting {:?}", squat.outcome);
+    }
+}

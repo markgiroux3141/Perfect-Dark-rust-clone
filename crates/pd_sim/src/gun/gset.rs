@@ -140,6 +140,8 @@ pub struct FuncDef {
     pub proj: Option<ProjDef>,
     /// `funcdef_special.soundnum` / `funcdef_shootprojectile.soundnum`.
     pub soundnum: u16,
+    /// `funcdef_device.device`: the `DEVICE_*` bit it switches.
+    pub device: u32,
 }
 
 impl FuncDef {
@@ -427,6 +429,17 @@ impl Gset {
                     soundnum: match f.get("soundnum") {
                         Some(Value::Number(n)) if n.as_i64().unwrap_or(0) > 0 => n.as_i64().unwrap_or(0) as u16,
                         Some(v @ Value::String(_)) => resolve_sfx(Some(v), w),
+                        _ => 0,
+                    },
+                    device: match string(f, "device").as_deref() {
+                        Some("DEVICE_NIGHTVISION") => DEVICE_NIGHTVISION,
+                        Some("DEVICE_XRAYSCANNER") => DEVICE_XRAYSCANNER,
+                        Some("DEVICE_EYESPY") => DEVICE_EYESPY,
+                        Some("DEVICE_IRSCANNER") => DEVICE_IRSCANNER,
+                        Some("DEVICE_RTRACKER") => DEVICE_RTRACKER,
+                        Some("DEVICE_SUICIDEPILL") => DEVICE_SUICIDEPILL,
+                        Some("DEVICE_CLOAKDEVICE") => DEVICE_CLOAKDEVICE,
+                        Some("DEVICE_CLOAKRCP120") => DEVICE_CLOAKRCP120,
                         _ => 0,
                     },
                 };

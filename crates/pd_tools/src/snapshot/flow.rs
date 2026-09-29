@@ -1,4 +1,4 @@
-//! `pd_snapshot <outdir> flow [--score n] [--minutes m] [--teams] [--seed s]
+//! `pd_snapshot <outdir> flow [--score n] [--minutes m] [--teams] [--mates n] [--seed s]
 //! [--size WxH] <steps...>`: a Combat match on Complex with the menus over it, as the game
 //! plays it (`pd_game::session`), under a scripted N64 controller 1 that
 //! drives both the match and the menus.
@@ -6,15 +6,20 @@
 //! The match is started through the menus' own `mp_start_match` from a setup
 //! with player 1 and one simulant ("Sim 1") and a score limit of `--score`
 //! points (default 1; `--minutes` a time limit, default none; `--teams`: teams
-//! on, the player Red and the simulant Yellow). The simulant's
-//! brain is off and it stands 4 m in front of the player (not PD: the
-//! snapshot's arrangement, as `match --duel`).
+//! on, the player Red and the simulant Yellow; `--mates`: that many more
+//! simulants, "Sim 2".., on the player's team, standing beside it). The
+//! simulants' brains are off and Sim 1 stands 4 m in front of the player
+//! (not PD: the snapshot's arrangement, as `match --duel`).
 //!
 //! Steps (the menu script's words, `pd_menu::script`, plus the match's):
 //! * `w<N>`: N frames with nothing held;
 //! * `a` `b` `z` `start` `up` `down` `left` `right` `l` `r` `cu` `cd` `cl` `cr`:
 //!   tap that button (one frame down, then 6 frames up); the match reads A, B,
 //!   Z, START, R and the C buttons, the menus all of them;
+//! * `hold:<buttons>:<N>`: hold buttons joined by `+` (the words above, and
+//!   `su` `sd` `sl` `sr` for the stick pushed fully up, down, left, right)
+//!   for N frames, let go only by the next step (the active menu:
+//!   `hold:a:20` opens it, `hold:a+z:1` then `hold:a:2` moves a screen on);
 //! * `kill`: tap the trigger (Z, 6 frames down, 6 up) until the simulant dies
 //!   (at most 12 s);
 //! * `wend`: run until the end screens are up (at most 20 s), then 30 frames;
@@ -38,10 +43,30 @@ use pd_sim::player::PlayerInput;
 use pd_sim::stage::{Stage, TileLevel};
 use pd_sim::world::{World, WorldRes};
 
-/// Controller 1's held buttons as the match reads them (control style 1.1).
-fn match_input(held: u16) -> PlayerInput {
+/// Controller 1's held buttons and stick as the match reads them (control
+/// style 1.1).
+fn match_input(held: u16, stick: (i8, i8)) -> PlayerInput {
     let b = |bit: u16| held & bit != 0;
-    PlayerInput { pad: true, fire: b(Z_TRIG), aim: b(R_TRIG), use_held: b(B_BUTTON), a_held: b(A_BUTTON), start: b(START_BUTTON), c_up: b(U_CBUTTONS), c_down: b(D_CBUTTONS), c_left: b(L_CBUTTONS), c_right: b(R_CBUTTONS), ..PlayerInput::default() }
+    PlayerInput {
+        pad: true,
+        fire: b(Z_TRIG),
+        aim: b(R_TRIG),
+        l_trig: b(L_TRIG),
+        use_held: b(B_BUTTON),
+        a_held: b(A_BUTTON),
+        start: b(START_BUTTON),
+        c_up: b(U_CBUTTONS),
+        c_down: b(D_CBUTTONS),
+        c_left: b(L_CBUTTONS),
+        c_right: b(R_CBUTTONS),
+        d_up: b(U_JPAD),
+        d_down: b(D_JPAD),
+        d_left: b(L_JPAD),
+        d_right: b(R_JPAD),
+        look_x: stick.0 as i32,
+        look_y: stick.1 as i32,
+        ..PlayerInput::default()
+    }
 }
 
 fn button(word: &str) -> Option<u16> {
@@ -78,16 +103,20 @@ impl Flow {
     /// One 60 Hz frame with `held` on controller 1: the match and the menus
     /// (`pd_game::session::step`), and the end screen's blur when it ends.
     fn frame(&mut self, held: u16) {
+        self.frame_stick(held, (0, 0));
+    }
+
+    fn frame_stick(&mut self, held: u16, stick: (i8, i8)) {
         if self.over {
-            self.menu.pads[0].next_frame(held, 0, 0);
+            self.menu.pads[0].next_frame(held, stick.0, stick.1);
             self.lv.frametime_apply(1, 4);
             self.menu.frame(&self.lv);
             return;
         }
-        self.menu.pads[0].next_frame(held, 0, 0);
+        self.menu.pads[0].next_frame(held, stick.0, stick.1);
         self.menu.pads[0].connected = true;
         self.lv.frametime_apply(1, 4);
-        let out = pd_game::session::step(&mut self.world, &mut self.menu, &self.lv, 4, &[match_input(held)]);
+        let out = pd_game::session::step(&mut self.world, &mut self.menu, &self.lv, 4, &[match_input(held, stick)]);
         if out.ended {
             // The blur behind the end screens: this frame without the menus.
             self.renderer.menu_layer.clear();
@@ -126,7 +155,7 @@ impl Flow {
 
 pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let (mut w, mut h) = (640u32, 440u32);
-    let (mut score, mut minutes, mut seed, mut teams) = (1u8, None::<u8>, harness::SPIKE_SEED, false);
+    let (mut score, mut minutes, mut seed, mut teams, mut mates) = (1u8, None::<u8>, harness::SPIKE_SEED, false, 0usize);
     let mut words: Vec<String> = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -142,6 +171,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             "--minutes" => minutes = Some(val("--minutes")?.parse().map_err(|e| format!("--minutes: {e}"))?),
             "--seed" => seed = val("--seed")?.parse().map_err(|e| format!("--seed: {e}"))?,
             "--teams" => teams = true,
+            "--mates" => mates = val("--mates")?.parse().map_err(|e| format!("--mates: {e}"))?,
             s => words.push(s.to_owned()),
         }
     }
@@ -161,6 +191,12 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
             mp.setup.options |= MPOPTION_TEAMSENABLED;
             mp.players[0].base.team = 0;
             mp.bots[0].base.team = 1;
+        }
+        for k in 1..=mates.min(7) {
+            mp.setup.chrslots |= 1 << (4 + k);
+            mp.bots[k].base.name = format!("Sim {}\n", k + 1);
+            mp.bots[k].difficulty = BOTDIFF_NORMAL;
+            mp.bots[k].base.team = 0;
         }
     }
     menu.start_match();
@@ -189,11 +225,22 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
         })
         .ok_or("no spawn pad with open floor ahead")?;
     world.step(4, &[PlayerInput::default()]);
+    // The simulants by setup order (the allocation shuffles the chrs).
+    let sim = |w: &World, k: usize| w.chrs.iter().position(|c| c.aibot.as_ref().is_some_and(|a| a.aibotnum == k));
     let angle = pd_core::math::wrap_pos(pd_core::math::atan2f(a.x - b.x, a.z - b.z));
-    harness::place(&mut world, 1, b, angle);
+    let enemy = sim(&world, 0).ok_or("no Sim 1")?;
+    harness::place(&mut world, enemy, b, angle);
     let d = b - a;
     let theta = (-d.x).atan2(d.z).to_degrees();
     harness::place_player(&mut world, 0, a, if theta < 0.0 { theta + 360.0 } else { theta });
+    // The teammates a step to either side and a little ahead, facing away.
+    let side = Vec3::new(d.z, 0.0, -d.x).normalize_or_zero();
+    for k in 1..world.setup.simulants.len() {
+        let Some(i) = sim(&world, k) else { continue };
+        let sign = if k % 2 == 1 { 1.0 } else { -1.0 };
+        let off = side * sign * 110.0 * (k.div_ceil(2) as f32) + d.normalize_or_zero() * 250.0;
+        harness::place(&mut world, i, ground(a + off + Vec3::Y * 60.0), pd_core::math::wrap_pos(angle + pd_core::math::turn() / 2.0));
+    }
 
     let gpu = HeadlessGpu::new()?;
     let format = wgpu::TextureFormat::Rgba8Unorm;
@@ -204,7 +251,23 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
 
     let mut paths = Vec::new();
     for word in &words {
-        if let Some(name) = word.strip_prefix("shot:") {
+        if let Some(rest) = word.strip_prefix("hold:") {
+            let (btns, n) = rest.rsplit_once(':').ok_or(format!("{word}: hold:<buttons>:<frames>"))?;
+            let n: u32 = n.parse().map_err(|_| format!("bad frames in {word}"))?;
+            let (mut held, mut stick) = (0u16, (0i8, 0i8));
+            for b in btns.split('+') {
+                match b {
+                    "su" => stick.1 = 80,
+                    "sd" => stick.1 = -80,
+                    "sl" => stick.0 = -80,
+                    "sr" => stick.0 = 80,
+                    b => held |= button(b).ok_or(format!("{word}: unknown button {b}"))?,
+                }
+            }
+            for _ in 0..n {
+                f.frame_stick(held, stick);
+            }
+        } else if let Some(name) = word.strip_prefix("shot:") {
             paths.push(f.shot(outdir.join(format!("flow_{name}.png")))?);
         } else if let Some(bit) = button(word) {
             f.frame(bit);
@@ -214,15 +277,16 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
         } else if word == "kill" {
             // Aim at the chest.
             let p = f.world.players[0].pos;
-            let c = f.world.chrs[1].pos + Vec3::Y * 20.0;
+            let enemy = sim(&f.world, 0).ok_or("no Sim 1")?;
+            let c = f.world.chrs[enemy].pos + Vec3::Y * 20.0;
             f.world.players[0].verta = (c.y - p.y).atan2(((c.x - p.x).powi(2) + (c.z - p.z).powi(2)).sqrt()).to_degrees();
             for t in 0..60 * 12 {
                 f.frame(if (t / 6) % 2 == 0 { Z_TRIG } else { 0 });
-                if f.world.chr_is_dead(1) {
+                if f.world.chr_is_dead(enemy) {
                     break;
                 }
             }
-            if !f.world.chr_is_dead(1) {
+            if !f.world.chr_is_dead(enemy) {
                 return Err("kill: the simulant survived".into());
             }
         } else if word == "wend" {

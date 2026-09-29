@@ -80,14 +80,7 @@ pub fn mixcolour(d: &MenuDialog, p: Pal) -> u32 {
     }
 }
 
-/// `menu_get_sin_osc_frac` (game_006900.c:94).
-pub fn sin_osc(frac20: f32, freq: f32) -> f32 {
-    ((freq * frac20 + freq * frac20) * std::f32::consts::PI).sin() / 2.0 + 0.5
-}
-/// `menu_get_cos_osc_frac` (game_006900.c:106).
-pub fn cos_osc(frac20: f32, freq: f32) -> f32 {
-    ((freq * frac20 + freq * frac20) * std::f32::consts::PI).cos() / 2.0 + 0.5
-}
+pub use pd_core::menugfx::{cos_osc, sin_osc};
 /// `menu_get_linear_osc_pause_frac` (game_006900.c:139).
 pub fn linear_osc_pause_frac(frac: f32) -> f32 {
     let ival = (frac * 4.0) as i32;

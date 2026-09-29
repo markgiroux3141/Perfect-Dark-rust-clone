@@ -52,6 +52,7 @@
     clippy::field_reassign_with_default
 )]
 
+pub mod activemenu;
 pub mod generated;
 pub mod gfx;
 pub mod handlers;
@@ -235,6 +236,9 @@ pub enum Outcome {
     /// The pause menu's inventory (`menuhandler_inventory_list`'s confirm,
     /// mainmenu.c:4176): player `playernum` equips inventory row `index`.
     Equip { playernum: usize, index: usize },
+    /// "Pick Target" chose chr `chrnum` for player `playernum`'s simulants to
+    /// attack (`am_pick_target_menu_list`, `bot_apply_attack`).
+    PickTarget { playernum: usize, chrnum: usize },
     /// Every end-of-match dialog has closed (menutick.c:615,
     /// `g_MpReturningFromMatch`): the game leaves the match and calls
     /// [`MenuSystem::return_from_match`].
@@ -327,6 +331,8 @@ pub struct MenuSystem {
     pub in_match: bool,
     /// The running match, as its dialogs read it.
     pub matchview: MatchView,
+    /// The Pick Target rows the match listed, by player number.
+    pub picktargets: Vec<Vec<(u8, u8)>>,
 }
 
 impl MenuSystem {
@@ -365,6 +371,7 @@ impl MenuSystem {
             outcomes: std::collections::VecDeque::new(),
             in_match: false,
             matchview: MatchView::default(),
+            picktargets: Vec::new(),
         };
         pd.pads[0].connected = true;
         for m in pd.menus.iter_mut() {

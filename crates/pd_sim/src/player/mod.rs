@@ -28,9 +28,9 @@
 mod bondhead;
 mod bondmove;
 mod bondwalk;
+pub mod activemenu;
 pub mod health;
 pub mod camera;
-pub mod cloak;
 pub mod rooms;
 pub mod slayer;
 mod spawn;
@@ -135,8 +135,15 @@ pub struct PlayerInput {
     pub c_down: bool,
     pub c_left: bool,
     pub c_right: bool,
-    /// A held (`invbuttons`): tap = next gun, A+Z = previous gun.
+    /// A held (`invbuttons`): tap = next gun, A+Z = previous gun, held = the
+    /// active menu.
     pub a_held: bool,
+    /// L, and the D-pad (the active menu reads them).
+    pub l_trig: bool,
+    pub d_up: bool,
+    pub d_down: bool,
+    pub d_left: bool,
+    pub d_right: bool,
     /// START held: a press opens the pause menu (`bondmove.c:691`); a dead
     /// player holds it to respawn.
     pub start: bool,
@@ -344,7 +351,17 @@ pub struct Player {
     /// `devicesactive`: `DEVICE_*` (the RC-P120's cloak here).
     pub devicesactive: u32,
     /// The player chr's cloak (`CHRHFLAG_CLOAKED`, `cloakfadefrac`, ...).
-    pub cloak: cloak::ChrCloak,
+    pub cloak: crate::chr::cloak::ChrCloak,
+    /// The active menu (`g_AmMenus[playernum]`, `activemenumode`), the
+    /// buttons it last read, and A held long enough to open it this tick.
+    pub am: activemenu::ActiveMenu,
+    pub activemenumode: u8,
+    pub am_prevbuttons: u16,
+    pub am_open_request: bool,
+    /// `aibuddynums`: the simulants on the player's team (chr indexes), and
+    /// the one the active menu is ordering (`commandingaibot`).
+    pub aibuddynums: Vec<usize>,
+    pub commandingaibot: Option<usize>,
     /// The x-ray eraser (`eraserpos`, `erasertime`, the colour shifts).
     pub eraser: vision::Eraser,
     /// This frame's framebuffer effects (`lv_render`'s `bview_*` calls).
@@ -506,7 +523,13 @@ impl Player {
             badrockettime: 0,
             slayer_prevfire: false,
             devicesactive: 0,
-            cloak: cloak::ChrCloak::default(),
+            cloak: crate::chr::cloak::ChrCloak::default(),
+            am: activemenu::ActiveMenu::default(),
+            activemenumode: activemenu::AMMODE_CLOSED,
+            am_prevbuttons: 0,
+            am_open_request: false,
+            aibuddynums: Vec::new(),
+            commandingaibot: None,
             eraser: vision::Eraser::default(),
             viewfx: vision::ViewFx::default(),
             bank,

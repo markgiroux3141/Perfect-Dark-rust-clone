@@ -58,6 +58,10 @@ pub struct HudIn<'a> {
     pub hudmsgs: Vec<&'a pd_sim::mp::HudMessage>,
     /// The scenario's part (`scenario_render_hud`).
     pub scenario: pd_sim::mp::scenario::ScenarioHud,
+    /// The player's number, and its active menu (open, and the ordered
+    /// simulant's bars).
+    pub playernum: usize,
+    pub activemenu: (Option<pd_sim::player::activemenu::AmRender>, Option<pd_sim::player::activemenu::AmBars>),
 }
 
 impl HudIn<'_> {
@@ -566,14 +570,19 @@ pub fn draw(t: &mut TextCtx, h: &HudIn) {
     if let Some((apparent, armour, heightfrac)) = h.health {
         crate::health::draw_health_bar(t.gfx, h.view, apparent, armour, heightfrac, h.fovy);
     }
-    sight_draw(t.gfx, h);
+    // No sight while the active menu is open (sight.c:1418).
+    if h.activemenu.0.is_none() {
+        sight_draw(t.gfx, h);
+    }
     if h.option(OPTION_AMMOONSCREEN) {
         bgun_draw_hud(t, h);
     }
     crate::hudmsg::hudmsgs_render(t, &h.hudmsgs);
     crate::health::draw_fade(t.gfx, h.view, h.fade.0, h.fade.1);
-    // lv_render (`lv.c:1595`): the scenario's HUD after the player's.
+    // lv_render (`lv.c:1595`): the scenario's HUD after the player's, then
+    // (after the sky's overexposure) the active menu (`lv.c:1639`).
     scenario_render_hud(t, h.view, &h.scenario);
+    crate::activemenu::am_render(t, h.activemenu.0.as_ref(), h.activemenu.1, h.view, h.playercount, h.playernum);
 }
 
 /// `scenario_render_hud`'s scenario part (`scenarios.c:557`): a countdown

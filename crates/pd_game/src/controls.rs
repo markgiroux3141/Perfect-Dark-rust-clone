@@ -9,7 +9,8 @@
 //! keyboard and mouse drive player [`Controls::kb_player`] the PC port's way
 //! (the gun spike's key table):
 //! WASD move · mouse look · RMB (hold) aim · LMB fire · E / MMB use ·
-//! R reload · Q next gun · 1-0 pick a gun (by inventory slot) · Ctrl or C crouch down ·
+//! R reload · Q next gun (A: hold it for the active menu, Q + LMB the gun
+//! before) · 1-0 pick a gun (by inventory slot) · Ctrl or C crouch down ·
 //! Space crouch up · ↑/↓ zoom · Enter START (the pause menu) · Esc frees the mouse
 //! (a click takes it back). The pause menu reads the controllers as the menus do.
 //!
@@ -78,6 +79,11 @@ fn pad_input(inp: &mut PlayerInput, r: Reading) {
     inp.fire |= b(Z_TRIG);
     inp.use_held |= b(B_BUTTON);
     inp.a_held = b(A_BUTTON);
+    inp.l_trig = b(L_TRIG);
+    inp.d_up = b(U_JPAD);
+    inp.d_down = b(D_JPAD);
+    inp.d_left = b(L_JPAD);
+    inp.d_right = b(R_JPAD);
     inp.look_x = r.stick.0 as i32;
     inp.look_y = r.stick.1 as i32;
     inp.c_up = b(U_CBUTTONS);
@@ -172,7 +178,9 @@ impl Controls {
         }
         inp.use_held |= k(KeyCode::KeyE) || input.mouse_down(MouseButton::Middle);
         inp.reload = input.key_pressed(KeyCode::KeyR);
-        inp.cycle_next = input.key_pressed(KeyCode::KeyQ);
+        // Q is A: a tap cycles on release, a hold opens the active menu
+        // (where the mouse steers, WASD are the C-buttons, LMB is Z, RMB R).
+        inp.a_held |= k(KeyCode::KeyQ);
         inp.crouch_down = input.key_pressed(KeyCode::ControlLeft) || input.key_pressed(KeyCode::ControlRight) || input.key_pressed(KeyCode::KeyC);
         inp.crouch_up = input.key_pressed(KeyCode::Space);
         inp.zoom_in = k(KeyCode::ArrowUp);

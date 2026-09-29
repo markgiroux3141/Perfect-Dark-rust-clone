@@ -37,6 +37,12 @@ pub fn baddtor2(deg: f32) -> f32 {
     deg * (M_BADPI / 180.0)
 }
 
+/// `BADDTOR4(deg)` = `deg / 360 * M_BADTAU` (`math.h:17`).
+#[inline]
+pub fn baddtor4(deg: f32) -> f32 {
+    deg / 360.0 * M_BADTAU
+}
+
 /// `BADRTOD4(rad)` = `rad * 360 / M_BADTAU` (`math.h:25`): how the walk turns
 /// radians back into `vv_theta` degrees.
 #[inline]

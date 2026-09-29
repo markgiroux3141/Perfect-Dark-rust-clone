@@ -37,6 +37,9 @@ pub enum Event {
     /// `mp_push_pause_dialog` for player `player` (START in a match): the
     /// menus open its pause menu.
     MpPushPauseDialog { player: u8 },
+    /// `am_open_pick_target`: player `player`'s active menu asks the menus for
+    /// the "Pick Target" dialog, listing `targets` (chr index, chr slot).
+    AmOpenPickTarget { player: u8, targets: Vec<(u8, u8)> },
     /// `menu_save_and_close_all` for player `player`'s menu (it died).
     MpCloseMenus { player: u8 },
     /// `mp_end_match` has run (`main_end_stage`): the match is over and paused

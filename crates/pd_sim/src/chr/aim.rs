@@ -175,36 +175,6 @@ impl crate::world::World {
         let types = pd_core::ids::CDTYPE_OBJS | pd_core::ids::CDTYPE_DOORS | pd_core::ids::CDTYPE_PATHBLOCKER | pd_core::ids::CDTYPE_AIOPAQUE;
         crate::stage::TileLevel::cd_los_props(eye, to, &self.obj_geos(types), &self.prop_floors(), pd_core::ids::GEOFLAG_BLOCK_SIGHT).is_none()
     }
-
-    /// `chr_uncloak(chr, value)` (`chr.c:2054`) for chr `i`.
-    pub(crate) fn chr_uncloak_chr(&mut self, i: usize, value: bool) {
-        if let Some(p) = self.chrs[i].player {
-            self.chr_uncloak(p, value);
-            self.chrs[i].cloaked = false;
-            return;
-        }
-        if self.chrs[i].cloaked {
-            self.chrs[i].cloaked = false;
-            if value {
-                let pos = self.chrs[i].pos;
-                self.sound_at(0x005c, 1.0, pos, crate::propsnd::DEFAULT_DISTS);
-            }
-        }
-    }
-
-    /// `chr_uncloak_temporarily` (`chr.c:2082`) for chr `i`: a player's is the
-    /// player's cloak; a simulant's goes off with the sound.
-    pub(crate) fn chr_uncloak_temporarily_chr(&mut self, i: usize) {
-        if let Some(p) = self.chrs[i].player {
-            self.chr_uncloak_temporarily(p);
-            return;
-        }
-        if self.chrs[i].cloaked {
-            self.chrs[i].cloaked = false;
-            let pos = self.chrs[i].pos;
-            self.sound_at(0x005c, 1.0, pos, crate::propsnd::DEFAULT_DISTS);
-        }
-    }
 }
 
 #[cfg(test)]

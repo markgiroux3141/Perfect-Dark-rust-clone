@@ -53,15 +53,27 @@ pub struct ViewFx {
 }
 
 impl World {
-    /// The vision half of `bgun_tick_gameplay2` (`bondgun.c:7989`): aiming the
-    /// Farsight (`gunsightoff == 0`) turns x-ray on with its colours; anything
-    /// else turns it off, unless riding a Slayer rocket. (No x-ray scanner
-    /// device in the Combat Simulator.)
+    /// The vision half of `bgun_tick_gameplay2` (`bondgun.c:7989`): the x-ray
+    /// scanner switched on (a locked pickup, from the active menu or the
+    /// pause menu's inventory) is x-ray in its own colours, unless the
+    /// Farsight is aimed; aiming the Farsight (`gunsightoff == 0`) is x-ray in
+    /// the Farsight's; anything else turns it off, unless riding a Slayer
+    /// rocket. (`devicesinhibit` is solo's: 0.)
     pub(crate) fn bgun_tick_vision(&mut self, pi: usize) {
         let lv240 = self.lv.lvupdate240;
         let p = &mut self.players[pi];
         let gunsighton = p.insightaimmode;
-        if gunsighton && p.gun.hands[HAND_RIGHT].weaponnum == WEAPON_FARSIGHT {
+        let farsight = p.gun.bgun_get_weapon_num(HAND_RIGHT) == WEAPON_FARSIGHT;
+        if p.devicesactive & DEVICE_XRAYSCANNER != 0 && (!farsight || !gunsighton) {
+            if p.visionmode != VISIONMODE_XRAY {
+                p.eraser.time = 0;
+            } else {
+                p.eraser.time += lv240;
+            }
+            p.visionmode = VISIONMODE_XRAY;
+            p.eraser.ecol = [24, 8, 24];
+            p.eraser.epcol = [2, 0, 1];
+        } else if gunsighton && p.gun.hands[HAND_RIGHT].weaponnum == WEAPON_FARSIGHT {
             if p.visionmode != VISIONMODE_XRAY {
                 p.eraser.time = 0;
             } else {

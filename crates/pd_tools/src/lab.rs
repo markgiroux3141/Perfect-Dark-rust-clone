@@ -214,6 +214,7 @@ pub fn scenario(w: &World, o: &LabOpts) -> Vec<Prim> {
         let to = match a.myaction {
             MyAction::GotoProp => a.gotoprop.and_then(|id| w.props.get(id)).map(|ob| Vec2::new(ob.pos.x, ob.pos.z)),
             MyAction::GotoPos => Some(Vec2::new(a.gotopos.x, a.gotopos.z)),
+            MyAction::Defend => Some(Vec2::new(a.defendholdpos.x, a.defendholdpos.z)),
             MyAction::Follow => a.followingplayernum.map(|f| Vec2::new(w.chrs[f].pos.x, w.chrs[f].pos.z)),
             _ => None,
         };

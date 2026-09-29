@@ -338,12 +338,6 @@ impl World {
                 }
             }
             WEAPON_REAPER if sec => (score1, score2) = (19, 80),
-            // SUBST: PD's simulants fly the Slayer's rocket along the waypoints
-            // to an unseen target (`botact_create_slayer_rocket`, `botact.c:494`,
-            // and the SK rocket's steering in `projectile_tick`) / the
-            // fly-by-wire scores 0, so a simulant fires the Slayer's rockets
-            // straight; the steering is left for later (Backlog).
-            WEAPON_SLAYER if sec => (score1, score2) = (0, 0),
             WEAPON_SLAYER => {
                 if sec {
                     let unseen = target.is_some_and(|t| !a.chrsinsight[t]) && r1.is_multiple_of(2);

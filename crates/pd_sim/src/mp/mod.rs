@@ -197,6 +197,8 @@ pub struct MpMatch {
     pub results: Vec<MpPlayerResult>,
     /// `g_ScenarioData`: the scenario's state.
     pub scenariodata: scenario::ScenarioData,
+    /// `g_AmBotCommands`: the active menu's orders by slot (`mp_reset`).
+    pub ambotcommands: [u8; 9],
 }
 
 impl MpMatch {
@@ -231,6 +233,7 @@ impl MpMatch {
             hudmsgs: HudMsgs::default(),
             results: Vec::new(),
             scenariodata: scenario::ScenarioData::default(),
+            ambotcommands: [AIBOTCMD_NORMAL; 9],
         }
     }
 }
@@ -339,12 +342,17 @@ pub fn input_buttons(i: &crate::player::PlayerInput) -> u16 {
     const Z: u16 = 0x2000;
     const START: u16 = 0x1000;
     const R: u16 = 0x0010;
+    const L: u16 = 0x0020;
+    const DU: u16 = 0x0800;
+    const DD: u16 = 0x0400;
+    const DL: u16 = 0x0200;
+    const DR: u16 = 0x0100;
     const CU: u16 = 0x0008;
     const CD: u16 = 0x0004;
     const CL: u16 = 0x0002;
     const CR: u16 = 0x0001;
     let mut b = 0;
-    for (on, bit) in [(i.a_held, A), (i.use_held, B), (i.fire, Z), (i.start, START), (i.aim, R), (i.c_up, CU), (i.c_down, CD), (i.c_left, CL), (i.c_right, CR)] {
+    for (on, bit) in [(i.a_held, A), (i.use_held, B), (i.fire, Z), (i.start, START), (i.aim, R), (i.l_trig, L), (i.d_up, DU), (i.d_down, DD), (i.d_left, DL), (i.d_right, DR), (i.c_up, CU), (i.c_down, CD), (i.c_left, CL), (i.c_right, CR)] {
         if on {
             b |= bit;
         }
@@ -382,6 +390,11 @@ fn input_without(mut i: crate::player::PlayerInput, mask: u16) -> crate::player:
     if off(0x0001) {
         i.c_right = false;
     }
+    for (bit, b) in [(0x0020, &mut i.l_trig), (0x0800, &mut i.d_up), (0x0400, &mut i.d_down), (0x0200, &mut i.d_left), (0x0100, &mut i.d_right)] {
+        if off(bit) {
+            *b = false;
+        }
+    }
     i
 }
 
@@ -406,20 +419,34 @@ impl World {
     /// released (`menu_update_cur_frame`, `menu.c:1631`).
     pub fn set_menu_open(&mut self, pi: usize, open: bool) {
         let (Some(o), Some(v)) = (self.mp.menuopen.get_mut(pi), self.mp.players.get_mut(pi)) else { return };
-        if *o && !open {
-            v.joybutinhibit = 0xffff_ffff;
+        // On a change only: the active menu takes the control away too.
+        if *o != open {
+            if !open {
+                v.joybutinhibit = 0xffff_ffff;
+            }
+            v.withcontrol = !open;
         }
         *o = open;
-        v.withcontrol = !open;
     }
 
     /// The pause menu's inventory pick (`menuhandler_inventory_list`,
     /// `mainmenu.c:4176`): row `index` in both hands if the player has two.
     pub fn mp_equip_inventory(&mut self, pi: usize, index: usize) {
-        let Some(p) = self.players.get_mut(pi) else { return };
-        // menuhandler_inventory_list (`mainmenu.c:4176`): the row's weapon,
-        // both hands if it is held twice.
-        let w = p.gun.p.inventory.inv_get_weapon_num_by_index(index as i32);
+        if pi >= self.players.len() {
+            return;
+        }
+        // menuhandler_inventory_list (`mainmenu.c:4184`): a device (the
+        // cloaking device) switches on or off; else the row's weapon, both
+        // hands if it is held twice.
+        let w = self.players[pi].gun.p.inventory.inv_get_weapon_num_by_index(index as i32);
+        if w != 0 {
+            let state = self.gset_get_device_state(pi, w);
+            if state != crate::player::activemenu::DEVICESTATE_UNEQUIPPED {
+                self.gset_set_device_active(pi, w, state == crate::player::activemenu::DEVICESTATE_INACTIVE);
+                return;
+            }
+        }
+        let p = &mut self.players[pi];
         if w != 0 {
             p.gun.p.inventory.equipcuritem = index as i32;
             p.gun.select_weapon(w, true);
@@ -901,23 +928,41 @@ pub fn radar_get_team_index(team: u8) -> usize {
 impl World {
     /// `scenario_highlight_prop` (`scenarios.c:712`) for chr `i` as player
     /// `pi` sees it: the scenario's own highlight first (a case's carrier, the
-    /// victim); then with teams on and the player's "highlight teams", the
-    /// team's colour at 75/255; else with "highlight players", a pulsing blue;
-    /// none with Combat's "No Player Highlight". `// M11:` the simulant being
-    /// given orders pulses.
+    /// victim); with teams on, the simulant the player's active menu is
+    /// ordering pulses in its team colour (and the other chrs lose their
+    /// highlight meanwhile); then with teams on and the player's "highlight
+    /// teams", the team's colour at 75/255; else with "highlight players", a
+    /// pulsing blue; none with Combat's "No Player Highlight".
     pub fn scenario_highlight_chr(&self, pi: usize, i: usize) -> Option<[u8; 4]> {
         if let Some(c) = self.scenario_highlight_prop_callback(scenario::PropRef::Chr(i)) {
             return Some(c);
         }
         let displayoptions = self.setup.players.get(pi).map_or(0, |p| p.chr.displayoptions);
-        if self.setup.scenario == MPSCENARIO_COMBAT && self.setup.options & MPOPTION_NOPLAYERHIGHLIGHT != 0 {
-            return None;
+        let teams = self.setup.teams_enabled();
+        let (mut pulse, mut isunselectedbot, mut useblue, mut useteamcolour) = (false, false, false, false);
+        if teams {
+            if let Some(bot) = self.players.get(pi).and_then(|p| p.commandingaibot) {
+                if bot == i {
+                    pulse = true;
+                    useteamcolour = true;
+                } else {
+                    isunselectedbot = true;
+                }
+            }
         }
-        if self.setup.teams_enabled() && displayoptions & MPDISPLAYOPTION_HIGHLIGHTTEAMS != 0 {
+        if !pulse && !isunselectedbot && (self.setup.scenario != MPSCENARIO_COMBAT || self.setup.options & MPOPTION_NOPLAYERHIGHLIGHT == 0) {
+            if teams && displayoptions & MPDISPLAYOPTION_HIGHLIGHTTEAMS != 0 {
+                useteamcolour = true;
+            } else if displayoptions & MPDISPLAYOPTION_HIGHLIGHTPLAYERS != 0 {
+                useblue = true;
+            }
+        }
+        if useteamcolour {
             let c = G_TEAM_COLOURS[radar_get_team_index(self.chrs[i].team)];
-            return Some([(c >> 24) as u8, (c >> 16) as u8, (c >> 8) as u8, 75]);
+            let alpha = if pulse { (self.menu_get_sin_osc_frac(20.0) * 128.0) as u8 } else { 75 };
+            return Some([(c >> 24) as u8, (c >> 16) as u8, (c >> 8) as u8, alpha]);
         }
-        if displayoptions & MPDISPLAYOPTION_HIGHLIGHTPLAYERS != 0 {
+        if useblue {
             return Some([0, 0xcd, 0xff, (self.menu_get_sin_osc_frac(20.0) * 205.0) as u8]);
         }
         None
@@ -925,7 +970,7 @@ impl World {
 
     /// `menu_get_sin_osc_frac(20)` (`menu.c`) on `g_20SecIntervalFrac`: 0..1.
     fn menu_get_sin_osc_frac(&self, mult: f32) -> f32 {
-        ((mult * self.frac20 + mult * self.frac20) * std::f32::consts::PI).sin() / 2.0 + 0.5
+        pd_core::menugfx::sin_osc(self.frac20, mult)
     }
 
     /// `scenario_highlight_prop`'s object half (`scenarios.c:720`): unless No

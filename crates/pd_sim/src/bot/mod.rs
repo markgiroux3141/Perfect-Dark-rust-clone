@@ -101,6 +101,8 @@ pub enum MyAction {
     GotoProp,
     /// `MA_AIBOTDOWNLOAD`: standing at Hacker Central's terminal.
     Download,
+    /// `MA_AIBOTDEFEND`: a human's Defend or Hold order, at `defendholdpos`.
+    Defend,
 }
 
 /// `struct aibot` (the Combat fields).
@@ -226,6 +228,24 @@ pub struct Aibot {
     pub hasuplink: bool,
     /// Hold the Briefcase: time held towards the next point.
     pub htbheldtimer60: i32,
+    /// FeudSim: the chr it goes after all match (its first killer who is
+    /// not a teammate).
+    pub feudplayernum: Option<usize>,
+    /// A human's Attack order: the chr to attack (PD keeps its prop number).
+    pub attackpropnum: Option<usize>,
+    /// A human's Follow or Protect order: the chr to keep near.
+    pub followprotectpropnum: Option<usize>,
+    /// A human's Defend or Hold order: where, facing which way, and whether
+    /// a target may pull it away (Defend) or not (Hold).
+    pub defendholdpos: Vec3,
+    pub defendholdrooms: Vec<u16>,
+    pub defendholdrot: f32,
+    pub canbreakdefend: bool,
+    pub returntodefendtimer60: i32,
+    /// The RC-P120's cloak is wanted, and the rounds it has eaten towards the
+    /// next whole one.
+    pub rcp120cloakenabled: bool,
+    pub rcpcloaktimer60: f32,
 }
 
 impl Aibot {
@@ -328,6 +348,16 @@ impl Aibot {
             hascase: false,
             hasuplink: false,
             htbheldtimer60: 0,
+            feudplayernum: None,
+            attackpropnum: None,
+            followprotectpropnum: None,
+            defendholdpos: Vec3::ZERO,
+            defendholdrooms: Vec::new(),
+            defendholdrot: 0.0,
+            canbreakdefend: false,
+            returntodefendtimer60: 0,
+            rcp120cloakenabled: false,
+            rcpcloaktimer60: 0.0,
         }
     }
 }
@@ -391,11 +421,14 @@ pub fn bot_calculate_max_speed(c: &Chr) -> f32 {
     // A case's carrier is as slow as a player carrying it (bondwalk.c:1472).
     let mut speed = if a.hascase || a.hasbriefcase { -63.600_006 } else { c.bodyheight * (1.0 / 159.0) };
     speed = speed * 0.002_830_188_954_249 + 1.0;
-    speed *= match a.config.difficulty {
-        BOTDIFF_MEAT => 5.0,
-        BOTDIFF_EASY => 6.2,
-        BOTDIFF_NORMAL => 7.6,
-        BOTDIFF_HARD => 9.4,
+    // A TurtleSim crawls and a SpeedSim runs whatever its difficulty.
+    speed *= match (a.config.bottype, a.config.difficulty) {
+        (BOTTYPE_TURTLE, _) => 3.5,
+        (BOTTYPE_SPEED, _) => 14.0,
+        (_, BOTDIFF_MEAT) => 5.0,
+        (_, BOTDIFF_EASY) => 6.2,
+        (_, BOTDIFF_NORMAL) => 7.6,
+        (_, BOTDIFF_HARD) => 9.4,
         _ => 11.2,
     };
     // Crouched: 0.35× squatting, 0.5× ducking; else the last leg of a go-to (no
@@ -503,10 +536,13 @@ impl World {
                 .followingplayernum
                 .filter(|&f| a.myaction == MyAction::Follow && a.chrdistances[f] < 300.0 && a.realignangleframe >= lvframe60 - 60 && a.config.difficulty != BOTDIFF_MEAT)
                 .map(|f| self.chrs[f].theta());
+            // A defender back on its spot faces the way it was told to.
+            let defend_rot = (a.myaction == MyAction::Defend && a.realignangleframe >= lvframe60 - 60 && a.config.difficulty != BOTDIFF_MEAT).then_some(a.defendholdrot);
             let c = &mut self.chrs[i];
             let oldangle = c.theta();
             let myaction = c.aibot.as_ref().unwrap().myaction;
-            let mut targetangle = if dead {
+            let flying = c.aibot.as_ref().unwrap().skrocket.is_some();
+            let mut targetangle = if dead || flying {
                 c.theta()
             } else if about {
                 let a = c.chr_get_angle_to_pos(target_pos.unwrap());
@@ -515,6 +551,8 @@ impl World {
                 oldangle + c.chr_get_angle_to_pos(tp)
             } else if let Some(t) = leader_theta {
                 t
+            } else if let Some(r) = defend_rot {
+                r
             } else {
                 c.roty()
             };
@@ -525,7 +563,7 @@ impl World {
             while targetangle < 0.0 {
                 targetangle += t;
             }
-            if c.blurdrugamount > 0 && !dead {
+            if c.blurdrugamount > 0 && !dead && !flying {
                 targetangle += c.blurdrugamount as f32 * 0.000_314_109_260_216_36 * ((lvframe60 % 120) as f32 * 0.052_351_541_817_188).sin();
                 if targetangle >= t {
                     targetangle -= t;
@@ -592,6 +630,11 @@ impl World {
             if matches!(act, Act::Die | Act::Dead) {
                 a.speedmultforwards = 0.0;
                 a.speedmultsideways = 0.0;
+            } else if a.skrocket.is_some() {
+                // Standing still while it flies its rocket.
+                a.speedmultforwards = 0.0;
+                a.speedmultsideways = 0.0;
+                a.realignangleframe = lvframe60;
             } else if act == Act::GoPos && !c.act_gopos.waiting {
                 a.speedmultforwards = 1.0;
                 a.speedmultsideways = 0.0;
@@ -830,8 +873,12 @@ impl World {
                         }
                     }
                 } else if weaponnum == WEAPON_SLAYER && gunfunc != FUNC_PRIMARY && target.is_some() {
-                    // botact_create_slayer_rocket: never reached, the fly-by-wire
-                    // scores 0 (see botinv_score_weapon's SUBST).
+                    // A Slayer rocket wherever the simulant is, with a round loaded.
+                    if self.ab(i).loadedammo[0] > 0 {
+                        self.chr_uncloak_temporarily_chr(i);
+                        self.botact_create_slayer_rocket(i);
+                        self.ab_mut(i).loadedammo[0] -= 1;
+                    }
                 } else if botact_is_weapon_throwable(weaponnum, gunfunc != FUNC_PRIMARY) {
                     // A throw from the right hand (`bot.c:3547`).
                     if h == HAND_RIGHT {
@@ -1016,7 +1063,7 @@ impl World {
     /// looks at it (±45/256 of a turn).
     pub fn bot_is_target_invisible(&self, bot: usize, other: usize) -> bool {
         let o = &self.chrs[other];
-        if !o.cloaked {
+        if !o.cloak.cloaked {
             return false;
         }
         let b = &self.chrs[bot];
@@ -1033,7 +1080,7 @@ impl World {
     /// `bot_set_target` (`bot.c:1358`).
     fn bot_set_target(&mut self, i: usize, target: Option<usize>) {
         let (lvupdate240, diffframe60, lv60) = (self.lv.lvupdate240, self.lv.diffframe60, self.lv.lvupdate60);
-        let other_cloaked = target.is_some_and(|t| self.chrs[t].cloaked);
+        let other_cloaked = target.is_some_and(|t| self.chrs[t].cloak.cloaked);
         let old = self.chrs[i].target;
         let a = self.chrs[i].aibot.as_mut().unwrap();
         if let Some(t) = target {
@@ -1077,7 +1124,7 @@ impl World {
     fn bot_update_zero_angle(&mut self, i: usize) {
         let (lv60, lv240, diffframe60, lv60f) = (self.lv.lvupdate60, self.lv.lvupdate240, self.lv.diffframe60, self.lv.lvupdate60f);
         let needs_roll = self.ab(i).random3ttl60 - lv60 <= 0;
-        let target_cloaked = self.chrs[i].target.is_some_and(|t| self.chrs[t].cloaked);
+        let target_cloaked = self.chrs[i].target.is_some_and(|t| self.chrs[t].cloak.cloaked);
         let (r1, r2) = if needs_roll { (self.rng.random(), self.rng.random()) } else { (0, 0) };
         let a = self.ab_mut(i);
         let d = a.config.tuning();
@@ -1127,9 +1174,10 @@ impl World {
         a.zeroangle = a.zerospeed * 0.024_999_976_158_142;
     }
 
-    /// `bot_choose_general_target` (`bot.c:1024`): poll one chr's sight per
-    /// frame, round-robin, then keep a target in sight, else take the nearest in
-    /// sight, else the nearest.
+    /// `bot_choose_general_target` (`bot.c:1588`): poll one chr's sight per
+    /// frame, round-robin; a downloader drops its target and an attacker keeps
+    /// its own in sight; then keep a target in sight, else take the nearest in
+    /// sight, else the nearest. A PeaceSim passes over the unarmed.
     fn bot_choose_general_target(&mut self, i: usize) {
         let n = self.chrs.len();
         let (lv60, lvframe60) = (self.lv.lvupdate60, self.lv.lvframe60);
@@ -1175,10 +1223,32 @@ impl World {
         }
         self.bot_update_zero_angle(i);
 
-        // Drop a dead target, one out of sight and invisible (cloaked), or a
-        // teammate (bot.c:1679). `// M11:` the peace and coward checks.
+        // A downloader has no target (bot.c:1650).
+        if self.ab(i).myaction == MyAction::Download {
+            self.bot_set_target(i, None);
+            return;
+        }
+        // An attacker keeps its own target while it is in sight (bot.c:1656).
+        if self.ab(i).myaction == MyAction::Attack {
+            if let Some(p) = self.ab(i).attackingplayernum {
+                if self.ab(i).chrsinsight[p] && !self.chr_is_dead(p) {
+                    self.bot_set_target(i, Some(p));
+                    return;
+                }
+            }
+        }
+
+        // Drop a dead target, one out of sight and invisible (cloaked), a
+        // teammate, an unarmed one for a PeaceSim, or one out of sight a
+        // CowardSim won't take on (bot.c:1665).
         if let Some(t) = self.chrs[i].target {
-            if self.chr_is_dead(t) || (!self.ab(i).targetinsight && self.bot_is_target_invisible(i, t)) || self.chr_compare_teams(i, t, crate::mp::Compare::Friends) {
+            let targetinsight = self.ab(i).targetinsight;
+            if self.chr_is_dead(t)
+                || (!targetinsight && self.bot_is_target_invisible(i, t))
+                || self.chr_compare_teams(i, t, crate::mp::Compare::Friends)
+                || !self.bot_passes_peace_check(i, t)
+                || (!targetinsight && !self.bot_passes_coward_check(i, t))
+            {
                 self.chrs[i].target = None;
             }
         }
@@ -1191,7 +1261,7 @@ impl World {
                     continue;
                 }
                 let k = k as usize;
-                if k != i && !self.chr_is_dead(k) && self.chr_compare_teams(i, k, crate::mp::Compare::Enemies) {
+                if k != i && !self.chr_is_dead(k) && self.chr_compare_teams(i, k, crate::mp::Compare::Enemies) && self.bot_passes_peace_check(i, k) {
                     if self.ab(i).chrsinsight[k] {
                         self.bot_set_target(i, Some(k));
                         return;
@@ -1220,7 +1290,7 @@ impl World {
                 continue;
             }
             let k = k as usize;
-            if self.ab(i).chrsinsight[k] && k != i && !self.chr_is_dead(k) && self.chr_compare_teams(i, k, crate::mp::Compare::Enemies) {
+            if self.ab(i).chrsinsight[k] && k != i && !self.chr_is_dead(k) && self.chr_compare_teams(i, k, crate::mp::Compare::Enemies) && self.bot_passes_peace_check(i, k) {
                 self.bot_set_target(i, Some(k));
                 return;
             }
@@ -1236,7 +1306,7 @@ impl World {
         let n = self.chrs.len();
         let c = &mut self.chrs[i];
         c.fadealpha = -1.0;
-        c.cloaked = false;
+        c.cloak.cloaked = false;
         c.aibot.as_mut().expect("a simulant").myaction = MyAction::MainLoop;
         if respawning {
             let r1 = self.rng.random();
@@ -1287,6 +1357,14 @@ impl World {
             a.canbreakfollow = old.canbreakfollow;
             a.gotopos = old.gotopos;
             a.gotorooms = old.gotorooms.clone();
+            // And a FeudSim's grudge and a human's orders' arguments.
+            a.feudplayernum = old.feudplayernum;
+            a.attackpropnum = old.attackpropnum;
+            a.followprotectpropnum = old.followprotectpropnum;
+            a.defendholdpos = old.defendholdpos;
+            a.defendholdrooms = old.defendholdrooms.clone();
+            a.defendholdrot = old.defendholdrot;
+            a.canbreakdefend = old.canbreakdefend;
             a.random2 = r2;
             a.randomfrac = rf;
             a.random2ttl60 = 0;
@@ -1361,3 +1439,5 @@ impl World {
 }
 #[cfg(test)]
 pub(crate) mod tests;
+#[cfg(test)]
+mod order_tests;

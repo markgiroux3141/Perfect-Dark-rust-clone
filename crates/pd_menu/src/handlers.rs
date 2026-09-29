@@ -2129,7 +2129,7 @@ pub fn menuhandler_inventory_list(pd: &mut MenuSystem, op: i32, _item: &'static 
         MENUOP_GET_OPTION_COUNT => data.value = p.inventory.len() as i32,
         MENUOP_GET_OPTION_TEXT => return p.inventory.get(data.value.max(0) as usize).map_or(String::new(), |r| r.name.clone()).into(),
         MENUOP_CONFIRM => {
-            // (A Combat Simulator inventory has no devices: every row equips.)
+            // The game equips the row's weapon, or switches its device.
             let playernum = pd.mr().playernum;
             pd.outcomes.push_back(super::Outcome::Equip { playernum, index: data.value.max(0) as usize });
         }

@@ -134,6 +134,17 @@ pub struct Projectile {
     pub startframe: i32,
     /// `targetprop`: what a homing rocket steers at (`trackedprops[0]`). M6.
     pub targetprop: Option<usize>,
+    /// A simulant's Slayer rocket (`rocket_tick_fbw`): its speed and heading
+    /// (`fbwrotx` pitch, `fbwroty` yaw), the tail smoke's timer, and its route
+    /// as pads (`waypads`, of which `numwaypads` are live) with `step` the one
+    /// it is flying to.
+    pub fbwspeed: f32,
+    pub fbwrotx: f32,
+    pub fbwroty: f32,
+    pub smoketimer240: i32,
+    pub waypads: Vec<u16>,
+    pub numwaypads: i32,
+    pub step: i32,
 }
 
 impl Default for Projectile {
@@ -166,6 +177,13 @@ impl Default for Projectile {
             lastwooshframe: -1,
             startframe: 0,
             targetprop: None,
+            fbwspeed: 0.0,
+            fbwrotx: 0.0,
+            fbwroty: 0.0,
+            smoketimer240: 0,
+            waypads: Vec::new(),
+            numwaypads: 0,
+            step: 0,
         }
     }
 }

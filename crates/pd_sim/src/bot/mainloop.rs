@@ -3,9 +3,10 @@
 //! what to do from its orders (`aibot->command`), and each action's check that
 //! it still makes sense.
 //!
-//! The orders a human gives from the pause menu (`AIBOTCMD_ATTACK`, `FOLLOW`,
-//! `PROTECT`, `DEFEND`, `HOLD`) and the personalities' targets (Venge, Feud,
-//! Judge, Prey, Coward's weapons) are M11's; the scenario orders are all here.
+//! The orders come from a human (`AIBOTCMD_ATTACK`, `FOLLOW`, `PROTECT`,
+//! `DEFEND`, `HOLD`, through the active menu, [`crate::player::activemenu`]) or
+//! from the scenario; with none that applies, the personalities (Venge, Feud,
+//! Judge, Prey) pick their own targets.
 
 use glam::Vec3;
 use pd_core::ids::*;
@@ -17,10 +18,59 @@ use crate::world::World;
 
 impl World {
     /// `bot_apply_scenario_command` (`bot.c:1287`).
-    fn bot_apply_scenario_command(&mut self, i: usize, command: u8) {
+    pub(crate) fn bot_apply_scenario_command(&mut self, i: usize, command: u8) {
         let a = self.ab_mut(i);
         a.command = command;
         a.forcemainloop = true;
+    }
+
+    /// `bot_apply_attack` (`bot.c:1244`): attack chr `target`.
+    pub fn bot_apply_attack(&mut self, i: usize, target: usize) {
+        let a = self.ab_mut(i);
+        a.command = AIBOTCMD_ATTACK;
+        a.attackpropnum = Some(target);
+        a.forcemainloop = true;
+    }
+
+    /// `bot_apply_follow` / `bot_apply_protect` (`bot.c:1251`, `:1258`): keep
+    /// near chr `leader`; Protect won't break off to fight.
+    pub(crate) fn bot_apply_follow(&mut self, i: usize, leader: usize, protect: bool) {
+        let a = self.ab_mut(i);
+        a.command = if protect { AIBOTCMD_PROTECT } else { AIBOTCMD_FOLLOW };
+        a.followprotectpropnum = Some(leader);
+        a.forcemainloop = true;
+    }
+
+    /// `bot_apply_defend` / `bot_apply_hold` (`bot.c:1265`, `:1276`): stand at
+    /// `pos`, facing `angle`; Hold won't break off to fight.
+    pub(crate) fn bot_apply_defend(&mut self, i: usize, pos: Vec3, rooms: &[u16], angle: f32, hold: bool) {
+        let a = self.ab_mut(i);
+        a.command = if hold { AIBOTCMD_HOLD } else { AIBOTCMD_DEFEND };
+        a.defendholdpos = pos;
+        // PD's `rooms_copy` writes the whole list into a one-room array
+        // (`defendholdrooms[1]`), running into the next field; kept whole here.
+        a.defendholdrooms = rooms.to_vec();
+        a.defendholdrot = angle;
+        a.forcemainloop = true;
+    }
+
+    /// `botcmd_apply` (`botcmd.c:196`): player `pi`'s order to simulant `i`
+    /// from the active menu. Attack picks its target in a dialog first
+    /// (`am_open_pick_target`): true means open it.
+    pub(crate) fn botcmd_apply(&mut self, i: usize, command: u8, pi: usize) -> bool {
+        // A player's chr index is its player number (players come first).
+        let chr = pi;
+        match command {
+            AIBOTCMD_ATTACK => return true,
+            AIBOTCMD_FOLLOW => self.bot_apply_follow(i, chr, false),
+            AIBOTCMD_PROTECT => self.bot_apply_follow(i, chr, true),
+            AIBOTCMD_DEFEND | AIBOTCMD_HOLD => {
+                let (pos, rooms, theta) = (self.chrs[chr].pos, self.chrs[chr].rooms.clone(), self.chrs[chr].theta());
+                self.bot_apply_defend(i, pos, &rooms, theta, command == AIBOTCMD_HOLD);
+            }
+            _ => self.bot_apply_scenario_command(i, command),
+        }
+        false
     }
 
     /// `bot_get_team_size` (`bot.c:2318`): every chr sharing its `chr->team`
@@ -108,6 +158,16 @@ impl World {
         closest.filter(|&(_, d)| d < range).map(|(j, _)| j)
     }
 
+    /// `bot_passes_peace_check` (`bot.c:1537`): a PeaceSim won't fight the
+    /// unarmed.
+    pub(crate) fn bot_passes_peace_check(&self, bot: usize, other: usize) -> bool {
+        if self.ab(bot).config.bottype != BOTTYPE_PEACE {
+            return true;
+        }
+        let w = self.bot_get_weapon_num(other);
+        w != WEAPON_NONE && w != WEAPON_UNARMED
+    }
+
     /// `bot_passes_coward_check` (`bot.c:1557`): a CowardSim fights only chrs
     /// whose weapon scores 30 below its own.
     pub(crate) fn bot_passes_coward_check(&self, bot: usize, other: usize) -> bool {
@@ -117,6 +177,40 @@ impl World {
         let (mine, _) = self.botinv_score_weapon(bot, self.ab(bot).weaponnum, FUNC_PRIMARY, 1, false, false, false);
         let (theirs, _) = self.botinv_score_weapon(bot, self.bot_get_weapon_num(other), FUNC_PRIMARY, 1, false, false, false);
         theirs < mine - 30
+    }
+
+    /// Starting or stopping the cloaks (`bot.c:2527`): the cloaking device
+    /// goes on to attack or download, else on with more than 20-40 s left and
+    /// off below 0-20 s (by `random1`); the RC-P120's needs the gun in hand
+    /// and plenty of rounds, more when not about to attack. `chr_update_cloak`
+    /// does the rest.
+    fn bot_consider_cloaks(&mut self, i: usize) {
+        let about = self.bot_is_about_to_attack(i, true);
+        let gset = self.res.gset.clone();
+        let downloading = self.ab(i).myaction == MyAction::Download;
+        let a = self.ab_mut(i);
+        let cloakqty = a.ammoheld[AMMOTYPE_CLOAK as usize];
+        if cloakqty > 0 && (about || downloading) {
+            a.cloakdeviceenabled = true;
+        } else if cloakqty > 1200 + ((a.random1 >> 5) % 1200) as i32 {
+            a.cloakdeviceenabled = true;
+        } else if cloakqty <= ((a.random1 >> 17) % 1200) as i32 {
+            a.cloakdeviceenabled = false;
+        }
+        if !a.cloakdeviceenabled && a.weaponnum == WEAPON_RCP120 {
+            let qty = a.botact_get_ammo_quantity_by_weapon(&gset, WEAPON_RCP120, FUNC_PRIMARY, true);
+            if about {
+                if qty > 200 + ((a.random1 >> 6) % 200) as i32 {
+                    a.rcp120cloakenabled = true;
+                } else if qty <= 30 + ((a.random1 >> 16) % 70) as i32 {
+                    a.rcp120cloakenabled = false;
+                }
+            } else {
+                a.rcp120cloakenabled = qty > 300 + ((a.random1 >> 12) % 500) as i32;
+            }
+        } else {
+            a.rcp120cloakenabled = false;
+        }
     }
 
     /// The scenario orders a simulant alone with its kind gives itself
@@ -246,12 +340,28 @@ impl World {
         Some(MyAction::GotoPos)
     }
 
-    /// What `aibot->command` asks for (`bot.c:2704`), the scenario orders.
+    /// What `aibot->command` asks for (`bot.c:2704`): a human's orders, then
+    /// the scenario ones.
     fn bot_choose_command_action(&mut self, i: usize) -> Option<MyAction> {
         let command = self.ab(i).command;
         let scen = self.setup.scenario;
         let teams = self.setup.teams_enabled();
         match command {
+            AIBOTCMD_ATTACK => {
+                let t = self.ab(i).attackpropnum?;
+                self.bot_choose_attack(i, t, true)
+            }
+            AIBOTCMD_FOLLOW | AIBOTCMD_PROTECT => {
+                let f = self.ab(i).followprotectpropnum;
+                let a = self.ab_mut(i);
+                a.canbreakfollow = command == AIBOTCMD_FOLLOW;
+                a.followingplayernum = f;
+                Some(MyAction::Follow)
+            }
+            AIBOTCMD_DEFEND | AIBOTCMD_HOLD => {
+                self.ab_mut(i).canbreakdefend = command == AIBOTCMD_DEFEND;
+                Some(MyAction::Defend)
+            }
             AIBOTCMD_GETCASE if scen == MPSCENARIO_CAPTURETHECASE && !self.ab(i).hascase => {
                 // The other teams' cases, but those carried by other teams.
                 let botteam = self.chr_team_index(i);
@@ -398,6 +508,69 @@ impl World {
         }
     }
 
+    /// With nothing else to do, the personalities' own targets (`bot.c:3050`):
+    /// a VengeSim goes after its last killer, a FeudSim after one chr all
+    /// match, a JudgeSim after a leader, a PreySim after the weakest.
+    fn bot_choose_personality_target(&mut self, i: usize) -> Option<MyAction> {
+        let attack = |w: &mut World, t: usize| {
+            let a = w.ab_mut(i);
+            a.attackingplayernum = Some(t);
+            a.abortattacktimer60 = -1;
+            Some(MyAction::Attack)
+        };
+        let lastkilled = usize::try_from(self.ab(i).lastkilledbyplayernum).ok();
+        match self.ab(i).config.bottype {
+            // No dead check (PD's): a dead killer fails the attack's check
+            // below and it is back in the main loop next tick.
+            BOTTYPE_VENGE => {
+                let k = lastkilled.filter(|&k| !self.bot_is_target_invisible(i, k))?;
+                attack(self, k)
+            }
+            BOTTYPE_FEUD => {
+                if self.ab(i).feudplayernum.is_none() {
+                    if let Some(k) = lastkilled.filter(|&k| !self.chr_compare_teams(i, k, crate::mp::Compare::Friends)) {
+                        self.ab_mut(i).feudplayernum = Some(k);
+                    }
+                }
+                let f = self.ab(i).feudplayernum.filter(|&f| !self.bot_is_target_invisible(i, f))?;
+                attack(self, f)
+            }
+            BOTTYPE_JUDGE => {
+                // PD's loop has no break, so the last eligible chr in ranking
+                // order wins: the worst placed, not the leader its comment names.
+                let rankings = self.mp_get_player_rankings();
+                let mut choice = None;
+                for r in &rankings.rankings {
+                    let Some(slot) = r.mpchr else { continue };
+                    let Some(k) = self.chrs.iter().position(|c| c.mpslot == slot) else { continue };
+                    if k != i && !self.chr_is_dead(k) && self.chr_compare_teams(i, k, crate::mp::Compare::Enemies) && !self.bot_is_target_invisible(i, k) {
+                        choice = Some(k);
+                    }
+                }
+                attack(self, choice?)
+            }
+            BOTTYPE_PREY => {
+                let mut weakest: Option<(usize, f32)> = None;
+                for k in 0..self.chrs.len() {
+                    if k != i && !self.chr_is_dead(k) && self.chr_compare_teams(i, k, crate::mp::Compare::Enemies) && !self.bot_is_target_invisible(i, k) {
+                        let c = &self.chrs[k];
+                        // A player's health is `bondhealth * 8`, a simulant's
+                        // its damage left.
+                        let health = match c.player {
+                            Some(p) => self.players[p].bondhealth * 8.0,
+                            None => c.maxdamage - c.damage,
+                        };
+                        if weakest.is_none_or(|(_, h)| health < h) {
+                            weakest = Some((k, health));
+                        }
+                    }
+                }
+                attack(self, weakest?.0)
+            }
+            _ => None,
+        }
+    }
+
     /// `chr_go_to_prop` (`chraction.c:7268`) for an object: its position, in
     /// its room.
     fn bot_go_to_obj(&mut self, i: usize, id: u32) -> bool {
@@ -413,8 +586,7 @@ impl World {
         if self.ab(i).weaponnum == WEAPON_LASER {
             self.ab_mut(i).loadedammo[HAND_RIGHT] = 999;
         }
-        // (bot.c:2527: the cloaking device and the RC-P120's cloak, which a
-        // downloader also uses: M11.)
+        self.bot_consider_cloaks(i);
         // A KazeSim attacks on sight.
         if self.ab(i).config.bottype == BOTTYPE_KAZE && self.chrs[i].target.is_some() && self.ab(i).targetinsight && self.ab(i).myaction != MyAction::Attack {
             self.ab_mut(i).forcemainloop = true;
@@ -449,8 +621,9 @@ impl World {
             if newaction.is_none() {
                 newaction = self.bot_choose_scenario_fallback(i);
             }
-            // (bot.c:3052: VengeSim, FeudSim, JudgeSim and PreySim's own
-            // targets: M11.)
+            if newaction.is_none() {
+                newaction = self.bot_choose_personality_target(i);
+            }
             if newaction.is_none() {
                 if let Some(t) = self.chrs[i].target {
                     if self.bot_passes_coward_check(i, t) {
@@ -498,6 +671,14 @@ impl World {
                             self.bot_set_target(i, None);
                         }
                     }
+                }
+                Some(MyAction::Defend) => {
+                    self.ab_mut(i).myaction = MyAction::Defend;
+                    if self.ab(i).canbreakdefend {
+                        self.bot_set_target(i, None);
+                    }
+                    let (pos, rooms) = (self.ab(i).defendholdpos, self.ab(i).defendholdrooms.clone());
+                    self.chr_go_to_room_pos(i, pos, &rooms);
                 }
                 Some(MyAction::GotoPos) => {
                     let (pos, gp, inlift) = (self.chrs[i].pos, self.ab(i).gotopos, self.chrs[i].inlift);
@@ -574,6 +755,35 @@ impl World {
                             self.ab_mut(i).myaction = MyAction::MainLoop;
                         }
                     }
+                }
+            }
+            MyAction::Defend => {
+                if !gopos {
+                    let d = (self.chrs[i].pos - self.ab(i).defendholdpos).abs();
+                    let lv60 = self.lv.lvupdate60;
+                    if self.ab(i).returntodefendtimer60 > 0 {
+                        self.ab_mut(i).returntodefendtimer60 -= lv60;
+                    }
+                    let target = self.chrs[i].target;
+                    if d.x > 40.0 || d.z > 40.0 || (d.y > 200.0 && !self.chrs[i].inlift) {
+                        // Wandered off: back to the spot, at most once a second.
+                        if self.ab(i).returntodefendtimer60 <= 0 {
+                            let (pos, rooms) = (self.ab(i).defendholdpos, self.ab(i).defendholdrooms.clone());
+                            self.chr_go_to_room_pos(i, pos, &rooms);
+                        }
+                    } else if self.ab(i).canbreakdefend && self.ab(i).targetinsight && target.is_some_and(|t| self.bot_passes_coward_check(i, t)) {
+                        let a = self.ab_mut(i);
+                        a.myaction = MyAction::Attack;
+                        a.attackingplayernum = target;
+                        a.abortattacktimer60 = 300;
+                        a.distmode = None;
+                    }
+                    if self.ab(i).returntodefendtimer60 <= 0 {
+                        self.ab_mut(i).returntodefendtimer60 = 60;
+                    }
+                }
+                if self.bot_find_pickup(i, botinv::PICKUPCRITERIA_CRITICAL).is_some() {
+                    self.ab_mut(i).myaction = MyAction::MainLoop;
                 }
             }
             MyAction::GotoPos => {

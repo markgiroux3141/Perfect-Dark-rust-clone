@@ -336,7 +336,7 @@ impl World {
         let teams = self.setup.options & MPOPTION_TEAMSENABLED != 0;
         let chr_team: Vec<u8> = self.chrs.iter().map(|c| c.team).collect();
         // CHRCFLAG_HIDDEN, cloaked, dead: not a target, not tracked.
-        let untargetable: Vec<bool> = (0..numchrs).map(|i| self.chrs[i].cloaked || self.chr_is_dead(i)).collect();
+        let untargetable: Vec<bool> = (0..numchrs).map(|i| self.chrs[i].cloak.cloaked || self.chr_is_dead(i)).collect();
         let isplayer: Vec<bool> = self.chrs.iter().map(|c| c.player.is_some()).collect();
         let positions: Vec<Vec3> = self.chrs.iter().map(|c| c.pos).collect();
         let level = self.level.clone();

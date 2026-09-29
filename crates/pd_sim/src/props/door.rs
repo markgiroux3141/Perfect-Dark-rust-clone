@@ -1228,6 +1228,9 @@ mod tests {
             let d = w.props.objs[i].door.as_ref().unwrap();
             if opened_at.is_none() && d.is_open() {
                 opened_at = Some(f);
+                // Felicity's setup (accel 0x2aaa, maxspeed 0x2c5, maxfrac
+                // 0xf333) through apply_speed: 148 ticks, about 2.5 s.
+                assert!((144..=150).contains(&f), "open {f} ticks after the use tap");
                 assert!(!crate::stage::rooms::portal_is_closed(w.portalflags[portal]), "the portal stays shut");
                 // Past perimfrac the block goes; short of it (Felicity's doors
                 // stop at 0.95 of 1.0) it has slid out of the doorway.

@@ -20,6 +20,7 @@
 //! 3. the 2D layer: the sight and the gun HUD, drawn on the CPU in PD pixels;
 //! 4. `lv_render`'s framebuffer effects over all of it ([`post`]).
 
+pub mod activemenu;
 pub mod bg;
 pub mod fx;
 pub mod health;
@@ -311,7 +312,8 @@ impl Renderer {
         // The simulants (`chr_render`, `chr.c:3378`): the body, its head and the
         // held guns, posed by the sim in world space. A dying chr's corpse fades
         // (`fadealpha`), a new life fades in over 2 s (`aibot->fadeintimer60`),
-        // both drawn see-through.
+        // and a cloak thins it to its shimmer (`chr_get_cloak_alpha`), all drawn
+        // see-through.
         // SUBST: PD lights a chr by its room (`chr_render`'s shade colour) /
         // lit as the objects are, from the chr's floor room's brightness.
         // Another human's body is not posed in M6 (see `pd_sim::gun::shot`).
@@ -320,6 +322,9 @@ impl Renderer {
             if let Some(a) = c.aibot.as_ref().filter(|a| a.fadeintimer60 > 0) {
                 alpha = alpha * (120 - a.fadeintimer60) as f32 * (1.0 / 120.0);
             }
+            // chr.c:3424 (no IR scanner in a match).
+            let cloak = c.cloak.alpha() as f32 / 255.0;
+            alpha = (alpha * cloak).trunc();
             if alpha <= 0.0 {
                 continue;
             }
@@ -338,7 +343,7 @@ impl Renderer {
             if let Some(e) = xray {
                 let Some(col) = xray::obj_colour(e, c.pos) else { continue };
                 frame.flat = [col[0], col[1], col[2], 1.0];
-                frame.misc[0] = col[3];
+                frame.misc[0] = col[3] * cloak;
                 xlu = true;
             }
             let joints: Vec<Mat4> = c.model.matrices.iter().map(|m| w2e * *m).collect();
@@ -443,6 +448,8 @@ impl Renderer {
                 fade: (p.health.colourscreen, p.health.colourscreenfrac),
                 hudmsgs: world.mp.hudmsgs.msgs.iter().filter(|m| m.playernum == pi).collect(),
                 scenario: world.scenario_hud(pi),
+                playernum: pi,
+                activemenu: world.am_render_in(pi),
             };
             let mut t = TextCtx { gfx: &mut self.hud_gfx, ts: &mut self.text, fonts, frac20: world.frac20 };
             hud::draw(&mut t, &hin);

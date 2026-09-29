@@ -313,12 +313,20 @@ impl World {
             roomflags: vec![0; nrooms],
             events: Vec::new(),
         };
+        // mp_reset's active menu orders (mplayer.c:286).
+        w.am_init_bot_commands();
         w.scenario_reset();
         w.setup_create_props();
         for i in 0..n {
+            // lv_reset's per-player resets (lv.c:421): am_reset, ..., the spawn,
+            // then with teams on the simulant teammates.
+            w.am_reset(i);
             let before: Vec<usize> = (0..i).collect();
             w.spawn_player(i, &before);
             w.player_spawn_inventory(i);
+            if w.setup.teams_enabled() {
+                w.playermgr_calculate_ai_buddy_nums(i);
+            }
         }
         w.mp_calculate_team_is_only_ai();
         Ok(w)
@@ -414,7 +422,7 @@ impl World {
         // chr_get_theta: BADDTOR2(360 - vv_theta).
         c.playertheta = pd_core::math::wrap_pos(pd_core::math::baddtor2(360.0 - p.theta));
         c.eyeheight = p.eyeheight;
-        c.cloaked = p.cloak.cloaked;
+        c.cloak = p.cloak;
         c.floorroom = p.floorroom;
         c.floortype = p.floortype;
         // The player's chr is the player's prop: its rooms.
@@ -522,6 +530,9 @@ impl World {
         let highlight = self.scenario_highlighted_rooms();
         self.lights.lighting_tick(&self.roomflags, self.lv.lvupdate240, &mut self.rng, &highlight);
         self.fx.boltbeams.tick(self.lv.lvupdate60freal);
+        // am_tick (lv.c:2319). SUBST: PD ticks the active menu before
+        // menu_tick / after it: the session runs the menus before the world.
+        self.am_tick(inputs);
         self.scenario_tick();
         if !self.mp.endscreen {
             self.props_tick();
@@ -551,6 +562,10 @@ impl World {
                 self.player_tick_slayer(i, input);
             } else {
                 self.players[i].tick(input, &self.lv, &env, &self.res, &mut self.rng, &mut self.events);
+                // bmove's am_open (bondmove.c:1256), after the tick here.
+                if std::mem::take(&mut self.players[i].am_open_request) {
+                    self.am_open(i);
+                }
                 self.players[i].cameramode = CAMERAMODE_DEFAULT;
                 self.player_update_rooms(i);
                 // The end of bwalk_tick (bondwalk.c:1834).
@@ -647,6 +662,8 @@ impl World {
                 self.inv_increment_held_time(i);
             }
             self.process_gun_events(i);
+            // am_render's writes (lv.c:1639).
+            self.am_render_sim(i);
             // player_render_hud's death sequence (`player.c:4546`).
             let input = if self.mp.players[i].withcontrol { inputs.get(i).unwrap_or(&idle) } else { &idle };
             let canrestart = !self.mp_is_paused() && self.mp.numreasonstoend == 0;

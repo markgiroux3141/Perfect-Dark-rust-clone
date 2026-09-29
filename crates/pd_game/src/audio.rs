@@ -115,7 +115,7 @@ impl SfxBank {
                         audio.stop_voice(v);
                     }
                 }
-                Event::Kill { .. } | Event::MpPushPauseDialog { .. } | Event::MpCloseMenus { .. } | Event::MpEndMatch => {}
+                Event::Kill { .. } | Event::MpPushPauseDialog { .. } | Event::AmOpenPickTarget { .. } | Event::MpCloseMenus { .. } | Event::MpEndMatch => {}
             }
         }
     }

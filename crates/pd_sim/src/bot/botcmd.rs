@@ -164,3 +164,26 @@ impl World {
         }
     }
 }
+
+/// `bot_get_command_name` (`bot.c:1219`): an order's name in the active menu,
+/// by `AIBOTCMD_*` (anything else is "Normal").
+pub fn bot_get_command_name(command: u8) -> pd_core::lang::Tx {
+    use pd_core::lang::{tx, LANGBANK_MISC};
+    const NAMES: [u16; 14] = [
+        175, // "Follow"
+        176, // "Attack"
+        177, // "Defend"
+        178, // "Hold"
+        179, // "Normal"
+        180, // "Download"
+        181, // "Get Case"
+        182, // "Tag Box"
+        209, // "Save Case"
+        210, // "Def Hill"
+        211, // "Hold Hill"
+        212, // "Get Case"
+        213, // "Pop Cap"
+        214, // "Protect"
+    ];
+    tx(LANGBANK_MISC, NAMES.get(command as usize).copied().unwrap_or(179))
+}

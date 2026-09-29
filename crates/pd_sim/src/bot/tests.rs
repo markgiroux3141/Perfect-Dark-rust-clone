@@ -444,7 +444,7 @@ fn the_rcp120_cloak_hides_the_player_from_a_simulant() {
         step(&mut w, &PlayerInput::default());
         harness::place(&mut w, 1, b, angle);
     }
-    assert!(w.players[0].cloak.cloaked && w.chrs[0].cloaked, "cloak on");
+    assert!(w.players[0].cloak.cloaked && w.chrs[0].cloak.cloaked, "cloak on");
     // Forget the player, then look for them for five seconds.
     let health = w.players[0].bondhealth;
     {
@@ -661,4 +661,59 @@ fn probe_arena_bots() {
             }
         }
     }
+}
+
+/// `botact_create_slayer_rocket` and `rocket_tick_fbw`: a simulant's Slayer
+/// rocket, launched at a target out of sight across Complex, flies the
+/// waypoints pad by pad and is let go of when it blows up. Turning slowly, it
+/// cuts corners and sometimes clips a doorway (PD's: it moves on to the next
+/// pad within 1 m of the last); of the pad pairs tried, some reach their
+/// target and blow up within 2.5 m of it.
+#[test]
+fn a_simulants_slayer_rocket_flies_the_waypoints_to_an_unseen_target() {
+    let (stage, level) = complex();
+    let floor = |p: usize| ground(level, stage.pads[p].pos);
+    let pairs: Vec<(usize, usize)> = stage
+        .spawn_pads
+        .iter()
+        .flat_map(|&p| stage.spawn_pads.iter().map(move |&q| (p, q)))
+        .filter(|&(p, q)| {
+            let (fa, fb) = (floor(p), floor(q));
+            fa.distance(fb) > 800.0 && !level.los(fa + Vec3::Y * 150.0, fb + Vec3::Y * 150.0)
+        })
+        .take(8)
+        .collect();
+    assert!(pairs.len() >= 4);
+    let mut reached = 0;
+    for &(a, b) in &pairs {
+        // A player (idle) for the objects' pass that flies projectiles.
+        let mut w = complex_world(1, 2, BOTDIFF_NORMAL, SPIKE_SEED);
+        w.bot_brains = false;
+        harness::step_idle(&mut w);
+        harness::place(&mut w, 1, floor(a), 0.0);
+        harness::place(&mut w, 2, floor(b), 0.0);
+        w.chrs[1].target = Some(2);
+        w.botact_create_slayer_rocket(1);
+        let Some(id) = w.chrs[1].aibot.as_ref().unwrap().skrocket else { continue };
+        let (mut closest, mut steps) = (f32::MAX, 0);
+        for _ in 0..60 * 20 {
+            harness::step_idle(&mut w);
+            if let Some(o) = w.props.get(id) {
+                closest = closest.min(o.pos.distance(w.chrs[2].pos));
+                steps = steps.max(o.projectile.as_ref().map_or(0, |p| p.step));
+            }
+            if w.chrs[1].aibot.as_ref().unwrap().skrocket.is_none() {
+                break;
+            }
+        }
+        let hurt = w.chrs[2].damage > 0.0 || w.chr_is_dead(2);
+        println!("pads {a:3} -> {b:3}: {} pads flown, closest {closest:.0} cm, hurt {hurt}", steps);
+        assert!(w.chrs[1].aibot.as_ref().unwrap().skrocket.is_none(), "the rocket is gone");
+        assert!(steps >= 1, "it flew its route");
+        if closest < 300.0 && hurt {
+            reached += 1;
+        }
+    }
+    println!("{reached} of {} reached their target", pairs.len());
+    assert!(reached >= 2, "only {reached} rockets reached their target");
 }

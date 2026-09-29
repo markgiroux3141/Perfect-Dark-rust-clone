@@ -29,6 +29,7 @@
 
 mod alloc;
 pub mod aim;
+pub mod cloak;
 pub mod body;
 mod damage;
 mod gopos;
@@ -208,8 +209,9 @@ pub struct Chr {
 
     /// `chr->target` (a chr index).
     pub target: Option<usize>,
-    /// `CHRHFLAG_CLOAKED`.
-    pub cloaked: bool,
+    /// `CHRHFLAG_CLOAKED`, the fade and the pause (a player's copied from
+    /// the player's).
+    pub cloak: cloak::ChrCloak,
     /// `chr->oldframe`, `chr->lastfootsample`: the footsteps' memory.
     pub oldframe: f32,
     pub lastfootsample: i32,
@@ -230,6 +232,9 @@ pub struct Chr {
     /// `chr->blurdrugamount`, `blurnumtimesdied`: the dizziness a punch or a
     /// tranquilizer leaves (a simulant's aim wobbles, a player's view blurs).
     pub blurdrugamount: i32,
+    /// `drugheadcount`, `drugheadsway`: the dizzy head's roll (degrees).
+    pub drugheadcount: i32,
+    pub drugheadsway: f32,
     pub blurnumtimesdied: i32,
     /// `chr->sleep`: ticks until the action next runs (`chra_tick`).
     pub sleep: i32,

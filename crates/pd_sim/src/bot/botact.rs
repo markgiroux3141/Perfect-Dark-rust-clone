@@ -62,6 +62,78 @@ impl World {
         }
     }
 
+    /// `chr_get_target_prop` (`chr.c:4937`) as a chr: the target, or with none
+    /// (PD's) player 1 (`g_Vars.players[chr->p1p2]`, `p1p2` 0 in a match).
+    pub(crate) fn chr_get_target_chr(&self, i: usize) -> Option<usize> {
+        self.chrs[i].target.or_else(|| (!self.players.is_empty()).then_some(0))
+    }
+
+    /// `botact_find_rocket_route` (`botact.c:440`): a route of up to 6
+    /// waypoints (on the chr's nav seed) into the rocket's `waypads`, false if
+    /// there is none longer than one.
+    pub(crate) fn botact_find_rocket_route(&mut self, i: usize, frompos: Vec3, fromrooms: &[u16], topos: Vec3, torooms: &[u16], proj: &mut crate::props::Projectile) -> bool {
+        let from = self.nav.waypoint_find_closest_to_pos(&self.level, frompos, fromrooms);
+        let to = self.nav.waypoint_find_closest_to_pos(&self.level, topos, torooms);
+        let (Some(from), Some(to)) = (from, to) else { return false };
+        let seed = crate::nav::chrnavseed(self.lv.lvframe60, self.chrs[i].chrnum);
+        let (route, n) = self.nav.nav_find_route(from, to, 6, seed, &mut self.rng);
+        if n <= 1 {
+            return false;
+        }
+        proj.waypads = route.iter().map(|&w| self.nav.waypoints[w].padnum as u16).collect();
+        proj.step = 0;
+        proj.numwaypads = proj.waypads.len() as i32;
+        true
+    }
+
+    /// `botact_get_rocket_next_step_pos` (`botact.c:476`): 1.5 m over the
+    /// floor under the pad.
+    pub(crate) fn botact_get_rocket_next_step_pos(&self, padnum: u16) -> Vec3 {
+        let Some(pad) = self.stage.pads.get(padnum as usize) else { return Vec3::ZERO };
+        let ground = self.level.cd_find_ground_at_cyl(pad.pos, 0.0).0;
+        Vec3::new(pad.pos.x, ground + 150.0, pad.pos.z)
+    }
+
+    /// `botact_create_slayer_rocket` (`botact.c:494`): a Slayer rocket in
+    /// fly-by-wire mode from the simulant along its aim at 7.5 cm a tick, with
+    /// the launch sound, routed to its target (blown at once if there is no
+    /// route). The simulant flies it (`aibot->skrocket`).
+    pub(crate) fn botact_create_slayer_rocket(&mut self, i: usize) {
+        let Some(mut o) = self.weapon_create_projectile(WEAPON_SLAYER, FUNC_SECONDARY, WEAPON_SKROCKET, FUNC_PRIMARY, i) else { return };
+        let yrot = self.chrs[i].chr_get_aimx_angle();
+        let xrot = self.chrs[i].chr_get_aimy_angle();
+        let dir = Vec3::new(xrot.cos() * yrot.sin(), xrot.sin(), xrot.cos() * yrot.cos());
+        let m = math::mul(&math::load_y_rotation(yrot), &math::load_x_rotation(xrot));
+        let pos = self.chrs[i].pos;
+        self.bgun_configure_projectile(&mut o, pos, &m, dir, Mat3::IDENTITY, i, pos);
+        o.timer240 = -1;
+        {
+            let p = o.projectile.as_mut().unwrap();
+            p.fbwspeed = 7.5;
+            p.fbwrotx = xrot;
+            p.fbwroty = yrot;
+            p.smoketimer240 = 0;
+            p.pickuptimer240 = 0x2000_0000;
+        }
+        // SFXMAP_8053_LAUNCH_ROCKET.
+        self.sound_at(0x8053, 1.0, o.pos, DEFAULT_DISTS);
+        let target = self.chr_get_target_chr(i);
+        let mut proj = o.projectile.take().unwrap();
+        let found = target.is_some_and(|t| {
+            let (tpos, trooms) = (self.chrs[t].pos, self.chrs[t].rooms.clone());
+            let rooms = self.chrs[i].rooms.clone();
+            self.botact_find_rocket_route(i, pos, &rooms, tpos, &trooms, &mut proj)
+        });
+        if found {
+            proj.nextsteppos = self.botact_get_rocket_next_step_pos(proj.waypads[0]);
+            self.ab_mut(i).skrocket = Some(o.id);
+        } else {
+            o.timer240 = 0;
+        }
+        o.projectile = Some(proj);
+        self.props.objs.push(o);
+    }
+
     /// `chr_shoot`'s projectile branch (`chraction.c:10132`) for simulant `i`'s
     /// launcher in `hand`, `vector` the (spread) shot direction and `gunpos` the
     /// muzzle: the rocket, bolt or grenade round, aimed at the target's feet
