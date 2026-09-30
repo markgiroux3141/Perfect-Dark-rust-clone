@@ -355,7 +355,8 @@ impl Stage {
 /// the file) gets the room it is in by the rooms' boxes, the room of the floor
 /// under it among those if there is one.
 fn setup_prepare_pads(pads: &mut [Pad], rooms: &BgRooms, geom: &LevelGeom) {
-    let level = TileLevel::new(geom.clone());
+    // Only the floor under each pad is asked for: no rooms' neighbours.
+    let level = TileLevel::without_room_neighbours(geom.clone());
     for pad in pads.iter_mut() {
         let (inrooms, aboverooms, _) = rooms.bg_find_rooms_by_pos(pad.pos, 20);
         let list = if !inrooms.is_empty() { inrooms } else { aboverooms };

@@ -343,7 +343,21 @@ pub enum TileFlag {
 }
 
 impl TileLevel {
+    /// Collision over `geom`, the rooms' neighbours inferred from where their
+    /// tiles' edges meet ([`infer_room_neighbours`]): a level without portals
+    /// (a fixture, a test level). A PD stage's come from its portals
+    /// ([`TileLevel::for_stage`]).
     pub fn new(geom: LevelGeom) -> Self {
+        let mut l = TileLevel::without_room_neighbours(geom);
+        l.room_neighbours = infer_room_neighbours(&l.geom);
+        l
+    }
+
+    /// Collision over `geom` with no rooms' neighbours, for a caller that
+    /// supplies them or never asks for them. Inferring them compares every
+    /// tile edge with every other, the one cost here that grows with the
+    /// square of the tiles (over a second on GoldenEye's Facility).
+    pub(crate) fn without_room_neighbours(geom: LevelGeom) -> Self {
         let bbox = geom
             .polys
             .iter()
@@ -364,7 +378,7 @@ impl TileLevel {
         let ladders = pick(&|p| p.ladder_flags() != 0);
         let crouch = pick(&|p| p.crouch);
         let duck = pick(&|p| p.duck);
-        let room_neighbours = infer_room_neighbours(&geom);
+        let room_neighbours = Default::default();
         let mut room_bboxes: std::collections::BTreeMap<u16, (Vec3, Vec3)> = Default::default();
         for (p, &(lo, hi)) in geom.polys.iter().zip(&bbox) {
             if let Some(r) = p.room {
@@ -380,11 +394,11 @@ impl TileLevel {
     /// from `g_Rooms[].bbmin/bbmax`, in place of what [`TileLevel::new`] infers
     /// from the tiles.
     pub fn for_stage(stage: &super::Stage) -> Self {
-        let mut l = TileLevel::new(stage.geom.clone());
         let rooms = &stage.rooms;
         if rooms.portals.is_empty() {
-            return l; // a fixture
+            return TileLevel::new(stage.geom.clone()); // a fixture
         }
+        let mut l = TileLevel::without_room_neighbours(stage.geom.clone());
         l.room_neighbours = (1..rooms.roomcount()).map(|r| (r as u16, rooms.bg_room_get_neighbours(r, usize::MAX))).collect();
         l.room_bboxes = (1..rooms.roomcount()).map(|r| (r as u16, (rooms.rooms[r].bbmin, rooms.rooms[r].bbmax))).collect();
         l

@@ -114,6 +114,38 @@ fn lit_frame(proj: Mat4, look: Vec3, up: Vec3, lights: (f32, f32, Vec3), envcol:
     f
 }
 
+/// The colour a prop's shade starts from, 0..1: the floor under `pos`
+/// reduced to its tint, the lowest component 0 and the highest the spread
+/// (`prop_calculate_shade_colour`, `propobj.c:1623-1690`), so a grey or white
+/// floor gives black. PD merges it toward the sky in the fog
+/// (`obj_merge_colour_fracs`) for objects and chrs alike; `None` with no floor.
+/// SUBST: the rest of `shadecol` (the room's light, the brightness in its
+/// alpha, the halving it eases in by) waits for the props' lighting port / the
+/// floor's tint, with the frame's alpha.
+fn floor_tint(level: &pd_sim::stage::TileLevel, pos: Vec3) -> Option<[f32; 3]> {
+    let (_, poly) = level.cd_find_ground_at_cyl(pos, 1.0);
+    let c = level.geom.polys[poly?].floorcol;
+    let mut n = [8, 4, 0].map(|s| (((c >> s) & 0xf) * 17) as i32);
+    let (mut max, mut min) = if n[1] > n[0] { (1, 0) } else { (0, 1) };
+    let med;
+    if n[2] > n[max] {
+        med = max;
+        max = 2;
+    } else if n[2] > n[min] {
+        med = 2;
+    } else {
+        med = min;
+        min = 2;
+    }
+    if n[max] > 0 {
+        let (hi, lo) = (n[max], n[min]);
+        n[med] = n[med] * (hi - lo) / hi;
+        n[min] = 0;
+        n[max] = hi - lo;
+    }
+    Some(n.map(|v| v as f32 / 255.0))
+}
+
 /// `prop_calculate_shade_colour`'s `scenario_highlight_room(prop->rooms[0])`
 /// (`propobj.c:1647`): a prop in King of the Hill's hill or a Capture the Case
 /// base takes the room's tint on its light.
@@ -380,35 +412,10 @@ impl Renderer {
                 frame.fogcol = h.map(|v| v as f32 / 255.0);
             }
             if let (ShadeMode::Frac(a), Some(bg)) = (shade, self.bg.as_ref()) {
-                // PD merges `obj->shadecol` toward the sky: the colour of the floor
-                // under the object reduced to its tint, the lowest component 0,
-                // the highest the spread (`prop_calculate_shade_colour`,
-                // `propobj.c:1623-1690`), so a grey or white floor's is black.
-                // SUBST: the rest of `shadecol` (the room's light, the brightness
-                // in its alpha, the halving it eases in by) waits for the objects'
-                // lighting port (above) / the floor's tint with the frame's alpha.
+                // PD merges `obj->shadecol` toward the sky (`propobj.c:12876`).
                 if highlight.is_none() {
-                    if let (_, Some(poly)) = world.level.cd_find_ground_at_cyl(o.pos, 1.0) {
-                        let c = world.level.geom.polys[poly].floorcol;
-                        let mut n = [8, 4, 0].map(|s| (((c >> s) & 0xf) * 17) as i32);
-                        let (mut max, mut min) = if n[1] > n[0] { (1, 0) } else { (0, 1) };
-                        let med;
-                        if n[2] > n[max] {
-                            med = max;
-                            max = 2;
-                        } else if n[2] > n[min] {
-                            med = 2;
-                        } else {
-                            med = min;
-                            min = 2;
-                        }
-                        if n[max] > 0 {
-                            let (hi, lo) = (n[max], n[min]);
-                            n[med] = n[med] * (hi - lo) / hi;
-                            n[min] = 0;
-                            n[max] = hi - lo;
-                        }
-                        frame.fogcol = [n[0] as f32 / 255.0, n[1] as f32 / 255.0, n[2] as f32 / 255.0, frame.fogcol[3]];
+                    if let Some(t) = floor_tint(&world.level, o.pos) {
+                        frame.fogcol = [t[0], t[1], t[2], frame.fogcol[3]];
                     }
                 }
                 frame.fogcol = bg::obj_merge_colour_fracs(frame.fogcol, sky_f32(bg), a);
@@ -460,10 +467,18 @@ impl Renderer {
             tint_frame(&mut frame, c.rooms.first().and_then(|&r| world.scenario_highlight_room(r)));
             // The fog colour: the highlight (scenario_highlight_prop,
             // chr.c:3482) in place of the shade colour.
-            if let Some(h) = world.scenario_highlight_chr(pi, ci) {
+            let highlight = world.scenario_highlight_chr(pi, ci);
+            if let Some(h) = highlight {
                 frame.fogcol = h.map(|v| v as f32 / 255.0);
             }
             if let (ShadeMode::Frac(a), Some(bg)) = (shade, self.bg.as_ref()) {
+                // PD merges `chr->shadecol` toward the sky (`chr.c:3475-3497`),
+                // made as an object's is.
+                if highlight.is_none() {
+                    if let Some(t) = floor_tint(&world.level, c.pos) {
+                        frame.fogcol = [t[0], t[1], t[2], frame.fogcol[3]];
+                    }
+                }
                 frame.fogcol = bg::obj_merge_colour_fracs(frame.fogcol, sky_f32(bg), a);
             }
             let mut xlu = alpha < 255.0;
