@@ -13,7 +13,7 @@ const FLOOR: u32 = GEOFLAG_FLOOR1 | GEOFLAG_FLOOR2 | GEOFLAG_BLOCK_SIGHT | GEOFL
 const WALL: u32 = GEOFLAG_WALL | GEOFLAG_BLOCK_SIGHT | GEOFLAG_BLOCK_SHOOT;
 
 fn col(verts: [Vec3; 4], flags: u32) -> ColPoly {
-    ColPoly { verts: verts.to_vec(), flags, floortype: FLOORTYPE_DIRT, grab: true }
+    ColPoly { verts: verts.to_vec(), flags, floortype: FLOORTYPE_DIRT, grab: true, floorcol: 0 }
 }
 
 /// A horizontal quad at `y` over `lo..hi` (x, z).
@@ -218,7 +218,7 @@ fn facility_comes_from_the_goldeneye_rom() {
     let _ = std::fs::remove_dir_all(&dir);
     let assets = manifest.join("..").join("..").join("assets");
     let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None };
-    let report = crate::import(&r, &paths).unwrap();
+    let report = crate::import(&r, &paths, &crate::layout::Layout::new()).unwrap();
     let a = pd_core::assets::AssetDir::new(&assets).with_custom_dir(&dir);
     let stage = Arc::new(pd_sim::stage::Stage::load(&a, "facility").unwrap());
     assert_eq!(stage.rooms.roomcount(), 78, "GE's rooms 1..77 and PD's room 0");
@@ -258,7 +258,7 @@ fn facility_comes_from_the_goldeneye_rom() {
         for f in 0..34 {
             w.step(4, &[PlayerInput { use_held: (30..33).contains(&f), ..Default::default() }]);
         }
-        let opened = (0..600).any(|f| {
+        let opened = (0..600).any(|_| {
             w.step(4, &[PlayerInput::default()]);
             let d = w.props.objs[i].door.as_ref().unwrap();
 
@@ -266,5 +266,175 @@ fn facility_comes_from_the_goldeneye_rom() {
         });
         assert!(opened, "door {i} (type {ty}) never opened for a use");
     }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A rebuilt arena's portals are found from its open edges alone: on
+/// Complex's own rooms, that finds every room pair Complex joins and no other,
+/// each of its portals' corners on the opening found (two portals between one
+/// pair, in one wall, come out as one opening over both).
+#[test]
+fn portals_are_found_where_complex_has_them() {
+    use std::collections::HashSet;
+    let (rooms, portals) = crate::pd::test_access::arena_rooms("ref");
+    let found = crate::pd::test_access::portals_of(&rooms);
+    let want: HashSet<[u16; 2]> = portals.iter().map(|p| p.0).collect();
+    let got: HashSet<[u16; 2]> = found.iter().map(|p| p.0).collect();
+    assert_eq!(got, want, "the room pairs joined");
+    for (rs, verts) in &portals {
+        for v in verts {
+            assert!(found.iter().any(|(fr, hull)| fr == rs && crate::pd::test_access::on(*v, hull)), "portal {rs:x?}: corner {v} is on no opening found");
+        }
+    }
+}
+
+/// Very Complex (the Blender MCP repo's Complex extended underground), rebuilt
+/// over Complex: Complex's 44 rooms and 60 portals kept, its 4 changed and 8
+/// added rooms joined by the portals found, its whole setup where Complex has
+/// it, and the new rooms routed. Needs the repo's glTF (the recipe's path);
+/// without it, says so and passes.
+#[test]
+fn very_complex_is_complex_rebuilt() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let r = Recipe::load(&manifest.join("levels").join("verycomplex.json")).unwrap();
+    let Source::Pd(p) = &r.source else { panic!("verycomplex.json is not a rebuilt PD arena") };
+    if !std::path::Path::new(&p.glb).exists() {
+        eprintln!("skipped: no glTF at {}", p.glb);
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("pd_import_vc_test_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let assets = manifest.join("..").join("..").join("assets");
+    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None };
+    let report = crate::import(&r, &paths, &crate::layout::Layout::new()).unwrap();
+    let line = |start: &str| report.iter().find(|l| l.starts_with(start)).unwrap_or_else(|| panic!("no {start:?} in {report:#?}")).clone();
+    assert!(line("base:").ends_with("40 the arena's, changed [14, 22, 25, 2a], added [2d, 2e, 2f, 30, 31, 32, 33, 34]"), "{}", line("base:"));
+    assert!(line("tiles:").contains("14 dropped"), "the pool's 8 walls and the 3 walls opened: {}", line("tiles:"));
+
+    let a = pd_core::assets::AssetDir::new(&assets).with_custom_dir(&dir);
+    let vc = pd_sim::stage::Stage::load(&a, "verycomplex").unwrap();
+    let complex = pd_sim::stage::Stage::load(&a, "ref").unwrap();
+    assert_eq!(vc.rooms.roomcount(), 53, "rooms 1..0x34 and PD's room 0");
+    assert_eq!(vc.rooms.portals.len(), 60 + 12);
+    // Complex's setup, on Complex's pads where Complex has them.
+    assert_eq!(vc.intro, complex.intro);
+    assert_eq!(vc.props, complex.props);
+    assert_eq!(vc.spawn_pads, complex.spawn_pads);
+    for prop in vc.intro.iter().chain(&vc.props) {
+        for k in ["pad", "chr"] {
+            if let Some(pad) = prop[k].as_u64() {
+                assert_eq!(vc.pads[pad as usize].pos, complex.pads[pad as usize].pos, "{prop}");
+            }
+        }
+    }
+    // The portals found stay as written through PD's `bg_init_portal` (its
+    // room swaps go by the rooms' centres, which a rebuilt room needn't keep
+    // on its side), and the portal pass sees through the two that came out
+    // flipped or short at first: the undercroft's exit to the red corridor,
+    // the hall's windows into the base, grilles and all.
+    let bg: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join("stages/verycomplex/bg.json")).unwrap()).unwrap();
+    for (i, p) in vc.rooms.portals.iter().enumerate().skip(60) {
+        let rs = &bg["portals"][i]["rooms"];
+        assert_eq!([p.room1, p.room2], [rs[0].as_u64().unwrap() as u16, rs[1].as_u64().unwrap() as u16], "portal {i}: PD swapped its rooms");
+        let mut n = Vec3::ZERO;
+        for k in 0..p.verts.len() {
+            let (a, b) = (p.verts[k], p.verts[(k + 1) % p.verts.len()]);
+            n += Vec3::new((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y));
+        }
+        assert!(p.metric.normal.dot(-n) > 0.0, "portal {i}: PD turned its normal");
+    }
+    let open = vc.rooms.initial_portal_flags();
+    // The F1 panel's feet and θ (the look is (-sin θ, cos θ)).
+    for (feet, theta, room, behind) in [(Vec3::new(-4269.0, -552.0, -1351.0), 166.1f32, 0x2d, 0x2f), (Vec3::new(-969.0, -552.0, -1395.0), 50.6, 0x31, 0x33)] {
+        let t = theta.to_radians();
+        let mut c = pd_sim::player::camera::Camera::default();
+        let eye = feet + Vec3::Y * 159.0;
+        c.player_allocate_matrices(eye, Vec3::new(-t.sin(), 0.0, t.cos()), Vec3::Y);
+        let cam = pd_sim::stage::portals::PortalCam {
+            world_to_screen: c.world_to_screen,
+            cam_pos: eye,
+            c_screenleft: c.c_screenleft,
+            c_screentop: c.c_screentop,
+            c_halfwidth: c.c_halfwidth,
+            c_halfheight: c.c_halfheight,
+            c_recipscalex: 1.0 / c.c_scalex,
+            c_recipscaley: 1.0 / c.c_scaley,
+            view: pd_sim::stage::portals::PortalCam::screen_properties(0.0, 0.0, 320.0, 220.0, 320.0, 220.0),
+            zfar: 10000.0,
+        };
+        let v = pd_sim::stage::portals::bg_tick_portals(&vc.rooms, &open, &cam, room);
+        assert!(v.is_onscreen(behind), "from room {room:#x} at {feet}, room {behind:#x} isn't drawn: {:?}", v.drawslots.iter().map(|s| s.roomnum).collect::<Vec<_>>());
+        if room == 0x31 {
+            // The windows' portal reaches down past the grilles to the base's floor.
+            let w = vc.rooms.portals.iter().find(|p| [p.room1, p.room2].contains(&0x31) && [p.room1, p.room2].contains(&0x33)).unwrap();
+            assert_eq!(w.verts.iter().map(|v| v.y).fold(f32::MAX, f32::min), -552.0);
+        }
+    }
+    // Every new room is on the simulants' graph.
+    let routed = line("reachable waypoints in the new and changed rooms:");
+    for part in routed.split_once(": ").unwrap().1.split(", ") {
+        let n: usize = part.split_once(": ").unwrap().1.parse().unwrap();
+        assert!(n > 0, "room {part}: no waypoint reaches it ({routed})");
+    }
+    assert!(line("the setup:").contains(" 0 of them over 3 m"), "{}", line("the setup:"));
+    assert!(report.iter().any(|l| l.starts_with("check: a minute")), "{report:?}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// CI Felicity (the Blender MCP repo's `felicity_ci.py`): CI Training, moved
+/// 60 m west, and Felicity, turned 120° and moved, joined by a hall. Laid over
+/// both stages: CI's from the decomp (it is no arena), Felicity's from
+/// `assets/`, each room recognised where the recipe's `bases` put it. The
+/// geometry step only (the waypoints take minutes). Needs the repo's glTF and
+/// the decomp; without them, says so and passes.
+#[test]
+fn ci_felicity_is_two_stages_fused() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let r = Recipe::load(&manifest.join("levels").join("cifelicity.json")).unwrap();
+    let Source::Pd(p) = &r.source else { panic!("cifelicity.json is not a rebuilt PD level") };
+    let decomp = manifest.join("..").join("..").join("reference").join("pd-decomp").join("src");
+    if !std::path::Path::new(&p.glb).exists() || !decomp.is_dir() {
+        eprintln!("skipped: no glTF at {} or no decomp at {}", p.glb, decomp.display());
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("pd_import_cf_test_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let assets = manifest.join("..").join("..").join("assets");
+    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None };
+    let (stage_dir, data) = crate::geometry(&r, &paths).unwrap();
+    let line = |start: &str| data.report.iter().find(|l| l.starts_with(start)).unwrap_or_else(|| panic!("no {start:?} in {:#?}", data.report)).clone();
+    // CI's rooms 1..=0x8c, Felicity's after them; the rooms the hall cut into
+    // changed (CI's 0x44 and Felicity's 0x10, now 0x9c, each a doorway; CI's
+    // 0x2c and 0x3d lost a face each), the hall added.
+    assert!(line("base:").ends_with("175 the arena's, changed [2c, 3d, 44, 9c], added [b4]"), "{}", line("base:"));
+    // Felicity's rooms land on its own triangles turned 120°, as CI's moved.
+    assert!(line("conversion:").contains("within 0.03 texels and 0 colour steps"), "{}", line("conversion:"));
+    assert!(line("portals:").ends_with("2 found to the rebuilt rooms: 44->b4 (6 verts), 9c->b4 (7 verts)"), "{}", line("portals:"));
+    assert!(line("textures:").contains("58 of them not in assets/"), "{}", line("textures:"));
+    let crate::SourceHow::Generate(markers) = &data.how else { panic!("a fused level's setup is generated") };
+    assert_eq!(markers.len(), 12 + 10, "Felicity's MP spawns and weapons");
+
+    // As the game loads it (no gameplay data yet).
+    crate::write::write_pads(&stage_dir, &r, &crate::write::Gameplay::default()).unwrap();
+    crate::write::write_setup(&stage_dir, &r, &crate::write::Gameplay::default()).unwrap();
+    let a = pd_core::assets::AssetDir::new(&assets).with_custom_dir(&dir);
+    let cf = pd_sim::stage::Stage::load(&a, "cifelicity").unwrap();
+    let fel = pd_sim::stage::Stage::load(&a, "mp11").unwrap();
+    assert_eq!(cf.rooms.roomcount(), 0xb5, "rooms 1..0xb4 and PD's room 0");
+    assert_eq!(cf.rooms.portals.len(), 178 + fel.rooms.portals.len() + 2);
+    // A portal of Felicity's, moved, joins the same rooms, and PD's
+    // `bg_init_portal` keeps its sides.
+    let (i, fp) = fel.rooms.portals.iter().enumerate().next().unwrap();
+    let moved = &cf.rooms.portals[178 + i];
+    assert_eq!([moved.room1, moved.room2], [fp.room1 + 0x8c, fp.room2 + 0x8c]);
+    let t = 120f32.to_radians();
+    let turned = Vec3::new(fp.metric.normal.x * t.cos() + fp.metric.normal.z * t.sin(), fp.metric.normal.y, fp.metric.normal.z * t.cos() - fp.metric.normal.x * t.sin());
+    assert!(moved.metric.normal.normalize().dot(turned.normalize()) > 0.999, "{} vs {turned}", moved.metric.normal);
+    // The hall's ceiling is CI's 0x249, whose surface types (footsteps, shot
+    // effects) come from the stage's own texture entry: no arena draws it.
+    let hit = pd_sim::stage::bghit::BgHitMesh::load(&a, "cifelicity").unwrap().bg_test_hit(Vec3::new(-9700.0, 400.0, -1670.0), Vec3::new(-9700.0, 700.0, -1670.0)).unwrap();
+    assert_eq!(hit.room, 0xb4);
+    assert_eq!(hit.surface, Some(pd_sim::stage::bghit::TexSurface { soundsurfacetype: 1, surfacetype: 8 }));
+    assert!(dir.join("textures").join("0249.png").exists());
     std::fs::remove_dir_all(&dir).unwrap();
 }

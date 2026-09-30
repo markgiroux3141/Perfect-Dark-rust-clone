@@ -1,6 +1,6 @@
 # Architecture
 
-A faithful recreation of Perfect Dark's **Combat Simulator** in Rust. It covers the Perfect Menu, every Combat Simulator setup dialog, the 16 MP arenas, the six scenarios, simulants, and the full MP arsenal, all behaving the way the NTSC-final ROM does. There is no solo campaign, co-op or counter-op, and no level editor; levels from other games can be converted into arenas offline (`pd_import`, [D10](#decisions)).
+A faithful recreation of Perfect Dark's **Combat Simulator** in Rust. It covers the Perfect Menu, every Combat Simulator setup dialog, the 16 MP arenas, the six scenarios, simulants, and the full MP arsenal, all behaving the way the NTSC-final ROM does. There is no solo campaign, co-op or counter-op. Levels from other games, or any glTF, can be converted into arenas offline (`pd_import`, [D10](#decisions)), and their items, waypoints and doors placed by hand in `pd_edit` ([D11](#decisions)); modelling is done in other tools.
 
 The work so far lives as five spikes in `D:\Claude Code Projects\Hide and Seek Level Builder` (the "old repo"). Each is a function-by-function port of the decomp that has been verified by tests and playtests. This repo does not re-port what those spikes already got right. It **moves that code into a structure it can grow in**, merges the duplicates the spikes accumulated, and cuts the ties to the hide-and-seek game. Their measured findings are kept in [spike-notes/](spike-notes/).
 
@@ -24,6 +24,7 @@ pd_game ──► pd_render ──► engine
 
 pd_tools ──► everything (headless snapshots, probes, debug viewers)
 pd_import ──► pd_sim, pd_core (offline: another game's level into stage files)
+pd_edit ──► pd_import, pd_render, engine, ... (the level editor, a window)
 ```
 
 Arrows point at what a crate may use. Nothing points back up.
@@ -38,7 +39,8 @@ Arrows point at what a crate may use. Nothing points back up.
 | **`pd_render`** | PD on the GPU: BG, every model through the one combiner path, effects, HUD canvas (radar, sights, shields), x-ray, framebuffer post, a `View` per player laid into the frame (`Renderer::render_views`: split screen) | write to the world |
 | **`pd_game`** | the `perfect_dark` binary: state machine (Menus → Match → Results), device → N64 controller mapping, event → voice routing, the music's frames onto an engine stream, the Game Pak's EEPROM kept in a file (`save`), presentation settings; its library half, `session`, couples a match with the menus over it (pause, end screens) for the binary and `pd_snapshot` | contain game rules |
 | **`pd_tools`** | `pd_snapshot` (offscreen PNGs of menus, guns, stages, matches, pickups), probes, offline audio renders (`pd_music`: a tune, or a menu → match → death → end flow, to a WAV), the bot/nav debug viewer | ship in the game |
-| **`pd_import`** | the custom level importer: a recipe (`levels/<code>.json`), the source importers (`oot`: Ocarina of Time scenes from the OoT Clone repo's extractor; `ge`: GoldenEye 007 levels, which `tools/ge-extract` converts from the ROM straight into PD's stage formats, rooms, portals, tiles, doors and door models included) into one `LevelSource`, the collision preprocessing (step risers, ledges as ladders, water), rooms and portals by a k-d split, the four stage files, the gameplay data (`nav::gen`'s waypoints baked in, spawns, weapons and ammo, hills, bases, cover), a check match; headless | ship in the game; be needed at run time |
+| **`pd_edit`** | the level editor: a custom level's layout (items; waypoints and doors to come) edited over the stage as the game loads it, in a fly-through view (`pd_render::Renderer::render_free`) with an egui panel; it runs `pd_import` to place the layout and to import a new glTF; `pd_edit --shot` renders its view to a PNG | ship in the game; hold level data of its own (the layout file is `pd_import`'s) |
+| **`pd_import`** | the custom level importer: a recipe (`levels/<code>.json`), the source importers (`oot`: Ocarina of Time scenes from the OoT Clone repo's extractor; `ge`: GoldenEye 007 levels, which `tools/ge-extract` converts from the ROM straight into PD's stage formats, rooms, portals, tiles, doors and door models included; `pd`: one of PD's arenas rebuilt in Blender, a glTF laid over the arena room by room, its unchanged rooms' data kept, tiles and portals made for the rest, its setup kept; or several of PD's stages fused, each turned and moved into place) into one `LevelSource`, the collision preprocessing (step risers, ledges as ladders, water), rooms and portals by a k-d split, the four stage files, the gameplay data (`nav::gen`'s waypoints baked in, spawns, weapons and ammo, hills, bases, cover), a check match; headless | ship in the game; be needed at run time |
 
 ### Why these boundaries
 
@@ -145,11 +147,17 @@ custom/
   models/<stem>.json + .bin  a level's own models (GoldenEye's doors), in the one model format
   models/index.json          their rows, beside assets/' index (MODEL_* from CUSTOM_MODELNUMS, 0x1000-0x1fff)
   ge/tex/<nnnn>.png          GoldenEye images by image number (ids 0x10000 | n), shared by GE levels and models
+  textures/<nnnn>.png        PD pool textures a level draws that assets/ lacks (CI's, for CI Felicity), at assets/' path
+  cache/nav/                 the waypoint graphs, by a hash of each stage's geometry (pd_import --place)
+  cache/pd/                  PD stages that aren't arenas, exported from the decomp to build a level over
+                             (pd_stage.py --base: stages/<code>/ bg + tiles, textures/ + index.json)
 ```
 
 A custom stage is an arena to everything that loads one: the menus list it in a "Custom" group, `AssetDir::stage_code` resolves its number, `Stage::load` and `StageBg::load` read it like any other, and `ModelStore` takes the custom models' rows beside PD's (never replacing one of PD's).
 
 **GoldenEye levels** (`tools/ge-extract`, run by `pd_import`) need no made-up structure: GoldenEye is PD's ancestor in every part PD's game runs on (rooms and portals, floor tiles, pads, doors, the display-list dialect, the image format), so a GE level is converted through PD's own exporters (`pd_tex`, `pd_fpgun.Interp`, `pd_models.write_model`) and only what an arena needs besides (spawns, weapons, waypoints) is generated. The differences are made up for there, in data: the walls GE implies at unlinked tile edges, the portals moved onto their doors' planes, the blender's `FORCE_BL` rule (`ge_gbi`), PD's own fog rewrite of the rooms' combiners. The porting guide, with every lesson learned, is [GOLDENEYE.md](GOLDENEYE.md).
+
+**PD arenas rebuilt in Blender** (`pd_import`'s `pd` source: the Blender MCP repo's levels, e.g. Very Complex from Complex) are laid over the arena they came from: a room whose triangles are the arena's keeps its batches, tiles and portals; a changed or added room is drawn from the glTF on the arena's own materials, its tiles made from its triangles by the arena's rules and its openings to other rooms found as portals from the open edges; the arena's setup is kept on its pads and only the waypoints are generated. Several of PD's stages can be **fused** the same way (CI Felicity: CI Training and Felicity joined by a hall): each stage is turned and moved to where the glTF has it and numbered after the one before (the recipe's `bases`), the stages are merged into one arena to lay the glTF over (materials, textures, batches, rooms, portals, lights, tiles), and the gameplay data is generated, preferring the stages' MP spots. A stage that isn't an arena is exported from the decomp into `custom/cache/pd/` on the first import, and the textures `assets/` lacks go into `custom/textures/`, their surface types into the stage's own texture entries.
 ### Pipeline
 
 `tools/pd-assets/` holds the Python exporters from the spikes: stdlib only, except the numpy/Pillow preview tool. They read `reference/pd-decomp` (the decomp's own `tools/extract` must have run once against the ROM; see [reference/README.md](../reference/README.md)). One driver, `build_assets.py`, runs them all into `assets/` and writes `MANIFEST.json`; every path comes from `pd_paths.py`. Individual exporters stay runnable on their own. `check_against_spikes.py` compares `assets/` with the old repo's per-feature exports and names every intended difference.
@@ -234,6 +242,7 @@ Where each spike file goes. Paths on the left are under `native/crates/game/src/
 | D8 | PD arenas route on PD's own waypoint graph; our generator (`pd_sim::nav`) is kept, tested and selectable | This is a faithful recreation, so PD's graph is the behaviour. The generator (which passed the Complex A/B) stays because it takes generic geometry and serves any level PD has no graph for |
 | D9 | Saves go through PD's own file system (`pak.c`) on the Game Pak's 2 KB EEPROM, kept as a file | Everything around a save stays PD's: the swap files, four of each type, the file manager's dialogs and free spaces, the GUIDs. No Controller Pak is plugged in, a state PD handles. The file is the chip's bytes, so an emulator's 16 Kbit `.eep` loads |
 | D10 | Levels from other games are converted **offline** into PD's own stage format (`pd_import`); the run time gains nothing but a second asset root, a menu group and PD's fog | The game stays one path: a custom arena is four stage files like an arena's. Everything such a level lacks (baked lighting, rooms and portals, PD-style collision, waypoints, spawns, pickups, scenario pads) is made ahead of time, and checked by loading the stage as the game does and playing a match on it |
+| D11 | A level editor (`pd_edit`) for placing things in imported levels (items, waypoints, doors), not for modelling. Its edits are a committed layout file per level that `pd_import` reads; the editor runs the importer, it is not a second pipeline | Generated placement is a starting point the user wants to fix by hand, and a glTF from any tool needs the gameplay data PD's arenas carry. Keeping the edits beside the recipe means re-exporting the geometry keeps them, and the run time still sees only four stage files |
 
 ## Open questions
 

@@ -21,9 +21,13 @@ pub struct Recipe {
     #[serde(default)]
     pub rooms: usize,
     /// How many of each to place (PD's arenas: 10-21 spawns, 10 weapon
-    /// locations with two ammo crates each, 4-7 hills).
+    /// locations with two ammo crates each, 4-7 hills). A PD arena rebuilt
+    /// keeps its own.
+    #[serde(default)]
     pub spawns: usize,
+    #[serde(default)]
     pub weapons: usize,
+    #[serde(default)]
     pub hills: usize,
     /// At most this share of the spawns and of the weapons stand on the
     /// source's own spots (its player starts, its pickups); the rest spread
@@ -42,7 +46,94 @@ fn one() -> f32 {
 #[serde(tag = "game", rename_all = "lowercase")]
 pub enum Source {
     Oot(OotSource),
+    Gltf(GltfSource),
     Ge(GeSource),
+    Pd(PdSource),
+}
+
+/// Any glTF 2.0 level, `.glb` or `.gltf` ([`crate::gltf`]).
+#[derive(Clone, Debug, Deserialize)]
+pub struct GltfSource {
+    /// The file; `--src` overrides it.
+    pub path: String,
+    /// The clear colour where no geometry is (an outdoor level's sky).
+    #[serde(default)]
+    pub sky: Option<[u8; 3]>,
+    /// Toward the sun baked into meshes without vertex colours (default
+    /// high, from +x +z).
+    #[serde(default)]
+    pub sun: Option<[f32; 3]>,
+    /// Walls up to shoulder height between two floors become climbable, as
+    /// Kokiri's ledges ([`crate::source::LevelSource::mark_ledges`]); PD's
+    /// arenas have none.
+    #[serde(default)]
+    pub climb_ledges: bool,
+    /// Textures bigger than this (pixels, either side) are halved until they
+    /// fit.
+    #[serde(default = "max_texture")]
+    pub max_texture: u32,
+}
+
+fn max_texture() -> u32 {
+    256
+}
+
+/// One of PD's arenas rebuilt in another tool: a glTF of its rooms, changed
+/// and added to (the Blender MCP repo's levels: `complex_plus.py` makes Very
+/// Complex from Complex), laid over the arena it came from ([`crate::pd`]);
+/// or several PD stages fused into one (`felicity_ci.py`: CI Training and
+/// Felicity joined by a hall), laid over them all.
+#[derive(Clone, Debug, Deserialize)]
+pub struct PdSource {
+    /// One arena rebuilt: its stage code (`ref`: Complex), in `assets/stages/`.
+    /// Its setup is kept whole, on its own pads.
+    #[serde(default)]
+    pub base: Option<String>,
+    /// Several stages fused, each moved to where the glTF has it. The gameplay
+    /// data is generated (from the recipe's counts), preferring the spots the
+    /// bases' MP setups mark.
+    #[serde(default)]
+    pub bases: Vec<PdBase>,
+    /// The `.glb`: a node per room (`extras.ge_room`, and with `bases` the
+    /// room's stage and number there, `ge_level` and `ge_room_src`), each
+    /// material naming its PD texture (`extras.ge_preset`); `--src` overrides it.
+    pub glb: String,
+}
+
+/// One stage of a fused level.
+#[derive(Clone, Debug, Deserialize)]
+pub struct PdBase {
+    /// Its stage code: an arena in `assets/stages/`, or (with `stage`) any
+    /// other of PD's stages.
+    pub code: String,
+    /// Not an arena: its `STAGE_*` (`STAGE_CITRAINING`), exported from the
+    /// decomp by `tools/pd-assets/pd_stage.py --base` into `custom/cache/pd/`
+    /// on the first import.
+    #[serde(default)]
+    pub stage: Option<String>,
+    /// The glTF rooms' `extras.ge_level` for this stage (`CI`, `FEL`).
+    pub tag: String,
+    /// The fused level's number for this stage's room 1 (its rooms follow in
+    /// order).
+    pub first_room: u16,
+    /// Turned about the vertical by this many degrees (Blender's +Z, PD's +Y:
+    /// x' = x cos + z sin, z' = z cos - x sin), then moved by `offset` (PD's
+    /// axes, cm: Blender's (x, y, z) is PD's (x, -z, y)).
+    #[serde(default)]
+    pub turn: f64,
+    #[serde(default)]
+    pub offset: [f64; 3],
+}
+
+impl PdSource {
+    /// The stages the level is laid over: `bases`, or the one `base` in place.
+    pub fn parts(&self) -> Result<Vec<PdBase>, String> {
+        match (&self.base, self.bases.is_empty()) {
+            (Some(code), true) => Ok(vec![PdBase { code: code.clone(), stage: None, tag: String::new(), first_room: 1, turn: 0.0, offset: [0.0; 3] }]),
+            (None, false) => Ok(self.bases.clone()),
+            _ => Err("a pd source names its arena (`base`) or the stages it fuses (`bases`), one of the two".into()),
+        }
+    }
 }
 
 /// A GoldenEye 007 level, from the NTSC ROM by `tools/ge-extract` (the BG, the

@@ -48,6 +48,10 @@ background AI lists (`ailists[]` from id 0x1000), `{id, cmds[]}`, each command
 
 Usage:
     python tools/pd-assets/pd_stage.py              # every stage in pd_bg.STAGES
+    PD_ASSETS_OUT=<dir> python tools/pd-assets/pd_stage.py --base <code> <STAGE_*>
+        # one stage outside the arenas (CI Training: `dish STAGE_CITRAINING`), for
+        # `pd_import` to rebuild a level over: its bg, its tiles, and
+        # `textures/index.json` for the textures it uses (no pads or setup)
 """
 
 from __future__ import annotations
@@ -160,12 +164,30 @@ def export_bg(stem: str, pool: pd_models.TexturePool) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def room_numbers(names: list[str], path: str) -> dict[str, int]:
+    """The rooms of a tiles file by number. The asset tool names them
+    `ROOM_<STAGE>_<nnnn>` in order, but a room the game's code names keeps its
+    name (CI's `ROOM_DISH_FIRINGRANGE`, 0x0a): that one's number is its place
+    in the file, checked against the numbered ones."""
+    nums = {}
+    for i, name in enumerate(names):
+        try:
+            n = id_suffix(name)
+        except ValueError:
+            n = i
+        if n != i:
+            raise SystemExit(f"{decomp_rel(path)}: {name} is at {i}")
+        nums[name] = n
+    return nums
+
+
 def export_tiles(stem: str) -> dict:
     path = asset("tiles", f"{stem}.json")
     with open(path, encoding="utf-8") as fh:
         rooms = json.load(fh)["rooms"]
+    num = room_numbers(list(rooms), path)
     out_tiles = []
-    for name in sorted(rooms, key=id_suffix):
+    for name in sorted(rooms, key=num.get):
         for t in rooms[name]:
             flags = 0
             for key, bit in GEOFLAGS.items():
@@ -174,12 +196,12 @@ def export_tiles(stem: str) -> dict:
             verts = [[v["x"], v["y"], v["z"]] for v in t["vertices"]]
             if len(verts) < 3:
                 raise SystemExit(f"{name}: a tile with {len(verts)} vertices")
-            out_tiles.append({"room": id_suffix(name), "flags": flags,
+            out_tiles.append({"room": num[name], "flags": flags,
                               "floortype": FLOORTYPES[t.get("floortype", "default")],
                               "floorcol": t.get("floorcolour", 0), "verts": verts})
     write_json(out("stages", stem, "tiles.json"), {
         "format": "pd-tiles/1", "source": decomp_rel(path), "exporter": EXPORTER,
-        "rooms": sorted(id_suffix(n) for n in rooms), "tiles": out_tiles,
+        "rooms": sorted(num.values()), "tiles": out_tiles,
     })
     return {"tiles": len(out_tiles), "tile_rooms": len(rooms)}
 
@@ -403,7 +425,26 @@ def export_all(pool: pd_models.TexturePool) -> dict:
     return {"stages": counts}
 
 
+def export_base(stem: str, stage_name: str) -> dict:
+    """One stage outside `pd_bg.STAGES`, for `pd_import`: its BG and tiles, and
+    the index of the textures it uses (their surface types), which a full run's
+    pool index would hold."""
+    pd_bg.STAGES.setdefault(stem, (stage_name, f"bg_{stem}.seg"))
+    pool = pd_models.TexturePool()
+    c = {}
+    c.update(export_bg(stem, pool))
+    c.update(export_tiles(stem))
+    write_json(out("textures", "index.json"), {f"{k:04x}": v for k, v in sorted(pool.entries.items())})
+    print(f"pd_stage {stem}: {json.dumps(c)}")
+    return c
+
+
 def main() -> int:
+    if sys.argv[1:2] == ["--base"]:
+        if len(sys.argv) != 4:
+            raise SystemExit("pd_stage.py --base <code> <STAGE_*>")
+        export_base(sys.argv[2], sys.argv[3])
+        return 0
     pool = pd_models.TexturePool()
     # The pool's index is rebuilt by build_assets.py; alone, this run only
     # (re)writes the stages and the textures they use.

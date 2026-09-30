@@ -224,7 +224,7 @@ pub fn write_tiles(dir: &Path, r: &Recipe, src: &LevelSource, part: &Partition) 
     let mut tiles: Vec<(u16, Value)> = Vec::new();
     for p in &src.collision {
         for (room, piece) in part.cut(p.verts.clone()) {
-            tiles.push((room, json!({"room": room, "flags": p.flags, "floortype": p.floortype, "floorcol": 0, "verts": piece.iter().map(|&v| v3(v)).collect::<Vec<_>>()})));
+            tiles.push((room, json!({"room": room, "flags": p.flags, "floortype": p.floortype, "floorcol": p.floorcol, "verts": piece.iter().map(|&v| v3(v)).collect::<Vec<_>>()})));
         }
     }
     tiles.sort_by_key(|t| t.0);
@@ -270,12 +270,40 @@ pub struct Gameplay {
     pub props: Vec<Value>,
 }
 
+impl Gameplay {
+    /// As `pads.json`'s `pads`, `waypoints`, `waygroups` and `cover`, and
+    /// `setup.json`'s `intro` and `props`, in one object.
+    pub fn to_json(&self) -> Value {
+        let pads: Vec<Value> = self.pads.iter().map(|p| json!({"pos": v3(p.pos), "look": v3(p.look), "up": v3(p.up), "flags": p.flags, "bbox": p.bbox, "liftnum": 0})).collect();
+        let waypoints: Vec<Value> = self.waypoints.iter().map(|(pad, group, n)| json!({"pad": pad, "group": group, "neighbours": n})).collect();
+        let waygroups: Vec<Value> = self.waygroups.iter().map(|n| json!({"neighbours": n})).collect();
+        let cover: Vec<Value> = self.cover.iter().map(|(p, l)| json!({"pos": v3(*p), "look": v3(*l), "special": 0})).collect();
+        json!({"pads": pads, "waypoints": waypoints, "waygroups": waygroups, "cover": cover, "intro": self.intro, "props": self.props})
+    }
+
+    /// Back from [`Gameplay::to_json`] (or `pads.json` and `setup.json`
+    /// merged).
+    pub fn from_json(v: &Value) -> Result<Gameplay, String> {
+        let f3 = |x: &Value| -> Vec3 { Vec3::new(x[0].as_f64().unwrap_or(0.0) as f32, x[1].as_f64().unwrap_or(0.0) as f32, x[2].as_f64().unwrap_or(0.0) as f32) };
+        let arr = |k: &str| v[k].as_array().cloned().unwrap_or_default();
+        let ints = |x: &Value| -> Vec<i32> { x.as_array().into_iter().flatten().filter_map(|n| n.as_i64()).map(|n| n as i32).collect() };
+        let pads = arr("pads")
+            .iter()
+            .map(|p| PadRow { pos: f3(&p["pos"]), look: f3(&p["look"]), up: f3(&p["up"]), flags: p["flags"].as_u64().unwrap_or(0) as u32, bbox: std::array::from_fn(|k| p["bbox"][k].as_f64().unwrap_or(0.0) as f32) })
+            .collect();
+        let waypoints = arr("waypoints").iter().map(|w| (w["pad"].as_u64().unwrap_or(0) as usize, w["group"].as_u64().unwrap_or(0) as usize, ints(&w["neighbours"]))).collect();
+        let waygroups = arr("waygroups").iter().map(|g| ints(&g["neighbours"])).collect();
+        let cover = arr("cover").iter().map(|c| (f3(&c["pos"]), f3(&c["look"]))).collect();
+        Ok(Gameplay { pads, waypoints, waygroups, cover, intro: arr("intro"), props: arr("props") })
+    }
+}
+
 pub fn write_pads(dir: &Path, r: &Recipe, g: &Gameplay) -> Result<(), String> {
-    let pads: Vec<Value> = g.pads.iter().map(|p| json!({"pos": v3(p.pos), "look": v3(p.look), "up": v3(p.up), "flags": p.flags, "bbox": p.bbox, "liftnum": 0})).collect();
-    let waypoints: Vec<Value> = g.waypoints.iter().map(|(pad, group, n)| json!({"pad": pad, "group": group, "neighbours": n})).collect();
-    let waygroups: Vec<Value> = g.waygroups.iter().map(|n| json!({"neighbours": n})).collect();
-    let cover: Vec<Value> = g.cover.iter().map(|(p, l)| json!({"pos": v3(*p), "look": v3(*l), "special": 0})).collect();
-    write_json(&dir.join("pads.json"), &json!({"format": "pd-pads/1", "source": format!("{}: pd_import", r.code), "exporter": EXPORTER, "pads": pads, "waypoints": waypoints, "waygroups": waygroups, "cover": cover}))
+    let v = g.to_json();
+    write_json(
+        &dir.join("pads.json"),
+        &json!({"format": "pd-pads/1", "source": format!("{}: pd_import", r.code), "exporter": EXPORTER, "pads": v["pads"], "waypoints": v["waypoints"], "waygroups": v["waygroups"], "cover": v["cover"]}),
+    )
 }
 
 /// `setup.json`. The stage table row carries what the world reads

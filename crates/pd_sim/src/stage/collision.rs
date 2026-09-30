@@ -1336,6 +1336,15 @@ impl TileLevel {
         })
     }
 
+    /// The first floor or wall tile the segment `from` → `to` meets, of any
+    /// kind (see-through ones too): the level editor's picking. Not PD.
+    pub fn first_tile_hit(&self, from: Vec3, to: Vec3) -> Option<RayHit> {
+        match (self.first_hit(&self.floors, from, to), self.first_hit(&self.walls, from, to)) {
+            (Some(f), Some(w)) => Some(if f.dist <= w.dist { f } else { w }),
+            (f, w) => f.or(w),
+        }
+    }
+
     /// Clear line of sight (`GEOFLAG_BLOCK_SIGHT` polygons only; chrs never block).
     pub fn los(&self, from: Vec3, to: Vec3) -> bool {
         self.first_hit(&self.sight, from, to).is_none()

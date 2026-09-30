@@ -57,7 +57,7 @@ struct ExtractMarker {
 }
 
 /// The repository root: the extractor and the decomp are found from it.
-fn repo() -> PathBuf {
+pub(crate) fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
 

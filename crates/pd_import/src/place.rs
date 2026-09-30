@@ -30,6 +30,7 @@ use pd_sim::nav::NavGraph;
 use pd_sim::stage::{directed_links, Stage, TileLevel};
 use serde_json::json;
 
+use crate::layout::Layout;
 use crate::recipe::Recipe;
 use crate::source::{Marker, MarkerKind};
 use crate::write::{pad_flags, Gameplay, PadRow};
@@ -152,22 +153,36 @@ fn look(facing: f32) -> Vec3 {
     Vec3::new(facing.sin(), 0.0, facing.cos())
 }
 
-/// Place the gameplay data on `stage`, preferring `markers`, after what the
-/// source brings in `fixed` (its pads and props keep their numbers).
-pub fn place(r: &Recipe, markers: &[Marker], stage: &Stage, level: &TileLevel, fixed: Gameplay) -> Result<Placed, String> {
-    let mut report = Vec::new();
+/// What placement makes of the kinds the layout leaves out.
+pub enum How<'a> {
+    /// Generated from the recipe's counts, preferring the spots the source
+    /// marks.
+    Generate(&'a [Marker]),
+    /// The source's own rows kept (a PD arena rebuilt brings its setup), and
+    /// cover added in these rooms (the ones the source added or changed).
+    Keep(&'a [u16]),
+}
+
+/// The waypoint graph over the stage's collision (`nav::gen`), and a line
+/// for the report.
+pub fn generate_graph(level: &TileLevel) -> (NavGraph, String) {
     let t0 = std::time::Instant::now();
     let gen = generate(level, &GenParams::default());
-    let graph: NavGraph = gen.graph;
-    report.push(format!(
+    let line = format!(
         "waypoints: {} ({} waygroups) from {} floor samples in {:.1} s, {} validation rounds, {} links unresolved",
-        graph.waypoints.len(),
-        graph.waygroups.len(),
+        gen.graph.waypoints.len(),
+        gen.graph.waygroups.len(),
         gen.samples.len(),
         t0.elapsed().as_secs_f32(),
         gen.iterations,
         gen.unresolved
-    ));
+    );
+    (gen.graph, line)
+}
+
+/// The waypoints placement may use: those of the graph's largest strongly
+/// connected part a chr stands up on.
+fn usable(graph: &NavGraph, report: &mut Vec<String>) -> Result<Vec<Node>, String> {
     let n = graph.waypoints.len();
     if n == 0 {
         return Err("the generator found no floor to stand on".into());
@@ -181,133 +196,36 @@ pub fn place(r: &Recipe, markers: &[Marker], stage: &Stage, level: &TileLevel, f
         n,
         comps.iter().skip(1).take(8).map(|c| c.len()).collect::<Vec<_>>()
     ));
-    let nodes: Vec<Node> = main
+    Ok(main
         .iter()
         .filter(|&&w| {
             let f = graph.waypoint_flags(w);
             !f.crouch && !f.duck
         })
         .map(|&w| Node { pos: graph.waypoint_pos(w), room: graph.waypoint_room(w) })
-        .collect();
-    let cands: Vec<Vec3> = nodes.iter().map(|n| n.pos).collect();
-    // A source marker as the nearest usable waypoint, if one is close.
-    let snap = |p: Vec3| -> Option<Vec3> {
-        cands
-            .iter()
-            .filter(|c| (c.y - PAD_HEIGHT - p.y).abs() < 150.0)
-            .map(|c| (*c, (c.x - p.x).hypot(c.z - p.z)))
-            .filter(|(_, d)| *d < 300.0)
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-            .map(|(c, _)| c)
-    };
+        .collect())
+}
 
-    // ── Spawns ─────────────────────────────────────────────────────────────
-    // Not on the source's treasures: those are for the weapons.
-    let prizes: Vec<Vec3> = markers.iter().filter(|m| m.kind == MarkerKind::Prize).filter_map(|m| snap(m.pos)).collect();
-    // At most this many of each on the source's spots (`Recipe::marker_share`).
-    let share = |n: usize| (n as f32 * r.marker_share.clamp(0.0, 1.0)).round() as usize;
-    let mut spawns: Vec<Vec3> = Vec::new();
-    let mut spawn_facing: Vec<Option<f32>> = Vec::new();
-    for kind in [MarkerKind::Spawn, MarkerKind::Person] {
-        for m in markers.iter().filter(|m| m.kind == kind) {
-            if let Some(p) = snap(m.pos) {
-                if spawns.len() < share(r.spawns) && spawns.iter().chain(&prizes).all(|s| s.distance(p) >= 500.0) {
-                    spawns.push(p);
-                    spawn_facing.push(Some(m.facing));
-                }
-            }
+/// Each waypoint's strongly connected part, 0 the largest (the one placement
+/// uses), so the editor can show the rest.
+pub fn waypoint_parts(graph: &NavGraph) -> Vec<usize> {
+    let n = graph.waypoints.len();
+    let links = directed_links(n, |w| &graph.waypoints[w].neighbours);
+    let mut part = vec![0; n];
+    for (c, comp) in strong_components(n, &links).iter().enumerate() {
+        for &w in comp {
+            part[w] = c;
         }
     }
-    let seeded = spawns.len();
-    farthest(&cands, &mut spawns, r.spawns, 500.0, &prizes, 500.0);
-    spawn_facing.resize(spawns.len(), None);
-    report.push(format!("spawns: {} ({} at the source's starts and people)", spawns.len(), seeded));
+    part
+}
 
-    // ── Weapons and their ammo ─────────────────────────────────────────────
-    let mut weapons: Vec<Vec3> = Vec::new();
-    let mut prize = None;
-    for kind in [MarkerKind::Prize, MarkerKind::Item] {
-        for m in markers.iter().filter(|m| m.kind == kind) {
-            if let Some(p) = snap(m.pos) {
-                if weapons.len() < share(r.weapons) && weapons.iter().all(|w| w.distance(p) >= 700.0) && spawns.iter().all(|s| s.distance(p) >= 500.0) {
-                    if kind == MarkerKind::Prize && prize.is_none() {
-                        prize = Some(weapons.len());
-                    }
-                    weapons.push(p);
-                }
-            }
-        }
-    }
-    let seeded = weapons.len();
-    farthest(&cands, &mut weapons, r.weapons, 600.0, &spawns, 500.0);
-    if let Some(i) = prize {
-        let slot = 5.min(weapons.len() - 1);
-        weapons.swap(i, slot);
-    }
-    let mut placed: Vec<Vec3> = spawns.iter().chain(&weapons).copied().collect();
-    let mut ammo: Vec<[Vec3; 2]> = Vec::new();
-    for w in &weapons {
-        let ring = |lo: f32, hi: f32| -> Vec<Vec3> { cands.iter().copied().filter(|c| (lo..=hi).contains(&c.distance(*w))).collect() };
-        let mut pair: Vec<Vec3> = vec![*w];
-        for (lo, hi) in [(250.0, 700.0), (150.0, 1100.0)] {
-            if pair.len() < 3 {
-                farthest(&ring(lo, hi), &mut pair, 3, 150.0, &placed, 200.0);
-            }
-        }
-        if pair.len() < 3 {
-            return Err(format!("no room for ammo crates near the weapon at {w}"));
-        }
-        placed.extend(&pair[1..]);
-        ammo.push([pair[1], pair[2]]);
-    }
-    report.push(format!("weapons: {} locations ({} at the source's pickups), two ammo crates each", weapons.len(), seeded));
-
-    // ── Hills: the most spread-out rooms with room to stand in ─────────────
-    let nrooms = stage.rooms.roomcount();
-    let mut room_nodes: Vec<Vec<Vec3>> = vec![Vec::new(); nrooms];
-    for n in &nodes {
-        if let Some(rm) = n.room.filter(|&rm| (rm as usize) < nrooms) {
-            room_nodes[rm as usize].push(n.pos);
-        }
-    }
-    let room_centre = |rm: usize| room_nodes[rm].iter().copied().sum::<Vec3>() / room_nodes[rm].len() as f32;
-    let hill_rooms: Vec<usize> = (1..nrooms).filter(|&rm| room_nodes[rm].len() >= 8).collect();
-    let centres: Vec<Vec3> = hill_rooms.iter().map(|&rm| room_centre(rm)).collect();
-    let mut hill_centres = Vec::new();
-    farthest(&centres, &mut hill_centres, r.hills, 0.0, &[], 0.0);
-    let hills: Vec<Vec3> = hill_centres
-        .iter()
-        .map(|c| {
-            let rm = hill_rooms[centres.iter().position(|x| x == c).unwrap()];
-            *room_nodes[rm].iter().min_by(|a, b| a.distance(*c).total_cmp(&b.distance(*c))).unwrap()
-        })
-        .collect();
-    report.push(format!("hills: {} in rooms {:?}", hills.len(), hills.iter().map(|h| stage.rooms.bg_find_rooms_by_pos(*h, 4).0).collect::<Vec<_>>()));
-
-    // ── Capture the Case: four bases far apart, six respawns each ──────────
-    let centre = cands.iter().copied().sum::<Vec3>() / cands.len() as f32;
-    let first = *cands.iter().max_by(|a, b| a.distance(centre).total_cmp(&b.distance(centre))).unwrap();
-    let mut bases = vec![first];
-    farthest(&cands, &mut bases, CTC_TEAMS, 0.0, &[], 0.0);
-    let mut respawns: Vec<Vec<Vec3>> = Vec::new();
-    for (i, b) in bases.iter().enumerate() {
-        let near: Vec<Vec3> = cands
-            .iter()
-            .copied()
-            .filter(|c| c.distance(*b) < 1500.0 && c.distance(*b) >= 150.0 && bases.iter().enumerate().all(|(j, o)| j == i || c.distance(*b) < c.distance(*o)))
-            .collect();
-        let mut chosen = vec![*b];
-        farthest(&near, &mut chosen, CTC_RESPAWNS + 1, 150.0, &[], 0.0);
-        if chosen.len() < CTC_RESPAWNS + 1 {
-            return Err(format!("base {i} at {b}: only {} respawn spots near it", chosen.len() - 1));
-        }
-        respawns.push(chosen[1..].to_vec());
-    }
-    report.push(format!("capture the case: bases at {:?}", bases.iter().map(|b| b.round()).collect::<Vec<_>>()));
-
-    // ── Cover: waypoints with a wall at crouch height beside them ──────────
+/// Cover on `cands` (waypoints with a sight-blocking wall at crouch height
+/// beside them, facing away from it), spread out, after `have` (up to
+/// [`MAX_COVER`] in all).
+fn cover(level: &TileLevel, cands: &[Vec3], have: &[(Vec3, Vec3)]) -> Vec<(Vec3, Vec3)> {
     let mut cover_spots: Vec<(Vec3, Vec3)> = Vec::new();
-    for c in &cands {
+    for c in cands {
         let eye = *c - Vec3::Y * PAD_HEIGHT + Vec3::Y * 60.0;
         for k in 0..8 {
             let a = k as f32 * std::f32::consts::FRAC_PI_4;
@@ -319,51 +237,305 @@ pub fn place(r: &Recipe, markers: &[Marker], stage: &Stage, level: &TileLevel, f
         }
     }
     let spots: Vec<Vec3> = cover_spots.iter().map(|c| c.0).collect();
-    let mut chosen = Vec::new();
+    let mut chosen: Vec<Vec3> = have.iter().map(|c| c.0).collect();
     farthest(&spots, &mut chosen, MAX_COVER, 300.0, &[], 0.0);
-    let cover: Vec<(Vec3, Vec3)> = chosen.iter().map(|p| *cover_spots.iter().find(|c| c.0 == *p).unwrap()).collect();
-    report.push(format!("cover: {} spots", cover.len()));
+    chosen[have.len()..].iter().map(|p| *cover_spots.iter().find(|c| c.0 == *p).unwrap()).collect()
+}
 
-    // ── The pads and the setup ─────────────────────────────────────────────
-    let mut g = fixed;
-    let mut pad = |pos: Vec3, look: Vec3| -> usize {
-        g.pads.push(PadRow::at(pos, look, 0));
-        g.pads.len() - 1
-    };
-    let mut intro = Vec::new();
-    for (i, s) in spawns.iter().enumerate() {
-        // The source's facing, unless a wall stands in it (a marker snapped to
-        // a waypoint beside where the source put it can face one).
-        let f = spawn_facing[i].filter(|&f| reach(level, *s, f) >= 300.0).unwrap_or_else(|| open_facing(level, *s));
-        intro.push(json!({"type": "spawn", "pad": pad(*s, look(f))}));
-    }
-    for (id, b) in bases.iter().enumerate() {
-        intro.push(json!({"type": "case", "id": id, "pad": pad(*b, look(open_facing(level, *b)))}));
-    }
-    for (id, rs) in respawns.iter().enumerate() {
-        for s in rs {
-            intro.push(json!({"type": "case_respawn", "id": id, "pad": pad(*s, look(open_facing(level, *s)))}));
-        }
-    }
-    for h in &hills {
-        intro.push(json!({"type": "hill", "pad": pad(*h, Vec3::X)}));
-    }
-    intro.push(json!({"type": "outfit", "outfit": 0}));
-    let mut props = Vec::new();
-    for (i, w) in weapons.iter().enumerate() {
-        props.push(json!({"type": "weapon", "scale": 512, "model": 0, "chr": pad(*w, Vec3::Z), "flags": OBJFLAG_FALL, "flags2": 0, "flags3": 0, "weapon": WEAPON_MPLOCATION00 as usize + i}));
-        for a in &ammo[i] {
-            props.push(json!({"type": "ammocratemulti", "scale": 153, "model": MODEL_MULTI_AMMO_CRATE, "pad": pad(*a, Vec3::Z), "flags": OBJFLAG_FALL, "flags2": 0, "flags3": 0, "maxdamage": 1000}));
-        }
-    }
+/// The graph's pads after `g`'s, and its waypoints and waygroups on them.
+fn emit_graph(g: &mut Gameplay, graph: &NavGraph) {
     let base = g.pads.len();
     for p in &graph.pads {
         g.pads.push(PadRow::at(p.pos, Vec3::Z, pad_flags(&p.flags)));
     }
     g.waypoints = graph.waypoints.iter().map(|w| (base + w.padnum, w.groupnum, w.neighbours.clone())).collect();
     g.waygroups = graph.waygroups.iter().map(|wg| wg.neighbours.clone()).collect();
-    g.cover = cover;
+}
+
+/// Take the source's rows of the kinds the layout places out of `g` (their
+/// pads stay, unused, so the other rows keep their numbers). A layout's
+/// weapons take the ammo crates with them: a crate belongs to the weapon row
+/// before it.
+fn strip(g: &mut Gameplay, l: &Layout) {
+    let takes = |t: &str| match t {
+        "spawn" => l.spawns.is_some(),
+        "hill" => l.hills.is_some(),
+        "case" => l.bases.is_some(),
+        "case_respawn" => l.respawns.is_some(),
+        _ => false,
+    };
+    g.intro.retain(|v| !takes(v["type"].as_str().unwrap_or("")));
+    if l.weapons.is_some() {
+        g.props.retain(|v| !matches!(v["type"].as_str(), Some("weapon" | "ammocratemulti")));
+    }
+    if l.cover.is_some() {
+        g.cover.clear();
+    }
+}
+
+/// The pads the rows of `g` stand on.
+fn used_pads(g: &Gameplay) -> Vec<usize> {
+    let mut used: Vec<usize> = g.intro.iter().chain(&g.props).flat_map(|v| ["pad", "chr"].map(|k| v[k].as_u64())).flatten().map(|p| p as usize).collect();
+    used.sort();
+    used.dedup();
+    used
+}
+
+fn v3(p: [f32; 3]) -> Vec3 {
+    Vec3::from(p)
+}
+
+/// Place the gameplay data on `stage`, after what the source brings in
+/// `fixed` (its pads and props keep their numbers): every kind `layout` holds
+/// exactly as it holds it, the rest as `how` says; then `graph`'s waypoints.
+pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fixed: Gameplay, layout: &Layout, how: &How) -> Result<Placed, String> {
+    let mut report = Vec::new();
+    let nodes = usable(graph, &mut report)?;
+    let cands: Vec<Vec3> = nodes.iter().map(|n| n.pos).collect();
+    let (gen, markers): (bool, &[Marker]) = match how {
+        How::Generate(m) => (true, m),
+        How::Keep(_) => (false, &[]),
+    };
+    let mut g = fixed;
+    strip(&mut g, layout);
+    let tag = |explicit: bool| if explicit { " (the layout's)" } else { "" };
+    // A source marker as the nearest usable waypoint, if one is close.
+    let snap = |p: Vec3| -> Option<Vec3> {
+        cands
+            .iter()
+            .filter(|c| (c.y - PAD_HEIGHT - p.y).abs() < 150.0)
+            .map(|c| (*c, (c.x - p.x).hypot(c.z - p.z)))
+            .filter(|(_, d)| *d < 300.0)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(c, _)| c)
+    };
+    // At most this many of each on the source's spots (`Recipe::marker_share`).
+    let share = |n: usize| (n as f32 * r.marker_share.clamp(0.0, 1.0)).round() as usize;
+    // Where the source's own rows stand (kept ones): new items keep off them.
+    let kept: Vec<Vec3> = used_pads(&g).iter().filter_map(|&p| g.pads.get(p).map(|x| x.pos)).collect();
+
+    // ── Spawns: (pad position, facing in radians) ──────────────────────────
+    // Not on the source's treasures: those are for the weapons.
+    let prizes: Vec<Vec3> = markers.iter().filter(|m| m.kind == MarkerKind::Prize).filter_map(|m| snap(m.pos)).collect();
+    let spawns: Vec<(Vec3, f32)> = match &layout.spawns {
+        Some(v) => v.iter().map(|s| (v3(s.pos), s.facing.to_radians())).collect(),
+        None if gen => {
+            let mut spawns: Vec<Vec3> = Vec::new();
+            let mut spawn_facing: Vec<Option<f32>> = Vec::new();
+            for kind in [MarkerKind::Spawn, MarkerKind::Person] {
+                for m in markers.iter().filter(|m| m.kind == kind) {
+                    if let Some(p) = snap(m.pos) {
+                        if spawns.len() < share(r.spawns) && spawns.iter().chain(&prizes).all(|s| s.distance(p) >= 500.0) {
+                            spawns.push(p);
+                            spawn_facing.push(Some(m.facing));
+                        }
+                    }
+                }
+            }
+            let seeded = spawns.len();
+            farthest(&cands, &mut spawns, r.spawns, 500.0, &prizes, 500.0);
+            spawn_facing.resize(spawns.len(), None);
+            report.push(format!("spawns: {} ({} at the source's starts and people)", spawns.len(), seeded));
+            // The source's facing, unless a wall stands in it (a marker snapped
+            // to a waypoint beside where the source put it can face one).
+            spawns.iter().zip(spawn_facing).map(|(s, f)| (*s, f.filter(|&f| reach(level, *s, f) >= 300.0).unwrap_or_else(|| open_facing(level, *s)))).collect()
+        }
+        None => Vec::new(),
+    };
+    if layout.spawns.is_some() {
+        report.push(format!("spawns: {}{}", spawns.len(), tag(true)));
+    }
+    let spawn_pos: Vec<Vec3> = spawns.iter().map(|s| s.0).chain(stage.spawn_pads.iter().filter_map(|&p| g.pads.get(p)).map(|p| p.pos)).collect();
+
+    // ── Weapons (position, MP location) and their ammo (position, weapon) ──
+    let weapons: Vec<(Vec3, u8)> = match &layout.weapons {
+        Some(v) => v.iter().map(|w| (v3(w.pos), w.location)).collect(),
+        None if gen => {
+            let mut weapons: Vec<Vec3> = Vec::new();
+            let mut prize = None;
+            for kind in [MarkerKind::Prize, MarkerKind::Item] {
+                for m in markers.iter().filter(|m| m.kind == kind) {
+                    if let Some(p) = snap(m.pos) {
+                        if weapons.len() < share(r.weapons) && weapons.iter().all(|w| w.distance(p) >= 700.0) && spawn_pos.iter().all(|s| s.distance(p) >= 500.0) {
+                            if kind == MarkerKind::Prize && prize.is_none() {
+                                prize = Some(weapons.len());
+                            }
+                            weapons.push(p);
+                        }
+                    }
+                }
+            }
+            let seeded = weapons.len();
+            farthest(&cands, &mut weapons, r.weapons, 600.0, &spawn_pos, 500.0);
+            if let Some(i) = prize {
+                let slot = 5.min(weapons.len() - 1);
+                weapons.swap(i, slot);
+            }
+            report.push(format!("weapons: {} locations ({} at the source's pickups)", weapons.len(), seeded));
+            weapons.into_iter().enumerate().map(|(i, w)| (w, i as u8)).collect()
+        }
+        None => Vec::new(),
+    };
+    if layout.weapons.is_some() {
+        report.push(format!("weapons: {} locations{}", weapons.len(), tag(true)));
+    }
+    let ammo: Vec<(Vec3, usize)> = match &layout.ammo {
+        Some(v) => v.iter().map(|a| (v3(a.pos), a.weapon)).collect(),
+        None => {
+            // Two crates a few metres off each weapon placed here, as PD's
+            // arenas pair them.
+            let mut placed: Vec<Vec3> = spawn_pos.iter().chain(&kept).copied().chain(weapons.iter().map(|w| w.0)).collect();
+            let mut ammo = Vec::new();
+            for (i, (w, _)) in weapons.iter().enumerate() {
+                let ring = |lo: f32, hi: f32| -> Vec<Vec3> { cands.iter().copied().filter(|c| (lo..=hi).contains(&c.distance(*w))).collect() };
+                let mut pair: Vec<Vec3> = vec![*w];
+                for (lo, hi) in [(250.0, 700.0), (150.0, 1100.0)] {
+                    if pair.len() < 3 {
+                        farthest(&ring(lo, hi), &mut pair, 3, 150.0, &placed, 200.0);
+                    }
+                }
+                if pair.len() < 3 {
+                    return Err(format!("no room for ammo crates near the weapon at {w}"));
+                }
+                placed.extend(&pair[1..]);
+                ammo.extend(pair[1..].iter().map(|&a| (a, i)));
+            }
+            ammo
+        }
+    };
+    if !weapons.is_empty() || layout.ammo.is_some() {
+        report.push(format!("ammo: {} crates{}", ammo.len(), tag(layout.ammo.is_some())));
+    }
+
+    // ── Hills: the most spread-out rooms with room to stand in ─────────────
+    let hills: Vec<Vec3> = match &layout.hills {
+        Some(v) => v.iter().map(|h| v3(h.pos)).collect(),
+        None if gen => {
+            let nrooms = stage.rooms.roomcount();
+            let mut room_nodes: Vec<Vec<Vec3>> = vec![Vec::new(); nrooms];
+            for n in &nodes {
+                if let Some(rm) = n.room.filter(|&rm| (rm as usize) < nrooms) {
+                    room_nodes[rm as usize].push(n.pos);
+                }
+            }
+            let room_centre = |rm: usize| room_nodes[rm].iter().copied().sum::<Vec3>() / room_nodes[rm].len() as f32;
+            let hill_rooms: Vec<usize> = (1..nrooms).filter(|&rm| room_nodes[rm].len() >= 8).collect();
+            let centres: Vec<Vec3> = hill_rooms.iter().map(|&rm| room_centre(rm)).collect();
+            let mut hill_centres = Vec::new();
+            farthest(&centres, &mut hill_centres, r.hills, 0.0, &[], 0.0);
+            hill_centres
+                .iter()
+                .map(|c| {
+                    let rm = hill_rooms[centres.iter().position(|x| x == c).unwrap()];
+                    *room_nodes[rm].iter().min_by(|a, b| a.distance(*c).total_cmp(&b.distance(*c))).unwrap()
+                })
+                .collect()
+        }
+        None => Vec::new(),
+    };
+    if gen || layout.hills.is_some() {
+        report.push(format!("hills: {} in rooms {:?}{}", hills.len(), hills.iter().map(|h| stage.rooms.bg_find_rooms_by_pos(*h, 4).0).collect::<Vec<_>>(), tag(layout.hills.is_some())));
+    }
+
+    // ── Capture the Case: bases far apart, six respawns around each ────────
+    let bases: Vec<(Vec3, f32, u8)> = match &layout.bases {
+        Some(v) => v.iter().map(|b| (v3(b.pos), b.facing.to_radians(), b.team)).collect(),
+        None if gen => {
+            let centre = cands.iter().copied().sum::<Vec3>() / cands.len() as f32;
+            let first = *cands.iter().max_by(|a, b| a.distance(centre).total_cmp(&b.distance(centre))).unwrap();
+            let mut bases = vec![first];
+            farthest(&cands, &mut bases, CTC_TEAMS, 0.0, &[], 0.0);
+            bases.iter().enumerate().map(|(i, b)| (*b, open_facing(level, *b), i as u8)).collect()
+        }
+        None => Vec::new(),
+    };
+    let respawns: Vec<(Vec3, f32, u8)> = match &layout.respawns {
+        Some(v) => v.iter().map(|s| (v3(s.pos), s.facing.to_radians(), s.team)).collect(),
+        None if gen || layout.bases.is_some() => {
+            let mut out = Vec::new();
+            for (i, (b, _, team)) in bases.iter().enumerate() {
+                let near: Vec<Vec3> = cands
+                    .iter()
+                    .copied()
+                    .filter(|c| c.distance(*b) < 1500.0 && c.distance(*b) >= 150.0 && bases.iter().enumerate().all(|(j, o)| j == i || c.distance(*b) < c.distance(o.0)))
+                    .collect();
+                let mut chosen = vec![*b];
+                farthest(&near, &mut chosen, CTC_RESPAWNS + 1, 150.0, &[], 0.0);
+                if chosen.len() < CTC_RESPAWNS + 1 {
+                    return Err(format!("base {i} at {b}: only {} respawn spots near it", chosen.len() - 1));
+                }
+                out.extend(chosen[1..].iter().map(|s| (*s, open_facing(level, *s), *team)));
+            }
+            out
+        }
+        None => Vec::new(),
+    };
+    if !bases.is_empty() || layout.respawns.is_some() {
+        report.push(format!(
+            "capture the case: bases at {:?}{}, {} respawn pads{}",
+            bases.iter().map(|b| b.0.round()).collect::<Vec<_>>(),
+            tag(layout.bases.is_some()),
+            respawns.len(),
+            tag(layout.respawns.is_some())
+        ));
+    }
+
+    // ── Cover: waypoints with a wall at crouch height beside them ──────────
+    match (&layout.cover, how) {
+        (Some(v), _) => {
+            g.cover = v.iter().map(|c| (v3(c.pos), look(c.facing.to_radians()))).collect();
+            report.push(format!("cover: {} spots{}", g.cover.len(), tag(true)));
+        }
+        (None, How::Generate(_)) => {
+            g.cover = cover(level, &cands, &[]);
+            report.push(format!("cover: {} spots", g.cover.len()));
+        }
+        (None, How::Keep(rooms)) => {
+            let per_room: Vec<String> = rooms.iter().map(|&rm| format!("{rm:#x}: {}", nodes.iter().filter(|n| n.room == Some(rm)).count())).collect();
+            report.push(format!("reachable waypoints in the new and changed rooms: {}", per_room.join(", ")));
+            let in_rooms: Vec<Vec3> = nodes.iter().filter(|n| n.room.is_some_and(|rm| rooms.contains(&rm))).map(|n| n.pos).collect();
+            let added = cover(level, &in_rooms, &g.cover);
+            report.push(format!("cover: {} of the source's, {} added in the new and changed rooms", g.cover.len(), added.len()));
+            g.cover.extend(added);
+        }
+    }
+
+    // ── The pads and the setup ─────────────────────────────────────────────
+    let mut pad = |pos: Vec3, look: Vec3| -> usize {
+        g.pads.push(PadRow::at(pos, look, 0));
+        g.pads.len() - 1
+    };
+    let mut intro = Vec::new();
+    for (s, f) in &spawns {
+        intro.push(json!({"type": "spawn", "pad": pad(*s, look(*f))}));
+    }
+    for (b, f, team) in &bases {
+        intro.push(json!({"type": "case", "id": team, "pad": pad(*b, look(*f))}));
+    }
+    for (s, f, team) in &respawns {
+        intro.push(json!({"type": "case_respawn", "id": team, "pad": pad(*s, look(*f))}));
+    }
+    for h in &hills {
+        intro.push(json!({"type": "hill", "pad": pad(*h, Vec3::X)}));
+    }
+    let mut props = Vec::new();
+    for (i, (w, loc)) in weapons.iter().enumerate() {
+        props.push(json!({"type": "weapon", "scale": 512, "model": 0, "chr": pad(*w, Vec3::Z), "flags": OBJFLAG_FALL, "flags2": 0, "flags3": 0, "weapon": WEAPON_MPLOCATION00 as usize + *loc as usize}));
+        for (a, _) in ammo.iter().filter(|a| a.1 == i) {
+            props.push(json!({"type": "ammocratemulti", "scale": 153, "model": MODEL_MULTI_AMMO_CRATE, "pad": pad(*a, Vec3::Z), "flags": OBJFLAG_FALL, "flags2": 0, "flags3": 0, "maxdamage": 1000}));
+        }
+    }
+    if !g.intro.iter().any(|v| v["type"] == "outfit") {
+        intro.push(json!({"type": "outfit", "outfit": 0}));
+    }
     g.intro.extend(intro);
     g.props.extend(props);
+    if !g.intro.iter().any(|v| v["type"] == "spawn") {
+        return Err("no spawns (the layout's spawns are empty, or the recipe asks for none)".into());
+    }
+    let used = used_pads(&g);
+    let far: Vec<usize> = used.iter().copied().filter(|&p| g.pads.get(p).is_some_and(|pad| nodes.iter().all(|n| n.pos.distance(pad.pos) > 300.0))).collect();
+    report.push(format!("the setup: {} pads, {} of them over 3 m from a reachable waypoint {far:?}", used.len(), far.len()));
+    emit_graph(&mut g, graph);
     Ok(Placed { gameplay: g, report })
 }

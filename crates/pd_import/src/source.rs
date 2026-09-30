@@ -89,6 +89,39 @@ pub struct ColPoly {
     /// A wall the source lets you climb over when it is a ledge (see
     /// [`LevelSource::mark_ledges`]).
     pub grab: bool,
+    /// A floor's colour, `r << 8 | g << 4 | b` (`geotilei.floorcol`, four
+    /// bits each): an object's fog starts from its tint (`floor_tint`).
+    pub floorcol: u32,
+}
+
+/// A triangle facing up at least this much is a floor (45°).
+pub const FLOOR_NY: f32 = 0.7;
+/// A triangle facing down at least this much is a ceiling (no tile).
+pub const CEILING_NY: f32 = -0.5;
+
+/// A drawn triangle as a tile, by PD's arenas' own rules (Complex's tiles
+/// show them): a translucent upright one (a railing, a grille) is a wall seen
+/// and shot through (`GEOFLAG_WALL` alone); a translucent flat one (a water
+/// surface) and a ceiling are none; an opaque one facing up is a floor, its
+/// `floorcol` the triangle's colour; the rest are walls. `(flags, floorcol)`.
+pub fn tile_of_triangle(pos: [Vec3; 3], col: [[u8; 4]; 3], xlu: bool) -> Option<(u32, u32)> {
+    use pd_core::ids::*;
+    let n = (pos[1] - pos[0]).cross(pos[2] - pos[0]);
+    if n.length_squared() < 1e-6 {
+        return None;
+    }
+    let ny = n.normalize().y;
+    if xlu {
+        return (ny.abs() <= 0.5).then_some((GEOFLAG_WALL, 0));
+    }
+    if ny >= FLOOR_NY {
+        let avg = |c: usize| (col.iter().map(|v| v[c] as u32).sum::<u32>() / 3) >> 4;
+        Some((GEOFLAG_FLOOR1 | GEOFLAG_FLOOR2 | GEOFLAG_BLOCK_SIGHT | GEOFLAG_BLOCK_SHOOT, avg(0) << 8 | avg(1) << 4 | avg(2)))
+    } else if ny <= CEILING_NY {
+        None
+    } else {
+        Some((GEOFLAG_WALL | GEOFLAG_BLOCK_SIGHT | GEOFLAG_BLOCK_SHOOT, 0))
+    }
 }
 
 /// A place the source game marks: where players start, where it put its
@@ -103,6 +136,21 @@ pub enum MarkerKind {
     Item,
     /// A treasure: a spot for a prize weapon.
     Prize,
+}
+
+impl MarkerKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            MarkerKind::Spawn => "spawn",
+            MarkerKind::Person => "person",
+            MarkerKind::Item => "item",
+            MarkerKind::Prize => "prize",
+        }
+    }
+
+    pub fn from_name(s: &str) -> Option<MarkerKind> {
+        [MarkerKind::Spawn, MarkerKind::Person, MarkerKind::Item, MarkerKind::Prize].into_iter().find(|k| k.name() == s)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -133,6 +181,15 @@ pub struct LevelSource {
     pub collision: Vec<ColPoly>,
     pub markers: Vec<Marker>,
     pub env: Env,
+}
+
+/// The linear channel `c` (0..1) as the sRGB byte. glTF's vertex colours are
+/// linear (Blender's exporter writes them so), a PD BG's are display-space
+/// (measured: Complex's 120 comes back from Blender as 0.1878).
+pub fn srgb8(c: f32) -> u8 {
+    let c = c.clamp(0.0, 1.0);
+    let s = if c <= 0.003_130_8 { c * 12.92 } else { 1.055 * c.powf(1.0 / 2.4) - 0.055 };
+    (s * 255.0).round() as u8
 }
 
 /// A wall this short between two floors is a step (cm): the chrs' 69 cm

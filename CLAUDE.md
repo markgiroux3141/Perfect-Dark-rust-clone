@@ -1,6 +1,6 @@
 # Perfect Dark: Combat Simulator in Rust
 
-A faithful recreation of Perfect Dark's Combat Simulator (NTSC final): the menus, the MP arenas, the scenarios, simulants and the full MP arsenal. There is no solo campaign and no level editor.
+A faithful recreation of Perfect Dark's Combat Simulator (NTSC final): the menus, the MP arenas, the scenarios, simulants and the full MP arsenal. There is no solo campaign. Custom levels (other games' levels, any glTF) are imported offline and edited in `pd_edit` (items, waypoints, doors; no modelling).
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (crates, boundaries, asset layout, where old code goes), then [docs/MILESTONES.md](docs/MILESTONES.md) (status and the current milestone's plan). The spikes' measured findings are in [docs/spike-notes/](docs/spike-notes/). Check there before assuming how PD behaves.
 
@@ -28,6 +28,12 @@ cargo run --release -p pd_tools --bin pd_snapshot -- <outdir> <what> ...   # off
 cargo run --release -p pd_import --bin pd_import -- kokiri   # convert a custom level (crates/pd_import/levels/<code>.json) into custom/
                                             #   (gitignored); `--check <code>`, `--explain <code> x z`, `--probe <code> x0 z0 x1 z1`;
                                             #   `facility` is GoldenEye's, from the GE ROM via tools/ge-extract (Python, ~1 min)
+                                            #   `verycomplex` is Complex rebuilt in Blender (a glTF from the Blender MCP repo, ~11 s)
+                                            #   `cifelicity` is CI Training + Felicity fused in Blender (CI from the decomp; ~3 min, the waypoints)
+cargo run --release -p pd_import --bin pd_import -- --place <code>   # place a level again with its layout
+                                            #   (levels/<code>.layout.json; the cached waypoints); `--adopt <code>` writes one
+target/release/pd_edit.exe [<code>]         # the level editor (a window: for the user); `--shot <code> <out.png>
+                                            #   [--at x,y,z,yaw,pitch | --item weapon 3] [--waypoints]` is its view as a PNG
 cargo run --release -p pd_tools --bin pd_music -- <out.wav> <tune|--flow> [secs]   # offline music renders (MUSIC_* name or number; --list)
 cargo run --release -p pd_tools --bin pd_lab # the simulant/route viewer (a window: for the user, not for Claude to drive)
 python tools/check_boundaries.py            # headless crates stay headless
@@ -52,7 +58,7 @@ python tools/pd-assets/check_against_spikes.py   # assets/ against the old repo'
 
 ## Where things are
 
-- `crates/`: the nine crates (see ARCHITECTURE.md § Crates); `pd_import` is the custom level importer (offline, M15).
+- `crates/`: the ten crates (see ARCHITECTURE.md § Crates); `pd_import` is the custom level importer (offline, M15), `pd_edit` the level editor (M18).
 - `custom/`: converted levels (gitignored; another game's data), laid over `assets/` at run time (ARCHITECTURE.md § Custom levels).
 - `assets/`: generated, committed; layout in ARCHITECTURE.md § Assets.
 - `tools/pd-assets/`: Python exporters (stdlib only; `pd_bg_preview.py` needs numpy + Pillow).

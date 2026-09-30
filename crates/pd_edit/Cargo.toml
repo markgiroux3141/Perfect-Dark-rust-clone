@@ -1,0 +1,28 @@
+[package]
+name = "pd_edit"
+description = "The level editor: a custom level's items, waypoints and doors placed by hand over the imported stage (a fly-through view, a left panel), saved as the level's layout file for pd_import."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+
+# A window (engine, pd_render); for the user, not for Claude to drive.
+# `pd_edit --shot` renders the editor's view to a PNG instead.
+[[bin]]
+name = "pd_edit"
+path = "src/main.rs"
+
+[dependencies]
+engine = { workspace = true }
+pd_core = { workspace = true }
+pd_sim = { workspace = true }
+pd_menu = { workspace = true }
+pd_render = { workspace = true }
+pd_import = { workspace = true }
+glam = { workspace = true }
+bytemuck = { workspace = true }
+serde_json = { workspace = true }
+image = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+rfd = { workspace = true }

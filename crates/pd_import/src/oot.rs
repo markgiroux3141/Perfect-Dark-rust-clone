@@ -364,21 +364,21 @@ pub fn load(r: &Recipe, src: &OotSource, dir: &Path) -> Result<LevelSource, Stri
             }
         }
         // WALL_TYPE_NO_LEDGE_GRAB (1): Link can't climb it.
-        collision.push(ColPoly { verts: verts.iter().map(|&x| x * s).collect(), flags, floortype, grab: wall_type != 1 });
+        collision.push(ColPoly { verts: verts.iter().map(|&x| x * s).collect(), flags, floortype, grab: wall_type != 1, floorcol: 0 });
         // An exit: the doorway leads to another scene, so it is closed with an
         // invisible block over the trigger.
         if st["exit_index"].as_u64().unwrap_or(0) != 0 && normal.y > 0.5 {
             for k in 0..3 {
                 let (a, b) = (v[k], v[(k + 1) % 3]);
                 let up = Vec3::Y * EXIT_BLOCK_HEIGHT;
-                collision.push(ColPoly { verts: [a, b, b + up, a + up].iter().map(|&x| x * s).collect(), flags: GEOFLAG_WALL | GEOFLAG_BLOCK_SIGHT | GEOFLAG_BLOCK_SHOOT, floortype: 0, grab: false });
+                collision.push(ColPoly { verts: [a, b, b + up, a + up].iter().map(|&x| x * s).collect(), flags: GEOFLAG_WALL | GEOFLAG_BLOCK_SIGHT | GEOFLAG_BLOCK_SHOOT, floortype: 0, grab: false, floorcol: 0 });
             }
         }
     }
     for w in &src.walls {
         let (a, b) = (Vec3::new(w.from[0], 0.0, w.from[1]), Vec3::new(w.to[0], 0.0, w.to[1]));
         let (y0, y1) = (Vec3::Y * w.y[0], Vec3::Y * w.y[1]);
-        collision.push(ColPoly { verts: [a + y0, b + y0, b + y1, a + y1].iter().map(|&x| x * s).collect(), flags: GEOFLAG_WALL | GEOFLAG_BLOCK_SIGHT | GEOFLAG_BLOCK_SHOOT, floortype: 0, grab: false });
+        collision.push(ColPoly { verts: [a + y0, b + y0, b + y1, a + y1].iter().map(|&x| x * s).collect(), flags: GEOFLAG_WALL | GEOFLAG_BLOCK_SIGHT | GEOFLAG_BLOCK_SHOOT, floortype: 0, grab: false, floorcol: 0 });
     }
 
     // ── Each material's shot surface: the polygons at its triangles vote ───

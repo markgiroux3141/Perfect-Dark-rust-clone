@@ -1,0 +1,19 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "cifelicity",
+  "name": "CI Felicity",
+  "stagenum": 99,
+  "scale": 1.0,
+  "source": {
+    "game": "pd",
+    "bases": [
+      {"code": "dish", "stage": "STAGE_CITRAINING", "tag": "CI", "first_room": 1, "offset": [-6000.0, 0.0, 0.0]},
+      {"code": "mp11", "tag": "FEL", "first_room": 141, "turn": 120.0, "offset": [-10792.3522, 1088.0, -3276.3638]}
+    ],
+    "glb": "D:/Claude Code Projects/Blender MCP for level generation/levels/custom/ci_felicity/ci_felicity.glb"
+  },
+  "spawns": 20,
+  "weapons": 10,
+  "hills": 6,
+  "marker_share": 0.3
+}

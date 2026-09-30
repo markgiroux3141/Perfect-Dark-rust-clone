@@ -135,9 +135,11 @@ impl BgHitMesh {
             let m = &def.materials[b.material];
             // A pool texture's number, whose `g_Textures` row the pool index
             // keeps; a texture stored in the file carries its own surface
-            // types in its `textures` entry (a custom level's).
+            // types in its `textures` entry (a custom level's), as does a
+            // pool texture no arena draws (CI's, in a level built over CI).
             let surface = m.texture.as_ref().map(|t| {
-                let e = if t.id < 0x10000 { pool.get(&format!("{:04x}", t.id)) } else { raw.textures.get(&t.id.to_string()) };
+                let own = || raw.textures.get(&t.id.to_string());
+                let e = if t.id < 0x10000 { pool.get(&format!("{:04x}", t.id)).or_else(own) } else { own() };
                 TexSurface { soundsurfacetype: e.map_or(0, |e| e.soundsurfacetype), surfacetype: e.map_or(0, |e| e.surfacetype) }
             });
             let start = mesh.tris.len();

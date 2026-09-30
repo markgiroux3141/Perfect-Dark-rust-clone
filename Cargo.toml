@@ -24,8 +24,9 @@ members = [
     "crates/pd_game",
     "crates/pd_tools",
     "crates/pd_import",
+    "crates/pd_edit",
 ]
-default-members = ["crates/pd_game"]
+default-members = ["crates/pd_game", "crates/pd_edit"]
 
 [workspace.package]
 edition = "2021"
@@ -43,7 +44,7 @@ pollster = "0.4"
 bytemuck = { version = "1", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 kira = "0.12"
 gilrs = "0.11"
 egui = "0.31"
@@ -52,6 +53,8 @@ egui-winit = "0.31"
 log = "0.4"
 env_logger = "0.11"
 naga = { version = "24", features = ["wgsl-in"] }
+# The level editor's file browser (pd_edit only).
+rfd = "0.17"
 
 engine = { path = "crates/engine" }
 n64 = { path = "crates/n64" }
@@ -60,6 +63,7 @@ pd_sim = { path = "crates/pd_sim" }
 pd_menu = { path = "crates/pd_menu" }
 pd_render = { path = "crates/pd_render" }
 pd_game = { path = "crates/pd_game" }
+pd_import = { path = "crates/pd_import" }
 
 # Day-to-day build: optimised but no fat LTO, so incremental relinks stay ~1-2 s.
 [profile.release]

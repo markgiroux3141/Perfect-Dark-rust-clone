@@ -368,83 +368,8 @@ impl Renderer {
         // (`colour[3] -= obj_get_brightness`) / we light it as the gun is, from
         // the player's room, until the stage lighting port (M6) gives objects
         // their rooms.
-        let obj_lights = gun_lights(brightness, false);
-        let held: Vec<u32> = gun.hands.iter().filter_map(|h| h.rocket).collect();
-        let mut objdraws: Vec<Draw> = Vec::new();
-        let mut door_verts: Vec<(String, pd_sim::props::door::DoorVerts)> = Vec::new();
-        for o in &world.props.objs {
-            // A loaded rocket is drawn with the gun (`bgun_render`); a Slayer
-            // rider doesn't see their own rocket (`propobj.c:12715`).
-            if o.flags & OBJFLAG_HELDROCKET != 0 || held.contains(&o.id) || o.flags2 & OBJFLAG2_INVISIBLE != 0 {
-                continue;
-            }
-            if p.visionmode == VISIONMODE_SLAYERROCKET && p.slayerrocket == Some(o.id) {
-                continue;
-            }
-            // A taken pickup is disabled until its last second (`obj_tick`).
-            if o.is_gone() {
-                continue;
-            }
-            // obj_render (`propobj.c:12692`): lost in a fog stage's fog, not drawn.
-            let shade = obj_shade_mode(self.bg.as_ref(), w2e, o.pos, xray.is_some());
-            if shade == ShadeMode::Xlu {
-                continue;
-            }
-            let mut frame = lit_frame(world_proj, p.look, p.up, obj_lights, env);
-            tint_frame(&mut frame, o.room.and_then(|r| world.scenario_highlight_room(r)));
-            let mut xlu = false;
-            // obj_render (`propobj.c:12701`): the last second of a respawn fades in.
-            if o.timetoregen > 0 && o.timetoregen < 60 {
-                frame.misc[0] = (60 - o.timetoregen) as f32 * 0.016_666_668;
-                xlu = true;
-            }
-            // A tinted pane's env alpha is its opacity from this camera
-            // (`propobj.c:12804`, `glass_update_portal`).
-            if let Some(t) = &o.tinted {
-                let opacity = pd_sim::props::glass::glass_calculate_opacity(o.pos, p.cam.pos(), t.xludist, t.opadist, t.unk64);
-                frame.misc[0] = opacity as f32 / 255.0;
-                xlu = true;
-            }
-            // The fog colour: the pickup highlight (scenario_highlight_prop,
-            // propobj.c:12839).
-            let highlight = world.scenario_highlight_obj(pi, o);
-            if let Some(h) = highlight {
-                frame.fogcol = h.map(|v| v as f32 / 255.0);
-            }
-            if let (ShadeMode::Frac(a), Some(bg)) = (shade, self.bg.as_ref()) {
-                // PD merges `obj->shadecol` toward the sky (`propobj.c:12876`).
-                if highlight.is_none() {
-                    if let Some(t) = floor_tint(&world.level, o.pos) {
-                        frame.fogcol = [t[0], t[1], t[2], frame.fogcol[3]];
-                    }
-                }
-                frame.fogcol = bg::obj_merge_colour_fracs(frame.fogcol, sky_f32(bg), a);
-            }
-            if let Some(e) = xray {
-                // In x-ray: the flat eraser colour through the fog at full
-                // weight, alpha 0..128 as the env alpha (BONDGUN_OBJ_XLU).
-                let Some(c) = xray::obj_colour(e, o.pos) else { continue };
-                frame.flat = [c[0], c[1], c[2], 1.0];
-                frame.misc[0] = c[3];
-                xlu = true;
-            }
-            let joints = o.init_matrices().iter().map(|m| w2e * *m).collect();
-            // A DOORFLAG_0004 door draws its own copy of the model, its display
-            // list clipped to the frame (`door_calc_vertices_*`).
-            let def = match o.door.as_ref().map(|d| pd_sim::props::door::door_calc_texturemap(o, d)) {
-                Some(verts) if !verts.is_empty() => {
-                    let def = self
-                        .door_models
-                        .entry(o.id)
-                        .or_insert_with(|| std::sync::Arc::new(pd_core::model::ModelDef { stem: format!("{}#door{}", o.def.stem, o.id), ..(*o.def).clone() }))
-                        .clone();
-                    door_verts.push((def.stem.clone(), verts));
-                    def
-                }
-                _ => o.def.clone(),
-            };
-            objdraws.push((def, o.vis.clone(), joints, frame, None, xlu));
-        }
+        let ocam = ObjCam { w2e, proj: world_proj, look: p.look, up: p.up, campos: p.cam.pos(), lights: gun_lights(brightness, false), env, xray, player: Some(pi) };
+        let (mut objdraws, door_verts) = self.obj_draws(world, &ocam);
 
         // The simulants and the other players' bodies (`chr_render`,
         // `chr.c:3378`; `player_render`): the body, its head and the held guns,
@@ -689,6 +614,163 @@ impl Renderer {
         }
         // lv_render's framebuffer effects, over the HUD (`lv.c:1439`).
         self.post.draw(device, queue, encoder, target, &p.viewfx, p.cam.c_screenheight, p.cam.c_screenwidth, world.frac20);
+    }
+}
+
+/// The camera the world's objects are drawn from ([`Renderer::obj_draws`]).
+struct ObjCam<'a> {
+    w2e: Mat4,
+    proj: Mat4,
+    look: Vec3,
+    up: Vec3,
+    campos: Vec3,
+    /// (ambient, diffuse, direction), as [`gun_lights`] gives them.
+    lights: (f32, f32, Vec3),
+    env: [f32; 4],
+    xray: Option<&'a pd_sim::player::vision::Eraser>,
+    /// The player looking (their loaded rockets and Slayer rocket aren't
+    /// drawn, their highlights are); none for a free camera.
+    player: Option<usize>,
+}
+
+/// A free camera's objects' env colour: the gun's shade colour before any
+/// room has set it (`gunshadecol`, white, alpha 0). The objects' combiner
+/// takes its alpha as how far they are fogged, so it must be 0.
+const FREE_ENV: [f32; 4] = [1.0, 1.0, 1.0, 0.0];
+
+/// A door model's rewritten vertices this frame: (its stem, batches).
+type DoorVertsOf = (String, pd_sim::props::door::DoorVerts);
+
+impl Renderer {
+    /// The world's objects to draw from `cam` (`obj_render`,
+    /// `propobj.c:12690`), and the vertices of the doors that clip their
+    /// display lists (`door_calc_vertices_*`).
+    fn obj_draws(&mut self, world: &World, cam: &ObjCam) -> (Vec<Draw>, Vec<DoorVertsOf>) {
+        let (w2e, xray) = (cam.w2e, cam.xray);
+        let p = cam.player.and_then(|pi| world.players.get(pi));
+        let held: Vec<u32> = p.map(|p| p.gun.hands.iter().filter_map(|h| h.rocket).collect()).unwrap_or_default();
+        let mut objdraws: Vec<Draw> = Vec::new();
+        let mut door_verts: Vec<DoorVertsOf> = Vec::new();
+        for o in &world.props.objs {
+            // A loaded rocket is drawn with the gun (`bgun_render`); a Slayer
+            // rider doesn't see their own rocket (`propobj.c:12715`).
+            if o.flags & OBJFLAG_HELDROCKET != 0 || held.contains(&o.id) || o.flags2 & OBJFLAG2_INVISIBLE != 0 {
+                continue;
+            }
+            if p.is_some_and(|p| p.visionmode == VISIONMODE_SLAYERROCKET && p.slayerrocket == Some(o.id)) {
+                continue;
+            }
+            // A taken pickup is disabled until its last second (`obj_tick`).
+            if o.is_gone() {
+                continue;
+            }
+            // obj_render (`propobj.c:12692`): lost in a fog stage's fog, not drawn.
+            let shade = obj_shade_mode(self.bg.as_ref(), w2e, o.pos, xray.is_some());
+            if shade == ShadeMode::Xlu {
+                continue;
+            }
+            let mut frame = lit_frame(cam.proj, cam.look, cam.up, cam.lights, cam.env);
+            tint_frame(&mut frame, o.room.and_then(|r| world.scenario_highlight_room(r)));
+            let mut xlu = false;
+            // obj_render (`propobj.c:12701`): the last second of a respawn fades in.
+            if o.timetoregen > 0 && o.timetoregen < 60 {
+                frame.misc[0] = (60 - o.timetoregen) as f32 * 0.016_666_668;
+                xlu = true;
+            }
+            // A tinted pane's env alpha is its opacity from this camera
+            // (`propobj.c:12804`, `glass_update_portal`).
+            if let Some(t) = &o.tinted {
+                let opacity = pd_sim::props::glass::glass_calculate_opacity(o.pos, cam.campos, t.xludist, t.opadist, t.unk64);
+                frame.misc[0] = opacity as f32 / 255.0;
+                xlu = true;
+            }
+            // The fog colour: the pickup highlight (scenario_highlight_prop,
+            // propobj.c:12839).
+            let highlight = cam.player.and_then(|pi| world.scenario_highlight_obj(pi, o));
+            if let Some(h) = highlight {
+                frame.fogcol = h.map(|v| v as f32 / 255.0);
+            }
+            if let (ShadeMode::Frac(a), Some(bg)) = (shade, self.bg.as_ref()) {
+                // PD merges `obj->shadecol` toward the sky (`propobj.c:12876`).
+                if highlight.is_none() {
+                    if let Some(t) = floor_tint(&world.level, o.pos) {
+                        frame.fogcol = [t[0], t[1], t[2], frame.fogcol[3]];
+                    }
+                }
+                frame.fogcol = bg::obj_merge_colour_fracs(frame.fogcol, sky_f32(bg), a);
+            }
+            if let Some(e) = xray {
+                // In x-ray: the flat eraser colour through the fog at full
+                // weight, alpha 0..128 as the env alpha (BONDGUN_OBJ_XLU).
+                let Some(c) = xray::obj_colour(e, o.pos) else { continue };
+                frame.flat = [c[0], c[1], c[2], 1.0];
+                frame.misc[0] = c[3];
+                xlu = true;
+            }
+            let joints = o.init_matrices().iter().map(|m| w2e * *m).collect();
+            // A DOORFLAG_0004 door draws its own copy of the model, its display
+            // list clipped to the frame (`door_calc_vertices_*`).
+            let def = match o.door.as_ref().map(|d| pd_sim::props::door::door_calc_texturemap(o, d)) {
+                Some(verts) if !verts.is_empty() => {
+                    let def = self
+                        .door_models
+                        .entry(o.id)
+                        .or_insert_with(|| std::sync::Arc::new(pd_core::model::ModelDef { stem: format!("{}#door{}", o.def.stem, o.id), ..(*o.def).clone() }))
+                        .clone();
+                    door_verts.push((def.stem.clone(), verts));
+                    def
+                }
+                _ => o.def.clone(),
+            };
+            objdraws.push((def, o.vis.clone(), joints, frame, None, xlu));
+        }
+        (objdraws, door_verts)
+    }
+
+    /// The stage and its objects from a free camera (`view`) into `target`
+    /// (which needs its depth): every room drawn as the stage colours them
+    /// (no portals: the camera may be anywhere, outside the level too), the
+    /// objects fully lit; no chrs, gun, sky or HUD. The level editor's view.
+    pub fn render_free(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, encoder: &mut wgpu::CommandEncoder, target: &RenderTarget, world: &World, view: &View) {
+        let Some(assets) = self.assets.clone() else {
+            log::warn!("render_free before load_stage");
+            return;
+        };
+        let Some((_, depth)) = &target.depth else {
+            log::warn!("render_free: the target has no depth");
+            return;
+        };
+        let w2e = view.world_to_eye();
+        let cam = ObjCam { w2e, proj: view.projection(), look: view.look, up: view.up, campos: view.eye, lights: gun_lights(255.0, false), env: FREE_ENV, xray: None, player: None };
+        let (mut draws, door_verts) = self.obj_draws(world, &cam);
+        for (def, ..) in &draws {
+            if let Err(e) = self.models.load(device, queue, &mut self.combiner, &assets, def) {
+                log::warn!("model {}: {e}", def.stem);
+            }
+        }
+        for (stem, batches) in &door_verts {
+            for (bi, verts) in batches {
+                self.models.rewrite_verts(queue, stem, *bi, verts);
+            }
+        }
+        if self.three_point {
+            for d in draws.iter_mut() {
+                d.3.misc[1] = 1.0;
+            }
+        }
+        self.models.begin_frame();
+        let cmds = self.models.prepare(device, queue, &mut self.combiner, &to_instances(&draws));
+        if let Some(bg) = self.bg.as_ref() {
+            bg.prepare(queue, view, self.three_point, None);
+        }
+        let mut rp = world_pass(encoder, &target.view, depth, self.sky());
+        if let Some(bg) = self.bg.as_ref() {
+            bg.draw_opaque(&mut rp, &self.combiner, None);
+        }
+        self.models.draw(&mut rp, &self.combiner, &cmds);
+        if let Some(bg) = self.bg.as_ref() {
+            bg.draw_xlu(&mut rp, &self.combiner, None, view.eye);
+        }
     }
 }
 

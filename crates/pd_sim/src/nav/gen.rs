@@ -710,6 +710,16 @@ fn emit(
         })
         .collect();
 
+    let _ = level;
+    graph_from_links(pads, &fwd, p.group_radius)
+}
+
+/// A waypoint graph in PD's format from its pads and its directed links
+/// (`fwd[u]`: the waypoints a chr may walk to from `u`): the neighbour lists
+/// with PD's direction flags, and the waygroups ([`group_nodes`], `radius`).
+/// The generator's last step, and what a hand-edited graph is rebuilt with.
+pub fn graph_from_links(pads: Vec<NavPad>, fwd: &[Vec<usize>], group_radius: f32) -> NavGraph {
+    let n = pads.len();
     // Neighbour lists with PD's direction flags: a one-way u → v is OUTWARDSONLY in
     // u's list and INWARDSONLY in v's.
     let mut neighbours: Vec<Vec<i32>> = vec![Vec::new(); n];
@@ -728,7 +738,7 @@ fn emit(
         }
     }
 
-    let groups = group_nodes(&pads, &fwd, p.group_radius);
+    let groups = group_nodes(&pads, fwd, group_radius);
     let mut groupnum = vec![usize::MAX; n];
     for (g, members) in groups.iter().enumerate() {
         for &k in members {
@@ -767,7 +777,6 @@ fn emit(
             NavWaygroup { neighbours: group_neighbours[g].clone(), waypoints: w }
         })
         .collect();
-    let _ = level;
     NavGraph::new(pads, waypoints, waygroups)
 }
 

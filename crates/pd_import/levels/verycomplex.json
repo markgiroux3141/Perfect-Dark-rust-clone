@@ -1,0 +1,12 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "verycomplex",
+  "name": "Very Complex",
+  "stagenum": 98,
+  "scale": 1.0,
+  "source": {
+    "game": "pd",
+    "base": "ref",
+    "glb": "D:/Claude Code Projects/Blender MCP for level generation/levels/custom/very_complex/very_complex.glb"
+  }
+}
