@@ -387,7 +387,8 @@ fn read_glb(path: &Path, base: &Base, parts: &[PdBase]) -> Result<HashMap<u16, V
     let layers: HashSet<(usize, bool)> = base.def.batches.iter().zip(&base.batch_room).map(|(b, &(_, xlu))| (b.material, xlu)).collect();
     let gmats = glb.json["materials"].as_array().cloned().unwrap_or_default();
     // (glTF material, the room's stage) -> (the arena's material, xlu, texture size).
-    let mut mats: HashMap<(usize, Option<usize>), (usize, bool, f32, f32)> = HashMap::new();
+    type MatOf = (usize, bool, f32, f32);
+    let mut mats: HashMap<(usize, Option<usize>), MatOf> = HashMap::new();
     let mut material = |i: usize, part: Option<usize>| -> Result<(usize, bool, f32, f32), String> {
         if let Some(&m) = mats.get(&(i, part)) {
             return Ok(m);

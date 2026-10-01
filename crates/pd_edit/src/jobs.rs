@@ -22,6 +22,9 @@ pub enum Work {
     Place { fresh: bool },
     /// A minute of simulants on the stage as it is.
     Check,
+    /// GoldenEye's door models and their catalogue, from the ROM (`pd_import
+    /// --ge-doors`).
+    GeDoors,
 }
 
 impl Work {
@@ -31,6 +34,7 @@ impl Work {
             Work::Place { fresh: false } => "Placing",
             Work::Place { fresh: true } => "Generating waypoints",
             Work::Check => "Playing a check match",
+            Work::GeDoors => "Extracting GoldenEye's doors",
         }
     }
 }
@@ -44,12 +48,15 @@ pub struct Done {
 pub struct Job {
     pub work: Work,
     pub started: Instant,
+    /// The layout it places.
+    pub layout: Layout,
     rx: Receiver<Done>,
 }
 
 impl Job {
     pub fn spawn(work: Work, recipe: Recipe, layout: Layout, paths: EditPaths, res: Arc<WorldRes>, weapons: [u8; 6]) -> Job {
         let (tx, rx) = channel();
+        let placed = layout.clone();
         std::thread::spawn(move || {
             let ip = paths.import_paths();
             let reload = |report: Vec<String>| -> Result<(Vec<String>, Option<Scene>), String> {
@@ -60,10 +67,11 @@ impl Job {
                 Work::Import => pd_import::import(&recipe, &ip, &layout).and_then(reload),
                 Work::Place { fresh } => pd_import::replace(&recipe, &ip, &layout, pd_import::Finish { check: false, fresh_graph: fresh }).and_then(reload),
                 Work::Check => pd_import::check(&paths.asset_dir(), &recipe.code).map(|r| (r, None)),
+                Work::GeDoors => pd_import::doors::extract_ge(&ip, &paths.levels).map(|r| (r, None)),
             };
             let _ = tx.send(Done { work, result });
         });
-        Job { work, started: Instant::now(), rx }
+        Job { work, started: Instant::now(), layout: placed, rx }
     }
 
     pub fn poll(&self) -> Option<Done> {

@@ -21,6 +21,9 @@ weapons, hills, bases, cover) `pd_import` adds; it runs this first
 Usage (pd_import passes these from the recipe's `source`):
     python tools/ge-extract/ge_extract.py --rom <rom> --decomp <ge-decomp> --level LEVELID_FACILITY
         --setup UsetuparkZ [--markers Ump_setuparkZ ...] --code facility --scale 1 --custom <custom>
+    python tools/ge-extract/ge_extract.py --rom <rom> --decomp <ge-decomp> --custom <custom> --doors
+        # every door model any setup places, and <custom>/ge/doors.json (ge_doors: the
+        # level editor's catalogue of GoldenEye's doors)
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import ge_bg  # noqa: E402
+import ge_doors  # noqa: E402
 import ge_model  # noqa: E402
 import ge_setup  # noqa: E402
 import ge_stan  # noqa: E402
@@ -80,16 +84,23 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rom", required=True)
     ap.add_argument("--decomp", required=True)
-    ap.add_argument("--level", required=True, help="the levelinfotable row, e.g. LEVELID_FACILITY")
-    ap.add_argument("--setup", required=True, help="the setup whose doors are kept, e.g. UsetuparkZ")
+    ap.add_argument("--level", help="the levelinfotable row, e.g. LEVELID_FACILITY")
+    ap.add_argument("--setup", help="the setup whose doors are kept, e.g. UsetuparkZ")
     ap.add_argument("--markers", nargs="*", default=[], help="more setups whose spots placement prefers")
-    ap.add_argument("--code", required=True)
+    ap.add_argument("--code")
     ap.add_argument("--scale", type=float, default=1.0, help="GE world units (cm) to PD centimetres")
     ap.add_argument("--custom", required=True)
+    ap.add_argument("--doors", action="store_true", help="every setup's door models and the door catalogue, no level")
     a = ap.parse_args()
+    if not a.doors and not (a.level and a.setup and a.code):
+        ap.error("--level, --setup and --code are required (or --doors)")
 
     try:
         ge = Ge(a.rom, a.decomp)
+        if a.doors:
+            for line in ge_doors.build(ge, Images(ge, a.custom), a.custom, a.scale):
+                print(line)
+            return 0
         level = ge.level(a.level)
         k = a.scale / level["levelscale"]
         stage = os.path.join(a.custom, "stages", a.code)

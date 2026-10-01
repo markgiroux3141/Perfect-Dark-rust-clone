@@ -12,8 +12,13 @@
 //! (`chr_open_door`, `chraction.c:12261`).
 //!
 //! The arenas' doors slide (`DOORTYPE_SLIDING`, `_VERTICAL`) or swing
-//! (`DOORTYPE_SWINGING`: Felicity's); the GE types (flexi, eye, iris, fall
-//! away, the Aztec chair) and lasers are not on any Combat Simulator arena.
+//! (`DOORTYPE_SWINGING`: Felicity's). A custom level's doors (`pd_edit`, any
+//! of PD's and GoldenEye's door models) may also be the types PD kept from
+//! GoldenEye: the flexi doors (slid as sliding ones), the Attack Ship's hull
+//! doors and the Aztec chair (turned about their pad's normal or the world's
+//! z axis), and Caverns' eyelid and iris doors (posed by `door_init_matrices`).
+//! Fall-away doors (a hatch that drops once opened, as a projectile) and lasers
+//! are not ported.
 
 use glam::{Mat3, Mat4, Vec2, Vec3};
 use pd_core::events::Event;
@@ -53,10 +58,15 @@ pub const DOORTYPE_FLEXI2: u16 = 2;
 pub const DOORTYPE_FLEXI3: u16 = 3;
 pub const DOORTYPE_VERTICAL: u16 = 4;
 pub const DOORTYPE_SWINGING: u16 = 5;
+pub const DOORTYPE_EYE: u16 = 6;
+pub const DOORTYPE_IRIS: u16 = 7;
 pub const DOORTYPE_FALLAWAY: u16 = 8;
+pub const DOORTYPE_AZTECCHAIR: u16 = 9;
+pub const DOORTYPE_HULL: u16 = 10;
 pub const DOORTYPE_LASER: u16 = 11;
 
-/// The handles a door's sounds play on: three per door (`PSTYPE_DOOR`).
+/// The handles a door's sounds play on: four per door (`PSTYPE_DOOR`), the
+/// three `door_play` restarts and the iris door's blades' one.
 const DOOR_HANDLE_BASE: u32 = 0x4000_0000;
 
 /// `struct doorobj`'s own fields.
@@ -276,6 +286,22 @@ pub fn door_calc_texturemap(o: &Obj, d: &Door) -> DoorVerts {
         .collect()
 }
 
+/// How many frames (60ths) a shut door takes to open, its fraction moved by
+/// `apply_speed` a frame at a time as `door_calc_intended_frac` moves it
+/// (the setup's integers: `maxfrac` 16.16, `accel`/`decel` / 65536000,
+/// `maxspeed` / 65536). The level editor's readout, not PD's; `None` if it
+/// never gets there in a minute.
+pub fn door_open_frames(maxfrac: i32, accel: i32, decel: i32, maxspeed: i32) -> Option<u32> {
+    let mut lv = pd_core::lv::Lv::new();
+    lv.lvupdate60 = 1;
+    let (end, accel, decel, maxspeed) = (maxfrac as f32 / 65536.0, accel as f32 / 65_536_000.0, decel as f32 / 65_536_000.0, maxspeed as f32 / 65536.0);
+    let (mut frac, mut speed) = (0.0f32, 0.0f32);
+    (1..=3600).find(|_| {
+        apply_speed(&lv, &mut frac, end, &mut speed, accel, decel, maxspeed);
+        frac >= end
+    })
+}
+
 /// `door_get_mtx` (`propobj.c:18147`): the rotation and position, the z axis
 /// mirrored for a `DOORFLAG_FLIP` door.
 pub fn door_get_mtx(o: &Obj, d: &Door) -> Mat4 {
@@ -286,23 +312,81 @@ pub fn door_get_mtx(o: &Obj, d: &Door) -> Mat4 {
     m
 }
 
+/// `door_init_matrices` (`propobj.c:7843`) past matrix 0 (`door_get_mtx`,
+/// world space here: the renderer puts the camera in front). An eyelid door
+/// (`g_Skel11`, GoldenEye's Caverns) turns its two lids, parts 1 and 2, about
+/// x in opposite ways by the fraction (in degrees); an iris door (`g_Skel13`)
+/// turns six blades, each an outer part (1, 3, .. 11) that follows once the
+/// door is 0.3 open and an inner one (2, 4, .. 12) turned by the fraction
+/// within it. Each matrix is its part's number, as PD indexes them.
+pub fn door_init_matrices(def: &pd_core::model::ModelDef, d: &Door, mats: &mut [Mat4]) {
+    let pos = |part: i32| -> Option<Vec3> {
+        match def.nodes[def.get_part(part)?].kind {
+            pd_core::model::NodeKind::Position { pos, .. } => Some(pos),
+            _ => None,
+        }
+    };
+    let set = |mats: &mut [Mat4], i: usize, parent: usize, mut m: Mat4, at: Vec3| {
+        math::set_translation(&mut m, at);
+        if i < mats.len() && parent < mats.len() {
+            mats[i] = math::mul(&mats[parent], &m);
+        }
+    };
+    if def.skel == SKEL_11 {
+        let xrot = baddtor(360.0) - math::baddtor2(d.frac);
+        if let Some(p) = pos(MODELPART_0001) {
+            set(mats, 1, 0, math::mtx4_load_x_rotation(xrot), p);
+        }
+        if let Some(p) = pos(MODELPART_0002) {
+            set(mats, 2, 0, math::mtx4_load_x_rotation(baddtor(360.0) - xrot), p);
+        }
+    } else if def.skel == SKEL_13 {
+        let zrot2 = math::baddtor2(d.frac);
+        let limit = d.maxfrac * 0.3;
+        let zrot1 = if d.frac > limit { math::baddtor2((d.maxfrac * (d.frac - limit)) / (d.maxfrac - limit)) } else { 0.0 };
+        for i in 0..6 {
+            let (i1, i2) = ((i << 1) + 1, (i << 1) + 2);
+            if let Some(p) = pos(i1 as i32) {
+                set(mats, i1, 0, math::mtx4_load_z_rotation(zrot1), p);
+            }
+            if let Some(p) = pos(i2 as i32) {
+                set(mats, i2, i1, math::mtx4_load_z_rotation(zrot2), p);
+            }
+        }
+    }
+}
+
 /// `door_update_tiles` (`propobj.c:18172`): the door's place at its fraction
-/// (slid along `slidedist`, or a swinging door turned about its hinge) and
-/// its collision block, gone once it is open past `perimfrac`.
+/// (slid along `slidedist`, or a rotating door turned about its hinge: a
+/// swinging door about the vertical, the Aztec chair about the world's z, a
+/// hull door about its pad's normal) and its collision block, gone once it is
+/// open past `perimfrac`.
 pub fn door_update_tiles(o: &mut Obj) {
     let Some(d) = o.door.as_mut() else { return };
     if d.doorflags & DOORFLAG_TRANSLATION != 0 {
         o.pos = d.slidedist * d.frac + d.startpos;
-    } else if d.doortype == DOORTYPE_SWINGING {
+    } else if matches!(d.doortype, DOORTYPE_SWINGING | DOORTYPE_AZTECCHAIR | DOORTYPE_HULL) {
         let pad = &d.pad;
         let n = pad.normal();
+        let tofront = o.flags & OBJFLAG_DOOR_OPENTOFRONT != 0;
         let mut sp8c = pad.pos + pad.up * pad.bbox[2];
-        sp8c += n * if o.flags & OBJFLAG_DOOR_OPENTOFRONT != 0 { pad.bbox[1] } else { pad.bbox[0] };
+        sp8c += match d.doortype {
+            DOORTYPE_AZTECCHAIR => n * pad.bbox[1],
+            // `// SUBST:` PD reads the pad's look without unpacking it (its
+            // @bug, an uninitialised stack value) / the pad's look.
+            DOORTYPE_HULL => pad.look * pad.bbox[4],
+            _ => n * if tofront { pad.bbox[1] } else { pad.bbox[0] },
+        };
         let sp80 = d.startpos - sp8c;
         let mut spdc = Mat4::from_mat3(d.rotmtx);
         spdc = Mat4::from_translation(sp80) * spdc;
-        let angle = if o.flags & OBJFLAG_DOOR_OPENTOFRONT != 0 { baddtor(360.0) - d.frac * baddtor(1.0) } else { d.frac * baddtor(1.0) };
-        spdc = math::mtx4_load_y_rotation(angle) * spdc;
+        let angle = if tofront { baddtor(360.0) - d.frac * baddtor(1.0) } else { d.frac * baddtor(1.0) };
+        let rot = match d.doortype {
+            DOORTYPE_AZTECCHAIR => math::mtx4_load_z_rotation(angle),
+            DOORTYPE_HULL => math::gu_rotate_f(if tofront { 360.0 - d.frac } else { d.frac }, n.x, n.y, n.z),
+            _ => math::mtx4_load_y_rotation(angle),
+        };
+        spdc = rot * spdc;
         spdc = Mat4::from_translation(sp8c) * spdc;
         o.realrot = Mat3::from_mat4(spdc);
         o.pos = spdc.w_axis.truncate();
@@ -329,8 +413,17 @@ pub fn door_update_tiles(o: &mut Obj) {
     }
     if d.doortype == DOORTYPE_VERTICAL {
         geo.ymin = d.startpos.y + bbox.rotated_y_min(&o.realrot);
+    } else if d.doortype == DOORTYPE_FALLAWAY {
+        geo.ymin = o.pos.y - 10000.0;
     } else if d.doorflags & DOORFLAG_EXTENDEDY != 0 {
         geo.ymin -= 1000.0;
+    }
+    // An eyelid or iris door past 0.4 open keeps only a 50 cm sill.
+    if matches!(d.doortype, DOORTYPE_EYE | DOORTYPE_IRIS) && d.frac > 0.4 * d.maxfrac {
+        geo.ymax = geo.ymin + 50.0;
+    } else if d.doortype == DOORTYPE_FALLAWAY {
+        geo.ymax = o.pos.y + 1000.0;
+    } else if d.doorflags & DOORFLAG_EXTENDEDY != 0 {
         geo.ymax += 1000.0;
     }
     d.geo = geo;
@@ -510,6 +603,16 @@ impl World {
             let canhide = d.fadealpha == 255 && d.frac <= 0.0 && !multi;
             if let Some(p) = d.portalnum {
                 self.bg_set_portal_open_state(p, !canhide);
+            }
+        }
+    }
+
+    /// Every door opened (or closed) at once, as if used
+    /// (`doors_request_mode`): the level editor's preview, not PD's.
+    pub fn doors_preview(&mut self, open: bool) {
+        for i in 0..self.props.objs.len() {
+            if self.props.objs[i].door.is_some() {
+                self.doors_request_mode(i, if open { DOORMODE_OPENING } else { DOORMODE_CLOSING });
             }
         }
     }
@@ -712,6 +815,7 @@ impl World {
     pub(crate) fn door_tick(&mut self, i: usize) {
         let lvframe60 = self.lv.lvframe60;
         let id = self.props.objs[i].id;
+        let prevfrac = self.door_mut(i).frac;
         {
             let o = &self.props.objs[i];
             let d = o.door.as_ref().unwrap();
@@ -745,6 +849,17 @@ impl World {
         let d = self.door_mut(i);
         if d.lastcalc60 < lvframe60 || self.lv.lvupdate240 == 0 {
             self.doors_calc_frac(i);
+        }
+        // An iris door's blades sound as the fraction passes 0.3 of open
+        // (`propobj.c:7762`), on a handle of their own (`ps_create`).
+        if self.props.objs[i].def.skel == SKEL_13 {
+            let d = self.door_mut(i);
+            let (frac, soundpoint) = (d.frac, d.maxfrac * 0.3);
+            if frac > soundpoint && prevfrac <= soundpoint {
+                self.door_sound(i, 3, 0x8014);
+            } else if frac <= soundpoint && prevfrac > soundpoint {
+                self.door_sound(i, 3, 0x8015);
+            }
         }
     }
 
@@ -1274,6 +1389,81 @@ mod tests {
             }
         }
         panic!("the door never opened (or never closed): opened at {opened_at:?}");
+    }
+
+    /// A hull door turns about its pad's normal, a swinging one about the
+    /// vertical, the Aztec chair about the world's z; each by its fraction in
+    /// degrees, about a hinge on its pad's `up * ymin` edge.
+    #[test]
+    fn rotating_doors_turn_about_their_axes() {
+        let mut w = world("mp11");
+        let i = doors(&w).into_iter().find(|&i| w.props.objs[i].door.as_ref().unwrap().doortype == DOORTYPE_SWINGING).unwrap();
+        for (ty, axis) in [(DOORTYPE_SWINGING, None), (DOORTYPE_HULL, Some(true)), (DOORTYPE_AZTECCHAIR, Some(false))] {
+            let o = &mut w.props.objs[i];
+            let d = o.door.as_mut().unwrap();
+            d.doortype = ty;
+            d.frac = 0.0;
+            door_update_tiles(o);
+            let shut = (o.realrot, o.pos);
+            o.door.as_mut().unwrap().frac = 30.0;
+            door_update_tiles(o);
+            let d = o.door.as_ref().unwrap();
+            // The turn from shut to open, and the axis it leaves alone.
+            let turn = o.realrot * shut.0.inverse();
+            let want = match axis {
+                None => Vec3::Y,
+                Some(true) => d.pad.normal(),
+                Some(false) => Vec3::Z,
+            };
+            assert!((turn * want).distance(want) < 1e-3, "type {ty}: the axis moved to {}", turn * want);
+            let other = if want.y.abs() > 0.5 { d.pad.up } else { want.cross(Vec3::Y).normalize() };
+            let a = (turn * other).dot(other).clamp(-1.0, 1.0).acos().to_degrees();
+            assert!((a - 30.0).abs() < 0.5, "type {ty}: turned {a}°");
+            assert!(o.pos.distance(shut.1) > 1.0, "type {ty}: it didn't move off its hinge");
+        }
+    }
+
+    /// `door_init_matrices`: shut, an iris door's blades sit where the model
+    /// puts them (each part translated from its parent); open, the inner ones
+    /// turn by the fraction, the outer only past 0.3 of `maxfrac`.
+    #[test]
+    fn iris_blades_turn_as_the_door_opens() {
+        use pd_core::model::{ModelDef, NodeKind};
+        let pos = |p: Vec3, part: i32| (NodeKind::Position { pos: p, animpart: part as u16, mtx: [part as i16, -1, -1], flags: 0 }, None, Some(part));
+        let mut nodes = vec![pos(Vec3::ZERO, 0)];
+        for b in 0..6 {
+            nodes.push((pos(Vec3::new(100.0 + b as f32, 0.0, 0.0), 2 * b + 1).0, Some(0), Some(2 * b + 1)));
+            let parent = nodes.len() - 1;
+            nodes.push((pos(Vec3::new(0.0, 50.0, 0.0), 2 * b + 2).0, Some(parent), Some(2 * b + 2)));
+        }
+        let def = ModelDef::from_nodes("iris", SKEL_13, 13, nodes);
+        let w = world("mp11");
+        let mut d = (**w.props.objs[doors(&w)[0]].door.as_ref().unwrap()).clone();
+        d.maxfrac = 40.0;
+        let at = |d: &Door| {
+            let mut m = vec![Mat4::IDENTITY; 13];
+            door_init_matrices(&def, d, &mut m);
+            m
+        };
+        d.frac = 0.0;
+        let m = at(&d);
+        assert!(m[1].w_axis.truncate().distance(Vec3::new(100.0, 0.0, 0.0)) < 1e-4 && m[2].w_axis.truncate().distance(Vec3::new(100.0, 50.0, 0.0)) < 1e-4);
+        d.frac = 10.0; // under 0.3 of 40: only the inner blades turn
+        let m = at(&d);
+        assert!(m[1].x_axis.truncate().distance(Vec3::X) < 1e-5, "an outer blade turned early");
+        assert!((m[2].x_axis.truncate().angle_between(Vec3::X).to_degrees() - 10.0 * M_BADPI / std::f32::consts::PI).abs() < 0.1);
+        d.frac = 40.0;
+        let m = at(&d);
+        assert!(m[1].x_axis.truncate().angle_between(Vec3::X) > 0.5, "the outer blades don't follow");
+    }
+
+    /// The editor's open-time readout, by `apply_speed`: Felicity's sliding
+    /// doors take about 2.5 s (the use test's 148 ticks less the tap's).
+    #[test]
+    fn felicitys_doors_open_in_two_and_a_half_seconds() {
+        let f = door_open_frames(0xf333, 0x2aaa, 0x2aaa, 0x2c5).unwrap();
+        assert!((140..=150).contains(&f), "{f} frames");
+        assert_eq!(door_open_frames(0xf333, 0, 0, 0), None);
     }
 
     /// A half-open `DOORFLAG_0004` door (Grid's sliding ones, Temple's vertical

@@ -46,8 +46,9 @@ fn every_model_loads_in_preorder_with_its_parts_and_textures() {
     // 225 through M7; M8 adds the MP ammo crate (multi_ammo_crate); M9 the 17
     // other models the arenas' setups place (doors, lifts, glass, crates); M10
     // the scenarios' briefcase, uplink and terminal, and the first-person
-    // uplink and briefcase guns.
-    assert_eq!(s.index.len(), 248);
+    // uplink and briefcase guns (248); M18 the 80 other door models PD's solo
+    // setups place, the level editor's catalogue (`pd_doors.py`).
+    assert_eq!(s.index.len(), 328);
     for stem in s.index.keys() {
         let d = s.get(stem).unwrap_or_else(|e| panic!("{e}"));
         for (i, n) in d.nodes.iter().enumerate() {

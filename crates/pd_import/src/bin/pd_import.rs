@@ -11,6 +11,10 @@
 //! converted level's placement as it is (every kind), so it can be edited by
 //! hand; `--force` replaces a layout that exists.
 //!
+//! `pd_import --ge-doors`: every GoldenEye door model into `custom/models/`
+//! and their catalogue into `custom/ge/doors.json` (for `pd_edit`), from the
+//! ROM a GoldenEye level's recipe names (or `$PD_GE_ROM`).
+//!
 //! `pd_import --check <code>`: load a converted level and play a minute of
 //! simulants on it, without converting it again.
 //!
@@ -59,11 +63,17 @@ fn run(args: &[String]) -> Result<(), String> {
         }
         let (layout, skipped) = pd_import::layout::Layout::adopt(&paths.stage_dir(&r.code))?;
         layout.save(&out)?;
-        println!("{}: {} spawns, {} weapons, {} ammo crates, {} hills, {} bases, {} respawns, {} cover", out.display(),
+        println!("{}: {} spawns, {} weapons, {} ammo crates, {} hills, {} bases, {} respawns, {} cover, {} doors", out.display(),
             layout.spawns.as_ref().map_or(0, |v| v.len()), layout.weapons.as_ref().map_or(0, |v| v.len()), layout.ammo.as_ref().map_or(0, |v| v.len()),
-            layout.hills.as_ref().map_or(0, |v| v.len()), layout.bases.as_ref().map_or(0, |v| v.len()), layout.respawns.as_ref().map_or(0, |v| v.len()), layout.cover.as_ref().map_or(0, |v| v.len()));
+            layout.hills.as_ref().map_or(0, |v| v.len()), layout.bases.as_ref().map_or(0, |v| v.len()), layout.respawns.as_ref().map_or(0, |v| v.len()), layout.cover.as_ref().map_or(0, |v| v.len()), layout.doors.as_ref().map_or(0, |v| v.len()));
         for s in skipped {
             println!("not taken: {s}");
+        }
+        return Ok(());
+    }
+    if args.iter().any(|a| a == "--ge-doors") {
+        for line in pd_import::doors::extract_ge(&paths, &manifest.join("levels"))? {
+            println!("{line}");
         }
         return Ok(());
     }
@@ -100,7 +110,7 @@ fn run(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let Some(which) = positional.first() else {
-        return Err("usage: pd_import <code | recipe.json> [--src <dir>] [--custom <dir>] | --check <code> | --place <code> [--fresh] [--no-check] | --adopt <code> [--force]".into());
+        return Err("usage: pd_import <code | recipe.json> [--src <dir>] [--custom <dir>] | --check <code> | --place <code> [--fresh] [--no-check] | --adopt <code> [--force] | --ge-doors".into());
     };
     let recipe = recipe_path(which);
     let r = pd_import::recipe::Recipe::load(&recipe)?;

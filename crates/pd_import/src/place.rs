@@ -271,6 +271,9 @@ fn strip(g: &mut Gameplay, l: &Layout) {
     if l.cover.is_some() {
         g.cover.clear();
     }
+    if l.doors.is_some() {
+        g.props.retain(|v| v["type"] != "door");
+    }
 }
 
 /// The pads the rows of `g` stand on.
@@ -288,7 +291,9 @@ fn v3(p: [f32; 3]) -> Vec3 {
 /// Place the gameplay data on `stage`, after what the source brings in
 /// `fixed` (its pads and props keep their numbers): every kind `layout` holds
 /// exactly as it holds it, the rest as `how` says; then `graph`'s waypoints.
-pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fixed: Gameplay, layout: &Layout, how: &How) -> Result<Placed, String> {
+/// `models`: `MODEL_*` by stem, for the layout's doors.
+#[allow(clippy::too_many_arguments)]
+pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fixed: Gameplay, layout: &Layout, how: &How, models: &std::collections::HashMap<String, i32>) -> Result<Placed, String> {
     let mut report = Vec::new();
     let nodes = usable(graph, &mut report)?;
     let cands: Vec<Vec3> = nodes.iter().map(|n| n.pos).collect();
@@ -524,6 +529,38 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
         for (a, _) in ammo.iter().filter(|a| a.1 == i) {
             props.push(json!({"type": "ammocratemulti", "scale": 153, "model": MODEL_MULTI_AMMO_CRATE, "pad": pad(*a, Vec3::Z), "flags": OBJFLAG_FALL, "flags2": 0, "flags3": 0, "maxdamage": 1000}));
         }
+    }
+    // ── Doors: each on its own upright pad, its ring's siblings relative ──
+    if let Some(doors) = &layout.doors {
+        let first = g.props.len() + props.len();
+        let (mut with_portal, mut too_big) = (0, Vec::new());
+        for (i, d) in doors.iter().enumerate() {
+            let model = *models.get(&d.model).ok_or_else(|| format!("door {i}: no model {:?} (GoldenEye's doors need extracting first: pd_import --ge-doors)", d.model))?;
+            // Its sibling ring, for the portal test: a double door's leaves
+            // share their doorway's portal.
+            let mut ring = vec![d];
+            let mut next = d.sibling;
+            while let Some(s) = next.filter(|&s| s != i && ring.len() < doors.len()) {
+                ring.push(&doors[s]);
+                next = doors[s].sibling;
+            }
+            let portal = crate::doors::portal_for(&stage.rooms, d, &ring, 40.0);
+            if portal.is_some() {
+                with_portal += 1;
+            } else if crate::doors::portal_for(&stage.rooms, d, &ring, f32::INFINITY).is_some() {
+                too_big.push(i);
+            }
+            let pad = crate::doors::pad_of(d);
+            g.pads.push(pad);
+            let sibling = d.sibling.map_or(0, |s| s as i32 - i as i32);
+            props.push(crate::doors::row_of(d, model, g.pads.len() - 1, portal.is_some(), sibling));
+        }
+        report.push(format!(
+            "doors: {}{} ({with_portal} closing their doorway's portal; {} beside a portal bigger than their doorway, left open: {too_big:?}), rows from {first}",
+            doors.len(),
+            tag(true),
+            too_big.len()
+        ));
     }
     if !g.intro.iter().any(|v| v["type"] == "outfit") {
         intro.push(json!({"type": "outfit", "outfit": 0}));

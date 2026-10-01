@@ -30,10 +30,12 @@ cargo run --release -p pd_import --bin pd_import -- kokiri   # convert a custom 
                                             #   `facility` is GoldenEye's, from the GE ROM via tools/ge-extract (Python, ~1 min)
                                             #   `verycomplex` is Complex rebuilt in Blender (a glTF from the Blender MCP repo, ~11 s)
                                             #   `cifelicity` is CI Training + Felicity fused in Blender (CI from the decomp; ~3 min, the waypoints)
+                                            #   `--ge-doors`: every GoldenEye door model + the editor's catalogue of them (custom/ge/doors.json)
 cargo run --release -p pd_import --bin pd_import -- --place <code>   # place a level again with its layout
                                             #   (levels/<code>.layout.json; the cached waypoints); `--adopt <code>` writes one
 target/release/pd_edit.exe [<code>]         # the level editor (a window: for the user); `--shot <code> <out.png>
-                                            #   [--at x,y,z,yaw,pitch | --item weapon 3] [--waypoints]` is its view as a PNG
+                                            #   [--at x,y,z,yaw,pitch | --item weapon 3 | --item door 3] [--waypoints] [--open]`
+                                            #   is its view as a PNG (`--open`: every door opened two seconds before)
 cargo run --release -p pd_tools --bin pd_music -- <out.wav> <tune|--flow> [secs]   # offline music renders (MUSIC_* name or number; --list)
 cargo run --release -p pd_tools --bin pd_lab # the simulant/route viewer (a window: for the user, not for Claude to drive)
 python tools/check_boundaries.py            # headless crates stay headless

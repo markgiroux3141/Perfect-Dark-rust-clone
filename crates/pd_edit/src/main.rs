@@ -8,7 +8,9 @@
 //! ring to turn it; Ctrl snaps. With an Add tool, click the floor to place
 //! one. G drops the selection to the floor, Shift+D duplicates an item,
 //! Delete removes, F frames, Ctrl+Z / Ctrl+Y undo and redo, Ctrl+S saves the
-//! layout.
+//! layout. Doors (their own tab): pick a model from the catalogue (every door
+//! PD's and GoldenEye's setups place), + Door, click a doorway's floor; it is
+//! fitted to the opening, and moved and turned like an item.
 //!
 //! `pd_edit --shot <code> <out.png> [...]`: the view to a PNG (see `shot`).
 
@@ -31,7 +33,8 @@ use pd_edit::newlevel::NewLevel;
 use pd_edit::overlay::{self, Highlight, Show};
 use pd_edit::paths::EditPaths;
 use pd_edit::scene::Scene;
-use pd_import::layout::Layout;
+use pd_import::doors::{Catalogue, Game as DoorGame};
+use pd_import::layout::{Layout, Motion as DoorMotion, Side, Swing};
 use pd_import::recipe::Recipe;
 use pd_menu::generated::MP_WEAPON_SETS;
 use pd_render::Renderer;
@@ -55,7 +58,14 @@ enum Tool {
     Add(Kind),
     AddNode,
     Link,
+    /// Place the picked catalogue door.
+    AddDoor,
 }
+
+/// `door_play_opening_sound`'s types PD has (`door_sounds`), for the sound menu.
+const DOOR_SOUNDS: [u8; 21] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 28, 29];
+/// An auto-close time that never comes (PD's setups' 0x0fffffff).
+const NEVER: i32 = 0x0fff_ffff;
 
 /// A gizmo drag: the gizmo's, what it moves, and where that started.
 struct Dragging {
@@ -77,6 +87,35 @@ struct Level {
     report: Vec<String>,
     /// An edit not placed yet: when it was made.
     pending: Option<Instant>,
+}
+
+impl Level {
+    /// Move an item (no undo step) and, for a pickup, its object in the view
+    /// at once: the placement that follows comes a moment after the edit.
+    fn set_pos(&mut self, it: Item, p: Vec3) {
+        let from = self.doc.pos(it);
+        self.doc.set_pos(it, p);
+        if let (Kind::Weapon | Kind::Ammo, Some(scene)) = (it.kind, self.scene.as_mut()) {
+            scene.move_pickup(from, self.doc.pos(it));
+        }
+    }
+
+    /// A placement of `placed` just loaded: the pickups the user moved while
+    /// it ran shown where the layout has them now (when the lists still
+    /// match one for one).
+    fn catch_up(&mut self, placed: &Layout) {
+        let Some(scene) = self.scene.as_mut() else { return };
+        let lists = [(Kind::Weapon, placed.weapons.as_ref().map(|w| w.iter().map(|x| x.pos).collect::<Vec<_>>())), (Kind::Ammo, placed.ammo.as_ref().map(|a| a.iter().map(|x| x.pos).collect()))];
+        for (kind, was) in lists {
+            let Some(was) = was.filter(|w| w.len() == self.doc.count(kind)) else { continue };
+            for (index, from) in was.into_iter().enumerate() {
+                let (from, to) = (Vec3::from(from), self.doc.pos(Item { kind, index }));
+                if from != to {
+                    scene.move_pickup(from, to);
+                }
+            }
+        }
+    }
 }
 
 struct App {
@@ -112,6 +151,18 @@ struct App {
     new_level: Option<NewLevel>,
     message: Option<(String, bool)>,
     open_code: Option<String>,
+    /// Every door model the Doors tab offers.
+    catalogue: Catalogue,
+    door_filter: String,
+    /// Which game's doors the list shows (none: both).
+    door_game: Option<DoorGame>,
+    /// The catalogue door + Door places: its stem and template.
+    door_pick: Option<(String, usize)>,
+    /// Fit a placed door to the doorway it is put in.
+    door_fit: bool,
+    /// The doors' preview: when it started, and the time not yet stepped.
+    preview: Option<Instant>,
+    preview_acc: f32,
 }
 
 fn rgba(c: [u8; 4]) -> egui::Color32 {
@@ -150,6 +201,13 @@ impl App {
             new_level: None,
             message: None,
             open_code,
+            catalogue: Catalogue::default(),
+            door_filter: String::new(),
+            door_game: None,
+            door_pick: None,
+            door_fit: true,
+            preview: None,
+            preview_acc: 0.0,
         }
     }
 
@@ -240,6 +298,19 @@ impl App {
             }
             self.cam = scene.start_camera();
         }
+        // A layout file without doors (one made before doors could be edited):
+        // the stage's own (a GoldenEye level's) are the doors.
+        if level.doc.layout.doors.is_none() {
+            match Layout::adopt(&self.paths.stage_dir(&level.recipe.code)) {
+                Ok((l, left)) => {
+                    level.doc.adopt_doors(l.doors.unwrap_or_default());
+                    for m in left.iter().filter(|m| m.starts_with("door")) {
+                        log::warn!("{m}");
+                    }
+                }
+                Err(e) => log::warn!("adopting the stage's doors: {e}"),
+            }
+        }
         // The graph was rebuilt: waypoint indices changed.
         let node_at = match self.sel {
             Some(Sel::Node(i)) => self.reselect_node.take().or_else(|| level.scene.as_ref().and_then(|s| s.graph.pos.get(i).copied())),
@@ -285,7 +356,8 @@ impl App {
 
     fn poll_job(&mut self, ctx: &mut Ctx) {
         let Some(done) = self.job.as_ref().and_then(|j| j.poll()) else { return };
-        let secs = self.job.take().map_or(0.0, |j| j.started.elapsed().as_secs_f32());
+        let Some(job) = self.job.take() else { return };
+        let secs = job.started.elapsed().as_secs_f32();
         match done.result {
             Ok((report, scene)) => {
                 if let Some(level) = self.level.as_mut() {
@@ -297,6 +369,12 @@ impl App {
                 }
                 if let Some(scene) = scene {
                     self.scene_loaded(scene, done.work == Work::Import, ctx);
+                    if let Some(level) = self.level.as_mut() {
+                        level.catch_up(&job.layout);
+                    }
+                }
+                if done.work == Work::GeDoors {
+                    self.catalogue = Catalogue::load(&self.paths.asset_dir());
                 }
                 if done.work != (Work::Place { fresh: false }) {
                     self.say(format!("{} done in {secs:.1} s", done.work.label()), false);
@@ -384,7 +462,7 @@ impl App {
     fn move_sel_live(&mut self, p: Vec3) {
         let Some(level) = self.level.as_mut() else { return };
         match self.sel {
-            Some(Sel::Item(it)) => level.doc.set_pos(it, p),
+            Some(Sel::Item(it)) => level.set_pos(it, p),
             Some(Sel::Node(i)) => {
                 if let Some(s) = level.scene.as_mut() {
                     s.graph.pos[i] = p;
@@ -414,16 +492,22 @@ impl App {
     fn ground_sel(&mut self) {
         let (Some(sel), Some(p)) = (self.sel, self.sel_pos()) else { return };
         let Some(level) = self.level.as_mut() else { return };
-        let Some(scene) = level.scene.as_mut() else { return };
-        let Some(q) = scene.stand(p + Vec3::Y * 20.0) else { return self.say("no floor under it", true) };
+        let Some(scene) = level.scene.as_ref() else { return };
+        let lift = match sel {
+            Sel::Item(it) => PAD_HEIGHT - it.kind.height(),
+            Sel::Node(_) => 0.0,
+        };
+        let Some(q) = scene.stand(p + Vec3::Y * (20.0 + lift)).map(|q| q - Vec3::Y * lift) else { return self.say("no floor under it", true) };
         match sel {
             Sel::Item(it) => {
                 level.doc.begin_drag();
-                level.doc.set_pos(it, q);
+                level.set_pos(it, q);
             }
             Sel::Node(i) => {
                 level.doc.wp_move(p, q);
-                scene.graph.pos[i] = q;
+                if let Some(scene) = level.scene.as_mut() {
+                    scene.graph.pos[i] = q;
+                }
                 self.reselect_node = Some(q);
             }
         }
@@ -433,6 +517,17 @@ impl App {
     fn duplicate_sel(&mut self) {
         let Some(Sel::Item(it)) = self.sel else { return };
         let Some(level) = self.level.as_mut() else { return };
+        if it.kind == Kind::Door {
+            // Beside it, along the wall.
+            let mut d = level.doc.door(it.index).clone();
+            let across = Vec3::Y.cross(d.front());
+            d.pos = (Vec3::from(d.pos) + across * (d.size[0] + 20.0)).to_array();
+            d.sibling = None;
+            let new = level.doc.add_door(d);
+            self.sel = Some(Sel::Item(new));
+            self.edited();
+            return;
+        }
         let p = level.doc.pos(it) + Vec3::new(60.0, 0.0, 60.0);
         let (facing, team, weapon) = (level.doc.facing(it).unwrap_or(0.0), level.doc.team(it).unwrap_or(0), level.doc.crate_weapon(it));
         if let Some(new) = level.doc.add(it.kind, p, facing, team, weapon) {
@@ -640,6 +735,9 @@ impl App {
                 ui.selectable_value(&mut self.gizmo_mode, gizmo::Mode::Rotate, "Rotate").on_hover_text("T switches (for what has a facing)");
             }
             ui.label(egui::RichText::new("Ctrl snaps").weak());
+            if ui.add_enabled(self.sel.is_some(), egui::Button::new("Drop to floor")).on_hover_text("G: the selection onto the floor under it").clicked() {
+                self.ground_sel();
+            }
         });
     }
 
@@ -648,7 +746,7 @@ impl App {
         ui.label("Tool");
         ui.horizontal_wrapped(|ui| {
             ui.selectable_value(&mut self.tool, Tool::Select, "Select");
-            for k in Kind::ALL {
+            for k in Kind::ITEMS {
                 ui.selectable_value(&mut self.tool, Tool::Add(k), format!("+ {}", k.name())).on_hover_text("Click the floor to place one");
             }
         });
@@ -702,9 +800,6 @@ impl App {
     fn sel_buttons(&mut self, ui: &mut egui::Ui, item: bool) {
         let mut act = None;
         ui.horizontal(|ui| {
-            if ui.button("Drop to floor").on_hover_text("G").clicked() {
-                act = Some('g');
-            }
             if item && ui.button("Duplicate").on_hover_text("Shift+D").clicked() {
                 act = Some('d');
             }
@@ -716,7 +811,6 @@ impl App {
             }
         });
         match act {
-            Some('g') => self.ground_sel(),
             Some('d') => self.duplicate_sel(),
             Some('f') => {
                 if let Some(p) = self.sel_pos() {
@@ -733,6 +827,9 @@ impl App {
             ui.label(egui::RichText::new("Nothing selected: click an item in the view.").weak());
             return;
         };
+        if sel.kind == Kind::Door {
+            return self.door_inspector(ui, sel.index);
+        }
         let Some(level) = self.level.as_ref() else { return };
         let doc = &level.doc;
         let (pos, facing, team, loc, cw) = (doc.pos(sel), doc.facing(sel), doc.team(sel), doc.location(sel), doc.crate_weapon(sel));
@@ -750,7 +847,7 @@ impl App {
                     level.doc.begin_drag();
                 }
                 if r.changed() {
-                    level.doc.set_pos(sel, p);
+                    level.set_pos(sel, p);
                     changed = true;
                 }
             }
@@ -800,7 +897,7 @@ impl App {
     fn item_lists(&mut self, ui: &mut egui::Ui) {
         let Some(level) = self.level.as_ref() else { return };
         let mut pick = None;
-        for kind in Kind::ALL {
+        for kind in Kind::ITEMS {
             let n = level.doc.count(kind);
             egui::CollapsingHeader::new(format!("{}s: {n}", kind.name())).id_salt(kind.name()).show(ui, |ui| {
                 for index in 0..n {
@@ -920,11 +1017,389 @@ impl App {
     }
 
     fn doors_tab(&mut self, ui: &mut egui::Ui) {
-        if let Some(scene) = self.scene() {
-            let n = scene.stage.props.iter().filter(|p| p["type"] == "door").count();
-            ui.label(format!("{n} doors from the source"));
+        self.gizmo_buttons(ui, true);
+        ui.horizontal(|ui| {
+            ui.label("Tool");
+            ui.selectable_value(&mut self.tool, Tool::Select, "Select");
+            ui.add_enabled_ui(self.door_pick.is_some(), |ui| {
+                ui.selectable_value(&mut self.tool, Tool::AddDoor, "+ Door").on_hover_text("Click a doorway's floor to put the picked door in it");
+            });
+        });
+        ui.checkbox(&mut self.door_fit, "fit a new door to its doorway (the walls either side, the lintel)");
+        ui.separator();
+        self.door_catalogue(ui);
+        ui.separator();
+        match self.sel {
+            Some(Sel::Item(it)) if it.kind == Kind::Door => self.door_inspector(ui, it.index),
+            _ => {
+                ui.label(egui::RichText::new("Nothing selected: click a door in the view (or pick a model above and use + Door).").weak());
+            }
         }
-        ui.label(egui::RichText::new("Placing doors (every PD and GoldenEye door model) comes in M18 step 8.").weak());
+        ui.separator();
+        ui.horizontal(|ui| {
+            if ui.button("Open every door").on_hover_text("A preview: they close again once the level is placed").clicked() {
+                self.preview_doors(true);
+            }
+            if ui.button("Close every door").clicked() {
+                self.preview_doors(false);
+            }
+        });
+        let Some(level) = self.level.as_ref() else { return };
+        let n = level.doc.count(Kind::Door);
+        let mut pick = None;
+        egui::CollapsingHeader::new(format!("Doors: {n}")).id_salt("doorlist").show(ui, |ui| {
+            for index in 0..n {
+                let it = Item { kind: Kind::Door, index };
+                let d = level.doc.door(index);
+                let pair = d.sibling.map_or(String::new(), |s| format!(", with {s}"));
+                let text = format!("{index}  {} {}{pair}  ({:.0}, {:.0}, {:.0})", d.model, d.motion.name(), d.pos[0], d.pos[1], d.pos[2]);
+                if ui.selectable_label(self.sel == Some(Sel::Item(it)), text).clicked() {
+                    pick = Some((it, level.doc.pos(it)));
+                }
+            }
+        });
+        if let Some((it, p)) = pick {
+            self.sel = Some(Sel::Item(it));
+            self.frame_on(p + Vec3::Y * 100.0);
+        }
+    }
+
+    /// The catalogue: every door model PD's and GoldenEye's setups place, each
+    /// with the ways it is placed (its templates).
+    fn door_catalogue(&mut self, ui: &mut egui::Ui) {
+        ui.label(egui::RichText::new("Door models").strong());
+        ui.horizontal(|ui| {
+            ui.label("Find");
+            ui.text_edit_singleline(&mut self.door_filter);
+        });
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.door_game, None, "Both games");
+            ui.selectable_value(&mut self.door_game, Some(DoorGame::Pd), "Perfect Dark");
+            ui.selectable_value(&mut self.door_game, Some(DoorGame::Ge), "GoldenEye");
+        });
+        if !self.catalogue.doors.iter().any(|d| d.game == DoorGame::Ge) {
+            ui.colored_label(egui::Color32::from_rgb(255, 190, 90), "GoldenEye's doors aren't extracted yet (they come from the ROM Facility's recipe names).");
+            if ui.add_enabled(self.job.is_none() && self.level.is_some(), egui::Button::new("Extract GoldenEye's doors")).clicked() {
+                self.start(Work::GeDoors);
+            }
+        }
+        let filter = self.door_filter.to_ascii_lowercase();
+        let game = self.door_game;
+        let mut picked = None;
+        egui::ScrollArea::vertical().id_salt("doorcat").max_height(230.0).show(ui, |ui| {
+            for c in self.catalogue.doors.iter().filter(|c| game.is_none_or(|g| c.game == g)) {
+                let title = c.title();
+                let seen = c.seen.join(", ");
+                if !filter.is_empty() && ![&title, &c.stem, &seen].iter().any(|t| t.to_ascii_lowercase().contains(&filter)) {
+                    continue;
+                }
+                let motion = c.templates.first().map(|t| c.motion(t).name()).unwrap_or("");
+                let tag = if c.game == DoorGame::Ge { "GE" } else { "PD" };
+                let on = self.door_pick.as_ref().is_some_and(|(s, _)| *s == c.stem);
+                let r = ui.selectable_label(on, format!("{tag}  {title}  · {motion}")).on_hover_text(format!("{}\nseen on: {seen}", c.stem));
+                if r.clicked() {
+                    picked = Some(c.stem.clone());
+                }
+            }
+        });
+        if let Some(stem) = picked {
+            self.door_pick = Some((stem, 0));
+            self.tool = Tool::AddDoor;
+        }
+        let Some((stem, t)) = self.door_pick.clone() else { return };
+        let Some(c) = self.catalogue.get(&stem) else { return };
+        let label = |k: usize| {
+            let x = &c.templates[k];
+            format!("{}: {}, {:.0} x {:.0} cm (placed {}x)", k + 1, c.motion(x).name(), x.size[0], x.size[1], x.count)
+        };
+        let mut chosen = t;
+        egui::ComboBox::from_label("as placed").selected_text(label(t.min(c.templates.len() - 1))).show_ui(ui, |ui| {
+            for k in 0..c.templates.len() {
+                ui.selectable_value(&mut chosen, k, label(k));
+            }
+        });
+        if chosen != t {
+            self.door_pick = Some((stem, chosen));
+        }
+    }
+
+    /// Every setting of door `i`.
+    fn door_inspector(&mut self, ui: &mut egui::Ui, i: usize) {
+        let Some(level) = self.level.as_ref() else { return };
+        if i >= level.doc.count(Kind::Door) {
+            return;
+        }
+        let d = level.doc.door(i).clone();
+        let ring = level.doc.ring(i);
+        let it = Item { kind: Kind::Door, index: i };
+        let cat = self.catalogue.get(&d.model).cloned();
+        ui.label(egui::RichText::new(format!("Door {i}: {}", cat.as_ref().map_or(d.model.clone(), |c| c.title()))).strong());
+        match &cat {
+            Some(c) => ui.label(egui::RichText::new(format!("{} ({}), seen on {}", c.stem, if c.game == DoorGame::Ge { "GoldenEye" } else { "Perfect Dark" }, c.seen.join(", "))).weak()),
+            None => ui.colored_label(egui::Color32::from_rgb(255, 120, 90), format!("{}: not in the catalogues (GoldenEye's need extracting)", d.model)),
+        };
+        if ring.len() > 1 {
+            ui.label(format!("opens with door{} {}", if ring.len() > 2 { "s" } else { "" }, ring[1..].iter().map(|j| j.to_string()).collect::<Vec<_>>().join(", ")));
+        }
+        let mut e = d.clone();
+        let (mut live, mut step, mut began) = (false, false, false);
+        let drag = |r: &egui::Response, live: &mut bool, began: &mut bool| {
+            if r.drag_started() || r.gained_focus() {
+                *began = true;
+            }
+            if r.changed() {
+                *live = true;
+            }
+        };
+        // Where it stands (the ring moves and turns with it).
+        let mut p = Vec3::from(d.pos);
+        let mut facing = d.facing;
+        ui.horizontal(|ui| {
+            for (k, name) in [(0, "x"), (1, "y"), (2, "z")] {
+                ui.label(name);
+                let r = ui.add(egui::DragValue::new(&mut p[k]).speed(5.0).max_decimals(1));
+                drag(&r, &mut live, &mut began);
+            }
+        });
+        let r = ui.add(egui::Slider::new(&mut facing, 0.0..=359.9).text("front faces (°)").step_by(0.1));
+        drag(&r, &mut live, &mut began);
+        ui.horizontal(|ui| {
+            for (k, name) in [(0, "width"), (1, "height"), (2, "thickness")] {
+                ui.label(name);
+                let r = ui.add(egui::DragValue::new(&mut e.size[k]).speed(1.0).range(1.0..=5000.0).max_decimals(1));
+                drag(&r, &mut live, &mut began);
+            }
+        });
+        // How it opens.
+        let before = e.motion;
+        egui::ComboBox::from_label("moves").selected_text(e.motion.name()).show_ui(ui, |ui| {
+            for m in DoorMotion::ALL {
+                ui.selectable_value(&mut e.motion, m, m.name());
+            }
+        });
+        if e.motion != before {
+            step = true;
+            // A fraction and degrees don't convert: a sensible opening.
+            if e.motion.turns() != before.turns() {
+                e.maxfrac = if e.motion.turns() { 90 << 16 } else { 62259 };
+                e.perimfrac = if e.motion.turns() { 1000 << 16 } else { 65536 };
+            }
+        }
+        if matches!(e.motion, DoorMotion::Eyelid | DoorMotion::Iris) && cat.as_ref().is_some_and(|c| c.motion(&c.templates[0]) != e.motion) {
+            ui.label(egui::RichText::new("(only Caverns' eyelid and iris models move so: this one stands still)").weak());
+        }
+        let side_word = match e.motion {
+            DoorMotion::Swing | DoorMotion::Hull | DoorMotion::Chair => "hinged on the",
+            DoorMotion::Up | DoorMotion::Down | DoorMotion::Eyelid | DoorMotion::Iris => "turned so its hinge side is",
+            _ => "slides to the",
+        };
+        ui.horizontal(|ui| {
+            ui.label(side_word);
+            step |= ui.selectable_value(&mut e.side, Side::Left, "left").changed();
+            step |= ui.selectable_value(&mut e.side, Side::Right, "right").changed();
+            ui.label(egui::RichText::new("(seen from the front)").weak());
+        });
+        if matches!(e.motion, DoorMotion::Swing | DoorMotion::Hull | DoorMotion::Chair) {
+            ui.horizontal(|ui| {
+                ui.label("opens");
+                step |= ui.selectable_value(&mut e.swing, Swing::Back, "away from the front").changed();
+                step |= ui.selectable_value(&mut e.swing, Swing::Front, "towards it").changed();
+                step |= ui.selectable_value(&mut e.swing, Swing::Both, "either way").on_hover_text("Away from whoever opens it (two-way)").changed();
+            });
+        }
+        if e.motion.turns() {
+            let mut deg = e.maxfrac as f32 / 65536.0;
+            let r = ui.add(egui::Slider::new(&mut deg, 1.0..=180.0).text("opens by (°)"));
+            drag(&r, &mut live, &mut began);
+            e.maxfrac = (deg * 65536.0).round() as i32;
+        } else {
+            let mut pct = e.maxfrac as f32 / 655.36;
+            let r = ui.add(egui::Slider::new(&mut pct, 5.0..=100.0).text("opens by (% of its size)"));
+            drag(&r, &mut live, &mut began);
+            e.maxfrac = (pct * 655.36).round() as i32;
+        }
+        let secs = pd_sim::props::door::door_open_frames(e.maxfrac, e.accel, e.decel, e.maxspeed).map(|f| f as f32 / 60.0);
+        ui.horizontal(|ui| {
+            ui.label(match secs {
+                Some(t) => format!("opens in {t:.1} s"),
+                None => "never opens all the way".into(),
+            });
+            for (name, k) in [("slower", 0.8f32), ("faster", 1.25)] {
+                if ui.button(name).clicked() {
+                    // Speed and acceleration together: the same motion, quicker.
+                    e.maxspeed = ((e.maxspeed as f32) * k).round().max(1.0) as i32;
+                    e.accel = ((e.accel as f32) * k * k).round().max(1.0) as i32;
+                    e.decel = ((e.decel as f32) * k * k).round().max(1.0) as i32;
+                    step = true;
+                }
+            }
+        });
+        let mut closes = e.autoclosetime < NEVER;
+        ui.horizontal(|ui| {
+            if ui.checkbox(&mut closes, "closes itself after").changed() {
+                e.autoclosetime = if closes { 900 } else { NEVER };
+                step = true;
+            }
+            if closes {
+                let mut s = e.autoclosetime as f32 / 60.0;
+                let r = ui.add(egui::DragValue::new(&mut s).range(0.0..=600.0).speed(0.1).suffix(" s"));
+                drag(&r, &mut live, &mut began);
+                e.autoclosetime = (s * 60.0).round() as i32;
+            }
+        });
+        egui::ComboBox::from_label("sound").selected_text(if e.soundtype == 0 { "silent".to_owned() } else { format!("sound {}", e.soundtype) }).show_ui(ui, |ui| {
+            for &k in &DOOR_SOUNDS {
+                step |= ui.selectable_value(&mut e.soundtype, k, if k == 0 { "silent".to_owned() } else { format!("sound {k}") }).changed();
+            }
+        });
+        let mut flag = |ui: &mut egui::Ui, bits: &mut u16, bit: u16, text: &str, tip: &str| {
+            let mut on = *bits & bit != 0;
+            if ui.checkbox(&mut on, text).on_hover_text(tip).changed() {
+                *bits ^= bit;
+                step = true;
+            }
+        };
+        ui.horizontal_wrapped(|ui| {
+            flag(ui, &mut e.doorflags, 0x0010, "automatic", "Opens as someone walks at it (DOORFLAG_AUTOMATIC)");
+            flag(ui, &mut e.doorflags, 0x0004, "retracts into its frame", "Its display list is cut where it has slid into the wall (DOORFLAG_0004)");
+            flag(ui, &mut e.doorflags, 0x0200, "long range", "Can be used from 4 m, not 2 (DOORFLAG_LONGRANGE)");
+            flag(ui, &mut e.doorflags, 0x0008, "mirrored", "The model mirrored through the door's plane (DOORFLAG_FLIP)");
+            flag(ui, &mut e.doorflags, 0x0002, "windowed", "Its glass keeps its doorway's portal open while seen through (DOORFLAG_WINDOWED; a windowed model's)");
+        });
+        ui.horizontal_wrapped(|ui| {
+            let mut keep = e.flags & pd_core::ids::OBJFLAG_DOOR_KEEPOPEN != 0;
+            if ui.checkbox(&mut keep, "starts open").on_hover_text("OBJFLAG_DOOR_KEEPOPEN").changed() {
+                e.flags ^= pd_core::ids::OBJFLAG_DOOR_KEEPOPEN;
+                step = true;
+            }
+            let mut ai = e.flags2 & pd_core::ids::OBJFLAG2_AICANNOTUSE != 0;
+            if ui.checkbox(&mut ai, "simulants can't open it").on_hover_text("OBJFLAG2_AICANNOTUSE").changed() {
+                e.flags2 ^= pd_core::ids::OBJFLAG2_AICANNOTUSE;
+                step = true;
+            }
+        });
+        // Buttons.
+        let mut act = None;
+        ui.horizontal_wrapped(|ui| {
+            if ui.add_enabled(ring.len() == 1, egui::Button::new("Fit to doorway")).on_hover_text("Its width and height to the opening it stands in (a single door)").clicked() {
+                act = Some("fit");
+            }
+            if ring.len() == 1 && ui.button("Make double").on_hover_text("Two leaves of half its size opening together (top and bottom for one that rises or sinks)").clicked() {
+                act = Some("double");
+            }
+            if ring.len() > 1 && ui.button("Separate").on_hover_text("Each leaf opens alone").clicked() {
+                act = Some("separate");
+            }
+            let pick = self.door_pick.clone();
+            if let Some((stem, _)) = pick.as_ref().filter(|(s, _)| *s != d.model) {
+                if ui.button("Use the picked model").on_hover_text(stem.as_str()).clicked() {
+                    act = Some("model");
+                }
+            }
+            if ui.button("Template's settings").on_hover_text("How the model is placed in its game (the picked template, else its most used)").clicked() {
+                act = Some("template");
+            }
+            if ui.button("Preview open").clicked() {
+                act = Some("open");
+            }
+            if ui.button("Close").clicked() {
+                act = Some("close");
+            }
+        });
+        let level = self.level.as_mut().unwrap();
+        if began {
+            level.doc.begin_drag();
+        }
+        if p != Vec3::from(d.pos) {
+            level.doc.set_pos(it, p);
+        }
+        if facing != d.facing {
+            level.doc.set_facing_live(it, facing);
+        }
+        let shape = |x: &pd_import::layout::Door| (x.size, x.maxfrac, x.autoclosetime);
+        if step {
+            let (pos, fc) = (level.doc.door(i).pos, level.doc.door(i).facing);
+            level.doc.edit_door(i, |x| *x = pd_import::layout::Door { pos, facing: fc, sibling: x.sibling, ..e.clone() });
+        } else if live && shape(&e) != shape(&d) {
+            level.doc.edit_door_live(i, |x| {
+                x.size = e.size;
+                x.maxfrac = e.maxfrac;
+                x.autoclosetime = e.autoclosetime;
+            });
+        }
+        if step || live || began {
+            self.edited();
+        }
+        match act {
+            Some("fit") => self.fit_sel_door(i),
+            Some("double") => {
+                if let Some(j) = self.level.as_mut().and_then(|l| l.doc.make_double(i)) {
+                    self.say(format!("door {i} is now a double door with {j}"), false);
+                    self.edited();
+                }
+            }
+            Some("separate") => {
+                if let Some(l) = self.level.as_mut() {
+                    l.doc.separate(i);
+                }
+                self.edited();
+            }
+            Some("model") => {
+                if let (Some((stem, _)), Some(l)) = (self.door_pick.clone(), self.level.as_mut()) {
+                    l.doc.edit_door(i, |x| x.model = stem);
+                    self.edited();
+                }
+            }
+            Some("template") => self.apply_template(i),
+            Some("open") => self.preview_doors(true),
+            Some("close") => self.preview_doors(false),
+            _ => {}
+        }
+        self.sel_buttons(ui, true);
+    }
+
+    /// Door `i` given its model's settings as the catalogue has them (the
+    /// picked template if it is that model, else the most used), keeping
+    /// where it stands, its size and its side.
+    fn apply_template(&mut self, i: usize) {
+        let Some(level) = self.level.as_mut() else { return };
+        let d = level.doc.door(i).clone();
+        let Some(c) = self.catalogue.get(&d.model) else { return self.say(format!("{} isn't in the catalogues", d.model), true) };
+        let t = self.door_pick.as_ref().filter(|(s, _)| *s == d.model).map_or(0, |p| p.1);
+        let fresh = c.door(t, Vec3::from(d.pos), d.facing);
+        level.doc.edit_door(i, |x| *x = pd_import::layout::Door { pos: d.pos, facing: d.facing, size: d.size, side: d.side, sibling: d.sibling, ..fresh });
+        self.edited();
+    }
+
+    /// Door `i` fitted to the doorway it stands in.
+    fn fit_sel_door(&mut self, i: usize) {
+        let Some(level) = self.level.as_mut() else { return };
+        let Some(scene) = level.scene.as_ref() else { return };
+        let d = level.doc.door(i).clone();
+        let Some((sill, f, w, h)) = scene.fit_doorway(Vec3::from(d.pos), d.facing) else { return self.say("no doorway here: no walls within 4 m either side", true) };
+        // Of the facing and its opposite, the one nearer the door's own.
+        let f = if (f - d.facing + 540.0).rem_euclid(360.0) - 180.0 > 90.0 || (f - d.facing + 540.0).rem_euclid(360.0) - 180.0 < -90.0 { (f + 180.0) % 360.0 } else { f };
+        level.doc.edit_door(i, |x| {
+            x.pos = sill.to_array();
+            x.facing = f;
+            x.size[0] = w;
+            if let Some(h) = h {
+                x.size[1] = h;
+            }
+        });
+        let msg = format!("fitted: {w:.0} cm wide{}", h.map_or(String::new(), |h| format!(", {h:.0} cm high")));
+        self.say(msg, false);
+        self.edited();
+    }
+
+    /// Every door of the view's world opened or closed (it runs for a few
+    /// seconds; the next placement shuts them again).
+    fn preview_doors(&mut self, open: bool) {
+        if let Some(scene) = self.level.as_mut().and_then(|l| l.scene.as_mut()) {
+            scene.world.doors_preview(open);
+            self.preview = Some(Instant::now());
+            self.preview_acc = 0.0;
+        }
     }
 
     fn level_tab(&mut self, ui: &mut egui::Ui) {
@@ -1045,6 +1520,31 @@ impl App {
                             edited = true;
                         }
                     }
+                    Tool::AddDoor => {
+                        if let (Some(p), Some((stem, t))) = (floor_hit, self.door_pick.clone()) {
+                            let floor = p - Vec3::Y * PAD_HEIGHT;
+                            // Its front towards the camera, square to 15°.
+                            let facing = ((self.cam.yaw.to_degrees() + 180.0) / 15.0).round() * 15.0;
+                            let eye = self.cam.pos;
+                            let fit = if self.door_fit { self.scene().and_then(|s| s.fit_doorway(floor, facing)) } else { None };
+                            if let Some(c) = self.catalogue.get(&stem) {
+                                let mut d = c.door(t, floor, facing);
+                                if let Some((sill, f, w, h)) = fit {
+                                    let front = pd_import::layout::look(f);
+                                    d.pos = sill.to_array();
+                                    d.facing = if front.dot(eye - sill) >= 0.0 { f } else { (f + 180.0) % 360.0 };
+                                    d.size[0] = w;
+                                    if let Some(h) = h {
+                                        d.size[1] = h;
+                                    }
+                                }
+                                if let Some(level) = self.level.as_mut() {
+                                    self.sel = Some(Sel::Item(level.doc.add_door(d)));
+                                    edited = true;
+                                }
+                            }
+                        }
+                    }
                     Tool::Link => match self.hovered {
                         Some(Sel::Node(j)) => {
                             if let Some(i) = self.link_from.filter(|&i| i != j) {
@@ -1123,6 +1623,7 @@ impl App {
             Tool::Add(_) => "Click the floor to place one (Esc: back to Select)",
             Tool::AddNode => "Click the floor to add a waypoint (Esc: back to Select)",
             Tool::Link => "Click two waypoints to link them (Shift: one way) or cut their link",
+            Tool::AddDoor => "Click a doorway's floor to put the picked door in it (Esc: back to Select)",
         };
         painter.text(rect.left_top() + egui::vec2(8.0, 8.0), egui::Align2::LEFT_TOP, hint, egui::FontId::proportional(13.0), egui::Color32::from_gray(230));
         let c = self.cam;
@@ -1205,6 +1706,7 @@ impl Game for App {
             Ok(r) => self.res = Some(Arc::new(r)),
             Err(e) => self.say(format!("loading the game's resources: {e}"), true),
         }
+        self.catalogue = Catalogue::load(&self.paths.asset_dir());
         if let Some(code) = self.open_code.take() {
             let p = self.paths.levels.join(format!("{code}.json"));
             self.open(p, ctx);
@@ -1230,6 +1732,17 @@ impl Game for App {
         let m = if ctx.input.key_down(KeyCode::ShiftLeft) && ctx.input.key_down(KeyCode::KeyD) && !self.looking { Motion { right: 0.0, ..m } } else { m };
         let dt = ctx.clock.tick_dt() as f32;
         self.cam.update(&m, dt);
+        if let Some(t0) = self.preview {
+            if t0.elapsed().as_secs_f32() > 10.0 {
+                self.preview = None;
+            } else if let Some(scene) = self.level.as_mut().and_then(|l| l.scene.as_mut()) {
+                self.preview_acc += dt;
+                while self.preview_acc >= 1.0 / 60.0 {
+                    scene.world.step(4, &[pd_sim::player::PlayerInput::default()]);
+                    self.preview_acc -= 1.0 / 60.0;
+                }
+            }
+        }
         self.poll_job(ctx);
         let due = self.level.as_ref().and_then(|l| l.pending).is_some_and(|t| t.elapsed().as_secs_f32() >= APPLY_AFTER) && self.dragging.is_none();
         if due && self.job.is_none() {

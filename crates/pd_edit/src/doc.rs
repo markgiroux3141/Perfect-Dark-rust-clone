@@ -4,7 +4,7 @@
 //! the user sees is exactly what is saved.
 
 use glam::Vec3;
-use pd_import::layout::{Ammo, Layout, Spot, TeamSpot, Weapon};
+use pd_import::layout::{Ammo, Door, Layout, Motion, Side, Spot, TeamSpot, Weapon};
 
 /// A kind of item the layout holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -16,10 +16,15 @@ pub enum Kind {
     Base,
     Respawn,
     Cover,
+    /// A door ([`pd_import::layout::Door`]): its position is its bottom edge's
+    /// middle, on the floor (the others' are pads, `PAD_HEIGHT` over it).
+    Door,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 7] = [Kind::Spawn, Kind::Weapon, Kind::Ammo, Kind::Hill, Kind::Base, Kind::Respawn, Kind::Cover];
+    pub const ALL: [Kind; 8] = [Kind::Spawn, Kind::Weapon, Kind::Ammo, Kind::Hill, Kind::Base, Kind::Respawn, Kind::Cover, Kind::Door];
+    /// The Items tab's kinds (doors have their own).
+    pub const ITEMS: [Kind; 7] = [Kind::Spawn, Kind::Weapon, Kind::Ammo, Kind::Hill, Kind::Base, Kind::Respawn, Kind::Cover];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -30,12 +35,22 @@ impl Kind {
             Kind::Base => "CTC base",
             Kind::Respawn => "CTC respawn",
             Kind::Cover => "Cover",
+            Kind::Door => "Door",
         }
     }
 
     /// Whether it has a facing worth turning.
     pub fn faces(self) -> bool {
-        matches!(self, Kind::Spawn | Kind::Base | Kind::Respawn | Kind::Cover)
+        matches!(self, Kind::Spawn | Kind::Base | Kind::Respawn | Kind::Cover | Kind::Door)
+    }
+
+    /// How high over its floor its position is.
+    pub fn height(self) -> f32 {
+        if self == Kind::Door {
+            0.0
+        } else {
+            PAD_HEIGHT
+        }
     }
 
     /// Whether it belongs to a Capture the Case team.
@@ -157,6 +172,7 @@ impl Doc {
             Kind::Base => l.bases.as_ref().map_or(0, Vec::len),
             Kind::Respawn => l.respawns.as_ref().map_or(0, Vec::len),
             Kind::Cover => l.cover.as_ref().map_or(0, Vec::len),
+            Kind::Door => l.doors.as_ref().map_or(0, Vec::len),
         }
     }
 
@@ -177,6 +193,7 @@ impl Doc {
             Kind::Base => v(l.bases.as_ref().unwrap()[i].pos),
             Kind::Respawn => v(l.respawns.as_ref().unwrap()[i].pos),
             Kind::Cover => v(l.cover.as_ref().unwrap()[i].pos),
+            Kind::Door => v(l.doors.as_ref().unwrap()[i].pos),
         }
     }
 
@@ -189,6 +206,7 @@ impl Doc {
             Kind::Base => Some(l.bases.as_ref().unwrap()[i].facing),
             Kind::Respawn => Some(l.respawns.as_ref().unwrap()[i].facing),
             Kind::Cover => Some(l.cover.as_ref().unwrap()[i].facing),
+            Kind::Door => Some(l.doors.as_ref().unwrap()[i].facing),
             _ => None,
         }
     }
@@ -212,8 +230,17 @@ impl Doc {
         (it.kind == Kind::Ammo).then(|| self.layout.ammo.as_ref().unwrap()[it.index].weapon)
     }
 
-    /// Move an item (no undo step: see [`Doc::begin_drag`]).
+    /// Move an item (no undo step: see [`Doc::begin_drag`]). A door takes the
+    /// rest of its sibling ring with it.
     pub fn set_pos(&mut self, it: Item, p: Vec3) {
+        if it.kind == Kind::Door {
+            let delta = p - self.pos(it);
+            for j in self.ring(it.index) {
+                let d = &mut self.layout.doors.as_mut().unwrap()[j];
+                d.pos = a(v(d.pos) + delta);
+            }
+            return;
+        }
         let l = &mut self.layout;
         let i = it.index;
         let p = a(p);
@@ -225,6 +252,7 @@ impl Doc {
             Kind::Base => l.bases.as_mut().unwrap()[i].pos = p,
             Kind::Respawn => l.respawns.as_mut().unwrap()[i].pos = p,
             Kind::Cover => l.cover.as_mut().unwrap()[i].pos = p,
+            Kind::Door => {}
         }
     }
 
@@ -234,9 +262,20 @@ impl Doc {
         self.set_facing_live(it, deg);
     }
 
-    /// Turn an item without an undo step (a drag: see [`Doc::begin_drag`]).
+    /// Turn an item without an undo step (a drag: see [`Doc::begin_drag`]). A
+    /// door turns its sibling ring with it, about itself.
     pub fn set_facing_live(&mut self, it: Item, deg: f32) {
         let f = pd_import::layout::round1(deg.rem_euclid(360.0)) % 360.0;
+        if it.kind == Kind::Door {
+            let (about, was) = (self.pos(it), self.facing(it).unwrap_or(0.0));
+            let turn = glam::Quat::from_rotation_y((f - was).to_radians());
+            for j in self.ring(it.index) {
+                let d = &mut self.layout.doors.as_mut().unwrap()[j];
+                d.pos = a(about + turn * (v(d.pos) - about));
+                d.facing = pd_import::layout::round1((d.facing + f - was).rem_euclid(360.0)) % 360.0;
+            }
+            return;
+        }
         let l = &mut self.layout;
         match it.kind {
             Kind::Spawn => l.spawns.as_mut().unwrap()[it.index].facing = f,
@@ -288,6 +327,9 @@ impl Doc {
     /// location, a crate for `weapon` (else the nearest weapon), a team item
     /// on `team`. Returns it (none: a crate with no weapon to belong to).
     pub fn add(&mut self, kind: Kind, p: Vec3, facing: f32, team: u8, weapon: Option<usize>) -> Option<Item> {
+        if kind == Kind::Door {
+            return None; // a door has a model and a row: `add_door`.
+        }
         let crate_weapon = if kind == Kind::Ammo { Some(weapon.filter(|&w| w < self.count(Kind::Weapon)).or_else(|| self.nearest_weapon(p))?) } else { None };
         let location = self.free_location();
         self.push();
@@ -301,6 +343,7 @@ impl Doc {
             Kind::Base => push(l.bases.as_mut().unwrap(), TeamSpot { pos, facing, team }),
             Kind::Respawn => push(l.respawns.as_mut().unwrap(), TeamSpot { pos, facing, team }),
             Kind::Cover => push(l.cover.as_mut().unwrap(), Spot { pos, facing }),
+            Kind::Door => unreachable!(),
         };
         let it = Item { kind, index };
         self.selected = Some(it);
@@ -332,8 +375,153 @@ impl Doc {
             Kind::Base => drop(l.bases.as_mut().unwrap().remove(i)),
             Kind::Respawn => drop(l.respawns.as_mut().unwrap().remove(i)),
             Kind::Cover => drop(l.cover.as_mut().unwrap().remove(i)),
+            Kind::Door => {
+                let doors = l.doors.as_mut().unwrap();
+                doors.remove(i);
+                // A ring broken open is closed again past it.
+                for d in doors.iter_mut() {
+                    d.sibling = match d.sibling {
+                        Some(s) if s == i => None,
+                        Some(s) if s > i => Some(s - 1),
+                        s => s,
+                    };
+                }
+                fix_rings(doors);
+            }
         }
         self.selected = None;
+    }
+}
+
+/// A sibling chain left open (a door deleted from a ring of three or more)
+/// closed again, so every ring still comes round; a door its own sibling
+/// has none.
+fn fix_rings(doors: &mut [Door]) {
+    for start in 0..doors.len() {
+        if doors.iter().any(|d| d.sibling == Some(start)) || doors[start].sibling.is_none() {
+            continue;
+        }
+        // `start` heads a chain: point its end back at it.
+        let mut cur = start;
+        let mut seen = vec![start];
+        while let Some(n) = doors[cur].sibling.filter(|n| !seen.contains(n)) {
+            seen.push(n);
+            cur = n;
+        }
+        if cur != start && doors[cur].sibling.is_none() {
+            doors[cur].sibling = Some(start);
+        }
+    }
+    for (i, d) in doors.iter_mut().enumerate() {
+        if d.sibling == Some(i) {
+            d.sibling = None;
+        }
+    }
+}
+
+/// Doors.
+impl Doc {
+    pub fn door(&self, i: usize) -> &Door {
+        &self.layout.doors.as_ref().unwrap()[i]
+    }
+
+    /// Door `i`'s sibling ring, `i` first.
+    pub fn ring(&self, i: usize) -> Vec<usize> {
+        let doors = self.layout.doors.as_deref().unwrap_or(&[]);
+        let mut out = vec![i];
+        let mut cur = doors.get(i).and_then(|d| d.sibling);
+        while let Some(c) = cur.filter(|c| !out.contains(c) && *c < doors.len()) {
+            out.push(c);
+            cur = doors[c].sibling;
+        }
+        out
+    }
+
+    /// The stage's own doors, when the layout file has none (a GoldenEye
+    /// level's, before its layout names them): taken as if saved, since
+    /// placement keeps the same doors without a layout's.
+    pub fn adopt_doors(&mut self, doors: Vec<Door>) {
+        if self.layout.doors.is_none() {
+            self.layout.doors = Some(doors.clone());
+            if self.saved.doors.is_none() {
+                self.saved.doors = Some(doors);
+            }
+        }
+    }
+
+    /// Add `door`; returns it.
+    pub fn add_door(&mut self, door: Door) -> Item {
+        self.push();
+        let doors = self.layout.doors.get_or_insert_with(Vec::new);
+        doors.push(door);
+        let it = Item { kind: Kind::Door, index: doors.len() - 1 };
+        self.selected = Some(it);
+        it
+    }
+
+    /// Change door `i` as one undo step.
+    pub fn edit_door(&mut self, i: usize, f: impl FnOnce(&mut Door)) {
+        self.push();
+        self.edit_door_live(i, f);
+    }
+
+    /// Change door `i` without an undo step (a drag: see [`Doc::begin_drag`]).
+    pub fn edit_door_live(&mut self, i: usize, f: impl FnOnce(&mut Door)) {
+        if let Some(d) = self.layout.doors.as_mut().and_then(|d| d.get_mut(i)) {
+            f(d);
+            d.pos = a(v(d.pos));
+            d.size = d.size.map(|x| pd_import::layout::round1(x.max(1.0)));
+        }
+    }
+
+    /// Split door `i` into a double door: two leaves of half its width
+    /// (half its height for one that rises or sinks: a top leaf rising and a
+    /// bottom one sinking, as Area 51's), hinged or sliding at the outer
+    /// edges, opening together. Returns the new leaf.
+    pub fn make_double(&mut self, i: usize) -> Option<usize> {
+        if self.layout.doors.as_ref().is_none_or(|d| i >= d.len() || d[i].sibling.is_some()) {
+            return None;
+        }
+        self.push();
+        let doors = self.layout.doors.as_mut().unwrap();
+        let mut left = doors[i].clone();
+        let mut right = left.clone();
+        let across = Vec3::Y.cross(left.front());
+        if matches!(left.motion, Motion::Up | Motion::Down) {
+            let h = left.size[1] * 0.5;
+            left.size[1] = h;
+            right.size[1] = h;
+            left.motion = Motion::Down;
+            right.motion = Motion::Up;
+            right.pos = a(v(right.pos) + Vec3::Y * h);
+        } else {
+            let w = left.size[0] * 0.5;
+            left.size[0] = w;
+            right.size[0] = w;
+            left.pos = a(v(left.pos) - across * (w * 0.5));
+            right.pos = a(v(right.pos) + across * (w * 0.5));
+            left.side = Side::Left;
+            right.side = Side::Right;
+        }
+        let j = doors.len();
+        left.sibling = Some(j);
+        right.sibling = Some(i);
+        doors[i] = left;
+        doors.push(right);
+        Some(j)
+    }
+
+    /// Door `i`'s ring taken apart: each door opens alone.
+    pub fn separate(&mut self, i: usize) {
+        let ring = self.ring(i);
+        if ring.len() < 2 {
+            return;
+        }
+        self.push();
+        let doors = self.layout.doors.as_mut().unwrap();
+        for j in ring {
+            doors[j].sibling = None;
+        }
     }
 }
 
@@ -514,6 +702,60 @@ mod tests {
         d.wp_unlink(r, q);
         let e = d.layout.waypoints.clone().unwrap();
         assert!(e.linked.is_empty() && e.unlinked.len() == 1);
+    }
+
+    fn a_door(x: f32) -> Door {
+        Door {
+            pos: [x, 0.0, 0.0],
+            facing: 0.0,
+            size: [200.0, 220.0, 10.0],
+            model: "dd_officedoor".into(),
+            motion: Motion::Slide,
+            side: Side::Left,
+            swing: pd_import::layout::Swing::Back,
+            maxfrac: 62259,
+            perimfrac: 65536,
+            accel: 10922,
+            decel: 10922,
+            maxspeed: 218,
+            autoclosetime: 900,
+            soundtype: 3,
+            doorflags: 0,
+            flags: 0,
+            flags2: 0,
+            unk88: 0,
+            sibling: None,
+        }
+    }
+
+    /// A double door is two half-width leaves sliding apart, opening together;
+    /// they move and turn as one; deleting a door keeps every ring whole.
+    #[test]
+    fn doors_move_with_their_ring() {
+        let mut d = Doc::new(Layout::new(), true);
+        d.adopt_doors(vec![a_door(0.0), a_door(1000.0)]);
+        assert!(!d.dirty(), "the stage's own doors are what the file means");
+        let j = d.make_double(0).unwrap();
+        let (l, r) = (d.door(0).clone(), d.door(j).clone());
+        assert_eq!((l.size[0], r.size[0], l.side, r.side, l.sibling, r.sibling), (100.0, 100.0, Side::Left, Side::Right, Some(j), Some(0)));
+        // Facing +z, the left leaf is on -x (seen from the front).
+        assert_eq!((l.pos[0], r.pos[0]), (-50.0, 50.0));
+        d.begin_drag();
+        d.set_pos(Item { kind: Kind::Door, index: j }, Vec3::new(50.0, 0.0, 100.0));
+        assert_eq!((d.door(0).pos[2], d.door(j).pos[2]), (100.0, 100.0), "the pair moves together");
+        d.set_facing(Item { kind: Kind::Door, index: 0 }, 90.0);
+        assert_eq!((d.door(0).facing, d.door(j).facing), (90.0, 90.0));
+        assert_eq!(d.door(j).pos, [-50.0, 0.0, 0.0], "turned about the leaf turned");
+        // A ring of three loses its middle door: the other two still pair.
+        let k = d.add_door(a_door(2000.0)).index;
+        d.edit_door(j, |x| x.sibling = Some(k));
+        d.edit_door(k, |x| x.sibling = Some(0));
+        assert_eq!(d.ring(0), vec![0, j, k]);
+        d.delete(Item { kind: Kind::Door, index: j });
+        assert_eq!(d.ring(0), vec![0, k - 1]);
+        assert!(d.layout.check().is_ok());
+        d.separate(0);
+        assert_eq!(d.ring(0), vec![0]);
     }
 
     #[test]

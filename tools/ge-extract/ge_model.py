@@ -41,7 +41,12 @@ import pd_models  # noqa: E402
 
 SEG = 0x05000000
 GROUP, BBOX, SWITCH, DLCOLLISION = 0x02, 0x0A, 0x12, 0x18
-SKELS = {"standard_object": 0x02, "door": 0x10}  # PD's SKEL_BASIC, SKEL_WINDOWEDDOOR (constants.h:3734)
+#: GE's skeletons as PD's (constants.h:3721): `standard_object` SKEL_BASIC,
+#: `door` SKEL_WINDOWEDDOOR, and Caverns' `eyelid_door` and `iris_door` PD's
+#: SKEL_11 and SKEL_13, which PD's `door_init_matrices` still poses
+#: (`propobj.c:7843`: the lids on parts 1-2, the six blades on parts 1-12, as
+#: GE's `propobj.c:5885` does on its switches 1-12).
+SKELS = {"standard_object": 0x02, "door": 0x10, "eyelid_door": 0x11, "iris_door": 0x13}
 
 #: Custom models' numbers: past PD's `MODEL_*` (0..0x1bd), `pd_core::assets::CUSTOM_MODELNUMS`.
 CUSTOM_MODELNUM_BASE = 0x1000

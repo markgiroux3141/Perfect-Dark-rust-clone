@@ -16,7 +16,7 @@ exporter change.
 | textures/     | pd_models.py: the global pool (+ models/tex/ for textures stored in a model) |
 | anims/        | here: the whole animation bank, raw, as PD's bit-packed data |
 | fonts/, lang/ | pd_menu_gen.py `export_assets` |
-| data/         | pd_menu_gen.py (mpconfigs.bin), pd_fpgun.py `build_weapons` (weapons.json) |
+| data/         | pd_menu_gen.py (mpconfigs.bin), pd_fpgun.py `build_weapons` (weapons.json), pd_doors.py (doors.json) |
 | sfx/          | pd_sfx.py `export_pool` |
 | music/        | pd_music.py: the instrument bank, its sample data, the sequences |
 | stages/       | pd_stage.py: per stage, the textured BG, collision tiles, pads + waypoints, MP setup |
@@ -38,6 +38,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+import pd_doors  # noqa: E402
 import pd_fpgun  # noqa: E402
 import pd_ids  # noqa: E402
 import pd_menu_gen  # noqa: E402
@@ -157,6 +158,7 @@ def main() -> int:
     counts.update(c)
     c, pool = pd_models.export_all(weapons)
     counts.update(c)
+    counts.update(pd_doors.export())
     counts.update(pd_stage.export_all(pool))
     pool.write_index()
     counts["pool_textures"] = len(pool.entries)

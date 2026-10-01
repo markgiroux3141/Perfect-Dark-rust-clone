@@ -39,7 +39,7 @@ Arrows point at what a crate may use. Nothing points back up.
 | **`pd_render`** | PD on the GPU: BG, every model through the one combiner path, effects, HUD canvas (radar, sights, shields), x-ray, framebuffer post, a `View` per player laid into the frame (`Renderer::render_views`: split screen) | write to the world |
 | **`pd_game`** | the `perfect_dark` binary: state machine (Menus → Match → Results), device → N64 controller mapping, event → voice routing, the music's frames onto an engine stream, the Game Pak's EEPROM kept in a file (`save`), presentation settings; its library half, `session`, couples a match with the menus over it (pause, end screens) for the binary and `pd_snapshot` | contain game rules |
 | **`pd_tools`** | `pd_snapshot` (offscreen PNGs of menus, guns, stages, matches, pickups), probes, offline audio renders (`pd_music`: a tune, or a menu → match → death → end flow, to a WAV), the bot/nav debug viewer | ship in the game |
-| **`pd_edit`** | the level editor: a custom level's layout (items; waypoints and doors to come) edited over the stage as the game loads it, in a fly-through view (`pd_render::Renderer::render_free`) with an egui panel; it runs `pd_import` to place the layout and to import a new glTF; `pd_edit --shot` renders its view to a PNG | ship in the game; hold level data of its own (the layout file is `pd_import`'s) |
+| **`pd_edit`** | the level editor: a custom level's layout (items, waypoint edits, doors from the catalogues of PD's and GoldenEye's door models) edited over the stage as the game loads it, in a fly-through view (`pd_render::Renderer::render_free`) with an egui panel; it runs `pd_import` to place the layout and to import a new glTF; `pd_edit --shot` renders its view to a PNG | ship in the game; hold level data of its own (the layout file is `pd_import`'s) |
 | **`pd_import`** | the custom level importer: a recipe (`levels/<code>.json`), the source importers (`oot`: Ocarina of Time scenes from the OoT Clone repo's extractor; `ge`: GoldenEye 007 levels, which `tools/ge-extract` converts from the ROM straight into PD's stage formats, rooms, portals, tiles, doors and door models included; `pd`: one of PD's arenas rebuilt in Blender, a glTF laid over the arena room by room, its unchanged rooms' data kept, tiles and portals made for the rest, its setup kept; or several of PD's stages fused, each turned and moved into place) into one `LevelSource`, the collision preprocessing (step risers, ledges as ladders, water), rooms and portals by a k-d split, the four stage files, the gameplay data (`nav::gen`'s waypoints baked in, spawns, weapons and ammo, hills, bases, cover), a check match; headless | ship in the game; be needed at run time |
 
 ### Why these boundaries
@@ -113,6 +113,9 @@ assets/
   sfx/<num>.wav + manifest.json   game and menu sounds in one pool, by bank sound number, keyed also by
                              SFXNUM_/SFXMAP_ name (rate, pitch, volume, loop, envelope, chains, provenance)
   data/weapons.json          gset: weapons, funcdefs, gun scripts, aim/recoil/noise, gunviscmds
+  data/doors.json            pd_doors.py: every door model PD's setups place (solo stages too; their
+                             models are in models/), each with the setup rows it is placed with and
+                             their boxes' sizes: the level editor's catalogue
   data/bodies.json           g_HeadsAndBodies (scale, animscale, height, hands), g_MpBodies, g_MpHeads, male/female heads
   data/mpconfigs.bin         challenge and preset configs
   stages/<code>/             per arena, by PD's stage code (Complex = ref), from pd_stage.py:
@@ -144,9 +147,11 @@ custom/
                              tex/<n>.png  the level's own textures (ids 0x10000 | material in bg.json)
                              report.txt   the import's report
                              ge.json      a GoldenEye level's hand-off from tools/ge-extract to pd_import
-  models/<stem>.json + .bin  a level's own models (GoldenEye's doors), in the one model format
+  models/<stem>.json + .bin  a level's own models (GoldenEye's doors: all 48 of them once
+                             `pd_import --ge-doors` has run), in the one model format
   models/index.json          their rows, beside assets/' index (MODEL_* from CUSTOM_MODELNUMS, 0x1000-0x1fff)
   ge/tex/<nnnn>.png          GoldenEye images by image number (ids 0x10000 | n), shared by GE levels and models
+  ge/doors.json              GoldenEye's door catalogue (tools/ge-extract --doors), in data/doors.json's format
   textures/<nnnn>.png        PD pool textures a level draws that assets/ lacks (CI's, for CI Felicity), at assets/' path
   cache/nav/                 the waypoint graphs, by a hash of each stage's geometry (pd_import --place)
   cache/pd/                  PD stages that aren't arenas, exported from the decomp to build a level over

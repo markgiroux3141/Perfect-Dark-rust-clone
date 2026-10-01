@@ -1,9 +1,10 @@
 //! `pd_edit --shot <code> <out.png> [--at x,y,z,yaw,pitch | --item <kind> <n>]
-//! [--size WxH] [--waypoints] [--cover] [--solid] [--rotate]`: the editor's view of a level, as the
+//! [--size WxH] [--waypoints] [--cover] [--solid] [--rotate] [--open]`: the editor's view of a level, as the
 //! window draws it (the stage and its objects through `pd_render`, the
 //! overlay over them), rendered offscreen to a PNG, for checking without a
 //! window. `--item weapon 3` frames an item (selected, with its gizmo; `--rotate`:
-//! the Rotate one) as the editor's F does; `--solid`: nothing drawn through walls;
+//! the Rotate one) as the editor's F does (`--item door 3`); `--open`: every door
+//! opened two seconds before (the Doors tab's preview); `--solid`: nothing drawn through walls;
 //! without either, the view the editor opens on. Yaw and pitch are
 //! in degrees (yaw 0 faces +z, 90 faces +x).
 
@@ -29,6 +30,8 @@ pub fn run(args: &[String]) -> Result<PathBuf, String> {
     let mut show = Show::default();
     let mut item: Option<crate::doc::Item> = None;
     let mut rotate = false;
+    // `--open`: every door opened first (the Doors tab's preview, two seconds on).
+    let mut open: Option<bool> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -44,13 +47,14 @@ pub fn run(args: &[String]) -> Result<PathBuf, String> {
             "--item" => {
                 let kind = it.next().ok_or("--item <kind> <index>")?;
                 let index: usize = it.next().ok_or("--item <kind> <index>")?.parse().map_err(|_| "--item <kind> <index>")?;
-                let kind = crate::doc::Kind::ALL.into_iter().find(|k| k.name().to_ascii_lowercase().starts_with(&kind.to_ascii_lowercase())).ok_or("--item: spawn, weapon, ammo, hill, ctc base, ctc respawn, cover")?;
+                let kind = crate::doc::Kind::ALL.into_iter().find(|k| k.name().to_ascii_lowercase().starts_with(&kind.to_ascii_lowercase())).ok_or("--item: spawn, weapon, ammo, hill, ctc base, ctc respawn, cover, door")?;
                 item = Some(crate::doc::Item { kind, index });
             }
             "--waypoints" => show.waypoints = true,
             "--cover" => show.cover = true,
             "--solid" => show.through_walls = false,
             "--rotate" => rotate = true,
+            "--open" => open = Some(true),
             _ => pos.push(a),
         }
     }
@@ -59,19 +63,29 @@ pub fn run(args: &[String]) -> Result<PathBuf, String> {
     let assets = paths.asset_dir();
     let res = Arc::new(WorldRes::load(&assets)?);
     let weapons = pd_menu::generated::MP_WEAPON_SETS[0].slots.map(|x| x as u8);
-    let scene = Scene::load(&assets, code, res, weapons)?;
+    let mut scene = Scene::load(&assets, code, res, weapons)?;
+    if let Some(o) = open {
+        scene.world.doors_preview(o);
+        for _ in 0..120 {
+            scene.world.step(4, &[pd_sim::player::PlayerInput::default()]);
+        }
+    }
     let lp = Layout::path_for(&paths.levels.join(format!("{code}.json")));
     let layout = match Layout::load(&lp)? {
         Some(l) => l,
         None => Layout::adopt(&paths.stage_dir(code))?.0,
     };
-    let doc = Doc::new(layout, true);
+    let mut doc = Doc::new(layout, true);
+    if doc.layout.doors.is_none() {
+        // As the window does: the stage's own doors.
+        doc.adopt_doors(Layout::adopt(&paths.stage_dir(code))?.0.doors.unwrap_or_default());
+    }
     let mut selected = None;
     let cam = match (at, item) {
         (Some([x, y, z, yaw, pitch]), _) => crate::camera::FlyCam::new(Vec3::new(x, y, z), yaw.to_radians(), pitch.to_radians()),
         (None, Some(it)) if it.index < doc.count(it.kind) => {
             selected = Some(crate::doc::Sel::Item(it));
-            scene.frame(doc.pos(it), 0.0)
+            scene.frame(doc.pos(it) + Vec3::Y * (crate::doc::PAD_HEIGHT - it.kind.height()), 0.0)
         }
         (None, Some(it)) => return Err(format!("there are {} of {}", doc.count(it.kind), it.kind.name())),
         (None, None) => scene.start_camera(),

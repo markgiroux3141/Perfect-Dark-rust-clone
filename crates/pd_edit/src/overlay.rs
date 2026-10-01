@@ -33,6 +33,7 @@ pub const WEAPON: [u8; 4] = [255, 150, 30, 255];
 pub const AMMO: [u8; 4] = [240, 220, 60, 255];
 pub const HILL: [u8; 4] = [235, 90, 235, 255];
 pub const COVER: [u8; 4] = [175, 175, 200, 255];
+pub const DOOR: [u8; 4] = [120, 190, 255, 255];
 /// Capture the Case's four teams.
 pub const TEAMS: [[u8; 4]; 4] = [[235, 60, 60, 255], [70, 130, 255, 255], [240, 220, 60, 255], [80, 220, 120, 255]];
 pub const NODE: [u8; 4] = [70, 210, 235, 255];
@@ -55,6 +56,7 @@ pub fn colour(doc: &Doc, it: Item) -> [u8; 4] {
         Kind::Hill => HILL,
         Kind::Base | Kind::Respawn => TEAMS[doc.team(it).unwrap_or(0) as usize % 4],
         Kind::Cover => COVER,
+        Kind::Door => DOOR,
     }
 }
 
@@ -68,6 +70,7 @@ fn pad_size(kind: Kind) -> (f32, f32) {
         Kind::Base => (45.0, 190.0),
         Kind::Respawn => (22.0, 0.0),
         Kind::Cover => (12.0, 0.0),
+        Kind::Door => (0.0, 0.0),
     }
 }
 
@@ -111,7 +114,93 @@ fn item_label(doc: &Doc, it: Item) -> String {
         Kind::Base => format!("Base, team {}", doc.team(it).unwrap_or(0)),
         Kind::Respawn => format!("Respawn, team {}", doc.team(it).unwrap_or(0)),
         Kind::Cover => format!("Cover {}", it.index),
+        Kind::Door => {
+            let d = doc.door(it.index);
+            format!("Door {}: {} ({})", it.index, d.model, d.motion.name())
+        }
     }
+}
+
+/// A door: its box's edges, a faint face, an arrow out of its front on the
+/// floor, and how it opens: a post on its hinge and the arc it swings
+/// through, an arrow the way it slides, rises or sinks, a ring for an
+/// eyelid or iris. Returns its pick box and its label's anchor.
+fn door(mesh: &mut Mesh3d, d: &pd_import::layout::Door, col: [f32; 4]) -> (Vec3, Vec3, Vec3) {
+    use pd_import::layout::{Motion, Swing};
+    let [w, h, t] = d.size;
+    let (front, up, c) = (d.front(), d.up(), d.centre());
+    let across = Vec3::Y.cross(front);
+    let corner = |x: f32, y: f32, z: f32| c + across * (x * w * 0.5) + Vec3::Y * (y * h * 0.5) + front * (z * t * 0.5);
+    let edges = [
+        ((-1., -1., -1.), (1., -1., -1.)), ((-1., 1., -1.), (1., 1., -1.)), ((-1., -1., 1.), (1., -1., 1.)), ((-1., 1., 1.), (1., 1., 1.)),
+        ((-1., -1., -1.), (-1., 1., -1.)), ((1., -1., -1.), (1., 1., -1.)), ((-1., -1., 1.), (-1., 1., 1.)), ((1., -1., 1.), (1., 1., 1.)),
+        ((-1., -1., -1.), (-1., -1., 1.)), ((1., -1., -1.), (1., -1., 1.)), ((-1., 1., -1.), (-1., 1., 1.)), ((1., 1., -1.), (1., 1., 1.)),
+    ];
+    for (a, b) in edges {
+        mesh.line(false, corner(a.0, a.1, a.2), corner(b.0, b.1, b.2), col);
+    }
+    let face = [col[0], col[1], col[2], col[3] * 0.18];
+    mesh.quad(false, corner(-1., -1., 1.), corner(1., -1., 1.), corner(1., 1., 1.), corner(-1., 1., 1.), face);
+    // The front: an arrow on the floor.
+    let floor = Vec3::from(d.pos) + Vec3::Y * 2.0;
+    let tip = floor + front * (t * 0.5 + 45.0);
+    let arrow = |mesh: &mut Mesh3d, from: Vec3, to: Vec3, side: Vec3| {
+        mesh.line(false, from, to, col);
+        let back = (from - to).normalize_or_zero() * 14.0;
+        mesh.line(false, to, to + back + side * 9.0, col);
+        mesh.line(false, to, to + back - side * 9.0, col);
+    };
+    arrow(mesh, floor + front * (t * 0.5), tip, across);
+    // The hinge (or the edge it slides to) is the pad's `up * ymin` edge.
+    let hinge = floor - up * (w * 0.5);
+    match d.motion {
+        Motion::Swing | Motion::Hull | Motion::Chair => {
+            mesh.cube(false, hinge - Vec3::new(3.0, 0.0, 3.0), hinge + Vec3::new(3.0, h, 3.0), col);
+            // The arc a swinging door's free edge sweeps, on the floor.
+            if d.motion == Motion::Swing {
+                let open = (d.maxfrac as f32 / 65536.0).clamp(0.0, 180.0).to_radians();
+                let ways: &[f32] = match d.swing {
+                    Swing::Front => &[1.0],
+                    Swing::Back => &[-1.0],
+                    Swing::Both => &[1.0, -1.0],
+                };
+                for &way in ways {
+                    const SEGS: usize = 16;
+                    let at = |k: usize| {
+                        let a = open * k as f32 / SEGS as f32;
+                        hinge + (up * a.cos() + front * way * a.sin()) * w
+                    };
+                    for k in 0..SEGS {
+                        mesh.line(false, at(k), at(k + 1), [col[0], col[1], col[2], col[3] * 0.6]);
+                    }
+                }
+            }
+        }
+        Motion::Up | Motion::Down => {
+            let (from, to) = if d.motion == Motion::Up { (c, c + Vec3::Y * (h * 0.5 + 40.0)) } else { (c, c - Vec3::Y * (h * 0.5 - 5.0)) };
+            arrow(mesh, from + front * (t * 0.5 + 2.0), to + front * (t * 0.5 + 2.0), across);
+        }
+        Motion::Eyelid | Motion::Iris => {
+            // A circle on its face.
+            const SEGS: usize = 32;
+            let r = w.min(h) * 0.45;
+            let at = |k: usize| {
+                let a = k as f32 / SEGS as f32 * std::f32::consts::TAU;
+                c + front * (t * 0.5 + 2.0) + (across * a.cos() + Vec3::Y * a.sin()) * r
+            };
+            for k in 0..SEGS {
+                mesh.line(false, at(k), at(k + 1), col);
+            }
+        }
+        _ => {
+            // Slides towards the hinge edge.
+            let mid = c + front * (t * 0.5 + 2.0);
+            arrow(mesh, mid, mid - up * (w * 0.5 + 30.0), Vec3::Y);
+        }
+    }
+    let pts = edges.iter().flat_map(|(a, b)| [corner(a.0, a.1, a.2), corner(b.0, b.1, b.2)]);
+    let (lo, hi) = pts.fold((Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)), |(lo, hi), p| (lo.min(p), hi.max(p)));
+    (lo - Vec3::splat(4.0), hi + Vec3::splat(4.0), c + Vec3::Y * (h * 0.5 + 25.0))
 }
 
 /// The pad of an item at pad position `p`: its floor square, facing nub and
@@ -221,6 +310,17 @@ pub fn build(doc: &Doc, scene: &Scene, eye: Vec3, show: &Show, hl: &Highlight) -
             continue;
         }
         let col = rgba(colour(doc, it));
+        if it.kind == Kind::Door {
+            let (lo, hi, at) = door(&mut b.mesh, doc.door(it.index), if sel { WHITE } else { col });
+            if sel || hl.hovered == Some(Sel::Item(it)) {
+                b.mesh.wire_box(true, lo, hi, if sel { WHITE } else { [1.0, 1.0, 1.0, 0.6] });
+            }
+            b.picks.push(Pick { sel: Sel::Item(it), lo, hi });
+            if show.labels && (sel || p.distance(eye) < 2500.0) {
+                b.labels.push(Label { at, text: item_label(doc, it), col: colour(doc, it) });
+            }
+            continue;
+        }
         let (lo, hi) = pad(&mut b.mesh, it.kind, p, doc.facing(it), col);
         if sel || hl.hovered == Some(Sel::Item(it)) {
             b.mesh.wire_box(true, lo - Vec3::splat(4.0), hi + Vec3::splat(4.0), if sel { WHITE } else { [1.0, 1.0, 1.0, 0.6] });

@@ -225,7 +225,10 @@ def model_list(weapons: dict, c: gen.Consts) -> list[tuple[str, str]]:
     import pd_stage  # noqa: PLC0415 (pd_stage imports this module)
     by_name = {name: rel for rel, (_, name) in table.items()}
     rows = model_state_rows()
-    for modelnum in pd_stage.setup_models(c):
+    # And every door any setup places (pd_doors.py: the level editor's
+    # catalogue), solo stages' too.
+    import pd_doors  # noqa: PLC0415
+    for modelnum in pd_stage.setup_models(c) + pd_doors.door_models(c):
         fname = rows[modelnum][0]
         if fname not in by_name:
             raise SystemExit(f"MODEL {modelnum:#x} is {fname}, which is not in files/list.c")
@@ -422,7 +425,8 @@ def export_all(weapons: dict) -> tuple[dict, "TexturePool"]:
     warned = 0
     total = 0
     import pd_stage  # noqa: PLC0415 (pd_stage imports this module)
-    door_models = set(pd_stage.setup_models(c, ("door",)))
+    import pd_doors  # noqa: PLC0415
+    door_models = set(pd_stage.setup_models(c, ("door",))) | set(pd_doors.door_models(c))
     for rel, kind in model_list(weapons, c):
         path = asset("files", *rel.split("/"))
         if not os.path.exists(path):

@@ -367,12 +367,16 @@ impl Obj {
 
     /// `obj_init_matrices` (`propobj.c:10898`) in world space: matrix 0 is the
     /// object's transform; a weapon's others are identity (`weapon_init_matrices`,
-    /// `:10851`), the sentry's are its turret (`autogun_init_matrices`).
+    /// `:10851`), the sentry's are its turret (`autogun_init_matrices`), an
+    /// eyelid or iris door's its lids or blades (`door_init_matrices`).
     pub fn init_matrices(&self) -> Vec<Mat4> {
         let mut out = vec![Mat4::IDENTITY; self.def.nummatrices.max(1)];
         out[0] = self.root_matrix();
         if let Some(a) = &self.autogun {
             a.init_matrices(&self.def, self.scale, &mut out);
+        }
+        if let Some(d) = &self.door {
+            door::door_init_matrices(&self.def, d, &mut out);
         }
         out
     }

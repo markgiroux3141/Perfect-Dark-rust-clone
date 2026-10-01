@@ -410,7 +410,9 @@ fn ci_felicity_is_two_stages_fused() {
     // Felicity's rooms land on its own triangles turned 120°, as CI's moved.
     assert!(line("conversion:").contains("within 0.03 texels and 0 colour steps"), "{}", line("conversion:"));
     assert!(line("portals:").ends_with("2 found to the rebuilt rooms: 44->b4 (6 verts), 9c->b4 (7 verts)"), "{}", line("portals:"));
-    assert!(line("textures:").contains("58 of them not in assets/"), "{}", line("textures:"));
+    // 56 (58 before M18: the door catalogue's models, CI's doors among
+    // them, brought two of CI's textures into the pool).
+    assert!(line("textures:").contains("56 of them not in assets/"), "{}", line("textures:"));
     let crate::SourceHow::Generate(markers) = &data.how else { panic!("a fused level's setup is generated") };
     assert_eq!(markers.len(), 12 + 10, "Felicity's MP spawns and weapons");
 

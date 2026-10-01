@@ -54,6 +54,200 @@ pub struct TeamSpot {
     pub team: u8,
 }
 
+/// How a door moves: PD's `DOORTYPE_*`, and for a vertical door which way.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Motion {
+    /// `DOORTYPE_SLIDING`: across the doorway, towards [`Door::side`].
+    #[default]
+    Slide,
+    /// `DOORTYPE_FLEXI1..3`: GoldenEye's Bunker trislides, slid as sliding doors.
+    Flexi1,
+    Flexi2,
+    Flexi3,
+    /// `DOORTYPE_VERTICAL`, rising (the pad's look up) or sinking (down).
+    Up,
+    Down,
+    /// `DOORTYPE_SWINGING`: about the hinge on [`Door::side`], [`Door::swing`] the way.
+    Swing,
+    /// `DOORTYPE_EYE`, `DOORTYPE_IRIS`: Caverns' eyelid and iris doors (their
+    /// models' skeletons pose them; any other model stands still).
+    Eyelid,
+    Iris,
+    /// `DOORTYPE_AZTECCHAIR`: turned about the world's z axis.
+    Chair,
+    /// `DOORTYPE_HULL`: turned in its own plane about its bottom corner on
+    /// [`Door::side`] (the Attack Ship's windows).
+    Hull,
+}
+
+impl Motion {
+    pub const ALL: [Motion; 11] = [Motion::Slide, Motion::Up, Motion::Down, Motion::Swing, Motion::Hull, Motion::Eyelid, Motion::Iris, Motion::Chair, Motion::Flexi1, Motion::Flexi2, Motion::Flexi3];
+
+    /// PD's door type.
+    pub fn doortype(self) -> u16 {
+        match self {
+            Motion::Slide => 0,
+            Motion::Flexi1 => 1,
+            Motion::Flexi2 => 2,
+            Motion::Flexi3 => 3,
+            Motion::Up | Motion::Down => 4,
+            Motion::Swing => 5,
+            Motion::Eyelid => 6,
+            Motion::Iris => 7,
+            Motion::Chair => 9,
+            Motion::Hull => 10,
+        }
+    }
+
+    /// The motion of a door of type `doortype` whose pad looks down (`down`).
+    pub fn of(doortype: u16, down: bool) -> Option<Motion> {
+        Some(match doortype {
+            0 => Motion::Slide,
+            1 => Motion::Flexi1,
+            2 => Motion::Flexi2,
+            3 => Motion::Flexi3,
+            4 if down => Motion::Down,
+            4 => Motion::Up,
+            5 => Motion::Swing,
+            6 => Motion::Eyelid,
+            7 => Motion::Iris,
+            9 => Motion::Chair,
+            10 => Motion::Hull,
+            _ => return None,
+        })
+    }
+
+    /// Whether it turns (its `maxfrac` is in degrees) rather than slides (a
+    /// fraction of its size).
+    pub fn turns(self) -> bool {
+        matches!(self, Motion::Swing | Motion::Eyelid | Motion::Iris | Motion::Chair | Motion::Hull)
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Motion::Slide => "slides across",
+            Motion::Flexi1 => "trislide 1",
+            Motion::Flexi2 => "trislide 2",
+            Motion::Flexi3 => "trislide 3",
+            Motion::Up => "rises",
+            Motion::Down => "sinks",
+            Motion::Swing => "swings",
+            Motion::Eyelid => "eyelid",
+            Motion::Iris => "iris",
+            Motion::Chair => "Aztec chair",
+            Motion::Hull => "hull window",
+        }
+    }
+}
+
+/// A door's hinge, or the edge it slides to, as seen from its front.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Side {
+    #[default]
+    Left,
+    Right,
+}
+
+/// Which way a swinging door opens.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Swing {
+    /// Away from the front (into the room behind it).
+    #[default]
+    Back,
+    /// Towards the front.
+    Front,
+    /// Either way, away from whoever opens it (`OBJFLAG_DOOR_TWOWAY`).
+    Both,
+}
+
+/// A door: a model stretched to a box standing in a doorway (as PD's
+/// `setup_create_door` stretches it to its pad's box), and its setup row.
+/// The row's numbers are the setup's own integers (`include/props.h`
+/// `door()`), taken from a catalogue template (`pd_doors.py`,
+/// `ge_doors.py`) and then edited, so a door is PD's to the bit.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Door {
+    /// The middle of its bottom edge, shut.
+    pub pos: [f32; 3],
+    /// The way its front faces (degrees, as the other facings).
+    pub facing: f32,
+    /// Width (across the doorway), height and thickness (cm).
+    pub size: [f32; 3],
+    /// Its model's stem (in `models/index.json` or `custom/models/index.json`).
+    pub model: String,
+    pub motion: Motion,
+    #[serde(default)]
+    pub side: Side,
+    #[serde(default)]
+    pub swing: Swing,
+    /// How far it opens (16.16): a fraction of its width or height for one
+    /// that slides, degrees for one that turns.
+    pub maxfrac: i32,
+    /// Its collision goes once open this far (16.16, as `maxfrac`).
+    pub perimfrac: i32,
+    /// `accel`, `decel` (/ 65536000 a frame²) and `maxspeed` (/ 65536 a frame).
+    pub accel: i32,
+    pub decel: i32,
+    pub maxspeed: i32,
+    /// Frames (60ths) it stays open before closing itself.
+    pub autoclosetime: i32,
+    /// `door_play_opening_sound`'s type (0: silent).
+    #[serde(default)]
+    pub soundtype: u8,
+    /// `DOORFLAG_*` (never `ROTATEDPAD`: the pad is made upright).
+    #[serde(default)]
+    pub doorflags: u16,
+    /// `obj->flags` bits besides the portal, the swing and two-way (placement
+    /// sets those), e.g. `OBJFLAG_DOOR_KEEPOPEN`.
+    #[serde(default)]
+    pub flags: u32,
+    #[serde(default)]
+    pub flags2: u32,
+    /// `xludist << 16 | opadist`: a windowed door's glass fade (cm).
+    #[serde(default)]
+    pub unk88: u32,
+    /// The next door of its sibling ring (an index into the layout's doors):
+    /// they open and close together, as a double door's two leaves do.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sibling: Option<usize>,
+}
+
+impl Door {
+    /// The door's front, as a unit vector.
+    pub fn front(&self) -> Vec3 {
+        look(self.facing)
+    }
+
+    /// Its pad's up: across the doorway, from the hinge (or the edge it slides
+    /// to) towards the other side. PD's hinge is the pad's `up * ymin` edge,
+    /// and its front the pad's normal (`up × look`); a door hinged on the
+    /// right is PD's turned round, its front the pad's back.
+    pub fn up(&self) -> Vec3 {
+        let across = Vec3::Y.cross(self.front());
+        match self.side {
+            Side::Left => across,
+            Side::Right => -across,
+        }
+    }
+
+    /// Its pad's look: up, or down for a door that sinks.
+    pub fn look(&self) -> Vec3 {
+        if self.motion == Motion::Down {
+            -Vec3::Y
+        } else {
+            Vec3::Y
+        }
+    }
+
+    /// Its box's centre, shut.
+    pub fn centre(&self) -> Vec3 {
+        Vec3::from(self.pos) + Vec3::Y * (self.size[1] * 0.5)
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Layout {
     pub format: String,
@@ -78,6 +272,10 @@ pub struct Layout {
     /// replayed on it each time the level is placed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waypoints: Option<WaypointEdits>,
+    /// The doors (replacing the source's own: a GoldenEye level's are adopted
+    /// into the layout like its other rows).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doors: Option<Vec<Door>>,
 }
 
 /// A waypoint moved from where the generator put it (`from`, a pad position)
@@ -122,15 +320,32 @@ impl WaypointEdits {
     }
 }
 
-/// Write `val` as JSON with each array's items one per line at `indent`,
-/// objects' keys (in `order` first) one per line.
-fn pretty(out: &mut String, val: &serde_json::Value, indent: usize, order: &[&str]) {
+/// A door's keys in the order a diff reads best: where, which, how.
+const DOOR_KEYS: &[&str] = &["pos", "facing", "size", "model", "motion", "side", "swing", "sibling"];
+
+/// `val` on one line, an object's keys in `order` first (the rest sorted).
+fn one_line(val: &serde_json::Value, order: &[&str]) -> String {
+    match val {
+        serde_json::Value::Object(obj) if !order.is_empty() => {
+            let mut keys: Vec<&String> = obj.keys().collect();
+            keys.sort_by_key(|k| (order.iter().position(|o| o == k).unwrap_or(order.len()), k.as_str()));
+            let parts: Vec<String> = keys.iter().map(|k| format!("{}:{}", serde_json::to_string(k).unwrap(), serde_json::to_string(&obj[k.as_str()]).unwrap())).collect();
+            format!("{{{}}}", parts.join(","))
+        }
+        _ => serde_json::to_string(val).unwrap(),
+    }
+}
+
+/// Write `val` as JSON with each array's items one per line at `indent`
+/// (an item's keys in `items` first), objects' keys (in `order` first) one
+/// per line.
+fn pretty(out: &mut String, val: &serde_json::Value, indent: usize, order: &[&str], items: &[&str]) {
     let pad = "  ".repeat(indent);
     match val {
-        serde_json::Value::Array(items) if !items.is_empty() => {
+        serde_json::Value::Array(list) if !list.is_empty() => {
             out.push_str("[\n");
-            for (j, it) in items.iter().enumerate() {
-                out.push_str(&format!("{pad}  {}{}\n", serde_json::to_string(it).unwrap(), if j + 1 < items.len() { "," } else { "" }));
+            for (j, it) in list.iter().enumerate() {
+                out.push_str(&format!("{pad}  {}{}\n", one_line(it, items), if j + 1 < list.len() { "," } else { "" }));
             }
             out.push_str(&format!("{pad}]"));
         }
@@ -140,7 +355,8 @@ fn pretty(out: &mut String, val: &serde_json::Value, indent: usize, order: &[&st
             out.push_str("{\n");
             for (i, k) in keys.iter().enumerate() {
                 out.push_str(&format!("{pad}  {}: ", serde_json::to_string(k).unwrap()));
-                pretty(out, &obj[k.as_str()], indent + 1, &["removed", "moved", "added", "unlinked", "linked"]);
+                let items = if k.as_str() == "doors" { DOOR_KEYS } else { &[] };
+                pretty(out, &obj[k.as_str()], indent + 1, &["removed", "moved", "added", "unlinked", "linked"], items);
                 out.push_str(if i + 1 < keys.len() { ",\n" } else { "\n" });
             }
             out.push_str(&format!("{pad}}}"));
@@ -190,7 +406,7 @@ impl Layout {
         }
         tidy(&mut v);
         let mut out = String::new();
-        pretty(&mut out, &v, 0, &["format", "spawns", "weapons", "ammo", "hills", "bases", "respawns", "cover", "waypoints"]);
+        pretty(&mut out, &v, 0, &["format", "spawns", "weapons", "ammo", "hills", "bases", "respawns", "cover", "doors", "waypoints"], &[]);
         out.push('\n');
         std::fs::write(path, out).map_err(|e| format!("{}: {e}", path.display()))
     }
@@ -206,13 +422,26 @@ impl Layout {
         if let Some((i, w)) = self.weapons.iter().flatten().enumerate().find(|(_, w)| w.location >= 16) {
             return Err(format!("weapon {i}: location {} (there are 16, 0-15)", w.location));
         }
+        let doors = self.doors.as_deref().unwrap_or(&[]);
+        for (i, d) in doors.iter().enumerate() {
+            if d.model.is_empty() {
+                return Err(format!("door {i} has no model"));
+            }
+            if d.size.iter().any(|&s| s.is_nan() || s <= 0.0) {
+                return Err(format!("door {i}: size {:?} (each must be over 0)", d.size));
+            }
+            if let Some(s) = d.sibling.filter(|&s| s >= doors.len() || s == i) {
+                return Err(format!("door {i}: its sibling is door {s} of {}", doors.len()));
+            }
+        }
         Ok(())
     }
 
     /// Every kind as the stage in `dir` has it now (its `pads.json` and
-    /// `setup.json`): a level's generated placement, taken over by hand.
-    /// Returns the layout and what couldn't be taken (a weapon pad naming a
-    /// gun rather than an MP location: none of PD's arenas has one).
+    /// `setup.json`): a level's generated placement, and the source's doors,
+    /// taken over by hand. Returns the layout and what couldn't be taken (a
+    /// weapon pad naming a gun rather than an MP location: none of PD's
+    /// arenas has one; a door whose pad doesn't stand upright).
     pub fn adopt(dir: &Path) -> Result<(Layout, Vec<String>), String> {
         let read = |f: &str| -> Result<serde_json::Value, String> {
             let p = dir.join(f);
@@ -258,6 +487,16 @@ impl Layout {
             }
         }
         let cover = pads["cover"].as_array().into_iter().flatten().map(|c| Spot { pos: arr(v3(&c["pos"])), facing: facing_tenths(v3(&c["look"])) }).collect();
+        let (mut doors, left) = crate::doors::adopt(&pads, &setup);
+        skipped.extend(left);
+        // The models by stem: PD's index, and the custom tree's (the stage
+        // directory's grandparent) for a GoldenEye level's own.
+        let mut assets = pd_core::assets::AssetDir::new(crate::ge::repo().join("assets"));
+        if let Some(custom) = dir.parent().and_then(Path::parent) {
+            assets = assets.with_custom_dir(custom);
+        }
+        crate::doors::name_models(&mut doors, &crate::doors::model_numbers(&assets)?);
+        l.doors = Some(doors);
         l.spawns = Some(spawns);
         l.weapons = Some(weapons);
         l.ammo = Some(ammo);
@@ -271,7 +510,7 @@ impl Layout {
 
     /// Does the layout place anything (else placement is as without one)?
     pub fn is_empty(&self) -> bool {
-        self.spawns.is_none() && self.weapons.is_none() && self.ammo.is_none() && self.hills.is_none() && self.bases.is_none() && self.respawns.is_none() && self.cover.is_none() && self.waypoints.as_ref().is_none_or(WaypointEdits::is_empty)
+        self.spawns.is_none() && self.weapons.is_none() && self.ammo.is_none() && self.hills.is_none() && self.bases.is_none() && self.respawns.is_none() && self.cover.is_none() && self.doors.is_none() && self.waypoints.as_ref().is_none_or(WaypointEdits::is_empty)
     }
 }
 
@@ -297,7 +536,7 @@ pub fn round1(x: f32) -> f32 {
 }
 
 /// A look vector as a facing in tenths of a degree, 0..360.
-fn facing_tenths(look: Vec3) -> f32 {
+pub(crate) fn facing_tenths(look: Vec3) -> f32 {
     let f = round1(facing(look));
     if f >= 360.0 {
         f - 360.0

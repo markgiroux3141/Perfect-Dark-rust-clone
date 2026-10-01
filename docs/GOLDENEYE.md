@@ -23,6 +23,7 @@ The other things in `D:\GoldenPerfectModding` (the GE Setup Editor OBJ exports, 
 ```
 cargo run --release -p pd_import --bin pd_import -- facility   # ~1 min: the extractor (2 s) + waypoints + a check match
 cargo test -p pd_import --release -- --ignored facility        # the import from the ROM; doors open; the level is one piece
+cargo run --release -p pd_import --bin pd_import -- --ge-doors  # every GE door model and the editor's catalogue of them (2 s)
 cargo run --release -p pd_tools --bin pd_snapshot -- out stage facility --full --at x,y,z,theta   # a view (the F1 panel's coords)
 cargo run --release -p pd_tools --bin pd_snapshot -- out lab facility    # the waypoint map: the fastest way to see a split level
 target/release/pd_import --probe facility x0 z0 x1 z1                    # why the generator won't link two points
@@ -93,11 +94,13 @@ Each of these cost a debugging round on Facility.
 18. **GE's doors stand flush against their portals** (one face on the portal plane, some a few cm past). GE puts a door in the rooms on both sides by construction (`prop.c:1141`). PD finds a door's rooms from its box through the portals (`obj_detect_rooms`) and lets a player use only doors in rooms on screen. So a shut door couldn't be used from the side whose room it missed. `ge_setup.align_portals` moves each door's portal (found as `setup_get_portal_by_door_pad` finds it) the 5–11 cm onto the door's middle plane.
 19. **Windowed (glass) doors keep their portal open while you can see through them** (`door_update_portal_if_windowed`, `propobj.c:7803`, now ported). Otherwise the room behind isn't drawn and the fog colour shows through the glass.
 20. **Door sounds:** PD's `soundtype` table is GE's `DOOR_OPEN_SOUND_*` table with a new row inserted at 5 (GE 1–4 = PD 1–4, GE 5–17 = PD 6–18). PD kept GE's sound numbers but some of those numbers hold different samples, so the mapping (`ge_setup.GE_DOOR_SOUNDTYPE`) was made by comparing the two banks' samples. GE's sfx bank is `sfx.ctl`/`.tbl` in the ROM (`filelist.u.csv`), in the same n_audio format, so `pd_sfx.Bank` parses both. GE 4 (the heavy slide) is PD 17, because PD 4 adds a different loop, Runway's rolling door; GE 10 is PD 11. GE's loops 211 and 216 aren't in PD's bank.
+21. **Every GE door model is in the editor's catalogue** (`ge_extract.py --doors`, run by `pd_import --ge-doors` or the editor's Doors tab: `tools/ge-extract/ge_doors.py`). It reads every setup (`assets/obseg/setup/*.c` and `u/*.c`; each level's pads are in its BG units, `/ levelscale` is cm, `SETUP_BG` maps the setups whose code isn't their BG's), exports the 48 door models into `custom/models/`, and writes `custom/ge/doors.json` in PD's catalogue format (`pd_doors.py`), each record converted by `ge_setup.door_row` (the same conversion a level's doors get). The two MP-only setups without a level row (`Ump_setupashZ`, `Ump_setupimpZ`) are skipped, and their doors are in other setups anyway. A solo setup's intro can hold a pointer (`&credits_data_0`), which `word()` reads as 0.
+22. **Caverns' eyelid and iris doors are PD's too.** GE's `eyelid_door` and `iris_door` skeletons are PD's `SKEL_11` and `SKEL_13` (`ge_model.SKELS`), and PD still poses them in `door_init_matrices` (`propobj.c:7843`, ported): the lids on parts 1-2 turn about x, and the six blades on parts 1-12 turn about z (the outer one once the door is 0.3 open). The iris sounds as it passes 0.3 (`propobj.c:7762`). So they need no GE code path. **GE's `0x80000000` door flag is "open by default"** (`PROPFLAG_DOOR_KEEPOPEN`, PD's `OBJFLAG_DOOR_KEEPOPEN` 0x40000000): Caverns' eyelids and irises all start open, and a shut one only draws once its mission shuts it. The catalogues drop it, as they drop the locks, so a door made from a template starts shut.
 
 ### Placement
-21. **An MP setup covers only part of a solo level.** `marker_share` caps how many spawns and weapons stand on the source's spots, and farthest-point sampling spreads the rest. The user will place them by hand in a future editor, so don't polish this.
-22. **GE pad looks are axis-aligned defaults**, and a marker snapped to a waypoint can face a wall. A marker's facing is kept only with 3 m of view.
-23. **A level may have parts GE's own geometry closes off.** On Facility these are the vent Bond starts in, and a door onto a 1 m ledge over a 4.8 m drop. Placement uses the largest strongly connected part of the waypoint graph, so these are harmless. Check each one with `--probe` before assuming it's a bug.
+23. **An MP setup covers only part of a solo level.** `marker_share` caps how many spawns and weapons stand on the source's spots, and farthest-point sampling spreads the rest. The user will place them by hand in a future editor, so don't polish this.
+24. **GE pad looks are axis-aligned defaults**, and a marker snapped to a waypoint can face a wall. A marker's facing is kept only with 3 m of view.
+25. **A level may have parts GE's own geometry closes off.** On Facility these are the vent Bond starts in, and a door onto a 1 m ledge over a 4.8 m drop. Placement uses the largest strongly connected part of the waypoint graph, so these are harmless. Check each one with `--probe` before assuming it's a bug.
 
 ## Checklist for the next level
 
@@ -106,7 +109,7 @@ Things Facility didn't exercise, which the extractor refuses or leaves out:
 - **Clouds and water** (`fog_tables` clouds/water columns): refused. Dam, Surface, Frigate and Runway have them. PD has both (`g_FogEnvironments` clouds and water).
 - **Glass and tinted glass** (`Glass`, `TintedGlass` props): left out. Facility has 52 (its windows). PD has both kinds (`props::glass`), and their models are GE props like the doors.
 - **A door scale** (a `DoorScale` record, `prop.c:980`): refused.
-- **Lifts, ladders, eye / iris / fall-away doors**: not seen yet. PD's door types match GE's numbers, but only sliding, vertical and swinging are ported (`door.rs`).
+- **Lifts, ladders, fall-away doors**: not seen yet. PD's door types match GE's numbers. Ported (`door.rs`): sliding, the flexi trislides (slid as sliding), vertical, swinging, eyelid, iris, the Aztec chair and the hull. Fall-away (Train's and Surface's hatches: they drop as projectiles once open) is not, and the catalogue leaves those two models out.
 - **Floor types:** GE has none, so every tile is `FLOORTYPE_DEFAULT` and all footsteps sound the same. They could come from the BG texture over each tile.
 - **Door sounds** for the GE types Facility doesn't use: the table covers 0–18 by the same sample comparison, but only 1, 4 and 10 have been heard.
 - **Levels sharing a BG** (Library, Basement and Stack all use `bg_ame`): the recipe names the level row, so the setup decides which half you get.

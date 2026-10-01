@@ -84,6 +84,9 @@ def word(t: str) -> int:
         return ((a << 16) | (b & 0xFFFF)) & 0xFFFFFFFF if m.group(1) == "word" else ((a << 8) | (b & 0xFF)) & 0xFFFF
     if re.fullmatch(r"-?[0-9.]+(e-?\d+)?f?", t) and ("." in t or "e" in t or t.endswith("f")) and not t.startswith("0x"):
         return struct.unpack(">I", struct.pack(">f", float(t.rstrip("f"))))[0]
+    # A pointer (`&credits_data_0`, a solo setup's intro): nothing kept reads it.
+    if re.fullmatch(r"&?[A-Za-z_]\w*", t):
+        return 0
     return int(t, 0) & 0xFFFFFFFF
 
 
@@ -142,6 +145,37 @@ class Setup:
         return None
 
 
+def door_row(w: list[int], world: float) -> dict:
+    """A GE door record's words as a PD `door()` row's fields (all but the
+    model, pad and sibling). `world`: GE world units to PD centimetres."""
+    flags = w[2] & ~(GE_DOOR_TWOWAY | GE_NO_PORTAL_CLOSE | GE_DOOR_KEEPOPEN)
+    if w[2] & GE_DOOR_TWOWAY:
+        flags |= PD_DOOR_TWOWAY
+    if w[2] & GE_DOOR_KEEPOPEN:
+        flags |= PD_DOOR_KEEPOPEN
+    # GE's own multiplayer setups clear these (Ump_setuparkZ: every door's
+    # flags2 is 0): no keys, no one-way locks, no airlocks (an airlock door
+    # waits for its partner to shut, `doors_request_mode`, which a simulant
+    # standing in the other one holds up for good).
+    flags2 = w[3] & ~GE_FLAGS2_DROP & ~(FLAGS2_LOCKS | FLAGS2_AIRLOCK)
+    return {
+        "flags": flags, "flags2": flags2, "flags3": 0, "maxdamage": w[29] >> 16,
+        "maxfrac": s32(w[33]), "perimfrac": s32(w[34]),
+        # GE's accel and decel are / 65536 (`prop.c:1120`), PD's / 65536000
+        # (`setup.c:1057`): the same rate in PD's units.
+        "accel": s32(w[35]) * 1000, "decel": s32(w[36]) * 1000, "maxspeed": s32(w[37]),
+        "doorflags": w[38] >> 16, "doortype": w[38] & 0xFFFF, "keyflags": 0,
+        "autoclosetime": s32(w[40]),
+        # PD's `unk88` is `xludist << 16 | opadist` (s16s, world units: PD's
+        # `glass_calculate_opacity`, GE's `glassCalculateOpacity`);
+        # `unkc4` is `soundtype << 8 | fadetime60`.
+        "unk88": ((round(s32(w[48]) * world) & 0xFFFF) << 16) | (round(s32(w[49]) * world) & 0xFFFF),
+        # SUBST: GE plays its own door samples / PD's bank has most of
+        # them (GE_DOOR_SOUNDTYPE), all but the loops 211 and 216.
+        "unkc4": GE_DOOR_SOUNDTYPE.get(w[41] & 0xFF, 0) << 8,
+    }
+
+
 def doors(setup: Setup, ge: Ge, k: float, world: float, pad_base: int) -> tuple[list[dict], list[dict], set[int], list[str]]:
     """The setup's doors as `setup.json` rows, with the pads they stand on
     (pads.json rows, numbered from `pad_base`). `k` takes the setup's (BG) units
@@ -163,41 +197,13 @@ def doors(setup: Setup, ge: Ge, k: float, world: float, pad_base: int) -> tuple[
             pad_index[pad] = pad_base + len(out_pads)
             out_pads.append({"pos": [c * k for c in bp["pos"]], "look": bp["look"], "up": bp["up"],
                              "flags": PADFLAG_HASBBOXDATA, "bbox": [c * k for c in bp["bbox"]]})
-        flags = w[2] & ~(GE_DOOR_TWOWAY | GE_NO_PORTAL_CLOSE | GE_DOOR_KEEPOPEN)
-        if w[2] & GE_DOOR_TWOWAY:
-            flags |= PD_DOOR_TWOWAY
-        if w[2] & GE_DOOR_KEEPOPEN:
-            flags |= PD_DOOR_KEEPOPEN
-        flags2 = w[3] & ~GE_FLAGS2_DROP
-        if flags2 & (FLAGS2_LOCKS | FLAGS2_AIRLOCK) or w[39]:
+        if (w[3] & ~GE_FLAGS2_DROP) & (FLAGS2_LOCKS | FLAGS2_AIRLOCK) or w[39]:
             unlocked += 1
-        # GE's own multiplayer setups clear these (Ump_setuparkZ: every door's
-        # flags2 is 0): no keys, no one-way locks, no airlocks (an airlock door
-        # waits for its partner to shut, `doors_request_mode`, which a
-        # simulant standing in the other one holds up for good).
-        flags2 &= ~(FLAGS2_LOCKS | FLAGS2_AIRLOCK)
         models.add(obj)
         cmd_of[idx] = len(rows)
         if s32(w[32]):
             links.append((len(rows), idx + s32(w[32])))
-        rows.append({
-            "type": "door", "scale": w[0] >> 16, "model": 0x1000 + obj, "pad": pad_index[pad],
-            "flags": flags, "flags2": flags2, "flags3": 0, "maxdamage": w[29] >> 16,
-            "maxfrac": s32(w[33]), "perimfrac": s32(w[34]),
-            # GE's accel and decel are / 65536 (`prop.c:1120`), PD's / 65536000
-            # (`setup.c:1057`): the same rate in PD's units.
-            "accel": s32(w[35]) * 1000, "decel": s32(w[36]) * 1000, "maxspeed": s32(w[37]),
-            "doorflags": w[38] >> 16, "doortype": w[38] & 0xFFFF, "keyflags": 0,
-            "autoclosetime": s32(w[40]),
-            # PD's `unk88` is `xludist << 16 | opadist` (s16s, world units: PD's
-            # `glass_calculate_opacity`, GE's `glassCalculateOpacity`);
-            # `unkc4` is `soundtype << 8 | fadetime60`.
-            "unk88": ((round(s32(w[48]) * world) & 0xFFFF) << 16) | (round(s32(w[49]) * world) & 0xFFFF),
-            # SUBST: GE plays its own door samples / PD's bank has most of
-            # them (GE_DOOR_SOUNDTYPE), all but the loops 211 and 216.
-            "unkc4": GE_DOOR_SOUNDTYPE.get(w[41] & 0xFF, 0) << 8,
-            "sibling": 0,
-        })
+        rows.append({"type": "door", "scale": w[0] >> 16, "model": 0x1000 + obj, "pad": pad_index[pad], **door_row(w, world), "sibling": 0})
     for row, target in links:
         if target in cmd_of:
             rows[row]["sibling"] = cmd_of[target] - row  # relative, as PD's (setup.c:1063)

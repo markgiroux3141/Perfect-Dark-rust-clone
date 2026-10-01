@@ -104,6 +104,13 @@ class Ge:
 
     # -- the decomp's tables --------------------------------------------------
 
+    def levels(self) -> dict[str, dict]:
+        """Every `levelinfotable` row (`bg.c:184`) by `LEVELID_*`: its BG code
+        (`bg_<code>_all_p`) and level scale."""
+        text = self._read("src", "game", "bg.c")
+        return {m.group(1): {"code": m.group(2), "levelscale": float(m.group(3))}
+                for m in re.finditer(r"\{\s*(LEVELID_\w+)\s*,\s*\"bg/bg_(\w+?)_all_p\.seg\"\s*,\s*\"\w+\"\s*,\s*([-0-9.e]+)", text)}
+
     def level(self, levelid: str) -> dict:
         """`levelinfotable`'s row (`bg.c:184`): the BG and stan files and the
         level scale (BG units per world unit, `bgroomtrans.c:211`)."""
@@ -154,7 +161,10 @@ class Ge:
                 "radius": float(args[6]), "numtextures": int(args[8], 0)}
 
     def setup_c(self, name: str) -> tuple[str, str]:
-        """The setup `name` (e.g. `UsetuparkZ`) as the decomp holds it, and its path."""
+        """The setup `name` (e.g. `UsetuparkZ`) as the decomp holds it, and its
+        path: `assets/obseg/setup/`, else its `u/` (the NTSC-only ones)."""
         path = os.path.join(self.decomp, "assets", "obseg", "setup", name + ".c")
+        if not os.path.exists(path):
+            path = os.path.join(self.decomp, "assets", "obseg", "setup", "u", name + ".c")
         with open(path, encoding="utf-8", errors="replace") as fh:
             return fh.read(), path

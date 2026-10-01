@@ -1,0 +1,7382 @@
+{
+ "format": "pd-doors/1",
+ "source": "pd-decomp/src/setups",
+ "exporter": "tools/pd-assets/pd_doors.py",
+ "doors": [
+  {
+   "stem": "door_rollertrain",
+   "model": 21,
+   "name": "MODEL_DOOR_ROLLERTRAIN",
+   "skel": 2,
+   "seen": [
+    "LIP",
+    "MAIANSOS",
+    "SEV",
+    "TRA"
+   ],
+   "templates": [
+    {
+     "count": 8,
+     "size": [
+      1100,
+      238,
+      27
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 49152,
+      "accel": 12743,
+      "decel": 12743,
+      "maxspeed": 764,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      1088,
+      238,
+      30
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 49152,
+      "accel": 12743,
+      "decel": 12743,
+      "maxspeed": 764,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 25
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      1100,
+      238,
+      27
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 49152,
+      "accel": 12743,
+      "decel": 12743,
+      "maxspeed": 764,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      1100,
+      238,
+      27
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 49152,
+      "accel": 12743,
+      "decel": 12743,
+      "maxspeed": 764,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 25
+     }
+    }
+   ]
+  },
+  {
+   "stem": "a51_horiz_door_top",
+   "model": 25,
+   "name": "MODEL_A51_HORIZ_DOOR_TOP",
+   "skel": 2,
+   "seen": [
+    "LIP",
+    "MAIANSOS",
+    "MP_AREA52",
+    "SEV",
+    "TRA"
+   ],
+   "templates": [
+    {
+     "count": 80,
+     "size": [
+      400,
+      116,
+      34
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 546133,
+      "decel": 546133,
+      "maxspeed": 6553,
+      "autoclosetime": 268435455,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 20,
+     "size": [
+      90,
+      124,
+      3
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 120,
+      "unk88": 0,
+      "soundtype": 11
+     }
+    },
+    {
+     "count": 11,
+     "size": [
+      400,
+      116,
+      33
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 546133,
+      "decel": 546133,
+      "maxspeed": 6553,
+      "autoclosetime": 268435455,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 11,
+     "size": [
+      72,
+      149,
+      4
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 872415232,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 11
+     }
+    },
+    {
+     "count": 6,
+     "size": [
+      456,
+      190,
+      19
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 3276800,
+      "decel": 546133,
+      "maxspeed": 10922,
+      "autoclosetime": 268435455,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 6,
+     "size": [
+      300,
+      276,
+      10
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 6553,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    },
+    {
+     "count": 3,
+     "size": [
+      200,
+      262,
+      6
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 6553,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      1534,
+      351,
+      36
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 546133,
+      "decel": 546133,
+      "maxspeed": 655,
+      "autoclosetime": -1610612746,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      300,
+      276,
+      10
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 16,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 6553,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    }
+   ]
+  },
+  {
+   "stem": "a51_horiz_door_bot",
+   "model": 26,
+   "name": "MODEL_A51_HORIZ_DOOR_BOT",
+   "skel": 2,
+   "seen": [
+    "LIP",
+    "MAIANSOS",
+    "MP_AREA52",
+    "SEV",
+    "TRA"
+   ],
+   "templates": [
+    {
+     "count": 52,
+     "size": [
+      400,
+      117,
+      34
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 16,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 546133,
+      "decel": 546133,
+      "maxspeed": 6553,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    },
+    {
+     "count": 28,
+     "size": [
+      400,
+      117,
+      33
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 546133,
+      "decel": 546133,
+      "maxspeed": 6553,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    },
+    {
+     "count": 9,
+     "size": [
+      400,
+      117,
+      33
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 16,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 546133,
+      "decel": 546133,
+      "maxspeed": 6553,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    },
+    {
+     "count": 6,
+     "size": [
+      400,
+      117,
+      33
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 120,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 6,
+     "size": [
+      456,
+      190,
+      19
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 16,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 3276800,
+      "decel": 546133,
+      "maxspeed": 10922,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    },
+    {
+     "count": 3,
+     "size": [
+      300,
+      117,
+      33
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 600,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      1534,
+      351,
+      36
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 546133,
+      "decel": 546133,
+      "maxspeed": 655,
+      "autoclosetime": 600,
+      "unk88": 0,
+      "soundtype": 4
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      117,
+      117,
+      34
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 546133,
+      "decel": 546133,
+      "maxspeed": 6553,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      300,
+      117,
+      33
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 600,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "a51_vert_door_left",
+   "model": 27,
+   "name": "MODEL_A51_VERT_DOOR_LEFT",
+   "skel": 2,
+   "seen": [
+    "LIP",
+    "MAIANSOS",
+    "SEV",
+    "TRA"
+   ],
+   "templates": [
+    {
+     "count": 15,
+     "size": [
+      167,
+      234,
+      27
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 52428,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 7,
+     "size": [
+      167,
+      234,
+      54
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 49152,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      167,
+      234,
+      43
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 49152,
+      "perimfrac": 62259,
+      "accel": 546133,
+      "decel": 546133,
+      "maxspeed": 6553,
+      "autoclosetime": 268435455,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      167,
+      292,
+      27
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 536870912,
+      "maxfrac": 52428,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "a51_vert_door_right",
+   "model": 28,
+   "name": "MODEL_A51_VERT_DOOR_RIGHT",
+   "skel": 2,
+   "seen": [
+    "LIP",
+    "MAIANSOS",
+    "SEV",
+    "TRA"
+   ],
+   "templates": [
+    {
+     "count": 15,
+     "size": [
+      167,
+      234,
+      27
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 52428,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 7,
+     "size": [
+      167,
+      234,
+      54
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 49152,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      167,
+      234,
+      43
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 16,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 49152,
+      "perimfrac": 62259,
+      "accel": 546133,
+      "decel": 546133,
+      "maxspeed": 6553,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      167,
+      292,
+      27
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 536870912,
+      "maxfrac": 52428,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    }
+   ]
+  },
+  {
+   "stem": "a51_vert_door_st",
+   "model": 29,
+   "name": "MODEL_A51_VERT_DOOR_ST",
+   "skel": 2,
+   "seen": [
+    "AIRBASE",
+    "LIP",
+    "MAIANSOS",
+    "SEV",
+    "TRA"
+   ],
+   "templates": [
+    {
+     "count": 11,
+     "size": [
+      200,
+      234,
+      39
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 11,
+     "size": [
+      72,
+      149,
+      4
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 872415232,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 11
+     }
+    },
+    {
+     "count": 8,
+     "size": [
+      100,
+      233,
+      23
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 58982,
+      "accel": 36408,
+      "decel": 36408,
+      "maxspeed": 1092,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 8,
+     "size": [
+      184,
+      263,
+      26
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 8,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 6,
+     "size": [
+      171,
+      263,
+      26
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      100,
+      233,
+      23
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 58982,
+      "accel": 36408,
+      "decel": 36408,
+      "maxspeed": 1092,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 3,
+     "size": [
+      216,
+      217,
+      27
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 8,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      167,
+      233,
+      25
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 42598,
+      "perimfrac": 42598,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      167,
+      233,
+      25
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 42598,
+      "perimfrac": 42598,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      179,
+      263,
+      8
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 1024,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1966,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      167,
+      233,
+      25
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 42598,
+      "perimfrac": 42598,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      167,
+      233,
+      25
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 42598,
+      "perimfrac": 42598,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      150,
+      292,
+      27
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      234,
+      23
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 58982,
+      "accel": 36408,
+      "decel": 36408,
+      "maxspeed": 1092,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      234,
+      23
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 58982,
+      "accel": 36408,
+      "decel": 36408,
+      "maxspeed": 1092,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      191,
+      233,
+      25
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      179,
+      263,
+      8
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1966,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    }
+   ]
+  },
+  {
+   "stem": "a51_horiz_door_gl",
+   "model": 30,
+   "name": "MODEL_A51_HORIZ_DOOR_GL",
+   "skel": 16,
+   "seen": [
+    "LIP",
+    "SEV",
+    "TRA"
+   ],
+   "templates": [
+    {
+     "count": 6,
+     "size": [
+      400,
+      117,
+      33
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 2,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 120,
+      "unk88": 32770000,
+      "soundtype": 1
+     }
+    },
+    {
+     "count": 3,
+     "size": [
+      300,
+      117,
+      33
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 2,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 600,
+      "unk88": 32770000,
+      "soundtype": 1
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      300,
+      117,
+      33
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 2,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 600,
+      "unk88": 32770000,
+      "soundtype": 1
+     }
+    }
+   ]
+  },
+  {
+   "stem": "a51_horiz_door_secret",
+   "model": 31,
+   "name": "MODEL_A51_HORIZ_DOOR_SECRET",
+   "skel": 2,
+   "seen": [
+    "LIP",
+    "SEV",
+    "TRA"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      400,
+      234,
+      33
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 1024,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 54613,
+      "decel": 54613,
+      "maxspeed": 6553,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      400,
+      234,
+      33
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 1024,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 54613,
+      "decel": 54613,
+      "maxspeed": 6553,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      400,
+      234,
+      33
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 16,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 546133,
+      "decel": 546133,
+      "maxspeed": 6553,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      400,
+      233,
+      27
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 16,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 546133,
+      "decel": 546133,
+      "maxspeed": 6553,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    }
+   ]
+  },
+  {
+   "stem": "a51_unexp1",
+   "model": 36,
+   "name": "MODEL_A51_UNEXP1",
+   "skel": 2,
+   "seen": [
+    "LIP",
+    "SEV"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      234,
+      234,
+      116
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 540033024,
+      "maxfrac": 0,
+      "perimfrac": 65536,
+      "accel": 65536000,
+      "decel": 65536000,
+      "maxspeed": 65536,
+      "autoclosetime": 1,
+      "unk88": 65536,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "a51_unexp2",
+   "model": 38,
+   "name": "MODEL_A51_UNEXP2",
+   "skel": 2,
+   "seen": [
+    "TRA"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      217,
+      250,
+      48
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 540033024,
+      "maxfrac": 0,
+      "perimfrac": 65536,
+      "accel": 65536000,
+      "decel": 65536000,
+      "maxspeed": 65536,
+      "autoclosetime": 1,
+      "unk88": 65536,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "aivilladoor2a",
+   "model": 41,
+   "name": "MODEL_AIVILLADOOR2A",
+   "skel": 2,
+   "seen": [
+    "VILLA"
+   ],
+   "templates": [
+    {
+     "count": 5,
+     "size": [
+      113,
+      200,
+      13
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      112,
+      200,
+      13
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 12,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      121,
+      202,
+      14
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 805306368,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 6
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      104,
+      218,
+      14
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      138,
+      237,
+      21
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      138,
+      237,
+      21
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 805306368,
+      "flags2": 536870912,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 6
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      106,
+      219,
+      16
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 2415919104,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 6
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      105,
+      219,
+      16
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 2952790016,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      122,
+      207,
+      8
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      122,
+      207,
+      8
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 8,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      138,
+      238,
+      21
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 2415919104,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      138,
+      238,
+      21
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 2952790016,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 6
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_officedoor",
+   "model": 59,
+   "name": "MODEL_DD_OFFICEDOOR",
+   "skel": 2,
+   "seen": [
+    "ARK",
+    "ATE",
+    "CHICAGO",
+    "EXTRACTION",
+    "WAX"
+   ],
+   "templates": [
+    {
+     "count": 34,
+     "size": [
+      188,
+      217,
+      8
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 12,
+     "size": [
+      187,
+      217,
+      9
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 5,
+     "size": [
+      188,
+      217,
+      8
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 3,
+     "size": [
+      187,
+      217,
+      9
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      100,
+      480,
+      8
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 6553600,
+      "decel": 6553600,
+      "maxspeed": 65536,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      100,
+      480,
+      8
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 805306368,
+      "flags2": 536870912,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 6553600,
+      "decel": 6553600,
+      "maxspeed": 65536,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      242,
+      13
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 1024,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      242,
+      13
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 1024,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      112,
+      195,
+      12
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 0,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 6553600,
+      "decel": 6553600,
+      "maxspeed": 65536,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      480,
+      8
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 6553600,
+      "decel": 6553600,
+      "maxspeed": 65536,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      112,
+      195,
+      12
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 536870912,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 6553600,
+      "decel": 6553600,
+      "maxspeed": 65536,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      480,
+      8
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 805306368,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 6553600,
+      "decel": 6553600,
+      "maxspeed": 65536,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_servicedoor",
+   "model": 66,
+   "name": "MODEL_DD_SERVICEDOOR",
+   "skel": 2,
+   "seen": [
+    "ARK",
+    "EXTRACTION",
+    "WAX"
+   ],
+   "templates": [
+    {
+     "count": 8,
+     "size": [
+      100,
+      200,
+      9
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      100,
+      200,
+      9
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 12,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      100,
+      200,
+      8
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 12,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      200,
+      9
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_winddoor",
+   "model": 67,
+   "name": "MODEL_DD_WINDDOOR",
+   "skel": 2,
+   "seen": [
+    "ARK",
+    "EXTRACTION",
+    "WAX"
+   ],
+   "templates": [
+    {
+     "count": 4,
+     "size": [
+      100,
+      200,
+      12
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 2483027968,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 11
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      100,
+      200,
+      12
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 335544320,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 11
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      200,
+      12
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 872415232,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 11
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      200,
+      12
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 872415232,
+      "flags2": 536870912,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 11
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      200,
+      12
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 3019898880,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 11
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_liftdoor",
+   "model": 68,
+   "name": "MODEL_DD_LIFTDOOR",
+   "skel": 2,
+   "seen": [
+    "ARK",
+    "EXTRACTION",
+    "IMP",
+    "RETAKING",
+    "VILLA",
+    "WAX"
+   ],
+   "templates": [
+    {
+     "count": 17,
+     "size": [
+      133,
+      200,
+      11
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 67109888,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 480,
+      "unk88": 0,
+      "soundtype": 28
+     }
+    },
+    {
+     "count": 8,
+     "size": [
+      108,
+      233,
+      10
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 67109888,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 480,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 8,
+     "size": [
+      108,
+      233,
+      10
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 8,
+      "flags": 67109888,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 480,
+      "unk88": 0,
+      "soundtype": 28
+     }
+    },
+    {
+     "count": 7,
+     "size": [
+      133,
+      200,
+      11
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 67109888,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 480,
+      "unk88": 0,
+      "soundtype": 28
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      94,
+      199,
+      7
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 67109888,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      94,
+      199,
+      7
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 67109888,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      175,
+      233,
+      14
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 1024,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      105,
+      199,
+      13
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 67108864,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      104,
+      199,
+      13
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 8,
+      "flags": 67108864,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_ac_unexp",
+   "model": 85,
+   "name": "MODEL_DD_AC_UNEXP",
+   "skel": 2,
+   "seen": [
+    "ARK",
+    "EXTRACTION",
+    "WAX"
+   ],
+   "templates": [
+    {
+     "count": 3,
+     "size": [
+      121,
+      192,
+      36
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 540033024,
+      "maxfrac": 0,
+      "perimfrac": 65536,
+      "accel": 65536000,
+      "decel": 65536000,
+      "maxspeed": 65536,
+      "autoclosetime": 1,
+      "unk88": 65536,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_acbot_unexp",
+   "model": 87,
+   "name": "MODEL_DD_ACBOT_UNEXP",
+   "skel": 2,
+   "seen": [
+    "ARK",
+    "EXTRACTION",
+    "WAX"
+   ],
+   "templates": [
+    {
+     "count": 3,
+     "size": [
+      17,
+      217,
+      167
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 540033024,
+      "maxfrac": 0,
+      "perimfrac": 65536,
+      "accel": 65536000,
+      "decel": 65536000,
+      "maxspeed": 65536,
+      "autoclosetime": 1,
+      "unk88": 65536,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "al_airlock",
+   "model": 92,
+   "name": "MODEL_AL_AIRLOCK",
+   "skel": 2,
+   "seen": [
+    "DEEPSEA"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      364,
+      533,
+      54
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 26214,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 24
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      364,
+      533,
+      54
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 8,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 26214,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      364,
+      555,
+      40
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 22282,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 24
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      364,
+      555,
+      36
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 23592,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 24
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      364,
+      555,
+      40
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 8,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 22282,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      363,
+      555,
+      36
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 8,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 23592,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sktnl_unexp1",
+   "model": 109,
+   "name": "MODEL_SKTNL_UNEXP1",
+   "skel": 2,
+   "seen": [
+    "STAT",
+    "WAR"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      181,
+      234,
+      80
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 3162112,
+      "maxfrac": 0,
+      "perimfrac": 65536,
+      "accel": 65536000,
+      "decel": 65536000,
+      "maxspeed": 65536,
+      "autoclosetime": 1,
+      "unk88": 65536,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      181,
+      234,
+      80
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 540033024,
+      "maxfrac": 0,
+      "perimfrac": 65536,
+      "accel": 65536000,
+      "decel": 65536000,
+      "maxspeed": 65536,
+      "autoclosetime": 1,
+      "unk88": 65536,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sk_door1",
+   "model": 110,
+   "name": "MODEL_SK_DOOR1",
+   "skel": 2,
+   "seen": [
+    "MP_RUINS",
+    "STAT",
+    "WAR"
+   ],
+   "templates": [
+    {
+     "count": 22,
+     "size": [
+      100,
+      266,
+      42
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 6553,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 4
+     }
+    },
+    {
+     "count": 10,
+     "size": [
+      100,
+      266,
+      42
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 6553,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 4
+     }
+    },
+    {
+     "count": 8,
+     "size": [
+      118,
+      314,
+      48
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 10922,
+      "decel": 10922,
+      "maxspeed": 709,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 4
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sk_ship_door1",
+   "model": 111,
+   "name": "MODEL_SK_SHIP_DOOR1",
+   "skel": 2,
+   "seen": [
+    "ATTACKSHIP"
+   ],
+   "templates": [
+    {
+     "count": 14,
+     "size": [
+      101,
+      239,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 327680,
+      "decel": 10922,
+      "maxspeed": 3276,
+      "autoclosetime": 240,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 14,
+     "size": [
+      100,
+      239,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 327680,
+      "decel": 10922,
+      "maxspeed": 3276,
+      "autoclosetime": 240,
+      "unk88": 0,
+      "soundtype": 29
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      150,
+      239,
+      18
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 3276800,
+      "decel": 109226,
+      "maxspeed": 32768,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      150,
+      239,
+      18
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 3276800,
+      "decel": 109226,
+      "maxspeed": 32768,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 29
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sk_ship_hulldoor1",
+   "model": 114,
+   "name": "MODEL_SK_SHIP_HULLDOOR1",
+   "skel": 2,
+   "seen": [
+    "ATTACKSHIP"
+   ],
+   "templates": [
+    {
+     "count": 4,
+     "size": [
+      152,
+      19,
+      133
+     ],
+     "row": {
+      "doortype": 10,
+      "doorflags": 0,
+      "flags": 268436496,
+      "flags2": 0,
+      "maxfrac": 7864320,
+      "perimfrac": 65536000,
+      "accel": 6553600,
+      "decel": 6553600,
+      "maxspeed": 65536,
+      "autoclosetime": 60000,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sk_ship_hulldoor2",
+   "model": 115,
+   "name": "MODEL_SK_SHIP_HULLDOOR2",
+   "skel": 2,
+   "seen": [
+    "ATTACKSHIP"
+   ],
+   "templates": [
+    {
+     "count": 4,
+     "size": [
+      152,
+      19,
+      133
+     ],
+     "row": {
+      "doortype": 10,
+      "doorflags": 0,
+      "flags": 268436496,
+      "flags2": 0,
+      "maxfrac": 7864320,
+      "perimfrac": 65536000,
+      "accel": 6553600,
+      "decel": 6553600,
+      "maxspeed": 65536,
+      "autoclosetime": 60000,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sk_ship_hulldoor3",
+   "model": 116,
+   "name": "MODEL_SK_SHIP_HULLDOOR3",
+   "skel": 2,
+   "seen": [
+    "ATTACKSHIP"
+   ],
+   "templates": [
+    {
+     "count": 3,
+     "size": [
+      92,
+      85,
+      19
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436496,
+      "flags2": 0,
+      "maxfrac": 48415,
+      "perimfrac": 48415,
+      "accel": 327680,
+      "decel": 10922,
+      "maxspeed": 3276,
+      "autoclosetime": 240,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      739,
+      686,
+      150
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436496,
+      "flags2": 0,
+      "maxfrac": 65536,
+      "perimfrac": 48415,
+      "accel": 327680,
+      "decel": 10922,
+      "maxspeed": 3276,
+      "autoclosetime": 240,
+      "unk88": 0,
+      "soundtype": 29
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sk_ship_hulldoor4",
+   "model": 117,
+   "name": "MODEL_SK_SHIP_HULLDOOR4",
+   "skel": 2,
+   "seen": [
+    "ATTACKSHIP"
+   ],
+   "templates": [
+    {
+     "count": 3,
+     "size": [
+      92,
+      85,
+      19
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436496,
+      "flags2": 0,
+      "maxfrac": 48415,
+      "perimfrac": 48415,
+      "accel": 327680,
+      "decel": 10922,
+      "maxspeed": 3276,
+      "autoclosetime": 240,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      739,
+      686,
+      150
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436496,
+      "flags2": 0,
+      "maxfrac": 65536,
+      "perimfrac": 48415,
+      "accel": 327680,
+      "decel": 10922,
+      "maxspeed": 3276,
+      "autoclosetime": 240,
+      "unk88": 0,
+      "soundtype": 29
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sk_cryopod1_top",
+   "model": 119,
+   "name": "MODEL_SK_CRYOPOD1_TOP",
+   "skel": 2,
+   "seen": [
+    "ATTACKSHIP",
+    "STAT",
+    "WAR"
+   ],
+   "templates": [
+    {
+     "count": 7,
+     "size": [
+      200,
+      117,
+      75
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 60264,
+      "perimfrac": 60264,
+      "accel": 109226,
+      "decel": 10922,
+      "maxspeed": 10922,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 17
+     }
+    },
+    {
+     "count": 7,
+     "size": [
+      200,
+      117,
+      75
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 109226,
+      "decel": 10922,
+      "maxspeed": 10922,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      188,
+      135,
+      75
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 1024,
+      "flags2": 536870912,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 109226,
+      "decel": 10922,
+      "maxspeed": 10922,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sk_cryopod1_bot",
+   "model": 120,
+   "name": "MODEL_SK_CRYOPOD1_BOT",
+   "skel": 2,
+   "seen": [
+    "ATTACKSHIP",
+    "STAT",
+    "WAR"
+   ],
+   "templates": [
+    {
+     "count": 7,
+     "size": [
+      200,
+      149,
+      75
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 60264,
+      "perimfrac": 60264,
+      "accel": 109226,
+      "decel": 10922,
+      "maxspeed": 10922,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 7,
+     "size": [
+      200,
+      149,
+      75
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 60264,
+      "perimfrac": 60264,
+      "accel": 109226,
+      "decel": 10922,
+      "maxspeed": 10922,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 17
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      188,
+      99,
+      75
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 1024,
+      "flags2": 536870912,
+      "maxfrac": 60264,
+      "perimfrac": 60264,
+      "accel": 109226,
+      "decel": 10922,
+      "maxspeed": 10922,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 17
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sk_hangardoor_top",
+   "model": 123,
+   "name": "MODEL_SK_HANGARDOOR_TOP",
+   "skel": 2,
+   "seen": [
+    "ATTACKSHIP"
+   ],
+   "templates": [
+    {
+     "count": 4,
+     "size": [
+      918,
+      307,
+      100
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1092,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      400,
+      122,
+      32
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 58982,
+      "accel": 655360,
+      "decel": 655360,
+      "maxspeed": 32768,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sk_hangardoor_bot",
+   "model": 124,
+   "name": "MODEL_SK_HANGARDOOR_BOT",
+   "skel": 2,
+   "seen": [
+    "ATTACKSHIP"
+   ],
+   "templates": [
+    {
+     "count": 4,
+     "size": [
+      918,
+      173,
+      100
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1092,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 30
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      400,
+      122,
+      32
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 655360,
+      "decel": 655360,
+      "maxspeed": 32768,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 5
+     }
+    }
+   ]
+  },
+  {
+   "stem": "door2_g5",
+   "model": 125,
+   "name": "MODEL_DOOR2_G5",
+   "skel": 16,
+   "seen": [
+    "G5BUILDING",
+    "IMP",
+    "RETAKING"
+   ],
+   "templates": [
+    {
+     "count": 26,
+     "size": [
+      100,
+      217,
+      28
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 6,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 546,
+      "autoclosetime": 600,
+      "unk88": 19661600,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 26,
+     "size": [
+      100,
+      217,
+      28
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 6,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 546,
+      "autoclosetime": 600,
+      "unk88": 19661600,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 7,
+     "size": [
+      67,
+      200,
+      34
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 6,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 600,
+      "unk88": 19661600,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 7,
+     "size": [
+      67,
+      200,
+      34
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 6,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 600,
+      "unk88": 19661600,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      67,
+      200,
+      33
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 6,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 600,
+      "unk88": 19661600,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      67,
+      200,
+      33
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 6,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 600,
+      "unk88": 19661600,
+      "soundtype": 3
+     }
+    }
+   ]
+  },
+  {
+   "stem": "door1a_g5",
+   "model": 126,
+   "name": "MODEL_DOOR1A_G5",
+   "skel": 2,
+   "seen": [
+    "G5BUILDING"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      200,
+      234,
+      33
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 49152,
+      "perimfrac": 65536,
+      "accel": 6553,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 24
+     }
+    }
+   ]
+  },
+  {
+   "stem": "door1b_g5",
+   "model": 127,
+   "name": "MODEL_DOOR1B_G5",
+   "skel": 2,
+   "seen": [
+    "G5BUILDING"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      200,
+      234,
+      33
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 49152,
+      "perimfrac": 65536,
+      "accel": 6553,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "door1atri_g5",
+   "model": 128,
+   "name": "MODEL_DOOR1ATRI_G5",
+   "skel": 2,
+   "seen": [
+    "G5BUILDING"
+   ],
+   "templates": [
+    {
+     "count": 4,
+     "size": [
+      129,
+      94,
+      17
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 129196,
+      "perimfrac": 172261,
+      "accel": 17226,
+      "decel": 215327,
+      "maxspeed": 4306,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "door2a_g5",
+   "model": 129,
+   "name": "MODEL_DOOR2A_G5",
+   "skel": 2,
+   "seen": [
+    "AIRBASE",
+    "AIRFORCEONE",
+    "CHICAGO",
+    "MP_GRID"
+   ],
+   "templates": [
+    {
+     "count": 4,
+     "size": [
+      62,
+      213,
+      8
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 67109888,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1966,
+      "autoclosetime": 480,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      62,
+      213,
+      8
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 67109888,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1966,
+      "autoclosetime": 480,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      100,
+      200,
+      13
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 0,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 600,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      123,
+      263,
+      14
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1966,
+      "autoclosetime": 180,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      123,
+      263,
+      14
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1966,
+      "autoclosetime": 180,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      100,
+      200,
+      19
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 0,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 600,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      100,
+      200,
+      19
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 67109888,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      100,
+      200,
+      19
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 67109888,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 109226,
+      "decel": 109226,
+      "maxspeed": 3276,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 18
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      97,
+      127,
+      7
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 67109888,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1966,
+      "autoclosetime": 240,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      116,
+      207,
+      11
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 1024,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 4915,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      117,
+      207,
+      17
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 4915,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      140,
+      263,
+      17
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1966,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      125,
+      218,
+      18
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 1048576,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_decodoor",
+   "model": 130,
+   "name": "MODEL_DD_DECODOOR",
+   "skel": 2,
+   "seen": [
+    "ARK",
+    "EXTRACTION",
+    "WAX"
+   ],
+   "templates": [
+    {
+     "count": 6,
+     "size": [
+      192,
+      217,
+      8
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      196,
+      217,
+      8
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_secretdoor",
+   "model": 131,
+   "name": "MODEL_DD_SECRETDOOR",
+   "skel": 2,
+   "seen": [
+    "ARK",
+    "EXTRACTION",
+    "WAX"
+   ],
+   "templates": [
+    {
+     "count": 5,
+     "size": [
+      188,
+      217,
+      9
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 532,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      188,
+      217,
+      9
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 532,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_lab_door_sec",
+   "model": 138,
+   "name": "MODEL_DD_LAB_DOOR_SEC",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      105,
+      300,
+      24
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_lab_door_wind",
+   "model": 139,
+   "name": "MODEL_DD_LAB_DOOR_WIND",
+   "skel": 16,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      167,
+      252,
+      14
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 2,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 13108100,
+      "soundtype": 1
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_lab_sector2bot",
+   "model": 142,
+   "name": "MODEL_DD_LAB_SECTOR2BOT",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 12,
+     "size": [
+      395,
+      140,
+      36
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 5
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      315,
+      140,
+      36
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      494,
+      140,
+      43
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 600,
+      "unk88": 0,
+      "soundtype": 5
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      400,
+      140,
+      23
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 5
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_lab_sector2top",
+   "model": 143,
+   "name": "MODEL_DD_LAB_SECTOR2TOP",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      400,
+      280,
+      36
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_lab_cautiontop",
+   "model": 144,
+   "name": "MODEL_DD_LAB_CAUTIONTOP",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      400,
+      280,
+      29
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      400,
+      280,
+      23
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dr_caroll_door",
+   "model": 147,
+   "name": "MODEL_DR_CAROLL_DOOR",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      402,
+      243,
+      340
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 16,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 58982,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_lab_sector3top",
+   "model": 148,
+   "name": "MODEL_DD_LAB_SECTOR3TOP",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      390,
+      280,
+      43
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_lab_sector3",
+   "model": 149,
+   "name": "MODEL_DD_LAB_SECTOR3",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      166,
+      253,
+      14
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 16384,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 600,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_lab_sector3wind",
+   "model": 150,
+   "name": "MODEL_DD_LAB_SECTOR3WIND",
+   "skel": 16,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      161,
+      253,
+      33
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 2,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 13108100,
+      "soundtype": 1
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_lab_sector4top",
+   "model": 152,
+   "name": "MODEL_DD_LAB_SECTOR4TOP",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      322,
+      275,
+      31
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_lab_restricted",
+   "model": 153,
+   "name": "MODEL_DD_LAB_RESTRICTED",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 3,
+     "size": [
+      402,
+      261,
+      43
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "door4a_g5",
+   "model": 154,
+   "name": "MODEL_DOOR4A_G5",
+   "skel": 2,
+   "seen": [
+    "ARK",
+    "EXTRACTION",
+    "G5BUILDING",
+    "INVESTIGATION",
+    "WAX"
+   ],
+   "templates": [
+    {
+     "count": 3,
+     "size": [
+      100,
+      200,
+      12
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 1024,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 18
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      234,
+      27
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 1024,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 65535,
+      "decel": 81920,
+      "maxspeed": 6553,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      73,
+      215,
+      17
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 1024,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 1800,
+      "unk88": 0,
+      "soundtype": 18
+     }
+    }
+   ]
+  },
+  {
+   "stem": "door4b_g5",
+   "model": 155,
+   "name": "MODEL_DOOR4B_G5",
+   "skel": 2,
+   "seen": [
+    "ARK",
+    "EXTRACTION",
+    "G5BUILDING",
+    "INVESTIGATION",
+    "WAX"
+   ],
+   "templates": [
+    {
+     "count": 3,
+     "size": [
+      100,
+      200,
+      12
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 1024,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      234,
+      27
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 1024,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 65535,
+      "decel": 81920,
+      "maxspeed": 6553,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      73,
+      215,
+      17
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 1024,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 1800,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "g5safedoor",
+   "model": 157,
+   "name": "MODEL_G5SAFEDOOR",
+   "skel": 2,
+   "seen": [
+    "G5BUILDING"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      217,
+      217,
+      67
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 536870912,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 5242880,
+      "decel": 5242880,
+      "maxspeed": 6553,
+      "autoclosetime": 3600,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dr_caroll_door_main",
+   "model": 161,
+   "name": "MODEL_DR_CAROLL_DOOR_MAIN",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      403,
+      241,
+      169
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 16,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dr_caroll_door_left",
+   "model": 162,
+   "name": "MODEL_DR_CAROLL_DOOR_LEFT",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      110,
+      241,
+      171
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 16,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dr_caroll_door_right",
+   "model": 163,
+   "name": "MODEL_DR_CAROLL_DOOR_RIGHT",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      96,
+      241,
+      171
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 16,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dr_caroll_door_bmain",
+   "model": 164,
+   "name": "MODEL_DR_CAROLL_DOOR_BMAIN",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      403,
+      120,
+      169
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 16,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dr_caroll_door_bleft",
+   "model": 165,
+   "name": "MODEL_DR_CAROLL_DOOR_BLEFT",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      110,
+      120,
+      171
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 16,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dr_caroll_door_bright",
+   "model": 166,
+   "name": "MODEL_DR_CAROLL_DOOR_BRIGHT",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      96,
+      120,
+      171
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 16,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "g5_escdoorup",
+   "model": 168,
+   "name": "MODEL_G5_ESCDOORUP",
+   "skel": 2,
+   "seen": [
+    "CHICAGO",
+    "G5BUILDING"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      117,
+      217,
+      25
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 540033024,
+      "maxfrac": 0,
+      "perimfrac": 65536,
+      "accel": 65536000,
+      "decel": 65536000,
+      "maxspeed": 65536,
+      "autoclosetime": 1,
+      "unk88": 65536,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "g5_escdoordown",
+   "model": 170,
+   "name": "MODEL_G5_ESCDOORDOWN",
+   "skel": 2,
+   "seen": [
+    "CHICAGO",
+    "G5BUILDING"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      117,
+      217,
+      25
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 540033024,
+      "maxfrac": 0,
+      "perimfrac": 65536,
+      "accel": 65536000,
+      "decel": 65536000,
+      "maxspeed": 65536,
+      "autoclosetime": 1,
+      "unk88": 65536,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "g5carliftdoor",
+   "model": 173,
+   "name": "MODEL_G5CARLIFTDOOR",
+   "skel": 2,
+   "seen": [
+    "CHICAGO",
+    "G5BUILDING"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      117,
+      217,
+      19
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 0,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 6553,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      117,
+      217,
+      19
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 4915,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 24
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      117,
+      217,
+      19
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 8,
+      "flags": 0,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 6553,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      117,
+      217,
+      19
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 8,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 4915,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "ch_shutter1",
+   "model": 174,
+   "name": "MODEL_CH_SHUTTER1",
+   "skel": 2,
+   "seen": [
+    "CHICAGO",
+    "IMP",
+    "MP_AREA52",
+    "MP_CARPARK",
+    "MP_FORTRESS",
+    "RETAKING"
+   ],
+   "templates": [
+    {
+     "count": 13,
+     "size": [
+      123,
+      205,
+      20
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 64880,
+      "perimfrac": 58982,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 16384,
+      "autoclosetime": 240,
+      "unk88": 0,
+      "soundtype": 10
+     }
+    },
+    {
+     "count": 6,
+     "size": [
+      266,
+      258,
+      15
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 12,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62914,
+      "perimfrac": 62259,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 4915,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 10
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      300,
+      217,
+      7
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 1024,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 546,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 4
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      276,
+      272,
+      58
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 64880,
+      "perimfrac": 58982,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 2621440,
+      "autoclosetime": 180,
+      "unk88": 0,
+      "soundtype": 10
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      134,
+      250,
+      50
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 64880,
+      "perimfrac": 58982,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 2621440,
+      "autoclosetime": 240,
+      "unk88": 0,
+      "soundtype": 10
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      134,
+      250,
+      50
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 64880,
+      "perimfrac": 58982,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 2621440,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 10
+     }
+    },
+    {
+     "count": 3,
+     "size": [
+      183,
+      233,
+      18
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62914,
+      "perimfrac": 62259,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 4915,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 10
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      1166,
+      617,
+      13
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 546,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      180,
+      144,
+      36
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 64880,
+      "perimfrac": 58982,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 16384,
+      "autoclosetime": 360,
+      "unk88": 0,
+      "soundtype": 10
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      1166,
+      617,
+      13
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 64880,
+      "perimfrac": 58982,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 546,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 4
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      1167,
+      617,
+      13
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 64880,
+      "perimfrac": 58982,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 546,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 4
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      184,
+      233,
+      18
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 62914,
+      "perimfrac": 62259,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 4915,
+      "autoclosetime": 1800,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      108,
+      108,
+      36
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 64880,
+      "perimfrac": 58982,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 16384,
+      "autoclosetime": 0,
+      "unk88": 0,
+      "soundtype": 10
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      140,
+      200,
+      25
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 64880,
+      "perimfrac": 58982,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 16384,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 10
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      180,
+      144,
+      36
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 64880,
+      "perimfrac": 58982,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 16384,
+      "autoclosetime": 120,
+      "unk88": 0,
+      "soundtype": 10
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      108,
+      108,
+      36
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 64880,
+      "perimfrac": 58982,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 16384,
+      "autoclosetime": 540,
+      "unk88": 0,
+      "soundtype": 10
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      180,
+      144,
+      36
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 64880,
+      "perimfrac": 58982,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 16384,
+      "autoclosetime": 840,
+      "unk88": 0,
+      "soundtype": 10
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_grate",
+   "model": 179,
+   "name": "MODEL_DD_GRATE",
+   "skel": 2,
+   "seen": [
+    "AIRFORCEONE",
+    "CHICAGO",
+    "IMP",
+    "INVESTIGATION",
+    "RETAKING"
+   ],
+   "templates": [
+    {
+     "count": 4,
+     "size": [
+      152,
+      132,
+      11
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 16,
+      "flags": 67109888,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 480,
+      "unk88": 0,
+      "soundtype": 11
+     }
+    },
+    {
+     "count": 3,
+     "size": [
+      100,
+      100,
+      2
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 2048,
+      "flags": 268436480,
+      "flags2": 2147483648,
+      "maxfrac": 64880,
+      "perimfrac": 65536,
+      "accel": 13107,
+      "decel": 81920,
+      "maxspeed": 4915,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      101,
+      114,
+      6
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 1024,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      222,
+      349,
+      12
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 1024,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 65535,
+      "decel": 81920,
+      "maxspeed": 3276,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      420,
+      297,
+      12
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 1024,
+      "flags2": 536870912,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      158,
+      173,
+      12
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 2048,
+      "flags": 1024,
+      "flags2": 2684354560,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      127,
+      162,
+      7
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 2052,
+      "flags": 1024,
+      "flags2": 2147483648,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      161,
+      190,
+      38
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 12,
+      "flags": 67109888,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 480,
+      "unk88": 0,
+      "soundtype": 10
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_accessdoorup",
+   "model": 184,
+   "name": "MODEL_DD_ACCESSDOORUP",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 3,
+     "size": [
+      471,
+      241,
+      51
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 16,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_accessdoordn",
+   "model": 185,
+   "name": "MODEL_DD_ACCESSDOORDN",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 3,
+     "size": [
+      268,
+      35,
+      51
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 268435455,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_labdoor",
+   "model": 191,
+   "name": "MODEL_DD_LABDOOR",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION",
+    "MP_BASE"
+   ],
+   "templates": [
+    {
+     "count": 15,
+     "size": [
+      167,
+      253,
+      22
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 1
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_lab_doortop",
+   "model": 192,
+   "name": "MODEL_DD_LAB_DOORTOP",
+   "skel": 2,
+   "seen": [
+    "INVESTIGATION"
+   ],
+   "templates": [
+    {
+     "count": 5,
+     "size": [
+      314,
+      280,
+      36
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      494,
+      280,
+      43
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 63569,
+      "perimfrac": 62259,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 1638,
+      "autoclosetime": 600,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "tdoor",
+   "model": 195,
+   "name": "MODEL_TDOOR",
+   "skel": 2,
+   "seen": [
+    "MP_TEMPLE"
+   ],
+   "templates": [
+    {
+     "count": 6,
+     "size": [
+      120,
+      600,
+      300
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 2147483648,
+      "maxfrac": 62259,
+      "perimfrac": 21790,
+      "accel": 10922,
+      "decel": 10922,
+      "maxspeed": 218,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 16
+     }
+    }
+   ]
+  },
+  {
+   "stem": "airbase_safedoor",
+   "model": 239,
+   "name": "MODEL_AIRBASE_SAFEDOOR",
+   "skel": 2,
+   "seen": [
+    "AIRBASE"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      116,
+      98,
+      16
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 0,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 6553600,
+      "decel": 6553600,
+      "maxspeed": 65536,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    }
+   ]
+  },
+  {
+   "stem": "pelagicdoor",
+   "model": 293,
+   "name": "MODEL_PELAGICDOOR",
+   "skel": 16,
+   "seen": [
+    "PELAGIC"
+   ],
+   "templates": [
+    {
+     "count": 37,
+     "size": [
+      94,
+      175,
+      31
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 2,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 19661600,
+      "soundtype": 3
+     }
+    }
+   ]
+  },
+  {
+   "stem": "bigpelagicdoor",
+   "model": 304,
+   "name": "MODEL_BIGPELAGICDOOR",
+   "skel": 2,
+   "seen": [
+    "PELAGIC"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      272,
+      500,
+      30
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    }
+   ]
+  },
+  {
+   "stem": "cetansmalldoor",
+   "model": 325,
+   "name": "MODEL_CETANSMALLDOOR",
+   "skel": 2,
+   "seen": [
+    "DEEPSEA"
+   ],
+   "templates": [
+    {
+     "count": 3,
+     "size": [
+      273,
+      231,
+      9
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 1024,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 18000,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    }
+   ]
+  },
+  {
+   "stem": "devicesecretdoor",
+   "model": 333,
+   "name": "MODEL_DEVICESECRETDOOR",
+   "skel": 2,
+   "seen": [
+    "IMP",
+    "RETAKING"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      162,
+      190,
+      11
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 16,
+      "flags": 872416256,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 480,
+      "unk88": 0,
+      "soundtype": 11
+     }
+    }
+   ]
+  },
+  {
+   "stem": "carringtonsecretdoor",
+   "model": 334,
+   "name": "MODEL_CARRINGTONSECRETDOOR",
+   "skel": 2,
+   "seen": [
+    "IMP",
+    "RETAKING"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      161,
+      190,
+      10
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 16,
+      "flags": 335545344,
+      "flags2": 0,
+      "maxfrac": 5898240,
+      "perimfrac": 65536000,
+      "accel": 19660800,
+      "decel": 19660800,
+      "maxspeed": 196608,
+      "autoclosetime": 480,
+      "unk88": 0,
+      "soundtype": 11
+     }
+    }
+   ]
+  },
+  {
+   "stem": "cidoor1_ref",
+   "model": 380,
+   "name": "MODEL_CIDOOR1_REF",
+   "skel": 2,
+   "seen": [
+    "IMP",
+    "RETAKING"
+   ],
+   "templates": [
+    {
+     "count": 5,
+     "size": [
+      200,
+      258,
+      14
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 1024,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 5,
+     "size": [
+      200,
+      258,
+      14
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      242,
+      13
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 1024,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      242,
+      14
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 1024,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      242,
+      14
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 1024,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      242,
+      14
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      242,
+      13
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      242,
+      13
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    }
+   ]
+  },
+  {
+   "stem": "a51gate_r",
+   "model": 387,
+   "name": "MODEL_A51GATE_R",
+   "skel": 2,
+   "seen": [
+    "LIP",
+    "MAIANSOS",
+    "SEV",
+    "TRA"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      480,
+      238,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 536870912,
+      "maxfrac": 52428,
+      "perimfrac": 65536,
+      "accel": 3276,
+      "decel": 81920,
+      "maxspeed": 273,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 24
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      480,
+      238,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 536870912,
+      "maxfrac": 52428,
+      "perimfrac": 65536,
+      "accel": 3276,
+      "decel": 81920,
+      "maxspeed": 273,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      480,
+      238,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 536870912,
+      "maxfrac": 52428,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 16384,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "a51gate_l",
+   "model": 388,
+   "name": "MODEL_A51GATE_L",
+   "skel": 2,
+   "seen": [
+    "LIP",
+    "MAIANSOS",
+    "SEV",
+    "TRA"
+   ],
+   "templates": [
+    {
+     "count": 3,
+     "size": [
+      387,
+      238,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 536870912,
+      "maxfrac": 52428,
+      "perimfrac": 65536,
+      "accel": 3276,
+      "decel": 81920,
+      "maxspeed": 273,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 24
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      387,
+      238,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268435472,
+      "flags2": 536870912,
+      "maxfrac": 52428,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 32768,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 15
+     }
+    }
+   ]
+  },
+  {
+   "stem": "af1_doorbig2",
+   "model": 391,
+   "name": "MODEL_AF1_DOORBIG2",
+   "skel": 2,
+   "seen": [
+    "AIRFORCEONE"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      132,
+      253,
+      12
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      133,
+      252,
+      12
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      84,
+      190,
+      12
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      85,
+      190,
+      12
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    }
+   ]
+  },
+  {
+   "stem": "af1escapedoor",
+   "model": 399,
+   "name": "MODEL_AF1ESCAPEDOOR",
+   "skel": 2,
+   "seen": [
+    "AIRFORCEONE"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      110,
+      199,
+      9
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436496,
+      "flags2": 0,
+      "maxfrac": 0,
+      "perimfrac": 0,
+      "accel": 0,
+      "decel": 0,
+      "maxspeed": 0,
+      "autoclosetime": 0,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      110,
+      199,
+      44
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436496,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    }
+   ]
+  },
+  {
+   "stem": "pelagicdoor2",
+   "model": 402,
+   "name": "MODEL_PELAGICDOOR2",
+   "skel": 2,
+   "seen": [
+    "PELAGIC"
+   ],
+   "templates": [
+    {
+     "count": 6,
+     "size": [
+      94,
+      175,
+      31
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 2,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 19661600,
+      "soundtype": 3
+     }
+    }
+   ]
+  },
+  {
+   "stem": "instfrontdoor",
+   "model": 404,
+   "name": "MODEL_INSTFRONTDOOR",
+   "skel": 2,
+   "seen": [
+    "IMP",
+    "RETAKING"
+   ],
+   "templates": [
+    {
+     "count": 3,
+     "size": [
+      98,
+      235,
+      35
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436992,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 3,
+     "size": [
+      99,
+      235,
+      35
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436992,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    }
+   ]
+  },
+  {
+   "stem": "shuttledoor",
+   "model": 419,
+   "name": "MODEL_SHUTTLEDOOR",
+   "skel": 2,
+   "seen": [
+    "AIRBASE"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      138,
+      175,
+      10
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 12,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 49152,
+      "perimfrac": 62259,
+      "accel": 182044,
+      "decel": 182044,
+      "maxspeed": 2184,
+      "autoclosetime": 268435455,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      137,
+      175,
+      10
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 20,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 49152,
+      "perimfrac": 62259,
+      "accel": 182044,
+      "decel": 182044,
+      "maxspeed": 2184,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    }
+   ]
+  },
+  {
+   "stem": "a51liftdoor",
+   "model": 425,
+   "name": "MODEL_A51LIFTDOOR",
+   "skel": 2,
+   "seen": [
+    "LIP",
+    "SEV",
+    "TRA"
+   ],
+   "templates": [
+    {
+     "count": 6,
+     "size": [
+      617,
+      280,
+      33
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 8,
+      "flags": 67109888,
+      "flags2": 0,
+      "maxfrac": 52428,
+      "perimfrac": 65536,
+      "accel": 2184,
+      "decel": 2184,
+      "maxspeed": 327,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      851,
+      292,
+      34
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 67109888,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 2184,
+      "decel": 2184,
+      "maxspeed": 327,
+      "autoclosetime": 60,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sk_ship_door2",
+   "model": 427,
+   "name": "MODEL_SK_SHIP_DOOR2",
+   "skel": 2,
+   "seen": [
+    "ATTACKSHIP"
+   ],
+   "templates": [
+    {
+     "count": 12,
+     "size": [
+      150,
+      239,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 327680,
+      "decel": 10922,
+      "maxspeed": 3276,
+      "autoclosetime": 240,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 12,
+     "size": [
+      150,
+      239,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 327680,
+      "decel": 10922,
+      "maxspeed": 3276,
+      "autoclosetime": 240,
+      "unk88": 0,
+      "soundtype": 29
+     }
+    },
+    {
+     "count": 3,
+     "size": [
+      150,
+      239,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 327680,
+      "decel": 10922,
+      "maxspeed": 3276,
+      "autoclosetime": 240,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 3,
+     "size": [
+      150,
+      239,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 327680,
+      "decel": 10922,
+      "maxspeed": 3276,
+      "autoclosetime": 240,
+      "unk88": 0,
+      "soundtype": 29
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      150,
+      239,
+      70
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1092,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      150,
+      239,
+      70
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1092,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 29
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      100,
+      239,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 327680,
+      "decel": 10922,
+      "maxspeed": 3276,
+      "autoclosetime": 960,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      101,
+      239,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 327680,
+      "decel": 10922,
+      "maxspeed": 3276,
+      "autoclosetime": 960,
+      "unk88": 0,
+      "soundtype": 29
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      150,
+      239,
+      18
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 655360,
+      "decel": 21845,
+      "maxspeed": 6553,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      150,
+      239,
+      18
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 655360,
+      "decel": 21845,
+      "maxspeed": 6553,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 5
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      150,
+      239,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 3276800,
+      "decel": 109226,
+      "maxspeed": 32768,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      150,
+      239,
+      50
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 65536,
+      "perimfrac": 65536,
+      "accel": 3276800,
+      "decel": 109226,
+      "maxspeed": 32768,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 29
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sk_hangardoorb_top",
+   "model": 429,
+   "name": "MODEL_SK_HANGARDOORB_TOP",
+   "skel": 2,
+   "seen": [
+    "ATTACKSHIP"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      408,
+      307,
+      20
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 58982,
+      "accel": 655360,
+      "decel": 655360,
+      "maxspeed": 32768,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      408,
+      173,
+      20
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 58982,
+      "accel": 655360,
+      "decel": 655360,
+      "maxspeed": 32768,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  },
+  {
+   "stem": "sk_hangardoorb_bot",
+   "model": 430,
+   "name": "MODEL_SK_HANGARDOORB_BOT",
+   "skel": 2,
+   "seen": [
+    "ATTACKSHIP"
+   ],
+   "templates": [
+    {
+     "count": 1,
+     "size": [
+      408,
+      173,
+      20
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 655360,
+      "decel": 655360,
+      "maxspeed": 32768,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 5
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      408,
+      307,
+      20
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 0,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 655360,
+      "decel": 655360,
+      "maxspeed": 32768,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 5
+     }
+    }
+   ]
+  },
+  {
+   "stem": "af1_innerdoor",
+   "model": 431,
+   "name": "MODEL_AF1_INNERDOOR",
+   "skel": 2,
+   "seen": [
+    "AIRBASE"
+   ],
+   "templates": [
+    {
+     "count": 4,
+     "size": [
+      196,
+      238,
+      15
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1966,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      141,
+      212,
+      17
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 1024,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1966,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      141,
+      212,
+      14
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 62259,
+      "perimfrac": 58982,
+      "accel": 21845,
+      "decel": 21845,
+      "maxspeed": 1966,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    }
+   ]
+  },
+  {
+   "stem": "cetandoor",
+   "model": 436,
+   "name": "MODEL_CETANDOOR",
+   "skel": 2,
+   "seen": [
+    "DEEPSEA"
+   ],
+   "templates": [
+    {
+     "count": 18,
+     "size": [
+      233,
+      212,
+      20
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 49152,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 546,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 23
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      332,
+      308,
+      27
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 52428,
+      "perimfrac": 39321,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 546,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 23
+     }
+    },
+    {
+     "count": 3,
+     "size": [
+      759,
+      503,
+      44
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 29491,
+      "perimfrac": 26214,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 546,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 23
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      759,
+      504,
+      45
+     ],
+     "row": {
+      "doortype": 4,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 29491,
+      "perimfrac": 26214,
+      "accel": 218453,
+      "decel": 218453,
+      "maxspeed": 546,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 23
+     }
+    }
+   ]
+  },
+  {
+   "stem": "dd_dr_nonref",
+   "model": 438,
+   "name": "MODEL_DD_DR_NONREF",
+   "skel": 2,
+   "seen": [
+    "AIRFORCEONE",
+    "MP_FELICITY"
+   ],
+   "templates": [
+    {
+     "count": 38,
+     "size": [
+      108,
+      190,
+      16
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 7,
+     "size": [
+      106,
+      212,
+      13
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 0,
+      "maxfrac": 62259,
+      "perimfrac": 65536,
+      "accel": 10922,
+      "decel": 10922,
+      "maxspeed": 709,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 6,
+     "size": [
+      106,
+      212,
+      13
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 2415919104,
+      "flags2": 0,
+      "maxfrac": 6553600,
+      "perimfrac": 65536000,
+      "accel": 32768000,
+      "decel": 32768000,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 4,
+     "size": [
+      105,
+      212,
+      13
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 2952790016,
+      "flags2": 0,
+      "maxfrac": 6553600,
+      "perimfrac": 65536000,
+      "accel": 32768000,
+      "decel": 32768000,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 3,
+     "size": [
+      104,
+      123,
+      8
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268436480,
+      "flags2": 536870912,
+      "maxfrac": 58982,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 300,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      106,
+      212,
+      13
+     ],
+     "row": {
+      "doortype": 5,
+      "doorflags": 0,
+      "flags": 2952790016,
+      "flags2": 0,
+      "maxfrac": 6553600,
+      "perimfrac": 65536000,
+      "accel": 32768000,
+      "decel": 32768000,
+      "maxspeed": 196608,
+      "autoclosetime": 1500,
+      "unk88": 0,
+      "soundtype": 8
+     }
+    }
+   ]
+  },
+  {
+   "stem": "cetandoorside",
+   "model": 439,
+   "name": "MODEL_CETANDOORSIDE",
+   "skel": 2,
+   "seen": [
+    "DEEPSEA"
+   ],
+   "templates": [
+    {
+     "count": 2,
+     "size": [
+      274,
+      419,
+      38
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 45875,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 2,
+     "size": [
+      273,
+      419,
+      38
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 12,
+      "flags": 268435456,
+      "flags2": 0,
+      "maxfrac": 45875,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      274,
+      419,
+      37
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 4,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 45875,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 3
+     }
+    },
+    {
+     "count": 1,
+     "size": [
+      273,
+      419,
+      37
+     ],
+     "row": {
+      "doortype": 0,
+      "doorflags": 12,
+      "flags": 268435456,
+      "flags2": 536870912,
+      "maxfrac": 45875,
+      "perimfrac": 65536,
+      "accel": 32767,
+      "decel": 81920,
+      "maxspeed": 1638,
+      "autoclosetime": 900,
+      "unk88": 0,
+      "soundtype": 0
+     }
+    }
+   ]
+  }
+ ]
+}

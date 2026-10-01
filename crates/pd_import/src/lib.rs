@@ -38,6 +38,7 @@
 //! Blender).
 
 pub mod cache;
+pub mod doors;
 pub mod ge;
 pub mod glb;
 pub mod gltf;
@@ -282,7 +283,8 @@ fn finish(r: &Recipe, paths: &Paths, dir: &Path, data: SourceData, layout: &Layo
         SourceHow::Generate(m) => place::How::Generate(m),
         SourceHow::Keep(rooms) => place::How::Keep(rooms),
     };
-    let placed = place::place(r, &stage, &level, &graph, data.fixed, layout, &placement)?;
+    let models = doors::model_numbers(&assets)?;
+    let placed = place::place(r, &stage, &level, &graph, data.fixed, layout, &placement, &models)?;
     report.extend(placed.report);
     write::write_pads(dir, r, &placed.gameplay)?;
     write::write_setup(dir, r, &placed.gameplay)?;

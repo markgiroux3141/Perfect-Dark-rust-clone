@@ -17,6 +17,24 @@
   "modelnum": 26,
   "statescale": 4096
  },
+ "a51_horiz_door_gl": {
+  "filenum": 99,
+  "file": "FILE_PA51_HORIZ_DOOR_GL",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51_horiz_door_gl.bin",
+  "tris": 36,
+  "modelnum": 30,
+  "statescale": 4096
+ },
+ "a51_horiz_door_secret": {
+  "filenum": 100,
+  "file": "FILE_PA51_HORIZ_DOOR_SECRET",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51_horiz_door_secret.bin",
+  "tris": 14,
+  "modelnum": 31,
+  "statescale": 4096
+ },
  "a51_horiz_door_top": {
   "filenum": 101,
   "file": "FILE_PA51_HORIZ_DOOR_TOP",
@@ -35,6 +53,51 @@
   "modelnum": 46,
   "statescale": 4096
  },
+ "a51_unexp1": {
+  "filenum": 106,
+  "file": "FILE_PA51_UNEXP1",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51_unexp1.bin",
+  "tris": 224,
+  "modelnum": 36,
+  "statescale": 4096
+ },
+ "a51_unexp2": {
+  "filenum": 107,
+  "file": "FILE_PA51_UNEXP2",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51_unexp2.bin",
+  "tris": 35,
+  "modelnum": 38,
+  "statescale": 4096
+ },
+ "a51_vert_door_left": {
+  "filenum": 109,
+  "file": "FILE_PA51_VERT_DOOR_LEFT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51_vert_door_left.bin",
+  "tris": 42,
+  "modelnum": 27,
+  "statescale": 4096
+ },
+ "a51_vert_door_right": {
+  "filenum": 110,
+  "file": "FILE_PA51_VERT_DOOR_RIGHT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51_vert_door_right.bin",
+  "tris": 42,
+  "modelnum": 28,
+  "statescale": 4096
+ },
+ "a51_vert_door_st": {
+  "filenum": 111,
+  "file": "FILE_PA51_VERT_DOOR_ST",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51_vert_door_st.bin",
+  "tris": 42,
+  "modelnum": 29,
+  "statescale": 4096
+ },
  "a51airman": {
   "filenum": 561,
   "file": "FILE_CA51AIRMAN",
@@ -49,12 +112,93 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/a51faceplate.bin",
   "tris": 137
  },
+ "a51gate_l": {
+  "filenum": 1382,
+  "file": "FILE_PA51GATE_L",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51gate_l.bin",
+  "tris": 71,
+  "modelnum": 388,
+  "statescale": 4096
+ },
+ "a51gate_r": {
+  "filenum": 1381,
+  "file": "FILE_PA51GATE_R",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51gate_r.bin",
+  "tris": 132,
+  "modelnum": 387,
+  "statescale": 4096
+ },
+ "a51liftdoor": {
+  "filenum": 1913,
+  "file": "FILE_PA51LIFTDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/a51liftdoor.bin",
+  "tris": 92,
+  "modelnum": 425,
+  "statescale": 4096
+ },
  "a51trooper": {
   "filenum": 460,
   "file": "FILE_CA51TROOPER",
   "kind": "chr",
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/a51trooper.bin",
   "tris": 641
+ },
+ "af1_doorbig2": {
+  "filenum": 1385,
+  "file": "FILE_PAF1_DOORBIG2",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/af1_doorbig2.bin",
+  "tris": 72,
+  "modelnum": 391,
+  "statescale": 4096
+ },
+ "af1_innerdoor": {
+  "filenum": 1948,
+  "file": "FILE_PAF1_INNERDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/af1_innerdoor.bin",
+  "tris": 36,
+  "modelnum": 431,
+  "statescale": 4096
+ },
+ "af1escapedoor": {
+  "filenum": 1872,
+  "file": "FILE_PAF1ESCAPEDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/af1escapedoor.bin",
+  "tris": 60,
+  "modelnum": 399,
+  "statescale": 4096
+ },
+ "airbase_safedoor": {
+  "filenum": 834,
+  "file": "FILE_PAIRBASE_SAFEDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/airbase_safedoor.bin",
+  "tris": 28,
+  "modelnum": 239,
+  "statescale": 4096
+ },
+ "aivilladoor2a": {
+  "filenum": 124,
+  "file": "FILE_PAIVILLADOOR2A",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/aivilladoor2a.bin",
+  "tris": 74,
+  "modelnum": 41,
+  "statescale": 4096
+ },
+ "al_airlock": {
+  "filenum": 127,
+  "file": "FILE_PAL_AIRLOCK",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/al_airlock.bin",
+  "tris": 46,
+  "modelnum": 92,
+  "statescale": 4096
  },
  "alaskan_guard": {
   "filenum": 613,
@@ -77,6 +221,15 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/area51guard.bin",
   "tris": 673
  },
+ "bigpelagicdoor": {
+  "filenum": 1248,
+  "file": "FILE_PBIGPELAGICDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/bigpelagicdoor.bin",
+  "tris": 36,
+  "modelnum": 304,
+  "statescale": 4096
+ },
  "biotech": {
   "filenum": 456,
   "file": "FILE_CBIOTECH",
@@ -97,6 +250,15 @@
   "kind": "chr",
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/carrington.bin",
   "tris": 813
+ },
+ "carringtonsecretdoor": {
+  "filenum": 1282,
+  "file": "FILE_PCARRINGTONSECRETDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/carringtonsecretdoor.bin",
+  "tris": 14,
+  "modelnum": 334,
+  "statescale": 4096
  },
  "cartblue": {
   "filenum": 88,
@@ -132,6 +294,33 @@
   "kind": "chr",
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/cassandra.bin",
   "tris": 965
+ },
+ "cetandoor": {
+  "filenum": 1973,
+  "file": "FILE_PCETANDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/cetandoor.bin",
+  "tris": 14,
+  "modelnum": 436,
+  "statescale": 4096
+ },
+ "cetandoorside": {
+  "filenum": 1991,
+  "file": "FILE_PCETANDOORSIDE",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/cetandoorside.bin",
+  "tris": 14,
+  "modelnum": 439,
+  "statescale": 4096
+ },
+ "cetansmalldoor": {
+  "filenum": 1266,
+  "file": "FILE_PCETANSMALLDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/cetansmalldoor.bin",
+  "tris": 40,
+  "modelnum": 325,
+  "statescale": 4096
  },
  "ch_shutter1": {
   "filenum": 133,
@@ -554,6 +743,15 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/ciaguy.bin",
   "tris": 711
  },
+ "cidoor1_ref": {
+  "filenum": 1372,
+  "file": "FILE_PCIDOOR1_REF",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/cidoor1_ref.bin",
+  "tris": 54,
+  "modelnum": 380,
+  "statescale": 4096
+ },
  "cifemtech": {
   "filenum": 1190,
   "file": "FILE_CCIFEMTECH",
@@ -701,6 +899,51 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/darkwet.bin",
   "tris": 600
  },
+ "dd_ac_unexp": {
+  "filenum": 139,
+  "file": "FILE_PDD_AC_UNEXP",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_ac_unexp.bin",
+  "tris": 88,
+  "modelnum": 85,
+  "statescale": 4096
+ },
+ "dd_acbot_unexp": {
+  "filenum": 141,
+  "file": "FILE_PDD_ACBOT_UNEXP",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_acbot_unexp.bin",
+  "tris": 6,
+  "modelnum": 87,
+  "statescale": 4096
+ },
+ "dd_accessdoordn": {
+  "filenum": 432,
+  "file": "FILE_PDD_ACCESSDOORDN",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_accessdoordn.bin",
+  "tris": 22,
+  "modelnum": 185,
+  "statescale": 4096
+ },
+ "dd_accessdoorup": {
+  "filenum": 431,
+  "file": "FILE_PDD_ACCESSDOORUP",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_accessdoorup.bin",
+  "tris": 94,
+  "modelnum": 184,
+  "statescale": 4096
+ },
+ "dd_decodoor": {
+  "filenum": 144,
+  "file": "FILE_PDD_DECODOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_decodoor.bin",
+  "tris": 34,
+  "modelnum": 130,
+  "statescale": 4096
+ },
  "dd_dr_nonref": {
   "filenum": 1980,
   "file": "FILE_PDD_DR_NONREF",
@@ -710,12 +953,120 @@
   "modelnum": 438,
   "statescale": 4096
  },
+ "dd_grate": {
+  "filenum": 427,
+  "file": "FILE_PDD_GRATE",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_grate.bin",
+  "tris": 12,
+  "modelnum": 179,
+  "statescale": 4096
+ },
  "dd_guard": {
   "filenum": 447,
   "file": "FILE_CDD_GUARD",
   "kind": "chr",
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dd_guard.bin",
   "tris": 697
+ },
+ "dd_lab_cautiontop": {
+  "filenum": 155,
+  "file": "FILE_PDD_LAB_CAUTIONTOP",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_lab_cautiontop.bin",
+  "tris": 48,
+  "modelnum": 144,
+  "statescale": 4096
+ },
+ "dd_lab_door_sec": {
+  "filenum": 157,
+  "file": "FILE_PDD_LAB_DOOR_SEC",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_lab_door_sec.bin",
+  "tris": 10,
+  "modelnum": 138,
+  "statescale": 4096
+ },
+ "dd_lab_door_wind": {
+  "filenum": 158,
+  "file": "FILE_PDD_LAB_DOOR_WIND",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_lab_door_wind.bin",
+  "tris": 86,
+  "modelnum": 139,
+  "statescale": 4096
+ },
+ "dd_lab_doortop": {
+  "filenum": 442,
+  "file": "FILE_PDD_LAB_DOORTOP",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_lab_doortop.bin",
+  "tris": 46,
+  "modelnum": 192,
+  "statescale": 4096
+ },
+ "dd_lab_restricted": {
+  "filenum": 160,
+  "file": "FILE_PDD_LAB_RESTRICTED",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_lab_restricted.bin",
+  "tris": 48,
+  "modelnum": 153,
+  "statescale": 4096
+ },
+ "dd_lab_sector2bot": {
+  "filenum": 161,
+  "file": "FILE_PDD_LAB_SECTOR2BOT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_lab_sector2bot.bin",
+  "tris": 56,
+  "modelnum": 142,
+  "statescale": 4096
+ },
+ "dd_lab_sector2top": {
+  "filenum": 162,
+  "file": "FILE_PDD_LAB_SECTOR2TOP",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_lab_sector2top.bin",
+  "tris": 48,
+  "modelnum": 143,
+  "statescale": 4096
+ },
+ "dd_lab_sector3": {
+  "filenum": 163,
+  "file": "FILE_PDD_LAB_SECTOR3",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_lab_sector3.bin",
+  "tris": 72,
+  "modelnum": 149,
+  "statescale": 4096
+ },
+ "dd_lab_sector3top": {
+  "filenum": 164,
+  "file": "FILE_PDD_LAB_SECTOR3TOP",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_lab_sector3top.bin",
+  "tris": 48,
+  "modelnum": 148,
+  "statescale": 4096
+ },
+ "dd_lab_sector3wind": {
+  "filenum": 165,
+  "file": "FILE_PDD_LAB_SECTOR3WIND",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_lab_sector3wind.bin",
+  "tris": 86,
+  "modelnum": 150,
+  "statescale": 4096
+ },
+ "dd_lab_sector4top": {
+  "filenum": 166,
+  "file": "FILE_PDD_LAB_SECTOR4TOP",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_lab_sector4top.bin",
+  "tris": 48,
+  "modelnum": 152,
+  "statescale": 4096
  },
  "dd_labdoor": {
   "filenum": 441,
@@ -733,6 +1084,24 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dd_labtech.bin",
   "tris": 693
  },
+ "dd_liftdoor": {
+  "filenum": 167,
+  "file": "FILE_PDD_LIFTDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_liftdoor.bin",
+  "tris": 22,
+  "modelnum": 68,
+  "statescale": 4096
+ },
+ "dd_officedoor": {
+  "filenum": 169,
+  "file": "FILE_PDD_OFFICEDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_officedoor.bin",
+  "tris": 40,
+  "modelnum": 59,
+  "statescale": 4096
+ },
  "dd_secguard": {
   "filenum": 70,
   "file": "FILE_CDD_SECGUARD",
@@ -740,12 +1109,39 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dd_secguard.bin",
   "tris": 680
  },
+ "dd_secretdoor": {
+  "filenum": 175,
+  "file": "FILE_PDD_SECRETDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_secretdoor.bin",
+  "tris": 14,
+  "modelnum": 131,
+  "statescale": 4096
+ },
+ "dd_servicedoor": {
+  "filenum": 177,
+  "file": "FILE_PDD_SERVICEDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_servicedoor.bin",
+  "tris": 18,
+  "modelnum": 66,
+  "statescale": 4096
+ },
  "dd_shock_inf": {
   "filenum": 452,
   "file": "FILE_CDD_SHOCK_INF",
   "kind": "chr",
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/dd_shock_inf.bin",
   "tris": 768
+ },
+ "dd_winddoor": {
+  "filenum": 180,
+  "file": "FILE_PDD_WINDDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dd_winddoor.bin",
+  "tris": 34,
+  "modelnum": 67,
+  "statescale": 4096
  },
  "dd_window": {
   "filenum": 181,
@@ -770,12 +1166,57 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/ddsniper.bin",
   "tris": 831
  },
+ "devicesecretdoor": {
+  "filenum": 1281,
+  "file": "FILE_PDEVICESECRETDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/devicesecretdoor.bin",
+  "tris": 14,
+  "modelnum": 333,
+  "statescale": 4096
+ },
  "djbond": {
   "filenum": 71,
   "file": "FILE_CDJBOND",
   "kind": "chr",
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/djbond.bin",
   "tris": 619
+ },
+ "door1a_g5": {
+  "filenum": 183,
+  "file": "FILE_PDOOR1A_G5",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/door1a_g5.bin",
+  "tris": 40,
+  "modelnum": 126,
+  "statescale": 4096
+ },
+ "door1atri_g5": {
+  "filenum": 184,
+  "file": "FILE_PDOOR1ATRI_G5",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/door1atri_g5.bin",
+  "tris": 8,
+  "modelnum": 128,
+  "statescale": 4096
+ },
+ "door1b_g5": {
+  "filenum": 185,
+  "file": "FILE_PDOOR1B_G5",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/door1b_g5.bin",
+  "tris": 38,
+  "modelnum": 127,
+  "statescale": 4096
+ },
+ "door2_g5": {
+  "filenum": 186,
+  "file": "FILE_PDOOR2_G5",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/door2_g5.bin",
+  "tris": 28,
+  "modelnum": 125,
+  "statescale": 4096
  },
  "door2a_g5": {
   "filenum": 187,
@@ -784,6 +1225,96 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/props/door2a_g5.bin",
   "tris": 12,
   "modelnum": 129,
+  "statescale": 4096
+ },
+ "door4a_g5": {
+  "filenum": 188,
+  "file": "FILE_PDOOR4A_G5",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/door4a_g5.bin",
+  "tris": 53,
+  "modelnum": 154,
+  "statescale": 4096
+ },
+ "door4b_g5": {
+  "filenum": 189,
+  "file": "FILE_PDOOR4B_G5",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/door4b_g5.bin",
+  "tris": 37,
+  "modelnum": 155,
+  "statescale": 4096
+ },
+ "door_rollertrain": {
+  "filenum": 190,
+  "file": "FILE_PDOOR_ROLLERTRAIN",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/door_rollertrain.bin",
+  "tris": 6,
+  "modelnum": 21,
+  "statescale": 4096
+ },
+ "dr_caroll_door": {
+  "filenum": 192,
+  "file": "FILE_PDR_CAROLL_DOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dr_caroll_door.bin",
+  "tris": 128,
+  "modelnum": 147,
+  "statescale": 4096
+ },
+ "dr_caroll_door_bleft": {
+  "filenum": 194,
+  "file": "FILE_PDR_CAROLL_DOOR_BLEFT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dr_caroll_door_bleft.bin",
+  "tris": 58,
+  "modelnum": 165,
+  "statescale": 4096
+ },
+ "dr_caroll_door_bmain": {
+  "filenum": 195,
+  "file": "FILE_PDR_CAROLL_DOOR_BMAIN",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dr_caroll_door_bmain.bin",
+  "tris": 58,
+  "modelnum": 164,
+  "statescale": 4096
+ },
+ "dr_caroll_door_bright": {
+  "filenum": 196,
+  "file": "FILE_PDR_CAROLL_DOOR_BRIGHT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dr_caroll_door_bright.bin",
+  "tris": 58,
+  "modelnum": 166,
+  "statescale": 4096
+ },
+ "dr_caroll_door_left": {
+  "filenum": 197,
+  "file": "FILE_PDR_CAROLL_DOOR_LEFT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dr_caroll_door_left.bin",
+  "tris": 46,
+  "modelnum": 162,
+  "statescale": 4096
+ },
+ "dr_caroll_door_main": {
+  "filenum": 198,
+  "file": "FILE_PDR_CAROLL_DOOR_MAIN",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dr_caroll_door_main.bin",
+  "tris": 50,
+  "modelnum": 161,
+  "statescale": 4096
+ },
+ "dr_caroll_door_right": {
+  "filenum": 199,
+  "file": "FILE_PDR_CAROLL_DOOR_RIGHT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/dr_caroll_door_right.bin",
+  "tris": 46,
+  "modelnum": 163,
   "statescale": 4096
  },
  "druggun": {
@@ -884,6 +1415,24 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/femlabtech.bin",
   "tris": 835
  },
+ "g5_escdoordown": {
+  "filenum": 204,
+  "file": "FILE_PG5_ESCDOORDOWN",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/g5_escdoordown.bin",
+  "tris": 6,
+  "modelnum": 170,
+  "statescale": 4096
+ },
+ "g5_escdoorup": {
+  "filenum": 206,
+  "file": "FILE_PG5_ESCDOORUP",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/g5_escdoorup.bin",
+  "tris": 6,
+  "modelnum": 168,
+  "statescale": 4096
+ },
  "g5_guard": {
   "filenum": 609,
   "file": "FILE_CG5_GUARD",
@@ -897,6 +1446,24 @@
   "kind": "chr",
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/g5_swat_guard.bin",
   "tris": 720
+ },
+ "g5carliftdoor": {
+  "filenum": 210,
+  "file": "FILE_PG5CARLIFTDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/g5carliftdoor.bin",
+  "tris": 116,
+  "modelnum": 173,
+  "statescale": 4096
+ },
+ "g5safedoor": {
+  "filenum": 209,
+  "file": "FILE_PG5SAFEDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/g5safedoor.bin",
+  "tris": 60,
+  "modelnum": 157,
+  "statescale": 4096
  },
  "glass_floor": {
   "filenum": 618,
@@ -1513,6 +2080,15 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/guns/hudpiece.bin",
   "tris": 230
  },
+ "instfrontdoor": {
+  "filenum": 1879,
+  "file": "FILE_PINSTFRONTDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/instfrontdoor.bin",
+  "tris": 38,
+  "modelnum": 404,
+  "statescale": 4096
+ },
  "jonathon": {
   "filenum": 1194,
   "file": "FILE_CJONATHON",
@@ -1664,6 +2240,24 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/chrs/pelagic_guard.bin",
   "tris": 692
  },
+ "pelagicdoor": {
+  "filenum": 927,
+  "file": "FILE_PPELAGICDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/pelagicdoor.bin",
+  "tris": 174,
+  "modelnum": 293,
+  "statescale": 4096
+ },
+ "pelagicdoor2": {
+  "filenum": 1875,
+  "file": "FILE_PPELAGICDOOR2",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/pelagicdoor2.bin",
+  "tris": 196,
+  "modelnum": 402,
+  "statescale": 4096
+ },
  "pilotaf1": {
   "filenum": 1188,
   "file": "FILE_CPILOTAF1",
@@ -1745,6 +2339,33 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/guns/shotgun.bin",
   "tris": 522
  },
+ "shuttledoor": {
+  "filenum": 1909,
+  "file": "FILE_PSHUTTLEDOOR",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/shuttledoor.bin",
+  "tris": 22,
+  "modelnum": 419,
+  "statescale": 4096
+ },
+ "sk_cryopod1_bot": {
+  "filenum": 234,
+  "file": "FILE_PSK_CRYOPOD1_BOT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_cryopod1_bot.bin",
+  "tris": 38,
+  "modelnum": 120,
+  "statescale": 4096
+ },
+ "sk_cryopod1_top": {
+  "filenum": 235,
+  "file": "FILE_PSK_CRYOPOD1_TOP",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_cryopod1_top.bin",
+  "tris": 34,
+  "modelnum": 119,
+  "statescale": 4096
+ },
  "sk_door1": {
   "filenum": 236,
   "file": "FILE_PSK_DOOR1",
@@ -1752,6 +2373,96 @@
   "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_door1.bin",
   "tris": 28,
   "modelnum": 110,
+  "statescale": 4096
+ },
+ "sk_hangardoor_bot": {
+  "filenum": 238,
+  "file": "FILE_PSK_HANGARDOOR_BOT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_hangardoor_bot.bin",
+  "tris": 32,
+  "modelnum": 124,
+  "statescale": 4096
+ },
+ "sk_hangardoor_top": {
+  "filenum": 239,
+  "file": "FILE_PSK_HANGARDOOR_TOP",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_hangardoor_top.bin",
+  "tris": 48,
+  "modelnum": 123,
+  "statescale": 4096
+ },
+ "sk_hangardoorb_bot": {
+  "filenum": 1947,
+  "file": "FILE_PSK_HANGARDOORB_BOT",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_hangardoorb_bot.bin",
+  "tris": 32,
+  "modelnum": 430,
+  "statescale": 4096
+ },
+ "sk_hangardoorb_top": {
+  "filenum": 1946,
+  "file": "FILE_PSK_HANGARDOORB_TOP",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_hangardoorb_top.bin",
+  "tris": 48,
+  "modelnum": 429,
+  "statescale": 4096
+ },
+ "sk_ship_door1": {
+  "filenum": 240,
+  "file": "FILE_PSK_SHIP_DOOR1",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_ship_door1.bin",
+  "tris": 92,
+  "modelnum": 111,
+  "statescale": 4096
+ },
+ "sk_ship_door2": {
+  "filenum": 1944,
+  "file": "FILE_PSK_SHIP_DOOR2",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_ship_door2.bin",
+  "tris": 92,
+  "modelnum": 427,
+  "statescale": 4096
+ },
+ "sk_ship_hulldoor1": {
+  "filenum": 243,
+  "file": "FILE_PSK_SHIP_HULLDOOR1",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_ship_hulldoor1.bin",
+  "tris": 32,
+  "modelnum": 114,
+  "statescale": 4096
+ },
+ "sk_ship_hulldoor2": {
+  "filenum": 244,
+  "file": "FILE_PSK_SHIP_HULLDOOR2",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_ship_hulldoor2.bin",
+  "tris": 32,
+  "modelnum": 115,
+  "statescale": 4096
+ },
+ "sk_ship_hulldoor3": {
+  "filenum": 245,
+  "file": "FILE_PSK_SHIP_HULLDOOR3",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_ship_hulldoor3.bin",
+  "tris": 17,
+  "modelnum": 116,
+  "statescale": 4096
+ },
+ "sk_ship_hulldoor4": {
+  "filenum": 246,
+  "file": "FILE_PSK_SHIP_HULLDOOR4",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sk_ship_hulldoor4.bin",
+  "tris": 17,
+  "modelnum": 117,
   "statescale": 4096
  },
  "skminigun": {
@@ -1774,6 +2485,15 @@
   "kind": "gun",
   "source": "pd-decomp/src/assets/ntsc-final/files/guns/skrocket.bin",
   "tris": 428
+ },
+ "sktnl_unexp1": {
+  "filenum": 252,
+  "file": "FILE_PSKTNL_UNEXP1",
+  "kind": "prop",
+  "source": "pd-decomp/src/assets/ntsc-final/files/props/sktnl_unexp1.bin",
+  "tris": 20,
+  "modelnum": 109,
+  "statescale": 4096
  },
  "sniperrifle": {
   "filenum": 908,
