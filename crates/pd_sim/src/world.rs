@@ -348,16 +348,18 @@ impl World {
     }
 
     /// A new life's inventory (`player_start_new_life`, `player.c:590`, and
-    /// `player_spawn`, `:934`): nothing but the fists, no ammo, no shield, and
-    /// no gun in hand (`bgun_equip_weapon2(g_DefaultWeapons)`: a Combat
-    /// Simulator setup's intro gives no weapon, so both are `WEAPON_NONE`).
+    /// `player_spawn`, `:1098`): nothing but the fists, no ammo, no shield,
+    /// and the fists in hand (`bgun_equip_weapon2(g_DefaultWeapons)`: a
+    /// Combat Simulator setup's intro gives no weapon, so `player_reset`
+    /// leaves the left `WEAPON_NONE` and makes the right `WEAPON_UNARMED`,
+    /// `playerreset.c:367`).
     pub(crate) fn player_spawn_inventory(&mut self, i: usize) {
         let gun = &mut self.players[i].gun;
         gun.p.inventory.inv_clear();
         gun.p.ammoheldarr = [0; 40];
         gun.p.inventory.inv_give_single_weapon(pd_core::ids::WEAPON_UNARMED);
         gun.ctrl.dualwielding = false;
-        gun.bgun_equip_weapon(pd_core::ids::WEAPON_NONE);
+        gun.bgun_equip_weapon(pd_core::ids::WEAPON_UNARMED);
         self.player_set_shield_frac(i, 0.0);
         if self.harness_loadout.is_some() {
             self.give_loadout(i);

@@ -13,8 +13,11 @@
 //! [`crate::fx::shieldhit`]), and a player's view flashes
 //! (`player_display_shield`).
 //!
-//! Not yet: disarming (`FUNCFLAG_DISARM`, `bgun_disarm` / `bot_disarm`), the
-//! solo-only branches (knockouts, argh animations, difficulty scaling).
+//! Disarming (`FUNCFLAG_DISARM`, the fists' secondary): no damage, and the
+//! victim's gun falls for the disarmer to take (`bgun_disarm`, `bot_disarm`).
+//!
+//! Not yet: the solo-only branches (knockouts, argh animations, difficulty
+//! scaling).
 //!
 //! Source: the old repo's `pd_spike/chraction.rs` (damage) and
 //! `pd_complex/fight.rs` (`player_damage`), checked against
@@ -249,6 +252,9 @@ impl World {
             let handicap = self.setup.players.get(pi).map_or(128, |p| p.handicap);
             damage /= mp_handicap_to_value(handicap);
             if !self.players[pi].isdead {
+                if funcflags & FUNCFLAG_DISARM != 0 {
+                    self.bgun_disarm(pi, from.attacker);
+                }
                 if makedizzy {
                     let amount = gset_get_blur_amount(&gset, from.weaponnum, from.weaponfunc);
                     self.chrs[victim].blurdrugamount += amount;
@@ -304,7 +310,13 @@ impl World {
             return;
         }
 
-        // A simulant (`chraction.c:4700`).
+        // A simulant (`chraction.c:4700`), alive before the hit.
+        if matches!(self.chrs[victim].actiontype, Act::Die | Act::Dead) {
+            return;
+        }
+        if funcflags & FUNCFLAG_DISARM != 0 && self.chrs[victim].aibot.is_some() {
+            self.bot_disarm(victim, from.attacker);
+        }
         if self.chrs[victim].damage < self.chrs[victim].maxdamage {
             if makedizzy {
                 let amount = gset_get_blur_amount(&gset, from.weaponnum, from.weaponfunc);
@@ -362,6 +374,95 @@ impl World {
     /// the one the last frame's render loop ended on / the first player too.
     pub(crate) fn currentplayernum_for(&self, attacker: Option<usize>) -> usize {
         attacker.and_then(|a| self.chrs.get(a)).and_then(|c| c.player).unwrap_or(0)
+    }
+
+    /// `bgun_disarm` (`bondgun.c:6123`): player `pi` loses the gun in its right
+    /// hand (not the fists, nothing undroppable or past the RC-P45, not while
+    /// switching), its cloak with it; a live grenade in the throw is dropped,
+    /// anything else falls from the player for `attacker` alone to pick up
+    /// for a second. Back to the fists.
+    pub(crate) fn bgun_disarm(&mut self, pi: usize, attacker: Option<usize>) {
+        let gset = self.res.gset.clone();
+        let weaponnum = self.players[pi].gun.hands[HAND_RIGHT].weaponnum;
+        if gset.has_flag(weaponnum, WEAPONFLAG_UNDROPPABLE) || weaponnum > WEAPON_RCP45 {
+            return;
+        }
+        if weaponnum <= WEAPON_UNARMED || self.players[pi].gun.ctrl.switchtoweaponnum.is_some() {
+            return;
+        }
+        let mut drop = true;
+        if weaponnum == WEAPON_RCP120 {
+            self.players[pi].devicesactive &= !DEVICE_CLOAKRCP120;
+        }
+        if weaponnum == WEAPON_CLOAKINGDEVICE {
+            self.players[pi].devicesactive &= !DEVICE_CLOAKDEVICE;
+        }
+        if weaponnum == WEAPON_GRENADE || weaponnum == WEAPON_NBOMB {
+            for h in 0..2 {
+                let hand = &self.players[pi].gun.hands[h];
+                let (w, f) = (hand.weaponnum, hand.weaponfunc);
+                let throw = gset.func(w, f).is_some_and(|d| d.kind() == INVENTORYFUNCTYPE_THROW);
+                if throw && hand.state == HANDSTATE_ATTACK && hand.stateminor == HANDSTATEMINOR_ATTACK_THROW_0 {
+                    drop = false;
+                    self.bgun_create_thrown_projectile(pi, h + 2, w, f);
+                }
+            }
+        }
+        // weapon_delete_from_chr, both hands.
+        self.chrs[pi].held = [None, None];
+        if drop {
+            if let Some(id) = self.weapon_create_for_chr_drop(pi, weaponnum) {
+                if let Some(p) = self.props.get_mut(id).and_then(|o| o.projectile.as_mut()) {
+                    p.pickuptimer240 = 240;
+                    p.pickupby = attacker;
+                }
+            }
+        }
+        let p = &mut self.players[pi];
+        p.gun.inv_remove_item_by_num(weaponnum);
+        for h in [HAND_LEFT, HAND_RIGHT] {
+            let hand = &mut p.gun.hands[h];
+            hand.state = HANDSTATE_IDLE;
+            hand.ejectstate = EJECTSTATE_INIT;
+            hand.ejecttype = EJECTTYPE_GUN;
+        }
+        if p.visionmode == VISIONMODE_SLAYERROCKET {
+            if let Some(id) = p.slayerrocket {
+                if let Some(o) = self.props.get_mut(id) {
+                    o.timer240 = 0;
+                }
+            }
+            self.players[pi].visionmode = VISIONMODE_NORMAL;
+        }
+        // bgun_equip_weapon2(HAND_RIGHT, WEAPON_UNARMED), then (HAND_LEFT, WEAPON_NONE).
+        let gun = &mut self.players[pi].gun;
+        gun.ctrl.dualwielding = false;
+        gun.bgun_equip_weapon(WEAPON_UNARMED);
+    }
+
+    /// `bot_disarm` (`bot.c:1293`): simulant `i` loses the gun it holds (a
+    /// pair's other half with it, not the briefcase), which falls for
+    /// `attacker` alone to pick up for a second; its loaded rounds go, and it
+    /// is back to the fists.
+    /// `// SUBST:` PD lets the held gun's own object fall on the chr's next
+    /// full tick (`CHRHFLAG_DROPPINGITEM`, `chr.c:2896`) / a new object falls
+    /// at once, as `botinv_drop`'s do, since a simulant's held guns are models.
+    pub(crate) fn bot_disarm(&mut self, i: usize, attacker: Option<usize>) {
+        let weaponnum = self.ab(i).weaponnum;
+        if weaponnum < WEAPON_FALCON2 || weaponnum == WEAPON_BRIEFCASE2 {
+            return;
+        }
+        self.chrs[i].held = [None, None];
+        if let Some(id) = self.weapon_create_for_chr_drop(i, weaponnum) {
+            if let Some(p) = self.props.get_mut(id).and_then(|o| o.projectile.as_mut()) {
+                p.pickuptimer240 = 240;
+                p.pickupby = attacker;
+            }
+        }
+        let a = self.ab_mut(i);
+        a.botinv_remove_item(weaponnum);
+        a.loadedammo = [0, 0];
+        self.botinv_switch_to_weapon(i, WEAPON_UNARMED, FUNC_PRIMARY);
     }
 
     /// `chr_get_shield` (`chraction.c:4056`).

@@ -119,6 +119,9 @@ pub struct Projectile {
     pub flighttime240: i32,
     pub powerlimit240: i32,
     pub pickuptimer240: i32,
+    /// `pickupby`: a disarmed weapon's disarmer (a chr index), who alone may
+    /// take it while `pickuptimer240` runs (`obj_test_for_pickup`).
+    pub pickupby: Option<usize>,
     pub hitspeedpreservationfrac: f32,
     pub speeddecel: f32,
     pub missileyaccel: f32,
@@ -164,6 +167,7 @@ impl Default for Projectile {
             flighttime240: 0,
             powerlimit240: -1,
             pickuptimer240: 0,
+            pickupby: None,
             hitspeedpreservationfrac: 0.05,
             speeddecel: 0.0,
             missileyaccel: 0.0,

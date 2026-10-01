@@ -230,11 +230,14 @@ impl World {
         if o.flags & OBJFLAG_THROWNLAPTOP != 0 {
             return false;
         }
-        // A thrown weapon can't be caught back within a second unless it bounced.
-        // (Disarms, which set `pickupby`, are solo.)
-        if let Some(p) = o.projectile.as_ref() {
-            if p.pickuptimer240 > 0 && p.bouncecount == 0 {
-                return false;
+        // A thrown weapon can't be caught back within a second unless it
+        // bounced; a disarmed one, for its first second, only by the disarmer
+        // (`propobj.c:16540`; a player's chr index is the player's).
+        if let Some(p) = o.projectile.as_ref().filter(|p| p.pickuptimer240 > 0) {
+            match p.pickupby {
+                None if p.bouncecount == 0 => return false,
+                Some(by) if by != pi => return false,
+                _ => {}
             }
         }
         let gun = &self.players[pi].gun;
@@ -631,10 +634,10 @@ impl World {
     /// (`propobj.c:17763`, `:13259`, `:13495`): a weapon object at chr `ci`'s
     /// position, falling with a random push and spin
     /// (`projectile_load_random_speed_rotation`, `projectile.c:25`). It does
-    /// not respawn; the chr who dropped it owns it.
-    pub(crate) fn weapon_create_for_chr_drop(&mut self, ci: usize, weaponnum: u8) {
-        let Some(stem) = self.res.gset.weapon(weaponnum).and_then(|w| w.tp_model.clone()) else { return };
-        let Ok(def) = self.res.models.get(&stem) else { return };
+    /// not respawn; the chr who dropped it owns it. Returns its id.
+    pub(crate) fn weapon_create_for_chr_drop(&mut self, ci: usize, weaponnum: u8) -> Option<u32> {
+        let stem = self.res.gset.weapon(weaponnum).and_then(|w| w.tp_model.clone())?;
+        let def = self.res.models.get(&stem).ok()?;
         let scale = self.res.models.modelstate_scale(&stem);
         self.props.make_room_for_weapon();
         let id = self.props.alloc_id();
@@ -656,6 +659,7 @@ impl World {
         // obj_init's scenario tokens (`propobj.c:2134`), and a dropped
         // briefcase's scenario_handle_dropped_token (`propobj.c:20220`).
         self.scenario_weapon_dropped(ci, id, weaponnum);
+        Some(id)
     }
 }
 

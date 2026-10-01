@@ -779,3 +779,54 @@ fn probe_fingerprint() {
         }
     }
 }
+
+/// The dropped guns of chr `by`'s disarms (`pickupby`).
+fn disarmed_guns(w: &World, by: usize) -> Vec<(u8, i32)> {
+    w.props.objs.iter().filter_map(|o| o.projectile.as_ref().filter(|p| p.pickupby == Some(by)).map(|p| (o.weaponnum, p.pickuptimer240))).collect()
+}
+
+/// The fists' secondary on an armed simulant (`bot_disarm`): no damage, its
+/// gun falls for the player alone for a second, and it is back to its fists.
+#[test]
+fn the_players_disarm_knocks_a_simulants_gun_out() {
+    let (mut w, _, _) = duel(Some(WEAPON_FALCON2));
+    for _ in 0..90 {
+        step(&mut w, &PlayerInput::default());
+    }
+    assert_eq!(w.chrs[1].aibot.as_ref().unwrap().weaponnum, WEAPON_FALCON2);
+    w.chr_damage(1, 1.0, Vec3::ZERO, crate::chr::DamageFrom::new(Some(0), WEAPON_UNARMED, FUNC_SECONDARY), HITPART_TORSO, false, false);
+    let a = w.chrs[1].aibot.as_ref().unwrap();
+    assert_eq!(a.weaponnum, WEAPON_UNARMED, "back to the fists");
+    assert!(a.botinv_get_item(WEAPON_FALCON2).is_none(), "the Falcon is gone from its inventory");
+    assert!(w.chrs[1].held.iter().all(|h| h.is_none()), "nothing in its hands");
+    assert_eq!(w.chrs[1].damage, 0.0, "a disarm doesn't hurt");
+    assert_eq!(disarmed_guns(&w, 0), vec![(WEAPON_FALCON2, 240)]);
+}
+
+/// A simulant's disarm on the player (`bgun_disarm`): no damage, the gun
+/// falls and the player can't take it back within the second, the fists come up.
+#[test]
+fn a_simulants_disarm_knocks_the_players_gun_out() {
+    let (mut w, _, _) = duel(None);
+    w.harness_give_loadout(vec![WEAPON_FALCON2]);
+    for _ in 0..90 {
+        step(&mut w, &PlayerInput::default());
+    }
+    assert_eq!(w.players[0].gun.ctrl.weaponnum, WEAPON_FALCON2);
+    let health = w.players[0].bondhealth;
+    w.chr_damage(0, 1.0, Vec3::ZERO, crate::chr::DamageFrom::new(Some(1), WEAPON_UNARMED, FUNC_SECONDARY), HITPART_TORSO, false, false);
+    assert_eq!(w.players[0].bondhealth, health, "a disarm doesn't hurt");
+    assert!(!w.players[0].gun.p.inventory.inv_has_single_weapon_exc_all_guns(WEAPON_FALCON2), "the Falcon is gone");
+    assert_eq!(disarmed_guns(&w, 1), vec![(WEAPON_FALCON2, 240)]);
+    let mut fists = None;
+    for f in 0..120 {
+        step(&mut w, &PlayerInput::default());
+        if f == 50 {
+            assert!(!w.players[0].gun.p.inventory.inv_has_single_weapon_exc_all_guns(WEAPON_FALCON2), "not the player's to take back yet");
+        }
+        if fists.is_none() && w.players[0].gun.ctrl.weaponnum == WEAPON_UNARMED {
+            fists = Some(f);
+        }
+    }
+    assert!(fists.is_some(), "the fists come up");
+}

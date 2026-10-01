@@ -98,8 +98,10 @@ impl World {
 
     /// `bgun_create_thrown_projectile` (`bondgun.c:4294`) for player `pi`'s hand
     /// `h`: the object leaves the muzzle (or the player, if a wall is between),
-    /// thrown along the aim with the player's own motion added.
+    /// thrown along the aim with the player's own motion added. `h + 2` drops
+    /// it (a disarmed player's live grenade): a tenth of a throw's speed.
     pub(crate) fn bgun_create_thrown_projectile(&mut self, pi: usize, h: usize, weaponnum: u8, weaponfunc: usize) {
+        let (h, droppinggrenade) = if h >= 2 { (h - 2, true) } else { (h, false) };
         let hand = &self.players[pi].gun.hands[h];
         let muzzlepos = hand.muzzlepos;
         let mut sp1f4 = Mat4::IDENTITY;
@@ -132,7 +134,9 @@ impl World {
         };
         let mut gundir = self.players[pi].cam.projection.transform_vector3(gundir2d);
         let calc = self.res.gset.func(self.players[pi].gun.hands[h].weaponnum, self.players[pi].gun.hands[h].weaponfunc).is_some_and(|f| f.flags & FUNCFLAG_CALCULATETRAJECTORY != 0);
-        let mut velocity = if calc {
+        let mut velocity = if droppinggrenade {
+            gundir * 1.666_666_6
+        } else if calc {
             // prop_find_aiming_at(HAND_RIGHT, false, FINDPROPCONTEXT_QUERY) → the dot.
             self.prop_find_aiming_at(pi, HAND_RIGHT, false, false);
             let hand = &self.players[pi].gun.hands[h];
