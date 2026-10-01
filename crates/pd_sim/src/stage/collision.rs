@@ -18,8 +18,11 @@
 //!
 //! Substitutions:
 //! * `// SUBST:` PD only tests the tiles of the rooms a chr is in or passes
-//!   through. Here every polygon is a candidate, rejected by bounding box first,
-//!   which is a superset.
+//!   through. Here every polygon whose box meets the query's is a candidate,
+//!   which is a superset. A uniform XZ grid ([`PolyGrid`]) finds those without
+//!   walking every polygon: it hands out a subset of the full list, in the
+//!   list's order, holding every polygon the box test passes, so each query
+//!   sees what a walk of the full list would.
 //! * `// SUBST:` the `oobfail` checks ("did the move leave every room?") become
 //!   [`TileLevel::in_bounds`]: is there any floor within the cylinder below the point.
 //! * A PD stage's rooms neighbour across its portals ([`TileLevel::for_stage`]).
@@ -33,6 +36,8 @@
 //! position** they're tested at, exactly as PD passes `ymax - prop->pos.y`.
 //!
 //! Source: the old repo's `pd_spike/tile_level.rs`.
+
+use std::borrow::Cow;
 
 use glam::{Vec2, Vec3};
 use pd_core::ids::{FLOORTYPE_WATER, GEOFLAG_DIE, GEOFLAG_FLOOR1, GEOFLAG_FLOOR2, GEOFLAG_LIFTFLOOR, GEOFLAG_RAMPWALL, GEOFLAG_SLOPE, GEOFLAG_STEP, GEOFLAG_UNDERWATER};
@@ -318,14 +323,155 @@ enum Hit {
 /// "No ground" as PD returns it from `cd_find_ground_finalise`.
 pub const NO_GROUND: f32 = -4_294_967_296.0;
 
+/// Not PD: where a [`PolyGrid`]'s cells lie, shared by every list of one
+/// level. Cells are 2 m on a side, larger on a level so big that 2 m cells
+/// would number over 64k.
+#[derive(Clone, Copy, Debug)]
+struct GridFrame {
+    x0: f32,
+    z0: f32,
+    inv: f32,
+    nx: usize,
+    nz: usize,
+}
+
+impl GridFrame {
+    const CELL: f32 = 200.0;
+    const MAX_CELLS: usize = 65536;
+
+    fn new(bbox: &[(Vec3, Vec3)]) -> GridFrame {
+        let (mut lo, mut hi) = (Vec2::splat(f32::INFINITY), Vec2::splat(f32::NEG_INFINITY));
+        for &(a, b) in bbox {
+            if a.is_finite() && b.is_finite() {
+                lo = lo.min(Vec2::new(a.x, a.z));
+                hi = hi.max(Vec2::new(b.x, b.z));
+            }
+        }
+        if !(lo.x <= hi.x && lo.y <= hi.y) {
+            return GridFrame { x0: 0.0, z0: 0.0, inv: 1.0 / Self::CELL, nx: 1, nz: 1 };
+        }
+        let size = hi - lo;
+        let cell = Self::CELL.max((size.x * size.y / Self::MAX_CELLS as f32).sqrt() * 1.01);
+        let n = |len: f32| ((len / cell) as usize + 1).clamp(1, Self::MAX_CELLS);
+        GridFrame { x0: lo.x, z0: lo.y, inv: 1.0 / cell, nx: n(size.x), nz: n(size.y) }
+    }
+
+    /// The column (or row) holding `v`, clamped to the grid. Monotonic in
+    /// `v`: a larger coordinate never maps to a smaller column.
+    fn col(v: f32, v0: f32, inv: f32, n: usize) -> usize {
+        ((v - v0) * inv).floor().clamp(0.0, (n - 1) as f32) as usize
+    }
+
+    /// The columns `i0..=i1` and rows `j0..=j1` an XZ box covers.
+    fn span(&self, lo: Vec2, hi: Vec2) -> (usize, usize, usize, usize) {
+        (
+            Self::col(lo.x, self.x0, self.inv, self.nx),
+            Self::col(hi.x, self.x0, self.inv, self.nx),
+            Self::col(lo.y, self.z0, self.inv, self.nz),
+            Self::col(hi.y, self.z0, self.inv, self.nz),
+        )
+    }
+}
+
+/// Not PD: one list of polygons (the walls, the floors, ...) in ascending
+/// order, and the same polygons by grid cell: each cell lists, in ascending
+/// order, those whose box overlaps it in XZ.
+#[derive(Debug)]
+struct PolyGrid {
+    all: Vec<usize>,
+    /// Cell `j * nx + i`'s polygons are `items[starts[c]..starts[c + 1]]`.
+    starts: Vec<usize>,
+    items: Vec<usize>,
+}
+
+impl PolyGrid {
+    fn new(all: Vec<usize>, bbox: &[(Vec3, Vec3)], f: &GridFrame) -> PolyGrid {
+        let ncells = f.nx * f.nz;
+        let span = |p: usize| {
+            let (lo, hi) = bbox[p];
+            (lo.is_finite() && hi.is_finite()).then(|| f.span(Vec2::new(lo.x, lo.z), Vec2::new(hi.x, hi.z)))
+        };
+        let mut starts = vec![0usize; ncells + 1];
+        for &p in &all {
+            if let Some((i0, i1, j0, j1)) = span(p) {
+                for j in j0..=j1 {
+                    for i in i0..=i1 {
+                        starts[j * f.nx + i + 1] += 1;
+                    }
+                }
+            }
+        }
+        for c in 0..ncells {
+            starts[c + 1] += starts[c];
+        }
+        let mut fill = starts.clone();
+        let mut items = vec![0usize; starts[ncells]];
+        for &p in &all {
+            if let Some((i0, i1, j0, j1)) = span(p) {
+                for j in j0..=j1 {
+                    for i in i0..=i1 {
+                        let c = j * f.nx + i;
+                        items[fill[c]] = p;
+                        fill[c] += 1;
+                    }
+                }
+            }
+        }
+        PolyGrid { all, starts, items }
+    }
+
+    /// The polygons whose box may overlap the XZ box `lo..hi`, in ascending
+    /// order: every one a box test against it passes, and maybe others. The
+    /// box tests compare with `lo.x - radius` and the like, so the box grows
+    /// by a margin past their rounding first. A non-finite box gets the whole
+    /// list, as does one whose cells hold as many entries as the list.
+    fn near(&self, f: &GridFrame, lo: Vec2, hi: Vec2) -> Cow<'_, [usize]> {
+        if !(lo.is_finite() && hi.is_finite()) {
+            return Cow::Borrowed(&self.all);
+        }
+        let m = 1.0 + lo.abs().max(hi.abs()).max_element() * 1e-5;
+        let (i0, i1, j0, j1) = f.span(lo - m, hi + m);
+        let row = |j: usize| self.starts[j * f.nx + i0]..self.starts[j * f.nx + i1 + 1];
+        if i0 == i1 && j0 == j1 {
+            return Cow::Borrowed(&self.items[row(j0)]);
+        }
+        let n: usize = (j0..=j1).map(|j| row(j).len()).sum();
+        if n >= self.all.len() {
+            return Cow::Borrowed(&self.all);
+        }
+        let mut v = Vec::with_capacity(n);
+        for j in j0..=j1 {
+            v.extend_from_slice(&self.items[row(j)]);
+        }
+        v.sort_unstable();
+        v.dedup();
+        Cow::Owned(v)
+    }
+
+    /// [`Self::near`] a cylinder of `radius` at `pos`.
+    fn near_cyl(&self, f: &GridFrame, pos: Vec3, radius: f32) -> Cow<'_, [usize]> {
+        let c = Vec2::new(pos.x, pos.z);
+        self.near(f, c - radius, c + radius)
+    }
+
+    /// [`Self::near`] the segment `a..b`.
+    fn near_seg(&self, f: &GridFrame, a: Vec3, b: Vec3) -> Cow<'_, [usize]> {
+        let (lo, hi) = (a.min(b), a.max(b));
+        self.near(f, Vec2::new(lo.x, lo.z), Vec2::new(hi.x, hi.z))
+    }
+}
+
 pub struct TileLevel {
     pub geom: LevelGeom,
     bbox: Vec<(Vec3, Vec3)>,
-    walls: Vec<usize>,
-    floors: Vec<usize>,
-    sight: Vec<usize>,
-    shot: Vec<usize>,
-    any_blocker: Vec<usize>,
+    grid: GridFrame,
+    walls: PolyGrid,
+    floors: PolyGrid,
+    sight: PolyGrid,
+    shot: PolyGrid,
+    any_blocker: PolyGrid,
+    /// The floors of each room, in ascending order ([`Self::cd_find_y_in`]).
+    room_floors: std::collections::BTreeMap<u16, Vec<usize>>,
     ladders: Vec<usize>,
     crouch: Vec<usize>,
     duck: Vec<usize>,
@@ -358,7 +504,7 @@ impl TileLevel {
     /// tile edge with every other, the one cost here that grows with the
     /// square of the tiles (over a second on GoldenEye's Facility).
     pub(crate) fn without_room_neighbours(geom: LevelGeom) -> Self {
-        let bbox = geom
+        let bbox: Vec<(Vec3, Vec3)> = geom
             .polys
             .iter()
             .map(|p| {
@@ -370,11 +516,18 @@ impl TileLevel {
         let pick = |f: &dyn Fn(&GeomPoly) -> bool| {
             geom.polys.iter().enumerate().filter(|(_, p)| f(p)).map(|(i, _)| i).collect::<Vec<_>>()
         };
-        let walls = pick(&|p| p.wall);
-        let floors = pick(&|p| p.floor);
-        let sight = pick(&|p| p.blocks_sight);
-        let shot = pick(&|p| p.blocks_shot);
-        let any_blocker = pick(&|p| p.wall || p.blocks_sight || p.blocks_shot);
+        let grid = GridFrame::new(&bbox);
+        let walls = PolyGrid::new(pick(&|p| p.wall), &bbox, &grid);
+        let floors = PolyGrid::new(pick(&|p| p.floor), &bbox, &grid);
+        let sight = PolyGrid::new(pick(&|p| p.blocks_sight), &bbox, &grid);
+        let shot = PolyGrid::new(pick(&|p| p.blocks_shot), &bbox, &grid);
+        let any_blocker = PolyGrid::new(pick(&|p| p.wall || p.blocks_sight || p.blocks_shot), &bbox, &grid);
+        let mut room_floors: std::collections::BTreeMap<u16, Vec<usize>> = Default::default();
+        for &p in &floors.all {
+            if let Some(r) = geom.polys[p].room {
+                room_floors.entry(r).or_default().push(p);
+            }
+        }
         let ladders = pick(&|p| p.ladder_flags() != 0);
         let crouch = pick(&|p| p.crouch);
         let duck = pick(&|p| p.duck);
@@ -386,7 +539,7 @@ impl TileLevel {
                 *e = (e.0.min(lo), e.1.max(hi));
             }
         }
-        TileLevel { geom, bbox, walls, floors, sight, shot, any_blocker, ladders, crouch, duck, room_neighbours, room_bboxes }
+        TileLevel { geom, bbox, grid, walls, floors, sight, shot, any_blocker, room_floors, ladders, crouch, duck, room_neighbours, room_bboxes }
     }
 
     /// A PD stage's collision: its tiles, with the rooms' neighbours from the
@@ -490,7 +643,7 @@ impl TileLevel {
     /// wall tile, else the first chr perimeter, the cylinder at `pos` touches. PD
     /// checks the background before props, so the order is the same.
     fn volume_collect_wall(&self, pos: Vec3, radius: f32, checkvertical: bool, ymax: f32, ymin: f32, cyls: &[PropGeo]) -> Option<Hit> {
-        for &poly in &self.walls {
+        for &poly in self.walls.near_cyl(&self.grid, pos, radius).iter() {
             if self.tile_in_range(poly, pos, radius, checkvertical, ymax, ymin) && self.ramp_wall_ok(poly, pos, pos.y + ymin, pos.y + ymax) {
                 if let Some(vertexindex) = self.volume_collect_tile(poly, pos.x, pos.z, radius) {
                     return Some(Hit::Tile { poly, vertexindex });
@@ -511,6 +664,7 @@ impl TileLevel {
     /// (`vertexindex`) it touches — what `volume_collect_wall` stops at the first of.
     pub fn walls_touching(&self, pos: Vec3, radius: f32, ymax: f32, ymin: f32) -> Vec<(usize, usize)> {
         self.walls
+            .near_cyl(&self.grid, pos, radius)
             .iter()
             .filter(|&&p| self.tile_in_range(p, pos, radius, true, ymax, ymin))
             .filter_map(|&p| self.volume_collect_tile(p, pos.x, pos.z, radius).map(|v| (p, v)))
@@ -786,19 +940,21 @@ impl TileLevel {
             }
             !closest
         };
-        for &poly in &self.walls {
-            // cd_test_atobclosest_from_bytes (collision.c:3178) tests a ramp wall
-            // at `frompos` first (cd_test_atobany_from_bytes doesn't).
-            if closest && !self.ramp_wall_ok(poly, frompos, frompos.y + ymin, frompos.y + ymax) {
-                continue;
-            }
+        for &poly in self.walls.near_seg(&self.grid, frompos, topos).iter() {
             // `cd_test_atobclosest_from_bytes`: skip tiles both ends lie beyond.
+            // (Ahead of the ramp wall test below, which reads the polygon:
+            // either order skips the same tiles.)
             let (lo, hi) = self.bbox[poly];
             if (frompos.x < lo.x && topos.x < lo.x)
                 || (frompos.x > hi.x && topos.x > hi.x)
                 || (frompos.z < lo.z && topos.z < lo.z)
                 || (frompos.z > hi.z && topos.z > hi.z)
             {
+                continue;
+            }
+            // cd_test_atobclosest_from_bytes (collision.c:3178) tests a ramp wall
+            // at `frompos` first (cd_test_atobany_from_bytes doesn't).
+            if closest && !self.ramp_wall_ok(poly, frompos, frompos.y + ymin, frompos.y + ymax) {
                 continue;
             }
             if let Some((end, edge)) = self.cylpath_tile(poly, frompos, topos, checkvertical, ymax, ymin) {
@@ -954,7 +1110,7 @@ impl TileLevel {
         const MAX: usize = 20;
         // (edge, perimeter index, perimeter circle) per collision, in collection order.
         let mut collisions: Vec<(Edge, Option<usize>, Option<(f32, f32, f32)>)> = Vec::new();
-        'bg: for &poly in &self.walls {
+        'bg: for &poly in self.walls.near_cyl(&self.grid, topos, radius).iter() {
             if !self.tile_in_range(poly, topos, radius, checkvertical, ymax, ymin) || !self.ramp_wall_ok(poly, topos, topos.y + ymin, topos.y + ymax) {
                 continue;
             }
@@ -1075,7 +1231,7 @@ impl TileLevel {
     pub fn cd_find_ground_at_cyl_ctfril(&self, pos: Vec3, radius: f32, floors: &[PropFloor]) -> Ground {
         // (tile or prop floor, intile)
         let mut collisions: Vec<(GroundSrc, bool)> = Vec::new();
-        for &poly in &self.floors {
+        for &poly in self.floors.near_cyl(&self.grid, pos, radius).iter() {
             if collisions.len() >= 20 {
                 break;
             }
@@ -1236,9 +1392,13 @@ impl TileLevel {
     /// room by room in the list's order, as PD walks them: on a tie the first
     /// room's floor wins.
     fn cd_find_y_in(&self, pos: Vec3, ceiling: bool, rooms: Option<&[u16]>) -> Option<(f32, usize)> {
-        let order: Vec<usize> = match rooms {
-            None => self.floors.clone(),
-            Some(rooms) => rooms.iter().flat_map(|&r| self.floors.iter().copied().filter(move |&p| self.geom.polys[p].room == Some(r))).collect(),
+        let near;
+        let order: Box<dyn Iterator<Item = usize>> = match rooms {
+            None => {
+                near = self.floors.near_cyl(&self.grid, pos, 0.0);
+                Box::new(near.iter().copied())
+            }
+            Some(rooms) => Box::new(rooms.iter().flat_map(|&r| self.room_floors.get(&r).into_iter().flatten().copied())),
         };
         let mut best: Option<(f32, usize)> = None;
         for poly in order {
@@ -1312,11 +1472,11 @@ impl TileLevel {
 
     // ─── Sight and shots ─────────────────────────────────────────────────────
 
-    fn first_hit(&self, list: &[usize], from: Vec3, to: Vec3) -> Option<RayHit> {
+    fn first_hit(&self, list: &PolyGrid, from: Vec3, to: Vec3) -> Option<RayHit> {
         let d = to - from;
         let (lo_s, hi_s) = (from.min(to), from.max(to));
         let mut best: Option<RayHit> = None;
-        for &poly in list {
+        for &poly in list.near_seg(&self.grid, from, to).iter() {
             let (lo, hi) = self.bbox[poly];
             if hi.x < lo_s.x || lo.x > hi_s.x || hi.y < lo_s.y || lo.y > hi_s.y || hi.z < lo_s.z || lo.z > hi_s.z {
                 continue;

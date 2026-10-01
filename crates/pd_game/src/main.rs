@@ -682,7 +682,10 @@ fn main() {
             log::info!("custom levels: {} ({} listed)", dir.display(), assets.custom_levels().len());
         }
         let game = PdGame::new(assets, profile, combat, save_path)?;
-        let config = AppConfig { title: "Perfect Dark".into(), size: (1280, 960), tick_hz: 60.0, ..AppConfig::default() };
+        // PD draws once a frame: the render step advances effects by the
+        // frame (the laser's liquid, the star flare's jitter, the noise's and
+        // the VI chain's frame counters), so a frame between ticks is skipped.
+        let config = AppConfig { title: "Perfect Dark".into(), size: (1280, 960), tick_hz: 60.0, render_on_tick_only: true, ..AppConfig::default() };
         engine::app::run(config, game)
     };
     if let Err(e) = run() {

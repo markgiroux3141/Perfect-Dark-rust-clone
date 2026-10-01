@@ -717,3 +717,65 @@ fn a_simulants_slayer_rocket_flies_the_waypoints_to_an_unseen_target() {
     println!("{reached} of {} reached their target", pairs.len());
     assert!(reached >= 2, "only {reached} rockets reached their target");
 }
+
+/// A performance probe (not PD): a seeded match on each of `FP_STAGES`
+/// (default Complex, mp11, and the custom levels Facility and CI Felicity
+/// when converted) with a player walking and firing and eight armed
+/// simulants, `FP_SECONDS` (default 60) long. Prints the mean and p99 step
+/// and a fingerprint of every chr's state every frame, which an optimisation
+/// that claims bit-identical output must leave unchanged. `FP_GEN=1` also
+/// generates each stage's waypoint graph and prints its time and fingerprint.
+#[test]
+#[ignore]
+fn probe_fingerprint() {
+    use std::hash::{Hash, Hasher};
+    let stages = std::env::var("FP_STAGES").unwrap_or("ref,mp11,facility,cifelicity".into());
+    let secs: usize = std::env::var("FP_SECONDS").ok().and_then(|v| v.parse().ok()).unwrap_or(60);
+    let gen = std::env::var("FP_GEN").is_ok_and(|v| v == "1");
+    let assets = crate::testutil::assets().with_custom_levels();
+    let res = std::sync::Arc::new(crate::world::WorldRes::load(&assets).unwrap());
+    for code in stages.split(',') {
+        let Ok(stage) = Stage::load(&assets, code) else {
+            println!("{code:10} not found");
+            continue;
+        };
+        let stage = std::sync::Arc::new(stage);
+        let t = std::time::Instant::now();
+        let level = std::sync::Arc::new(TileLevel::for_stage(&stage));
+        let load = t.elapsed();
+        let setup = pd_core::mp::MatchSetup { stagenum: stage.stagenum, ..harness::setup(1, 8, BOTDIFF_HARD) };
+        let mut w = harness::world(stage.clone(), level.clone(), res.clone(), setup, NavChoice::Pd, harness::M12_SEED, true).unwrap();
+        let walk = PlayerInput { walk_y: 100, mouse_dx: 3.0, fire: true, ..PlayerInput::default() };
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let mut times = Vec::with_capacity(secs * 60);
+        for f in 0..secs * 60 {
+            let input = if f % 90 < 60 { walk.clone() } else { PlayerInput { a_held: true, ..PlayerInput::default() } };
+            let t = std::time::Instant::now();
+            step(&mut w, &input);
+            times.push(t.elapsed().as_secs_f64() * 1e6);
+            for (i, c) in w.chrs.iter().enumerate() {
+                [c.pos.x.to_bits(), c.pos.y.to_bits(), c.pos.z.to_bits(), c.damage.to_bits(), w.mp_chr_kills(i), w.mp_chr_deaths(i), c.anim.frame.to_bits()].hash(&mut h);
+            }
+            w.players[0].bondhealth.to_bits().hash(&mut h);
+            w.take_events().len().hash(&mut h);
+        }
+        w.rng.random().hash(&mut h);
+        let kills: u32 = (0..w.chrs.len()).map(|i| w.mp_chr_kills(i)).sum();
+        let mean = times.iter().sum::<f64>() / times.len() as f64;
+        times.sort_by(f64::total_cmp);
+        let p99 = times[times.len() * 99 / 100];
+        println!(
+            "{code:10} polys {:5} level {:6.1} ms  step mean {mean:7.1} us p99 {p99:7.1} us  kills {kills:3}  fingerprint {:016x}",
+            level.geom.polys.len(),
+            load.as_secs_f64() * 1e3,
+            h.finish()
+        );
+        if gen {
+            let t = std::time::Instant::now();
+            let g = harness::generated_graph(&level);
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            format!("{:?}", (&g.pads, &g.waypoints, &g.waygroups)).hash(&mut h);
+            println!("{code:10} nav::gen {:6.2} s  {} waypoints  fingerprint {:016x}", t.elapsed().as_secs_f64(), g.waypoints.len(), h.finish());
+        }
+    }
+}

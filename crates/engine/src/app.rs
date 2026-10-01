@@ -35,12 +35,18 @@ pub struct AppConfig {
     /// The most ticks one rendered frame may run.
     pub max_substeps: u32,
     pub max_fps: u32,
+    /// Draw only the frames that ran a tick: for a game whose picture (and
+    /// whatever its render step advances) changes only on its ticks, so a
+    /// display faster than the tick rate shows each tick once instead of
+    /// redrawing it. A frame with no tick then skips `frame`, `debug_ui`
+    /// and `render`, and the window keeps the last image presented.
+    pub render_on_tick_only: bool,
     pub gpu: GpuConfig,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
-        AppConfig { title: "engine".into(), size: (1280, 960), tick_hz: 60.0, max_substeps: 8, max_fps: 240, gpu: GpuConfig::default() }
+        AppConfig { title: "engine".into(), size: (1280, 960), tick_hz: 60.0, max_substeps: 8, max_fps: 240, render_on_tick_only: false, gpu: GpuConfig::default() }
     }
 }
 
@@ -128,6 +134,9 @@ impl<G: Game> Runner<G> {
             self.input.poll_pads();
             self.game.tick(&mut ctx!(self, live));
             self.input.end_tick();
+        }
+        if ticks == 0 && self.config.render_on_tick_only {
+            return;
         }
         let alpha = self.clock.alpha();
         self.game.frame(&mut ctx!(self, live), alpha);

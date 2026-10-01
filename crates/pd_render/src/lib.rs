@@ -472,7 +472,9 @@ impl Renderer {
             let Ok(def) = res.models.get(pd_sim::fx::casing::CART_MODELS[c.model]) else { continue };
             defs.push((def, Vec::new(), vec![w2e * c.world_matrix()], lit_frame(gun_proj, p.look, p.up, casing_lights, env), None, false));
         }
-        for (def, ..) in objdraws.iter().chain(&defs) {
+        // Every object's model, on screen or not, so none loads on first sight.
+        let all_objs = world.props.objs.iter().map(|o| &o.def);
+        for def in objdraws.iter().chain(&defs).map(|d| &d.0).chain(all_objs) {
             if let Err(e) = self.models.load(device, queue, &mut self.combiner, &assets, def) {
                 log::warn!("model {}: {e}", def.stem);
             }
@@ -664,6 +666,10 @@ impl Renderer {
             if o.is_gone() {
                 continue;
             }
+            // Off this player's screen (`obj_tick_player`'s pass2, `propobj.c:11372`).
+            if p.is_some_and(|p| !obj_is_onscreen(o, &p.cam)) {
+                continue;
+            }
             // obj_render (`propobj.c:12692`): lost in a fog stage's fog, not drawn.
             let shade = obj_shade_mode(self.bg.as_ref(), w2e, o.pos, xray.is_some());
             if shade == ShadeMode::Xlu {
@@ -772,6 +778,25 @@ impl Renderer {
             bg.draw_xlu(&mut rp, &self.combiner, None, view.eye);
         }
     }
+}
+
+/// `obj_tick_player`'s test for drawing an object on a player's screen
+/// (`propobj.c:11372`): an `OBJFLAG2_CANFILLVIEWPORT` one within the draw
+/// distance (`pos_is_in_draw_distance`), any other by `pos_is_onscreen`
+/// with the model's effective scale (its radius) as the margin.
+/// `// SUBST:` PD tests the prop's rooms first (one must be on screen) and
+/// the draw slots of its on-screen rooms / the whole view, as for the chrs
+/// ([`pd_sim::chr::body::pos_is_onscreen`]), since an object's `room` is
+/// where it was placed, not every room its box is in now; an embedded object
+/// (on screen with its parent, `obj_child_tick_player_onscreen`) is always drawn.
+fn obj_is_onscreen(o: &pd_sim::props::Obj, cam: &pd_sim::player::camera::Camera) -> bool {
+    if o.embedded.is_some() {
+        return true;
+    }
+    if o.flags2 & OBJFLAG2_CANFILLVIEWPORT != 0 {
+        return (o.pos - cam.pos()).length_squared() <= 32000.0 * 32000.0;
+    }
+    pd_sim::chr::body::pos_is_onscreen(cam, o.pos, o.def.scale * o.scale)
 }
 
 /// `chr_render`'s alpha (0..255): the corpse's fade (`fadealpha`), a new
