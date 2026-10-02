@@ -67,11 +67,7 @@ impl WaterBox {
 }
 
 /// PD's `SURFACETYPE_*` (`g_SurfaceTypes`, `tex.c:160`).
-const SURFACETYPE_STONE: u8 = 1;
-const SURFACETYPE_WOOD: u8 = 2;
-const SURFACETYPE_SNOW: u8 = 6;
-const SURFACETYPE_DIRT: u8 = 7;
-const SURFACETYPE_MUD: u8 = 8;
+use pd_sim::stage::bghit::{SURFACETYPE_DIRT, SURFACETYPE_MUD, SURFACETYPE_SNOW, SURFACETYPE_STONE, SURFACETYPE_WOOD};
 
 /// A collision polygon's sound (`sfx`, `NA_SE_PL_WALK_*`) as PD's floor type
 /// (footsteps) and shot surface.

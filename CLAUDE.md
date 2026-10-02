@@ -31,6 +31,9 @@ cargo run --release -p pd_import --bin pd_import -- kokiri   # convert a custom 
                                             #   `verycomplex` is Complex rebuilt in Blender (a glTF from the Blender MCP repo, ~11 s)
                                             #   `cifelicity` is CI Training + Felicity fused in Blender (CI from the decomp; ~3 min, the waypoints)
                                             #   `--ge-doors`: every GoldenEye door model + the editor's catalogue of them (custom/ge/doors.json)
+                                            #   `catacombs` is a Jedi Academy map (M20): the .bsp + the game's base/ (pk3s), in extra maps/ (gitignored)
+                                            #   `--ge64 <code> <dir>`: a level as the GoldenEye Setup Editor's level files (OBJ rooms, portals, clipping)
+                                            #   `--jka <dir> [--clone]`: every Jedi Academy MP map in extra maps/base's pk3s: Setup Editor folders (+ arenas)
 cargo run --release -p pd_import --bin pd_import -- --place <code>   # place a level again with its layout
                                             #   (levels/<code>.layout.json; the cached waypoints); `--adopt <code>` writes one
 target/release/pd_edit.exe [<code>]         # the level editor (a window: for the user); `--shot <code> <out.png>

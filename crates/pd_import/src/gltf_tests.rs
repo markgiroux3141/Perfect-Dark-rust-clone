@@ -150,6 +150,8 @@ fn recipe(path: &std::path::Path) -> Recipe {
         weapons: 3,
         hills: 1,
         marker_share: 1.0,
+        play_area: crate::recipe::PlayArea::Largest,
+        group: None,
     }
 }
 

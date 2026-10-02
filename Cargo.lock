@@ -2265,6 +2265,7 @@ dependencies = [
  "glam 0.29.3",
  "image",
  "log",
+ "miniz_oxide 0.8.9",
  "pd_core",
  "pd_sim",
  "serde",

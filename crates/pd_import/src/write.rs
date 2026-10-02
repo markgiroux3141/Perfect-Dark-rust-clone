@@ -328,7 +328,11 @@ pub fn register(root: &Path, r: &Recipe) -> Result<(), String> {
         Err(_) => Vec::new(),
     };
     levels.retain(|l| l["code"] != r.code.as_str() && l["stagenum"] != r.stagenum);
-    levels.push(json!({"code": r.code, "stagenum": r.stagenum, "name": r.name}));
+    let mut row = json!({"code": r.code, "stagenum": r.stagenum, "name": r.name});
+    if let Some(g) = r.group.as_ref().filter(|g| !g.is_empty()) {
+        row["group"] = json!(g);
+    }
+    levels.push(row);
     levels.sort_by_key(|l| l["stagenum"].as_u64());
     write_json(&path, &json!({"format": "pd-custom-levels/1", "levels": levels}))
 }

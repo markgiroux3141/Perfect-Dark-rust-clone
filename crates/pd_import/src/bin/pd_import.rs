@@ -15,6 +15,20 @@
 //! and their catalogue into `custom/ge/doors.json` (for `pd_edit`), from the
 //! ROM a GoldenEye level's recipe names (or `$PD_GE_ROM`).
 //!
+//! `pd_import --ge64 <code> <out dir> [--rooms N] [--light T,E] [--texels N]`:
+//! the level as the GoldenEye Setup Editor's level files (`level/`,
+//! `portal/`, `clipping/`, for building a PD or GoldenEye ROM level): N rooms
+//! (default 32); a Jedi Academy map's lighting split at T steps down to E
+//! units (default 64,192: the N64's budget); textures of at most N texels
+//! (default 2048).
+//!
+//! `pd_import --jka <out dir> [--base <dir>] [--clone] [--only a,b]
+//! [--rooms N] [--light T,E] [--texels N]`: every multiplayer map in a Jedi
+//! Academy `base` directory's packages (default `extra maps/base`) as the
+//! Setup Editor's level files, a folder a map under `<out dir>`, each with a
+//! recipe `levels/jka_<map>.json`; `--clone` imports each into `custom/` as
+//! well.
+//!
 //! `pd_import --check <code>`: load a converted level and play a minute of
 //! simulants on it, without converting it again.
 //!
@@ -41,7 +55,7 @@ fn run(args: &[String]) -> Result<(), String> {
     let opt = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(PathBuf::from);
     let assets = std::env::var_os("PD_ASSETS").map_or_else(|| repo.join("assets"), PathBuf::from);
     let custom = opt("--custom").or_else(|| std::env::var_os("PD_CUSTOM").map(PathBuf::from)).unwrap_or_else(|| repo.join("custom"));
-    let positional: Vec<&String> = args.iter().enumerate().filter(|(i, a)| !a.starts_with("--") && (*i == 0 || !matches!(args[i - 1].as_str(), "--src" | "--custom" | "--check" | "--place" | "--adopt"))).map(|(_, a)| a).collect();
+    let positional: Vec<&String> = args.iter().enumerate().filter(|(i, a)| !a.starts_with("--") && (*i == 0 || !matches!(args[i - 1].as_str(), "--src" | "--custom" | "--check" | "--place" | "--adopt" | "--ge64" | "--rooms" | "--light" | "--texels" | "--jka" | "--base" | "--only"))).map(|(_, a)| a).collect();
     let recipe_path = |which: &str| if which.ends_with(".json") { PathBuf::from(which) } else { manifest.join("levels").join(format!("{which}.json")) };
     let paths = pd_import::Paths { assets: assets.clone(), custom: custom.clone(), src: opt("--src") };
     if let Some(which) = opt("--place") {
@@ -100,6 +114,47 @@ fn run(args: &[String]) -> Result<(), String> {
         let params = pd_sim::nav::gen::GenParams::default();
         println!("{p} -> {q}: {:?}", pd_sim::nav::gen::probe_walk_why(&level, p, q, &params));
         println!("{q} -> {p}: {:?}", pd_sim::nav::gen::probe_walk_why(&level, q, p, &params));
+        return Ok(());
+    }
+    if let Some(i) = args.iter().position(|a| a == "--jka") {
+        let out = args.get(i + 1).filter(|a| !a.starts_with("--")).ok_or("--jka <out dir>")?;
+        let base = opt("--base").unwrap_or_else(|| pd_import::batch::default_base(manifest));
+        let num = |name: &str, default: f32| -> Result<f32, String> { opt(name).map_or(Ok(default), |v| v.to_string_lossy().parse().map_err(|_| format!("{name}: a number"))) };
+        let light = match opt("--light") {
+            Some(v) => {
+                let v = v.to_string_lossy().into_owned();
+                let (t, e) = v.split_once(',').ok_or("--light <tolerance>,<min edge>")?;
+                (t.parse().map_err(|_| "--light: numbers")?, e.parse().map_err(|_| "--light: numbers")?)
+            }
+            None => (64.0, 192.0),
+        };
+        let opts = pd_import::batch::Options {
+            clone: args.iter().any(|a| a == "--clone"),
+            only: opt("--only").map(|v| v.to_string_lossy().split(',').map(str::to_owned).collect()).unwrap_or_default(),
+            ge64: pd_import::ge64::Options { rooms: num("--rooms", 32.0)? as usize, max_texels: num("--texels", 2048.0)? as u32, max_side: 64 },
+            light,
+        };
+        for line in pd_import::batch::jka(&base, Path::new(out), &manifest.join("levels"), &paths, &opts)? {
+            println!("{line}");
+        }
+        return Ok(());
+    }
+    if let Some(i) = args.iter().position(|a| a == "--ge64") {
+        let (Some(which), Some(out)) = (args.get(i + 1), args.get(i + 2)) else { return Err("--ge64 <code> <out dir>".into()) };
+        let r = pd_import::recipe::Recipe::load(&recipe_path(which))?;
+        let num = |name: &str, default: f32| -> Result<f32, String> { opt(name).map_or(Ok(default), |v| v.to_string_lossy().parse().map_err(|_| format!("{name}: a number"))) };
+        let light = match opt("--light") {
+            Some(v) => {
+                let v = v.to_string_lossy().into_owned();
+                let (t, e) = v.split_once(',').ok_or("--light <tolerance>,<min edge>")?;
+                (t.parse().map_err(|_| "--light: numbers")?, e.parse().map_err(|_| "--light: numbers")?)
+            }
+            None => (64.0, 192.0),
+        };
+        let opts = pd_import::ge64::Options { rooms: num("--rooms", 32.0)? as usize, max_texels: num("--texels", 2048.0)? as u32, max_side: 64 };
+        for line in pd_import::export_ge64(&r, &paths, Path::new(out), &opts, Some(light))? {
+            println!("{line}");
+        }
         return Ok(());
     }
     if let Some(code) = opt("--check") {

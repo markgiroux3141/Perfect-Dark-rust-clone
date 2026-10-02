@@ -1,0 +1,17 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "jka_ctf2",
+  "name": "Hoth Wasteland",
+  "group": "Jedi Academy",
+  "stagenum": 102,
+  "scale": 2.65,
+  "source": {
+    "game": "jka",
+    "base": "D:/Claude Code Projects/Perfect Dark Rust CLone/extra maps/base",
+    "bsp": "maps/mp/ctf2.bsp"
+  },
+  "spawns": 12,
+  "weapons": 10,
+  "hills": 4,
+  "play_area": "starts"
+}

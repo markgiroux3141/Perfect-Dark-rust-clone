@@ -441,7 +441,11 @@ impl MenuSystem {
             filelists_active: false,
             mpsetup_filelists_made: false,
             menus_were_open: false,
-            custom_arenas: assets.custom_levels(),
+            custom_arenas: {
+                let mut c = assets.custom_levels();
+                pd_core::assets::sort_custom_levels(&mut c);
+                c
+            },
         };
         pd.pads[0].connected = true;
         for m in pd.menus.iter_mut() {

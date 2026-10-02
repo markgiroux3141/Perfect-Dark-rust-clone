@@ -180,21 +180,43 @@ pub fn generate_graph(level: &TileLevel) -> (NavGraph, String) {
     (gen.graph, line)
 }
 
-/// The waypoints placement may use: those of the graph's largest strongly
-/// connected part a chr stands up on.
-fn usable(graph: &NavGraph, report: &mut Vec<String>) -> Result<Vec<Node>, String> {
+/// The waypoints placement may use: those of one strongly connected part of
+/// the graph a chr stands up on: the largest, or (with `starts`) the one the
+/// most of them are nearest a waypoint of (the largest on a tie or none).
+fn usable(graph: &NavGraph, starts: Option<&[Vec3]>, report: &mut Vec<String>) -> Result<Vec<Node>, String> {
     let n = graph.waypoints.len();
     if n == 0 {
         return Err("the generator found no floor to stand on".into());
     }
     let links = directed_links(n, |w| &graph.waypoints[w].neighbours);
     let comps = strong_components(n, &links);
-    let main = &comps[0];
+    let mut pick = 0;
+    if let Some(starts) = starts {
+        let mut part = vec![0; n];
+        for (c, comp) in comps.iter().enumerate() {
+            for &w in comp {
+                part[w] = c;
+            }
+        }
+        let mut votes = vec![0usize; comps.len()];
+        for s in starts {
+            let near = (0..n).map(|w| (w, graph.waypoint_pos(w))).filter(|(_, p)| (p.y - PAD_HEIGHT - s.y).abs() < 150.0).min_by(|a, b| a.1.distance(*s).total_cmp(&b.1.distance(*s)));
+            if let Some((w, p)) = near {
+                if (p.x - s.x).hypot(p.z - s.z) < 300.0 {
+                    votes[part[w]] += 1;
+                }
+            }
+        }
+        // The most votes; the earlier (larger) part on a tie.
+        pick = (0..comps.len()).fold(0, |best, c| if votes[c] > votes[best] { c } else { best });
+    }
+    let main = &comps[pick];
     report.push(format!(
-        "reachable: {} of {} waypoints in the largest strongly connected part; the other parts: {:?}",
+        "reachable: {} of {} waypoints in the {} strongly connected part; the other parts: {:?}",
         main.len(),
         n,
-        comps.iter().skip(1).take(8).map(|c| c.len()).collect::<Vec<_>>()
+        if starts.is_some() { "player starts'" } else { "largest" },
+        comps.iter().enumerate().filter(|&(c, _)| c != pick).take(8).map(|(_, c)| c.len()).collect::<Vec<_>>()
     ));
     Ok(main
         .iter()
@@ -295,7 +317,11 @@ fn v3(p: [f32; 3]) -> Vec3 {
 #[allow(clippy::too_many_arguments)]
 pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fixed: Gameplay, layout: &Layout, how: &How, models: &std::collections::HashMap<String, i32>) -> Result<Placed, String> {
     let mut report = Vec::new();
-    let nodes = usable(graph, &mut report)?;
+    let starts: Option<Vec<Vec3>> = match how {
+        How::Generate(m) if r.play_area == crate::recipe::PlayArea::Starts => Some(m.iter().filter(|m| m.kind == MarkerKind::Spawn).map(|m| m.pos).collect()),
+        _ => None,
+    };
+    let nodes = usable(graph, starts.as_deref(), &mut report)?;
     let cands: Vec<Vec3> = nodes.iter().map(|n| n.pos).collect();
     let (gen, markers): (bool, &[Marker]) = match how {
         How::Generate(m) => (true, m),
@@ -314,6 +340,13 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(c, _)| c)
     };
+    // A spawn stands on a floor (what `check` asks of a spawn pad): not on a
+    // waypoint at a ledge's edge with the drop under its cylinder.
+    let stands = |c: &Vec3| {
+        let (y, poly) = level.cd_find_ground_at_cyl(*c, 30.0);
+        poly.is_some() && c.y >= y && c.y - y <= 150.0
+    };
+    let spawn_cands: Vec<Vec3> = cands.iter().copied().filter(stands).collect();
     // At most this many of each on the source's spots (`Recipe::marker_share`).
     let share = |n: usize| (n as f32 * r.marker_share.clamp(0.0, 1.0)).round() as usize;
     // Where the source's own rows stand (kept ones): new items keep off them.
@@ -329,7 +362,7 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
             let mut spawn_facing: Vec<Option<f32>> = Vec::new();
             for kind in [MarkerKind::Spawn, MarkerKind::Person] {
                 for m in markers.iter().filter(|m| m.kind == kind) {
-                    if let Some(p) = snap(m.pos) {
+                    if let Some(p) = snap(m.pos).filter(stands) {
                         if spawns.len() < share(r.spawns) && spawns.iter().chain(&prizes).all(|s| s.distance(p) >= 500.0) {
                             spawns.push(p);
                             spawn_facing.push(Some(m.facing));
@@ -338,7 +371,7 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
                 }
             }
             let seeded = spawns.len();
-            farthest(&cands, &mut spawns, r.spawns, 500.0, &prizes, 500.0);
+            farthest(&spawn_cands, &mut spawns, r.spawns, 500.0, &prizes, 500.0);
             spawn_facing.resize(spawns.len(), None);
             report.push(format!("spawns: {} ({} at the source's starts and people)", spawns.len(), seeded));
             // The source's facing, unless a wall stands in it (a marker snapped
@@ -400,7 +433,7 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
                     }
                 }
                 if pair.len() < 3 {
-                    return Err(format!("no room for ammo crates near the weapon at {w}"));
+                    report.push(format!("ammo: room for {} of 2 crates near the weapon at {w}", pair.len() - 1));
                 }
                 placed.extend(&pair[1..]);
                 ammo.extend(pair[1..].iter().map(|&a| (a, i)));

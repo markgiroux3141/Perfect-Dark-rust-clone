@@ -11,6 +11,9 @@ pub struct Recipe {
     pub code: String,
     /// The arena menu's name.
     pub name: String,
+    /// The arena menu's group ("Jedi Academy"); else "Custom".
+    #[serde(default)]
+    pub group: Option<String>,
     /// Its `STAGE_*` number, from `pd_core::assets::CUSTOM_STAGENUMS`.
     pub stagenum: u8,
     /// Source units to PD centimetres.
@@ -35,6 +38,19 @@ pub struct Recipe {
     /// less (Facility's MP setup marks only the half GoldenEye's arena uses).
     #[serde(default = "one")]
     pub marker_share: f32,
+    /// Which of the waypoint graph's parts placement uses: the largest, or
+    /// the one most of the source's player starts are in (a level whose
+    /// outside, its roofs, is the biggest walkable part: Jedi Academy's).
+    #[serde(default)]
+    pub play_area: PlayArea,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PlayArea {
+    #[default]
+    Largest,
+    Starts,
 }
 
 fn one() -> f32 {
@@ -49,6 +65,58 @@ pub enum Source {
     Gltf(GltfSource),
     Ge(GeSource),
     Pd(PdSource),
+    Jka(JkaSource),
+}
+
+/// A Jedi Academy map ([`crate::jka`]): a compiled `.bsp`, with the game's
+/// own directory for its textures and shader scripts.
+#[derive(Clone, Debug, Deserialize)]
+pub struct JkaSource {
+    /// The game's `base` directory (`GameData/base`: `assets0.pk3` ...).
+    pub base: String,
+    /// The map: a `.bsp` file, or its path in the game's packages
+    /// (`maps/mp/ffa1.bsp`); `--src` overrides it.
+    pub bsp: String,
+    /// The clear colour where nothing is drawn (else the sky box's average,
+    /// else black).
+    #[serde(default)]
+    pub sky: Option<[u8; 3]>,
+    /// The lightmaps' colours are scaled by this into the vertex colours.
+    #[serde(default = "one")]
+    pub light_scale: f32,
+    /// Textures bigger than this (pixels, either side) are halved until they
+    /// fit.
+    #[serde(default = "max_texture")]
+    pub max_texture: u32,
+    /// Walls up to shoulder height between two floors become climbable
+    /// ([`crate::source::LevelSource::mark_ledges`]): PD has no jump, and
+    /// Jedi Academy's levels are built round one.
+    #[serde(default = "yes")]
+    pub climb_ledges: bool,
+    /// Shader names drawn as others: a texture the map shipped in its own
+    /// package that the game lacks, as the nearest one it has
+    /// (`"textures/yavin/temple_vines": "textures/yavin/temple_vines2"`).
+    #[serde(default)]
+    pub substitute: std::collections::HashMap<String, String>,
+    /// The lighting's detail: an edge is split where its middle is lit this
+    /// many steps (of 255) off its ends, while it is longer than
+    /// `light_min_edge` units.
+    #[serde(default = "light_tolerance")]
+    pub light_tolerance: f32,
+    #[serde(default = "light_min_edge")]
+    pub light_min_edge: f32,
+}
+
+fn light_tolerance() -> f32 {
+    20.0
+}
+
+fn light_min_edge() -> f32 {
+    32.0
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// Any glTF 2.0 level, `.glb` or `.gltf` ([`crate::gltf`]).

@@ -291,7 +291,7 @@ fn a_custom_level_is_listed_in_its_own_group() {
     let (plain, _) = op(&mut pd, MENUOP_GET_OPTION_COUNT, 0);
     let (groups, _) = op(&mut pd, MENUOP_GET_OPTGROUP_COUNT, 0);
     assert_eq!((plain.value, groups.value), (17, 3));
-    pd.custom_arenas = vec![pd_core::assets::CustomLevel { code: "kokiri".into(), stagenum: 0x60, name: "Kokiri Forest".into() }];
+    pd.custom_arenas = vec![pd_core::assets::CustomLevel { code: "kokiri".into(), stagenum: 0x60, name: "Kokiri Forest".into(), group: String::new() }];
     assert_eq!(op(&mut pd, MENUOP_GET_OPTION_COUNT, 0).0.value, 18);
     assert_eq!(op(&mut pd, MENUOP_GET_OPTGROUP_COUNT, 0).0.value, 4);
     let HRet::S(label) = op(&mut pd, MENUOP_GET_OPTGROUP_TEXT, 3).1 else { panic!("no group label") };
@@ -306,4 +306,36 @@ fn a_custom_level_is_listed_in_its_own_group() {
     // PD's rows are where they were: Complex, the last Classic arena but two.
     op(&mut pd, MENUOP_CONFIRM, 14);
     assert_eq!(pd.mp.setup.stagenum, pd_core::ids::STAGE_MP_COMPLEX);
+}
+
+/// Named groups ("Jedi Academy") follow "Custom", each its own group, its
+/// rows after the ungrouped ones (the order `sort_custom_levels` gives).
+#[test]
+fn named_custom_groups_follow_custom() {
+    use super::handlers::mp_arena_menu_handler as h;
+    let mut pd = pd();
+    let item = &gd::G_MP_ARENA_MENU_ITEMS[0];
+    let op = |pd: &mut MenuSystem, op: i32, value: i32| {
+        let mut data = HandlerData { value, ..HandlerData::default() };
+        let r = h(pd, op, item, &mut data);
+        (data, r)
+    };
+    let level = |code: &str, stagenum: u8, group: &str| pd_core::assets::CustomLevel { code: code.into(), stagenum, name: code.to_uppercase(), group: group.into() };
+    let mut levels = vec![level("jka_ffa1", 0x66, "Jedi Academy"), level("kokiri", 0x60, ""), level("catacombs", 0x64, "Jedi Academy"), level("facility", 0x61, "")];
+    pd_core::assets::sort_custom_levels(&mut levels);
+    assert_eq!(levels.iter().map(|l| l.code.as_str()).collect::<Vec<_>>(), ["kokiri", "facility", "catacombs", "jka_ffa1"]);
+    pd.custom_arenas = levels;
+    assert_eq!(op(&mut pd, MENUOP_GET_OPTGROUP_COUNT, 0).0.value, 5);
+    let label = |pd: &mut MenuSystem, g: i32| match op(pd, MENUOP_GET_OPTGROUP_TEXT, g).1 {
+        HRet::S(s) => s,
+        _ => panic!("no group label"),
+    };
+    assert_eq!(label(&mut pd, 3), "Custom
+");
+    assert_eq!(label(&mut pd, 4), "Jedi Academy
+");
+    assert_eq!(op(&mut pd, MENUOP_GET_OPTGROUP_START_INDEX, 3).0.groupstartindex, 17);
+    assert_eq!(op(&mut pd, MENUOP_GET_OPTGROUP_START_INDEX, 4).0.groupstartindex, 19);
+    op(&mut pd, MENUOP_CONFIRM, 20);
+    assert_eq!(pd.mp.setup.stagenum, 0x66);
 }

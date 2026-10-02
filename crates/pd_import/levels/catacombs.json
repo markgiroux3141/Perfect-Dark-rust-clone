@@ -1,0 +1,17 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "catacombs",
+  "name": "Catacombs",
+  "group": "Jedi Academy",
+  "stagenum": 100,
+  "scale": 2.65,
+  "source": {
+    "game": "jka",
+    "base": "D:/Claude Code Projects/Perfect Dark Rust CLone/extra maps/base",
+    "bsp": "D:/Claude Code Projects/Perfect Dark Rust CLone/extra maps/catacombs/ae_catacombs.bsp",
+    "substitute": {"textures/yavin/temple_vines": "textures/yavin/temple_vines2"}
+  },
+  "spawns": 12,
+  "weapons": 10,
+  "hills": 4
+}

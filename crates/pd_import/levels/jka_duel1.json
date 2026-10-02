@@ -1,0 +1,17 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "jka_duel1",
+  "name": "Bespin Courtyard",
+  "group": "Jedi Academy",
+  "stagenum": 106,
+  "scale": 2.65,
+  "source": {
+    "game": "jka",
+    "base": "D:/Claude Code Projects/Perfect Dark Rust CLone/extra maps/base",
+    "bsp": "maps/mp/duel1.bsp"
+  },
+  "spawns": 12,
+  "weapons": 10,
+  "hills": 4,
+  "play_area": "starts"
+}

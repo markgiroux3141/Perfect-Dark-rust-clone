@@ -55,16 +55,25 @@ pub fn menuhandler_mp_teams_label(pd: &mut MenuSystem, op: i32, _item: &'static 
 /// `mp_arena_menu_handler` (setup.c:157).
 ///
 /// `// SUBST:` PD lists `g_MpArenas` in three groups (Dark, Classic,
-/// Random) / the custom levels (not PD: `pd_import`'s conversions) follow in a
-/// fourth group, "Custom", when there are any.
+/// Random) / the custom levels (not PD: `pd_import`'s conversions) follow in
+/// groups of their own: "Custom" for those without a group, then each named
+/// group ("Jedi Academy"), in `custom_arenas`' order
+/// (`pd_core::assets::sort_custom_levels`).
 pub fn mp_arena_menu_handler(pd: &mut MenuSystem, op: i32, _item: &'static MenuItem, data: &mut HandlerData) -> R {
     let groups: [(i32, u16); 3] = [(0, 116), (13, 117), (16, 118)];
     let unlocked: Vec<usize> = (0..MP_ARENAS.len()).filter(|&i| pd.challenge_is_feature_unlocked(MP_ARENAS[i].requirefeature)).collect();
     let no_classic = !pd.challenge_is_feature_unlocked(MPFEATURE_STAGE_COMPLEX) && !pd.challenge_is_feature_unlocked(MPFEATURE_STAGE_TEMPLE) && !pd.challenge_is_feature_unlocked(MPFEATURE_STAGE_FELICITY);
-    // The custom group follows PD's (index `pdgroups`), its rows after PD's.
+    // The custom groups follow PD's (from index `pdgroups`), their rows after
+    // PD's: (name, first row among the custom arenas).
     let pdgroups = if no_classic { 2 } else { 3 };
-    let custom = !pd.custom_arenas.is_empty();
-    let is_custom_group = custom && data.value == pdgroups;
+    let mut custom_groups: Vec<(&str, usize)> = Vec::new();
+    for (i, c) in pd.custom_arenas.iter().enumerate() {
+        if custom_groups.last().is_none_or(|g| g.0 != c.group) {
+            custom_groups.push((c.group.as_str(), i));
+        }
+    }
+    let custom_group = (data.value >= pdgroups).then(|| custom_groups.get((data.value - pdgroups) as usize).copied()).flatten();
+    let is_custom_group = custom_group.is_some();
     match op {
         MENUOP_GET_OPTION_COUNT => data.value = (unlocked.len() + pd.custom_arenas.len()) as i32,
         MENUOP_GET_OPTION_TEXT => {
@@ -106,12 +115,13 @@ pub fn mp_arena_menu_handler(pd: &mut MenuSystem, op: i32, _item: &'static MenuI
             if no_classic {
                 data.value -= 1;
             }
-            if custom {
-                data.value += 1;
-            }
+            data.value += custom_groups.len() as i32;
         }
-        MENUOP_GET_OPTGROUP_TEXT if is_custom_group => return "Custom\n".to_string().into(),
-        MENUOP_GET_OPTGROUP_START_INDEX if is_custom_group => data.groupstartindex = unlocked.len() as i32,
+        MENUOP_GET_OPTGROUP_TEXT if is_custom_group => {
+            let name = custom_group.map_or("", |g| g.0);
+            return format!("{}\n", if name.is_empty() { "Custom" } else { name }).into();
+        }
+        MENUOP_GET_OPTGROUP_START_INDEX if is_custom_group => data.groupstartindex = (unlocked.len() + custom_group.map_or(0, |g| g.1)) as i32,
         MENUOP_GET_OPTGROUP_TEXT => {
             let mut count = data.value;
             if no_classic && count > 0 {

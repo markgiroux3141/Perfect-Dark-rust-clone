@@ -92,6 +92,8 @@ fn recipe() -> Recipe {
         weapons: 4,
         hills: 2,
         marker_share: 1.0,
+        play_area: crate::recipe::PlayArea::Largest,
+        group: None,
     }
 }
 
@@ -168,7 +170,7 @@ fn a_level_becomes_a_stage_the_game_plays() {
     let r = recipe();
     let report = crate::build(&r, yard(), &paths).unwrap();
     let a = pd_core::assets::AssetDir::new(&assets).with_custom_dir(&dir);
-    assert_eq!(a.custom_levels(), vec![pd_core::assets::CustomLevel { code: "test_yard".into(), stagenum: 0x7f, name: "Test Yard".into() }]);
+    assert_eq!(a.custom_levels(), vec![pd_core::assets::CustomLevel { code: "test_yard".into(), stagenum: 0x7f, name: "Test Yard".into(), group: String::new() }]);
     assert_eq!(a.stage_code(0x7f).as_deref(), Some("test_yard"));
 
     let stage = pd_sim::stage::Stage::load(&a, "test_yard").unwrap();
@@ -438,5 +440,76 @@ fn ci_felicity_is_two_stages_fused() {
     assert_eq!(hit.room, 0xb4);
     assert_eq!(hit.surface, Some(pd_sim::stage::bghit::TexSurface { soundsurfacetype: 1, surfacetype: 8 }));
     assert!(dir.join("textures").join("0249.png").exists());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Catacombs, a Jedi Academy map, with the game's `base` directory: Korriban's
+/// textures from the packages, its lightmaps baked into split triangles, the
+/// whole pipeline through the check match. Needs the user's copy of the game
+/// (the recipe's `base` and `bsp`); without it, says so and passes.
+#[test]
+fn catacombs_is_a_jedi_academy_map() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let r = Recipe::load(&manifest.join("levels").join("catacombs.json")).unwrap();
+    let Source::Jka(j) = &r.source else { panic!("catacombs.json is not a Jedi Academy map") };
+    if !std::path::Path::new(&j.bsp).is_file() || !std::path::Path::new(&j.base).join("assets1.pk3").is_file() {
+        eprintln!("skipped: no map at {} or no game at {}", j.bsp, j.base);
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("pd_import_jka_test_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let assets = manifest.join("..").join("..").join("assets");
+    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None };
+    let report = crate::import(&r, &paths, &crate::layout::Layout::new()).unwrap();
+    let line = |start: &str| report.iter().find(|l| l.starts_with(start)).unwrap_or_else(|| panic!("no {start:?} in {report:#?}")).clone();
+    let jka = line("jka: 178 surfaces");
+    assert!(jka.contains("(20 patches, 0 sky)") && jka.contains("19 materials, 19 textures") && jka.contains("1810 Quake triangles") && jka.contains("11 markers"), "{jka}");
+    // Every image found: the one the map shipped with (not in the game) drawn
+    // as its sibling, by the recipe (the user's first playtest: six vine
+    // walls were grey checkers). `noshader` is only on brush sides.
+    assert_eq!(line("jka: the recipe's substitutes"), "jka: the recipe's substitutes: textures/yavin/temple_vines as textures/yavin/temple_vines2");
+    assert!(!report.iter().any(|l| l.starts_with("jka: images not found")), "{report:#?}");
+    // Lit by its lightmaps: the triangles split where the light varies (an
+    // empty lightmap rectangle once held every sample to one texel: none).
+    let added: usize = jka.split(" added").next().unwrap().rsplit(' ').next().unwrap().parse().unwrap();
+    assert!((5000..40000).contains(&added), "{jka}");
+    assert!(line("source:").contains("61 x 54 x 8 m"), "{}", line("source:"));
+    assert!(line("spawns:").contains("(3 at the source's starts"), "{}", line("spawns:"));
+    let reach = line("reachable:");
+    let n: Vec<usize> = reach.split(|c: char| !c.is_ascii_digit()).filter_map(|s| s.parse().ok()).take(2).collect();
+    assert!(n[0] * 10 >= n[1] * 8, "most of the level in one part: {reach}");
+    assert!(line("check:").contains("0 stalls"), "{}", line("check:"));
+    // A floor's colour is its lightmap's (the corridors are lit, not black).
+    let a = pd_core::assets::AssetDir::new(&assets).with_custom_dir(&dir);
+    let stage = pd_sim::stage::Stage::load(&a, "catacombs").unwrap();
+    let level = pd_sim::stage::TileLevel::for_stage(&stage);
+    let pad = &stage.pads[stage.spawn_pads[0]];
+    let (_, floor) = level.cd_find_ground_at_cyl(pad.pos, 30.0);
+    assert!(floor.is_some(), "a floor under spawn 0");
+
+    // As the GoldenEye Setup Editor's level files: its groups, its tags,
+    // every face's corners present, every material defined.
+    let out = dir.join("ge64");
+    let opts = crate::ge64::Options { rooms: 32, max_texels: 2048, max_side: 64 };
+    let report = crate::export_ge64(&r, &paths, &out, &opts, Some((64.0, 192.0))).unwrap();
+    assert!(report.iter().any(|l| l.starts_with("textures: 19 BMPs (18 at 32x32, 1 at 32x64)")), "{report:#?}");
+    let obj = std::fs::read_to_string(out.join("level/LevelIndices.obj")).unwrap();
+    let nv = obj.lines().filter(|l| l.starts_with("v ")).count();
+    assert_eq!(nv, obj.lines().filter(|l| l.starts_with("#vcolor")).count());
+    assert!(obj.lines().filter(|l| l.starts_with("f ")).flat_map(|l| l.split_whitespace().skip(1)).all(|c| c.split('/').next().unwrap().parse::<usize>().is_ok_and(|i| (1..=nv).contains(&i))));
+    assert!(obj.contains("
+g primary_Room01
+"));
+    let mtl = std::fs::read_to_string(out.join("level/LevelIndices.mtl")).unwrap();
+    assert!(obj.lines().filter_map(|l| l.strip_prefix("usemtl ")).all(|m| mtl.contains(&format!("newmtl {m}
+"))));
+    let clip = std::fs::read_to_string(out.join("clipping/clippingObjcatacombs.obj")).unwrap();
+    assert!(clip.contains("
+g Clip000
+") && clip.contains("_ForceFloor_SFX2
+") && clip.contains("_SolidLadder_SFX0
+"));
+    let portals = std::fs::read_to_string(out.join("portal/portals.txt")).unwrap();
+    assert!(portals.lines().next().is_some_and(|l| l.len() == 15 && l.ends_with(" 0000 04")), "{portals:.40}");
     std::fs::remove_dir_all(&dir).unwrap();
 }

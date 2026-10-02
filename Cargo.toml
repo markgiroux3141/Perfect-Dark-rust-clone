@@ -44,7 +44,7 @@ pollster = "0.4"
 bytemuck = { version = "1", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tga"] }
 kira = "0.12"
 gilrs = "0.11"
 egui = "0.31"

@@ -8,7 +8,7 @@
 //!
 //! ```text
 //! recipe (levels/<code>.json)
-//!   ├─ source importer (oot, gltf) ──► LevelSource: triangles + materials +
+//!   ├─ source importer (oot, gltf, jka) ──► LevelSource: triangles + materials +
 //!   │                             textures, collision polygons, markers, environment
 //!   │    └─ rooms ──► boxes over the floor area, every polygon cut to them, portals
 //!   │         └─ write ──► bg.json + bg.bin + tex/, tiles.json   (the geometry)
@@ -35,17 +35,22 @@
 //! Importers: [`oot`] (Ocarina of Time scenes, from the OoT Clone repo's
 //! extractor), [`gltf`] (any glTF 2.0 file), [`ge`] (GoldenEye 007 levels,
 //! from the ROM by `tools/ge-extract`), [`pd`] (PD's own arenas, rebuilt in
-//! Blender).
+//! Blender), [`jka`] (Jedi Academy maps, with the game's `base` directory).
 
+pub mod batch;
 pub mod cache;
 pub mod doors;
 pub mod ge;
 pub mod glb;
+pub mod ge64;
 pub mod gltf;
+pub mod jka;
 pub mod layout;
 pub mod oot;
 pub mod pd;
+pub mod pk3;
 pub mod place;
+pub mod q3shader;
 pub mod recipe;
 pub mod rooms;
 pub mod source;
@@ -170,14 +175,8 @@ pub fn replace(r: &Recipe, paths: &Paths, layout: &Layout, how: Finish) -> Resul
 /// `custom/stages/<code>/`, and what the source brings besides (saved there).
 pub fn geometry(r: &Recipe, paths: &Paths) -> Result<(PathBuf, SourceData), String> {
     let (dir, data) = match &r.source {
-        Source::Oot(o) => {
-            let dir = paths.src.clone().unwrap_or_else(|| PathBuf::from(&o.scene_dir));
-            write_geometry(r, oot::load(r, o, &dir)?, paths, vec![title(r)])?
-        }
-        Source::Gltf(g) => {
-            let mut report = vec![title(r)];
-            let path = paths.src.clone().unwrap_or_else(|| PathBuf::from(&g.path));
-            let src = gltf::load(r, g, &path, &mut report)?;
+        Source::Oot(_) | Source::Gltf(_) | Source::Jka(_) => {
+            let (src, report) = level_source(r, paths)?.expect("a LevelSource importer");
             write_geometry(r, src, paths, report)?
         }
         Source::Ge(g) => {
@@ -197,6 +196,51 @@ pub fn geometry(r: &Recipe, paths: &Paths) -> Result<(PathBuf, SourceData), Stri
     };
     data.save(&dir)?;
     Ok((dir, data))
+}
+
+/// The level as a [`LevelSource`] (an OoT scene, a glTF, a Jedi Academy map)
+/// with the report so far; `None` for the sources that write PD's stage
+/// files themselves (GoldenEye's, PD's own).
+pub fn level_source(r: &Recipe, paths: &Paths) -> Result<Option<(LevelSource, Vec<String>)>, String> {
+    let mut report = vec![title(r)];
+    let src = match &r.source {
+        Source::Oot(o) => {
+            let dir = paths.src.clone().unwrap_or_else(|| PathBuf::from(&o.scene_dir));
+            oot::load(r, o, &dir)?
+        }
+        Source::Gltf(g) => {
+            let path = paths.src.clone().unwrap_or_else(|| PathBuf::from(&g.path));
+            gltf::load(r, g, &path, &mut report)?
+        }
+        Source::Jka(j) => {
+            let vfs = pk3::Vfs::open(Path::new(&j.base))?;
+            let map = paths.src.as_ref().map_or_else(|| j.bsp.clone(), |p| p.to_string_lossy().into_owned());
+            let bytes = jka::read_map(&map, &vfs)?;
+            jka::load(r, j, &bytes, &vfs, &mut report).map_err(|e| format!("{map}: {e}"))?
+        }
+        Source::Ge(_) | Source::Pd(_) => return Ok(None),
+    };
+    Ok(Some((src, report)))
+}
+
+/// The level as the GoldenEye Setup Editor's level files under `out`
+/// ([`ge64`]): the source converted again with `jka_light` (a Jedi Academy
+/// map's lighting detail: (tolerance, min edge), coarser for the N64's
+/// budget), its risers and ledges as for the clone, split into `opts.rooms`.
+pub fn export_ge64(r: &Recipe, paths: &Paths, out: &Path, opts: &ge64::Options, jka_light: Option<(f32, f32)>) -> Result<Vec<String>, String> {
+    let mut r = r.clone();
+    if let (Source::Jka(j), Some((tolerance, min_edge))) = (&mut r.source, jka_light) {
+        j.light_tolerance = tolerance;
+        j.light_min_edge = min_edge;
+    }
+    let Some((mut src, mut report)) = level_source(&r, paths)? else {
+        return Err(format!("{}: a GoldenEye or PD source is already in those games' formats (export the stage from the Setup Editor instead)", r.code));
+    };
+    let risers = src.drop_step_risers();
+    let ledges = src.mark_ledges();
+    report.push(format!("source: {} triangles, {} collision polygons ({risers} step risers dropped, {ledges} ledges made climbable)", src.tris.len(), src.collision.len()));
+    report.extend(ge64::export(&r.code, &src, opts, out)?);
+    Ok(report)
 }
 
 fn title(r: &Recipe) -> String {

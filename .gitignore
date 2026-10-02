@@ -24,3 +24,7 @@ save/
 # Custom levels converted by pd_import (crates/pd_import): another game's data,
 # made from its owner's copy, never committed.
 custom/
+
+# Other games' data the importer reads (Jedi Academy's base/ and maps): the
+# user's own copies, never committed.
+extra maps/

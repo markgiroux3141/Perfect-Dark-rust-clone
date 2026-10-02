@@ -45,6 +45,16 @@ pub struct CustomLevel {
     pub stagenum: u8,
     /// The arena menu's name for it.
     pub name: String,
+    /// The arena menu's group it is listed in ("Jedi Academy"); empty for
+    /// the "Custom" group.
+    #[serde(default)]
+    pub group: String,
+}
+
+/// The custom levels in the arena menu's order: the "Custom" group's (no
+/// group) first, then each named group's by name; by stage number within.
+pub fn sort_custom_levels(levels: &mut [CustomLevel]) {
+    levels.sort_by(|a, b| (!a.group.is_empty(), &a.group, a.stagenum).cmp(&(!b.group.is_empty(), &b.group, b.stagenum)));
 }
 
 #[derive(Deserialize)]
@@ -248,7 +258,7 @@ mod tests {
         .unwrap();
         std::fs::write(dir.join("stages").join("kok").join("tex.png"), b"x").unwrap();
         let a = AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR")).with_custom_dir(&dir);
-        assert_eq!(a.custom_levels(), vec![CustomLevel { code: "kok".into(), stagenum: 96, name: "Kok".into() }], "a PD stage number is refused");
+        assert_eq!(a.custom_levels(), vec![CustomLevel { code: "kok".into(), stagenum: 96, name: "Kok".into(), group: String::new() }], "a PD stage number is refused");
         assert_eq!(a.stage("kok"), dir.join("stages").join("kok"));
         assert_eq!(a.path("stages/kok/tex.png"), dir.join("stages/kok/tex.png"));
         assert_eq!(a.stage("ref"), a.root().join("stages").join("ref"));

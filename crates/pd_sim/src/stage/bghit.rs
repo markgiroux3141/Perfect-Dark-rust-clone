@@ -24,7 +24,15 @@ use super::geom::LevelGeom;
 
 /// `SURFACETYPE_DEFAULT`.
 pub const SURFACETYPE_DEFAULT: u8 = 0;
+pub const SURFACETYPE_STONE: u8 = 1;
+pub const SURFACETYPE_WOOD: u8 = 2;
+pub const SURFACETYPE_METAL: u8 = 3;
+pub const SURFACETYPE_GLASS: u8 = 4;
 pub const SURFACETYPE_SHALLOWWATER: u8 = 5;
+pub const SURFACETYPE_SNOW: u8 = 6;
+pub const SURFACETYPE_DIRT: u8 = 7;
+pub const SURFACETYPE_MUD: u8 = 8;
+pub const SURFACETYPE_TILE: u8 = 9;
 pub const SURFACETYPE_DEEPWATER: u8 = 14;
 
 /// `struct surfacetype` (`tex.c`): the hit sounds and the bullet-hole textures.
