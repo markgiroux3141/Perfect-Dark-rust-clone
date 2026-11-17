@@ -358,9 +358,9 @@ fn probe_stalls() {
     let a = AssetDir::new(&assets()).with_custom_dir(&root.join("custom"));
     let stage = Arc::new(pd_sim::stage::Stage::load(&a, &code).unwrap());
     let level = Arc::new(pd_sim::stage::TileLevel::for_stage(&stage));
-    let recipe = autolevel::recipe::load(&std::fs::read_to_string(root.join("out/autolevel").join(&code).join("recipe.json")).unwrap()).unwrap();
-    let b = built::make(&recipe, false).unwrap();
-    let key = |room: u16| b.level.plan.rooms.iter().find(|r| r.room_id == room as usize).map_or("?".to_string(), |r| r.key.clone());
+    // (a stage with no recipe, one of PD's arenas: its rooms by number)
+    let b = std::fs::read_to_string(root.join("out/autolevel").join(&code).join("recipe.json")).ok().map(|t| built::make(&autolevel::recipe::load(&t).unwrap(), false).unwrap());
+    let key = |room: u16| b.as_ref().and_then(|b| b.level.plan.rooms.iter().find(|r| r.room_id == room as usize).map(|r| r.key.clone())).unwrap_or_else(|| format!("room {room}"));
     let res = Arc::new(pd_sim::world::WorldRes::load(&a).unwrap());
     let setup = pd_sim::harness::with_weapons(pd_sim::harness::setup(0, 6, BOTDIFF_NORMAL), &pd_sim::harness::DEFAULT_SET);
     let setup = pd_core::mp::MatchSetup { stagenum: stage.stagenum, ..setup };
@@ -369,11 +369,26 @@ fn probe_stalls() {
     // PD_PROBE_SECS: how long a match (60 s); each stall's nearest door is told too
     let secs: i32 = std::env::var("PD_PROBE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(60);
     let mut stalls = 0;
+    // and each fall of more than 100 (the import check's "ledge falls"): from where, to where
+    let mut fall_top: Vec<Option<(f32, glam::Vec3)>> = vec![None; w.chrs.len()];
+    let mut falls = 0;
     for _ in 0..60 * secs {
         pd_sim::harness::step_idle(&mut w);
         let t = w.lv.lvframe60;
         for k in 0..w.chrs.len() {
             let c = &w.chrs[k];
+            match (fall_top[k], c.fallspeed.y != 0.0) {
+                (None, true) => fall_top[k] = Some((c.manground, c.pos)),
+                (Some((top, from)), false) => {
+                    if top - c.manground > 100.0 {
+                        let rooms = |p: glam::Vec3| stage.rooms.bg_find_rooms_by_pos(p, 4).0.iter().map(|&r| key(r)).collect::<Vec<_>>();
+                        println!("{:5.1}s chr {k} fell {:.0}: from {:.0} {:?} to {:.0} {:?}", t as f32 / 60.0, top - c.manground, from, rooms(from), c.pos, rooms(c.pos));
+                        falls += 1;
+                    }
+                    fall_top[k] = None;
+                }
+                _ => {}
+            }
             let moved = glam::Vec2::new(c.pos.x - c.prevpos.x, c.pos.z - c.prevpos.z).length() > 0.5;
             if w.chr_is_dead(k) || c.actiontype != Act::GoPos || moved {
                 still[k] = t;
@@ -393,5 +408,5 @@ fn probe_stalls() {
             }
         }
     }
-    println!("{stalls} stalls in {secs} s");
+    println!("{stalls} stalls, {falls} falls in {secs} s");
 }

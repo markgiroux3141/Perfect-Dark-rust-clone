@@ -1184,7 +1184,17 @@ minutes each: 161 stalls before, 48 after (seed 10: 31 to 2; stalls away from do
 **Left**: 34 of the 48 are two doors (seeds 9 and 11) held part open by chrs pressing on them from
 both sides. PD's own door logic: an opening door stops dead at a chr in its sweep unless it has
 `DOORFLAG_UNBLOCKABLEOPEN`, which Felicity's doors (copied into ours) don't. Not changed: it is the
-doors, not the waypoints, and a departure from PD for the user to decide.
+doors, not the waypoints, and a departure from PD for the user to decide. **The user (2026-11-17):
+leave it, simulants get stuck in PD's own levels too.**
+
+**Ledge falls** (the import check's count of drops over 100; `probe_stalls` now prints each, from
+where to where, and runs on PD's arenas too: `PD_PROBE_STAGE=mp11`, rooms by number): not ledges.
+Simulants running down stairs leave the treads and land half a flight on (141 or 142, about 236
+along; 118 on a walkway's flight). Felicity 15, five minutes: 54, every one on a flight. PD's own
+Felicity (`mp11`, PD's graph), five minutes: 33, the same half-flight drops in its stair rooms (and
+a few true drops of 577 from its room 14 into 16). It is PD's movement on stairs; nothing to fix.
+(Felicity's risers are vertical floor tiles flagged `GEOFLAG_STEP`; ours are wall tiles. Not
+tried: whether flagging ours so changes anything; PD's own drops show it doesn't stop these.)
 
 **Not yet:** windows, light strips; no outdoor part; the editor can't make or
 edit a Felicity level (a Felicity recipe takes no edits). Of the layout: the hall always closes
