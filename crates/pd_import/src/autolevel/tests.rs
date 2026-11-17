@@ -206,7 +206,11 @@ fn the_level_is_drawn_on_the_pools_textures_with_complexs_materials() {
     assert!(textures.keys().all(|k| k.parse::<u32>().unwrap() < 0x10000) && textures.values().all(|t| t["source"] == "pd"), "{textures:?}");
     assert_eq!(bg["rooms"].as_array().unwrap().len(), 61);
     assert_eq!(bg["portals"].as_array().unwrap().len(), 91);
-    assert_eq!(bg["batches"].as_array().unwrap().iter().map(|b| b["nidx"].as_u64().unwrap()).sum::<u64>(), 15303 * 3);
+    // 15,303 drawn, and 30 more where the translucent layers' block trees cut
+    // a railing or window across another's plane (`crate::bsp`).
+    assert_eq!(bg["batches"].as_array().unwrap().iter().map(|b| b["nidx"].as_u64().unwrap()).sum::<u64>(), 15333 * 3);
+    let xlu: Vec<&Value> = bg["nodes"].as_array().unwrap().iter().filter(|n| n["layer"] == "xlu").collect();
+    assert!(!xlu.is_empty() && xlu.iter().all(|n| n["tree"].is_array()), "every translucent layer is ordered by a block tree");
     // A floor triangle's texels: 32 to every 39.37 units, in s and in t.
     let floor = src.materials.iter().position(|m| m.pd.as_ref().unwrap().texture == 0x73e && m.cull_back).unwrap();
     let t = src.tris.iter().find(|t| t.material == floor).unwrap();

@@ -51,6 +51,7 @@ pub mod autolevel;
 pub mod autonav;
 pub mod autowalk;
 pub mod batch;
+pub mod bsp;
 pub mod cache;
 pub mod doors;
 pub mod ge;

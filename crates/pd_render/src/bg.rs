@@ -503,8 +503,11 @@ impl StageBg {
         self.bind(rp);
         match frame {
             None => {
-                for &d in &self.all {
-                    if self.is_xlu(d) {
+                // Every room's layer in node order, its blocks by its tree.
+                let mut rooms: Vec<&RoomDraws> = self.rooms.iter().filter(|r| !r.xlu.is_empty()).collect();
+                rooms.sort_by_key(|r| r.xlu[0]);
+                for rd in rooms {
+                    for d in xlu_order(rd, &self.draws, campos) {
                         self.draw_one(rp, combiner, d);
                     }
                 }

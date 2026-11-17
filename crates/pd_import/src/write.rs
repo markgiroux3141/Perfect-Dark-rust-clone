@@ -111,8 +111,9 @@ fn env_json(r: &Recipe, src: &LevelSource) -> Value {
 
 /// `bg.json` + `bg.bin` and the textures: every triangle cut into its rooms,
 /// one DL node per room and layer (every opaque node first, as PD's order
-/// is), a batch per material, a colour table entry per vertex. Returns the
-/// triangle count.
+/// is), a batch per material (a translucent layer's per leaf of its block
+/// tree and material), a colour table entry per vertex. Returns the triangle
+/// count.
 pub fn write_bg(dir: &Path, r: &Recipe, src: &LevelSource, part: &Partition) -> Result<usize, String> {
     let fog = src.env.fog.is_some();
     // Cut every triangle into its rooms: (room, xlu, material) -> triangles.
@@ -138,14 +139,42 @@ pub fn write_bg(dir: &Path, r: &Recipe, src: &LevelSource, part: &Partition) -> 
     }
     let mut keys: Vec<_> = groups.keys().copied().collect();
     keys.sort_by_key(|&(room, xlu, m)| (node_of[&(room, xlu)], m));
+    // The batches in node order, each (room, xlu, leaf, material, triangles):
+    // an opaque layer is one block; a translucent one gets its block tree, a
+    // batch per leaf and material, as PD's arenas' are ([`crate::bsp`]).
+    let mut work: Vec<(u16, bool, usize, usize, Vec<[Vert; 3]>)> = Vec::new();
+    let mut xlu_items: Vec<crate::bsp::Item<usize>> = Vec::new();
+    for (i, &(room, xlu, m)) in keys.iter().enumerate() {
+        let tris = groups.remove(&(room, xlu, m)).unwrap_or_default();
+        if !xlu {
+            work.push((room, xlu, 0, m, tris));
+            continue;
+        }
+        xlu_items.extend(tris.into_iter().map(|t| (m, t)));
+        if keys.get(i + 1).is_some_and(|&(r, x, _)| (r, x) == (room, xlu)) {
+            continue;
+        }
+        let (tree, leaves) = crate::bsp::build(std::mem::take(&mut xlu_items));
+        nodes[node_of[&(room, xlu)]]["tree"] = json!([tree]);
+        for (leaf, items) in leaves.into_iter().enumerate() {
+            let mut by_mat: Vec<(usize, Vec<[Vert; 3]>)> = Vec::new();
+            for (m, t) in items {
+                match by_mat.iter_mut().find(|(k, _)| *k == m) {
+                    Some((_, ts)) => ts.push(t),
+                    None => by_mat.push((m, vec![t])),
+                }
+            }
+            by_mat.sort_by_key(|&(m, _)| m);
+            work.extend(by_mat.into_iter().map(|(m, ts)| (room, xlu, leaf, m, ts)));
+        }
+    }
     let mut blob: Vec<u8> = Vec::new();
     let mut batches = Vec::new();
     let mut colours: HashMap<u16, usize> = HashMap::new();
     let mut room_box: HashMap<u16, (Vec3, Vec3)> = HashMap::new();
     let mut ntris = 0;
-    for key in keys {
-        let (room, xlu, m) = key;
-        let tris = &groups[&key];
+    for (room, xlu, leaf, m, tris) in work {
+        let tris = &tris;
         let (tw, th) = texture_of(src, m).map_or((1.0, 1.0), |(_, w, h)| (w, h));
         // Vertices shared within the batch.
         let mut verts: Vec<Vert> = Vec::new();
@@ -187,7 +216,7 @@ pub fn write_bg(dir: &Path, r: &Recipe, src: &LevelSource, part: &Partition) -> 
         for i in &idx {
             blob.extend_from_slice(&i.to_le_bytes());
         }
-        batches.push(json!({"node": node_of[&(room, xlu)], "material": m, "nverts": verts.len(), "nidx": idx.len(), "leaf": 0, "cidx": cidx}));
+        batches.push(json!({"node": node_of[&(room, xlu)], "material": m, "nverts": verts.len(), "nidx": idx.len(), "leaf": leaf, "cidx": cidx}));
     }
 
     // The textures, one file each; one id per material.
