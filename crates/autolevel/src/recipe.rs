@@ -49,7 +49,8 @@ pub const FORMAT: u32 = 1;
 pub const CEILINGS: [&str; 4] = ["plain", "ceiling_tile", "ceiling_dark", "grille"];
 
 /// The options by name, as the file and a command line spell them, in the file's order.
-pub const OPTIONS: [&str; 22] = [
+pub const OPTIONS: [&str; 23] = [
+    "style",
     "scale",
     "size",
     "site",
@@ -246,6 +247,8 @@ pub struct Recipe {
 #[serde(deny_unknown_fields)]
 struct Opts {
     #[serde(skip_serializing_if = "Option::is_none")]
+    style: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     scale: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     size: Option<f64>,
@@ -299,6 +302,7 @@ impl Opts {
         }
         let (s, b) = (&o.siting, &base.siting);
         Opts {
+            style: pick(all, o.style, base.style).map(str::to_string),
             scale: pick(all, s.scale, b.scale).map(|v| v.name().to_string()),
             size: pick(all, s.size, b.size),
             site: if s.site != b.site || all { s.site } else { None },
@@ -330,6 +334,12 @@ impl Opts {
             if let Some(v) = v {
                 *to = v;
             }
+        }
+        if let Some(name) = self.style {
+            o.style = crate::level::STYLES
+                .into_iter()
+                .find(|s| *s == name)
+                .ok_or_else(|| format!("style: one of ({})", crate::level::STYLES.map(py::repr).join(", ")))?;
         }
         if let Some(name) = self.scale {
             o.siting.scale = [Scale::Grand, Scale::Standard].into_iter().find(|s| s.name() == name).ok_or("scale: one of ('grand', 'standard')")?;
@@ -450,6 +460,13 @@ impl Recipe {
     /// scatter's rule, no corridor fits, it cuts the level in two, a room can't be furnished as
     /// chosen).
     pub fn generate(&self) -> Result<Level, String> {
+        if self.options.style != "complex" {
+            self.options.check()?;
+            if let Some(e) = self.edits.first() {
+                return Err(format!("{}: a {} level takes no edits yet", e.describe(), self.options.style));
+            }
+            return level::generate(self.seed, &self.options);
+        }
         let (b, dropped) = self.furnished()?;
         self.finish(b, dropped)
     }
@@ -727,6 +744,7 @@ mod tests {
     fn every_option_and_edit_loads_and_saves() {
         let mut o = Options::default();
         let values = [
+            ("style", "felicity"),
             ("scale", "standard"),
             ("size", "2"),
             ("site", "70x50"),
@@ -790,7 +808,7 @@ mod tests {
         assert!(err("{\"format\": 1, \"seed\": 40, \"edits\": [{\"edit\": \"remove\"}]}").contains("missing field `route`"));
         assert!(err("{\"format\": 1,").starts_with("recipe: EOF"));
         let mut o = Options::default();
-        assert!(set_option(&mut o, "colour", "red").unwrap_err().starts_with("no option colour: one of scale, size"));
+        assert!(set_option(&mut o, "colour", "red").unwrap_err().starts_with("no option colour: one of style, scale, size"));
         assert!(set_option(&mut o, "risers", "many").unwrap_err().starts_with("risers: invalid type"));
         assert_eq!(set_option(&mut o, "site", "wide").unwrap_err(), "site: cells wide by cells deep, as 80x60, not wide");
         assert_eq!(o, Options::default());

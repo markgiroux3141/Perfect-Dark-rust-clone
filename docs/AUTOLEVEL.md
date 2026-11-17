@@ -54,6 +54,7 @@ or `addon/` are that repo's.
 | Walking in this process | pd-walk (`viewer/`) | `pd_import::autowalk` (`SimWalk`, on `pd_sim`'s player and the importer's own tiles) | every route of six levels, the same outcome as pd-walk | done (2026-11-16) |
 | As an arena | new | `autolevel import`: `pd_import::autolevel` (a source of its own: the level made again from its recipe, its rooms and openings as PD's rooms and portals, Complex's materials on the pool's textures) and `pd_import::autonav` (the generator's ways put into the waypoints) | tests in `pd_import` (rooms, portals, textures, tiles, sight, the repair); `pd_snapshot stage autolevel40`; `autolevel shots` | done (2026-11-17); nobody has played one |
 | Kits (what a level is dressed in) | new | `autolevel_build/kit.rs` (`Kit`: palette, schemes, solid tags, tints, brightness targets, the arena whose material rows the import uses); Complex is `complex::KIT`, passed to `geometry`, `mesh`, `bake`, `obj`, `glb`, `Built` and `pd_import::autolevel` | the keys; seed 40's build byte for byte the same as before | Complex only (2026-11-17). A level's shape (storeys, doors, ramps, the module) is still the planner's and Complex's; `built::make` always takes `complex::KIT` until a recipe names its kit |
+| Felicity-style levels | new (not a port) | `autolevel/felicity.rs` (the planner), `autolevel_build/felicity.rs` (the kit and its polygons), `pd_import::autolevel::doors` | `felicity` unit tests (40 seeds: plan check, the same twice, one piece, door shares, stairs); `autolevel build 7 --style felicity` walks 94 of 94 | first version (2026-11-17); nobody has played one. See "Felicity" |
 | Recipe (seed + options + edits) | new | `autolevel/recipe.rs` | unit tests | format 1; all fourteen edits apply |
 | Editor | new | `autolevel_edit`, `autolevel/candidates.rs`, `boxes.rs`, `choices.rs` | `--shot`, tests | milestones 1 to 5 done (2026-11-17); nobody has looked at a window |
 
@@ -945,6 +946,57 @@ Moved on 2026-11-16. What changed with the move, and what is here that was not t
   artefact seen in 47 views), `cli::build` handing its level to the walker (which makes it
   again: 0.6 s to open where the glTF took 0.2), `--size 4` imported (it was walked); pd-walk (`viewer/`) stays in the Blender repo as the
   cross-check.
+
+## Felicity
+
+`--style felicity` (the option `style`, written to a recipe only when it is not `complex`) makes
+a level of Felicity's kind. It is new code beside Complex's: its own planner
+(`autolevel::felicity`, two random streams `<seed>/felicity` and `<seed>/felicity/doors`), its own
+kit (`autolevel_build::felicity::KIT`, arena `mp11`), and the doors the importer stands in its
+doorways. Complex's seeds are untouched (seed 40's whole build is byte for byte the same).
+
+```
+autolevel build 7 --style felicity --out out/autolevel/felicity7     # plan, polygons, bake, walks
+autolevel import out/autolevel/felicity7 --code felicity7 --stagenum 127   # the arena, with its doors
+```
+
+**What Felicity is (measured 2026-11-17 from `assets/stages/mp11`, Complex `ref` and G5 `cryp`
+beside it; rooms joined by wide openings merged into "spaces"):** 20 spaces, one of them a
+corridor (Complex: 33, ten corridors). A building cut into rooms off a wide hallway and off each
+other, beside a big three-bay hall 7.8 m tall with a raised platform. Storey 283 (rooms 259, slab
+24), stairs of 12 risers (23.6) 40 deep, no ramps. Doorways 106 x 212 (212 wide for a double),
+with a lintel, in walls 40 thick. 19 doors, all one model (`dd_dr_nonref`, 106 x 212 x 13): 12
+swinging, 7 sliding; 15 of 29 doorways have one. Where: 9 of 11 doorways from the hallway or the
+hall into a room, 4 of 12 between two rooms, none into a tiny room or the corridor.
+
+**What the planner makes:** a building 26-32 x 19-24 cells (106), a hallway 4 cells wide along it,
+each band either side cut into a front row on the hallway and, where deep, a back row reached
+through the front rooms (a back room behind a stair room through its neighbour); the upstairs
+band's front row has a stair room at each end (two cells of floor, the flight, a landing) and the
+upper rooms over it in a chain between the landings (a loop, not a dead end); side doors along a
+row now and then (loops); the hall (14-18 cells square, 780 tall) off the hallway's end by a
+double doorway, and often from a room at the building's east end, with a platform 70 up along its
+far wall, three steps up its middle third, and six pillars. Doors by Felicity's shares (0.8 from
+the hallway or hall, 0.33 between rooms, never into a room under 12 cells), two leaves in a
+double doorway, swinging 0.63. 13-26 rooms a seed (seeds 1-30), about 20. Walks: every doorway
+crossed, each plain room door to door, both flights up, the platform.
+
+**The kit:** the procgen theme's roles (`themes.py` `_fel`), each found by its texture in
+Felicity's Setup Editor export: floor 0287 (blue marble), lower band 024F to 141, upper band
+0256 to 259, plain 024B above (a tall room's walls), the marble wainscot 0872 (a quarter of the
+rooms, the hallway and the hall), ceiling 024B, treads 0872 and risers 0256, jambs 0264 (every
+face inside a doorway). Brightness targets 137 / 85 / 50. The polygons are Complex's carver
+(`complex::plan_polys`) with Felicity's style over every face.
+
+**The doors** (`pd_import::autolevel::doors`): where a level's layout names no doors, each
+doorway's door is a copy of Felicity's own (`doors::adopt` of `mp11`'s setup: its swinging and
+sliding rows, speeds and close times), on the doorway's middle plane (the portal) and stretched
+to the opening; a double doorway's leaves are a sibling ring, hinged at their outer edges. A
+layout's doors (the editor's) replace them. Seed 7: 14 doors, all closing their portals.
+
+**Not yet:** Felicity's hall is three bays behind arched walls (here one plain hall); no windows,
+rails, light strips or the timber-beam ceiling (01EC clamps in v: a deep room smears it); no
+outdoor part; the editor can't make or edit a Felicity level (a Felicity recipe takes no edits).
 
 ## Risks
 

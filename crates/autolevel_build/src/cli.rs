@@ -28,9 +28,8 @@ use autolevel::recipe::{self, Recipe};
 use autolevel::report::Report;
 use serde_json::{json, Value};
 
-use crate::complex as cx;
 use crate::walk::{self, Outcome, PdWalk, Point, Walker};
-use crate::{bake, geometry, glb, mesh, obj, svg, textures};
+use crate::{bake, glb, mesh, obj, svg, textures};
 
 pub const USAGE: &str = "autolevel: Complex-style levels from a seed, with no model in the loop and no Blender
 
@@ -764,8 +763,8 @@ fn build(a: &Args, env: &Env, recipe: &Recipe, out: &Path, quiet: bool, inside: 
         println!("{}", plan.display());
         println!("{}", report_json(&lv.report).dump(Some(1)));
     }
-    let kit = &cx::KIT;
-    let (polys, lit) = geometry::polys(&lv, kit)?;
+    let kit = crate::kit::named(lv.options.style)?;
+    let (polys, lit) = (kit.polys)(&lv, kit)?;
     let mut rooms = mesh::emit(&lv, &polys, kit)?;
     let meshed = secs(t);
     let mut sound = true;

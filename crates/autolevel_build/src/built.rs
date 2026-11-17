@@ -16,11 +16,11 @@
 use autolevel::level::Level;
 use autolevel::recipe::Recipe;
 
-use crate::geometry::{self, Lit};
-use crate::kit::Kit;
+use crate::bake;
+use crate::geometry::Lit;
+use crate::kit::{self, Kit};
 use crate::mesh::{self, Room};
 use crate::openings::{self, Opening};
-use crate::{bake, complex};
 
 /// A level made: its layout and its room meshes.
 #[derive(Clone, Debug)]
@@ -37,14 +37,14 @@ pub struct Built {
 }
 
 /// The level a recipe makes, its polygons as room meshes, lit by the bake's usual settings if
-/// `bake`, in Complex's kit. Err as `Recipe::generate`, or if a stage after it fails.
+/// `bake`, in the kit of its style. Err as `Recipe::generate`, or if a stage after it fails.
 pub fn make(recipe: &Recipe, bake: bool) -> Result<Built, String> {
-    of(recipe.generate()?, &complex::KIT, bake)
+    of(recipe.generate()?, kit::named(recipe.options.style)?, bake)
 }
 
 /// The rest of `make`, from a layout, dressed in `kit`.
 pub fn of(level: Level, kit: &'static Kit, bake: bool) -> Result<Built, String> {
-    let (polys, lit) = geometry::polys(&level, kit)?;
+    let (polys, lit) = (kit.polys)(&level, kit)?;
     let mut rooms = mesh::emit(&level, &polys, kit)?;
     if bake {
         bake::light(&level, &mut rooms, &lit, kit, &bake::Settings::default())?;

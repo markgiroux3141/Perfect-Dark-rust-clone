@@ -345,10 +345,13 @@ fn finish(r: &Recipe, paths: &Paths, dir: &Path, data: SourceData, layout: &Layo
     report.push(line);
     // A generated level: the ways its generator knows, put into the graph
     // where the maker left them out (the level made again: half a second).
-    if let Source::Autolevel(a) = &r.source {
+    let built = match &r.source {
+        Source::Autolevel(a) => Some(autolevel::make(a, paths.src.as_deref())?),
+        _ => None,
+    };
+    if let (Source::Autolevel(a), Some(built)) = (&r.source, &built) {
         if !a.plain_waypoints {
-            let built = autolevel::make(a, paths.src.as_deref())?;
-            let (repaired, done) = autonav::repair(&graph, &level, &autonav::legs(&built, r.scale));
+            let (repaired, done) = autonav::repair(&graph, &level, &autonav::legs(built, r.scale));
             graph = repaired;
             report.push(done.line());
         }
@@ -363,6 +366,19 @@ fn finish(r: &Recipe, paths: &Paths, dir: &Path, data: SourceData, layout: &Layo
         SourceHow::Keep(rooms) => place::How::Keep(rooms),
     };
     let models = doors::model_numbers(&assets)?;
+    // A generated level's doors, where its layout names none (a layout's
+    // doors, as the editor saves them, replace them).
+    let mut with_doors;
+    let layout = match &built {
+        Some(b) if layout.doors.is_none() && b.level.doorways.iter().any(|d| d.door.is_some()) => {
+            let mut made = autolevel::doors(b, r.scale, &paths.assets)?;
+            doors::name_models(&mut made, &models);
+            with_doors = layout.clone();
+            with_doors.doors = Some(made);
+            &with_doors
+        }
+        _ => layout,
+    };
     let placed = place::place(r, &stage, &level, &graph, data.fixed, layout, &placement, &models)?;
     report.extend(placed.report);
     write::write_pads(dir, r, &placed.gameplay)?;

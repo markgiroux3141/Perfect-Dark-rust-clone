@@ -206,7 +206,7 @@ pub enum Touch {
 }
 
 /// One coordinate of a point.
-fn at(p: Point3, i: usize) -> i32 {
+pub fn at(p: Point3, i: usize) -> i32 {
     [p.0, p.1, p.2][i]
 }
 

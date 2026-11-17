@@ -103,8 +103,17 @@ const PALETTE: [Paint; 19] = [
 ];
 
 /// Complex, as the generator dresses its levels.
-pub static KIT: Kit =
-    Kit { name: "complex", tag: "cx", stage: "ref", palette: &PALETTE, schemes: crate::geometry::schemes, tags: &TAGS, tints: &TINTS, target: &TARGET };
+pub static KIT: Kit = Kit {
+    name: "complex",
+    tag: "cx",
+    stage: "ref",
+    palette: &PALETTE,
+    schemes: crate::geometry::schemes,
+    polys: crate::geometry::polys,
+    tags: &TAGS,
+    tints: &TINTS,
+    target: &TARGET,
+};
 
 /// The kit's schemes: Complex's most common vertical pairings (`SCHEMES`).
 pub fn schemes() -> Schemes {

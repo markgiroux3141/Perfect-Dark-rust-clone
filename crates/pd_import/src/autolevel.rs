@@ -55,6 +55,8 @@ use std::sync::{Arc, Mutex};
 use autolevel::plan::Point3;
 use autolevel_build::built::{self, Built};
 use autolevel_build::kit::Kit;
+
+use crate::layout::{Door, Motion, Side};
 use glam::{Vec2, Vec3};
 use pd_core::ids::*;
 use serde_json::Value;
@@ -148,6 +150,59 @@ fn materials(assets: &Path, kit: &Kit, used: &[usize]) -> Result<Vec<Material>, 
             })
         })
         .collect()
+}
+
+/// The generator's doors (its doorways that have one) as a layout's: each
+/// a copy of the kit's arena's own door of its kind (`doors::adopt` of that
+/// stage's setup: Felicity's swinging and sliding doors, rows and all),
+/// standing on its doorway's middle plane (the portal) and stretched to the
+/// opening; a double doorway's two leaves are a sibling ring, hinged (or
+/// sliding) at their outer edges. The front is the doorway's `b` side.
+pub fn doors(b: &Built, scale: f32, assets: &Path) -> Result<Vec<Door>, String> {
+    let ways: Vec<_> = b.level.doorways.iter().filter_map(|d| d.door.map(|k| (d, k))).collect();
+    if ways.is_empty() {
+        return Ok(Vec::new());
+    }
+    let dir = assets.join("stages").join(b.kit.stage);
+    let read = |name: &str| -> Result<Value, String> {
+        let path = dir.join(name);
+        let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
+    };
+    let (own, _) = crate::doors::adopt(&read("pads.json")?, &read("setup.json")?);
+    let of = |m: Motion| own.iter().find(|d| d.motion == m).ok_or_else(|| format!("{}: the arena has no {m:?} door to copy", b.kit.stage));
+    let mut out: Vec<Door> = Vec::new();
+    for (w, k) in ways {
+        let t = of(if k.swing { Motion::Swing } else { Motion::Slide })?;
+        let across = 1 - w.axis;
+        let (a0, a1) = (autolevel::plan::at(w.lo, across) as f32, autolevel::plan::at(w.hi, across) as f32);
+        let leaves = k.leaves.max(1) as usize;
+        let leaf = (a1 - a0) / leaves as f32;
+        // the plan's +x is PD's +x, its +y PD's -z
+        let front = if w.axis == 0 { Vec3::X } else { Vec3::NEG_Z };
+        let at = |along: f32| {
+            let (x, y) = if w.axis == 0 { (w.plane() as f32, along) } else { (along, w.plane() as f32) };
+            Vec3::new(x, w.lo.2 as f32, -y) * scale
+        };
+        let centre = at((a0 + a1) / 2.0);
+        let first = out.len();
+        for j in 0..leaves {
+            let pos = at(a0 + leaf * (j as f32 + 0.5));
+            let mut d = t.clone();
+            d.pos = [pos.x, pos.y, pos.z].map(crate::layout::round1);
+            d.facing = crate::layout::facing(front);
+            d.size = [leaf * scale, (w.hi.2 - w.lo.2) as f32 * scale, t.size[2]].map(crate::layout::round1);
+            if leaves == 2 {
+                // a leaf's hinge is at its pad's -up edge, and a Left door's up
+                // is Y x front: the leaf on that side of the middle is Left
+                let side = (pos - centre).dot(Vec3::Y.cross(front));
+                d.side = if side < 0.0 { Side::Left } else { Side::Right };
+                d.sibling = Some(if j == 0 { first + 1 } else { first });
+            }
+            out.push(d);
+        }
+    }
+    Ok(out)
 }
 
 /// The built level as a [`LevelSource`] with its own rooms and portals.
@@ -271,12 +326,14 @@ pub fn level_source(r: &Recipe, s: &AutolevelSource, b: &Built, assets: &Path, r
 
     let (lo, hi) = tris.iter().flat_map(|t| t.v.iter().map(|v| v.pos)).fold((Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)), |(a, b), p| (a.min(p), b.max(p)));
     report.push(format!(
-        "autolevel: seed {}, {} rooms ({} with nothing drawn), {} openings between them, {} materials of Complex's on {} pool textures, {}",
+        "autolevel: seed {}, {} rooms ({} with nothing drawn), {} openings between them, {} materials of the {} kit's (arena {}) on {} pool textures, {}",
         b.level.seed,
         nrooms,
         nrooms - b.rooms.len(),
         portals.len(),
         materials.len(),
+        b.kit.name,
+        b.kit.stage,
         b.presets().len(),
         if b.baked { "baked" } else { "not baked" }
     ));

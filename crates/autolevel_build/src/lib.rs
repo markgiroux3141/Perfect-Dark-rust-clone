@@ -19,6 +19,7 @@ pub mod built;
 pub mod cli;
 pub mod complex;
 pub mod csg;
+pub mod felicity;
 pub mod geometry;
 pub mod glb;
 pub mod kit;

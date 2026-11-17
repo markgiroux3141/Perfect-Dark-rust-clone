@@ -72,7 +72,7 @@ fn the_generators_rooms_and_doorways_are_pds_rooms_and_portals() {
     let openings = b.openings();
     // One room for each of the plan's, one portal for each opening.
     assert_eq!((own.boxes.len(), own.portals.len(), openings.len()), (61, 91, 91));
-    assert!(report[0].starts_with("autolevel: seed 40, 61 rooms (0 with nothing drawn), 91 openings between them, 17 materials of Complex's on 16 pool textures, baked"), "{report:?}");
+    assert!(report[0].starts_with("autolevel: seed 40, 61 rooms (0 with nothing drawn), 91 openings between them, 17 materials of the complex kit's (arena ref) on 16 pool textures, baked"), "{report:?}");
     // Every triangle and tile names its room, and lies in its box.
     assert_eq!(src.tris.len(), 15303);
     for (room, pts) in src.tris.iter().map(|t| (t.room, t.v.map(|v| v.pos).to_vec())).chain(src.collision.iter().map(|p| (p.room, p.verts.clone()))) {

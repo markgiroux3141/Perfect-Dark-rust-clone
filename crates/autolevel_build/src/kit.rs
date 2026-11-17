@@ -11,12 +11,14 @@
 //!
 //! A kit is data; the rules that put its roles on faces (`complex::style`, `geometry::restyle`)
 //! are Complex's and name the roles they want, so a kit gives every role they use. Complex is
-//! the one kit so far (`complex::KIT`); its rows are the answer key's, so nothing here may change
-//! what it makes. How a level is shaped (storeys, doors, ramps, the module) is the planner's
-//! (`autolevel`), not a kit's.
+//! the first kit (`complex::KIT`); its rows are the answer key's, so nothing here may change what
+//! it makes. Felicity's (`felicity::KIT`) has rules of its own (`polys`). How a level is shaped
+//! (storeys, doors, ramps, the module) is the planner's (`autolevel`), not a kit's.
 
-use crate::complex;
-use crate::csg::Surface;
+use crate::csg::{Poly, Surface};
+use crate::geometry::Lit;
+use crate::{complex, felicity};
+use autolevel::level::Level;
 use autolevel::py;
 
 /// A material of a kit.
@@ -63,6 +65,8 @@ pub struct Kit {
     pub palette: &'static [Paint],
     /// The wall schemes a level is built with.
     pub schemes: fn() -> Schemes,
+    /// Every polygon of a level in this kit, and the beams that light some (`geometry::polys`).
+    pub polys: fn(&Level, &Kit) -> Result<(Vec<Poly>, Vec<Lit>), String>,
     /// Solid tags used by level plans, beyond the built-in ones: (tag, role).
     pub tags: &'static [(&'static str, &'static str)],
     /// Whole-room tints by name, as multipliers.
@@ -112,8 +116,8 @@ impl Kit {
     }
 }
 
-/// Every kit.
-pub const KITS: [&Kit; 1] = [&complex::KIT];
+/// Every kit, by the style it dresses (`Options::style`).
+pub const KITS: [&Kit; 2] = [&complex::KIT, &felicity::KIT];
 
 /// The kit of this name.
 pub fn named(name: &str) -> Result<&'static Kit, String> {
@@ -131,7 +135,8 @@ mod tests {
     fn kits_by_name_and_roles_by_place() {
         let cx = named("complex").unwrap();
         assert_eq!((cx.tag, cx.stage, cx.palette.len()), ("cx", "ref", 19));
-        assert_eq!(named("moss").unwrap_err(), "no kit 'moss' (there are complex)");
+        assert_eq!(named("moss").unwrap_err(), "no kit 'moss' (there are complex, felicity)");
+        assert_eq!(named("felicity").unwrap().stage, "mp11");
         assert_eq!((cx.index("floor"), cx.index("rail")), (Ok(0), Ok(18)));
         assert_eq!(cx.paint("moss").unwrap_err(), "the palette has no 'moss'");
         assert_eq!(cx.tint("cyan"), Ok([0.5, 1.0, 1.0]));

@@ -35,6 +35,7 @@ pub mod cells;
 pub mod choices;
 pub mod deadends;
 pub mod deadlist;
+pub mod felicity;
 pub mod furnish;
 pub mod level;
 pub mod network;

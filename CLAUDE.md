@@ -45,6 +45,7 @@ target/release/pd_edit.exe [<code>]         # the level editor (a window: for th
                                             #   is its view as a PNG (`--open`: every door opened two seconds before)
 cargo build --release -p pd_import          # also builds target/release/autolevel.exe, the level generator (docs/AUTOLEVEL.md):
                                             #   `autolevel build 40` plans, builds, bakes and walks seed 40 into out/autolevel/seed40
+                                            #   (`--style felicity`: a Felicity-style level instead, with doors; docs/AUTOLEVEL.md, "Felicity")
                                             #   (GLB, GE64 OBJ, plan.svg, report.json; ~0.6 s, the walks in-process on pd_sim);
                                             #   `autolevel import out/autolevel/seed40` makes it the arena `autolevel40` (stage 124):
                                             #   the generator's rooms and doorways as PD's rooms and portals, on the pool's textures,

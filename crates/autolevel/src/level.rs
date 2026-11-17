@@ -37,6 +37,9 @@ use std::sync::Arc;
 /// that read them).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Options {
+    /// Whose levels: "complex" (the default: everything below) or "felicity" (`felicity`: a
+    /// building cut into rooms; it takes none of the options below).
+    pub style: &'static str,
     /// Which rooms are scattered, how many, and where they may fall.
     pub siting: Siting,
     /// What stands on the floors: "pillars" (floor to ceiling), "crates" (low housings), "none",
@@ -79,12 +82,16 @@ pub struct Options {
     pub tries: usize,
 }
 
+/// What `Options::style` may be.
+pub const STYLES: [&str; 2] = ["complex", "felicity"];
+
 /// What `Options::cover` may be.
 pub const COVER: [&str; 4] = ["mixed", "pillars", "crates", "none"];
 
 impl Default for Options {
     fn default() -> Self {
         Options {
+            style: "complex",
             siting: Siting::default(),
             cover: "mixed",
             clutter: 0.5,
@@ -116,6 +123,9 @@ impl Options {
 
     /// Err if the options make no sense (what `generate` refuses before it starts).
     pub fn check(&self) -> Result<(), String> {
+        if !STYLES.contains(&self.style) {
+            return Err(format!("style: one of ({})", STYLES.map(py::repr).join(", ")));
+        }
         if !COVER.contains(&self.cover) {
             return Err(format!("cover: one of ({})", COVER.map(py::repr).join(", ")));
         }
@@ -250,6 +260,46 @@ pub type View = (f64, f64, i32, f64, f64);
 /// A sloped rail down a ramp's open side: (the room, its two ends in units, the way it faces).
 pub type SlopedRail = (String, Point3, Point3, (i32, i32, i32));
 
+/// A doorway through a wall between two rooms, where a door may stand: the Felicity planner's
+/// (`felicity`). Complex's levels have none: their openings are corridors' ends.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Doorway {
+    /// The rooms either side: `a` on the low side of the wall, `b` on the high.
+    pub a: String,
+    pub b: String,
+    /// The air through the wall, from one room's face of it to the other's (units). Half of it
+    /// is each room's, so the rooms' air meets on the wall's middle plane: the opening.
+    pub lo: Point3,
+    pub hi: Point3,
+    /// The axis the wall is square to (0: a wall along y, 1: along x).
+    pub axis: usize,
+    /// Its door, if it has one.
+    pub door: Option<DoorKind>,
+}
+
+impl Doorway {
+    /// The wall's middle plane, along `axis` (units).
+    pub fn plane(&self) -> i32 {
+        let (lo, hi) = (crate::plan::at(self.lo, self.axis), crate::plan::at(self.hi, self.axis));
+        (lo + hi) / 2
+    }
+
+    /// The opening's width across the doorway and its height (units).
+    pub fn size(&self) -> (i32, i32) {
+        let across = 1 - self.axis;
+        (crate::plan::at(self.hi, across) - crate::plan::at(self.lo, across), self.hi.2 - self.lo.2)
+    }
+}
+
+/// What door stands in a doorway.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DoorKind {
+    /// Swinging (else sliding).
+    pub swing: bool,
+    /// One leaf, or two that open together (a double doorway).
+    pub leaves: u8,
+}
+
 /// Where a corridor that runs past a hall is opened onto it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Window {
@@ -330,6 +380,8 @@ pub struct Level {
     pub dead_ends: Vec<DeadEnd>,
     /// What was done about the others.
     pub fixes: Vec<Fix>,
+    /// Doorways through walls, where doors may stand (a Felicity level's; none in Complex's).
+    pub doorways: Vec<Doorway>,
     pub report: Report,
 }
 
@@ -353,6 +405,9 @@ impl Level {
 /// The level for a seed. Err if the options make no sense, or this seed can't be finished.
 pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
     o.check()?;
+    if o.style == "felicity" {
+        return crate::felicity::generate(seed, o);
+    }
     let rooms = stage_spaces(seed, o)?;
     let net = stage_network(seed, o, &rooms.sp)?;
     let b = stage_interiors(seed, o, net, rooms.access, rooms.spin)?;
@@ -397,6 +452,7 @@ pub fn stage_level(mut b: Build, dropped: Vec<String>) -> Result<Level, String> 
         dropped,
         dead_ends,
         fixes: b.fixes,
+        doorways: Vec::new(),
         report: Report::default(),
     };
     lv.windows = windows::windows(&lv);

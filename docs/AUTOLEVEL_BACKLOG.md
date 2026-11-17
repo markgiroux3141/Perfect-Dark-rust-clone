@@ -72,8 +72,10 @@ Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
   experiments in the Blender MCP repo already measured themes for many PD arenas
   (`addon/ge_pd_tools/procgen/theme_data/*.json`; Felicity and G5 are `fel` and `g5` in
   `procgen/themes.py`, format in `docs/experiments/procgen_modules/THEME_FORMAT.md`). Started
-  2026-11-17: the dressing is a `kit::Kit` (Complex is `complex::KIT`). Next: a recipe names its
-  kit, Felicity's kit, then the planner's numbers (storey, module, doors, ramps, stairs) per kit.
+  2026-11-17: the dressing is a `kit::Kit` (Complex is `complex::KIT`), and `--style felicity` makes a
+  Felicity level with its own planner, kit and doors (AUTOLEVEL.md, "Felicity"). Next for Felicity:
+  the user's playtest of `felicity7`; then the hall's bays, windows and rails, the beam ceilings,
+  the editor. G5 would be a third planner or a variant of Felicity's (rooms off halls, no doors).
 - **Sightlines in the score.** The Python's `los` took 30 to 60 s a plan, so it was left out; the
   Rust may make it affordable.
 - **Spots, ladders, half levels**, and the user's **wave-function-collapse** idea for room
