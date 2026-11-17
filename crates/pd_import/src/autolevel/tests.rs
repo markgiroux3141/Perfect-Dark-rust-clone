@@ -366,7 +366,10 @@ fn probe_stalls() {
     let setup = pd_core::mp::MatchSetup { stagenum: stage.stagenum, ..setup };
     let mut w = pd_sim::world::World::new(setup, stage.clone(), level, res, 1).unwrap();
     let mut still = vec![0i32; w.chrs.len()];
-    for _ in 0..60 * 60 {
+    // PD_PROBE_SECS: how long a match (60 s); each stall's nearest door is told too
+    let secs: i32 = std::env::var("PD_PROBE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(60);
+    let mut stalls = 0;
+    for _ in 0..60 * secs {
         pd_sim::harness::step_idle(&mut w);
         let t = w.lv.lvframe60;
         for k in 0..w.chrs.len() {
@@ -378,8 +381,17 @@ fn probe_stalls() {
                 let rooms = stage.rooms.bg_find_rooms_by_pos(c.pos, 4).0;
                 let to = c.act_gopos.waypoints.get(c.act_gopos.curindex).copied();
                 let towards = to.map(|wp| stage.pads[stage.waypoints[wp].padnum].pos);
-                println!("{:5.1}s chr {k} at {:.0} in {:?}, making for waypoint {to:?} at {towards:?}", t as f32 / 60.0, c.pos, rooms.iter().map(|&r| key(r)).collect::<Vec<_>>());
+                let door = w
+                    .props
+                    .objs
+                    .iter()
+                    .filter_map(|o| o.door.as_ref().map(|d| (o.pos.with_y(0.0).distance(c.pos.with_y(0.0)), d.frac, d.mode)))
+                    .min_by(|a, b| a.0.total_cmp(&b.0))
+                    .map_or(String::new(), |(dist, frac, mode)| format!("; door {dist:.0} away, open {frac:.2}, mode {mode}"));
+                println!("{:5.1}s chr {k} at {:.0} in {:?}, making for waypoint {to:?} at {towards:?}{door}", t as f32 / 60.0, c.pos, rooms.iter().map(|&r| key(r)).collect::<Vec<_>>());
+                stalls += 1;
             }
         }
     }
+    println!("{stalls} stalls in {secs} s");
 }

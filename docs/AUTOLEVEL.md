@@ -1163,11 +1163,28 @@ one way in 25% (most 33%, seed 22), loops 0.45 a space (least 0.32, seed 12), 7 
 rooms in one piece with 8 or 10 joins between them, circulation 52% of the floor (the hall is
 most of that).
 
-**Simulant stalls** (`PD_PROBE_STAGE=<code> cargo test -p pd_import --release probe_stalls --
---ignored --nocapture`: the import check's match, and where each 3-s stall is): seed 10's six
-stalls are all at one doorway in `upper1`, where the waypoint maker put a waypoint 10 cm from the
-wall in the doorway's mouth and chrs coming along the wall catch the jamb. Seeds 19 and 5 have 0
-and 2. The waypoint maker's (shared with every generated level): not fixed yet.
+**Simulant stalls** (`PD_PROBE_STAGE=<code> [PD_PROBE_SECS=300] cargo test -p pd_import
+--release probe_stalls -- --ignored --nocapture`: a match of six Normal simulants, 60 s unless
+told, each 3-s stall with where it is, the waypoint made for, and the nearest door's state; it
+reads `out/autolevel/<code>/recipe.json`, so build there what is imported). Found (the brief's
+fourth item, 2026-11-17): the waypoint maker samples floors on a 50 cm lattice, so at a doorway it
+leaves a waypoint anywhere in the mouth, a few cm off the wall's face beside the jamb (legal: 34
+clear of the jamb's corner, 23 needed); a go-to skips ahead, so a chr coming along the wall makes
+for it straight and meets the jamb. **The fix** (`pd_import::autonav::doorways`, run before
+`repair` on a generated level with doorways; Complex's have none and are given back unchanged,
+custom imports and PD's arenas never come here): every waypoint of the maker's in a doorway's mouth
+(within its wall or 70 of either face, across its opening) comes out, and the doorway gets two on
+its axis, never skipped (`walkdirect`), 150 out each side (100 or 70 where the floor stops sooner),
+linked through it; the removed waypoints' neighbours are linked to the one on their side and each
+new one is tied to the graph, every link by the maker's probe. None stands in the opening: a first
+try put one there and on 100-out points, and chrs made to reach a door's plane, or waiting inside a
+swinging leaf's sweep, held doors shut (Felicity 9: a door 12% open for minutes). A doorway the
+probe can't walk straight through both ways (a stair's foot) is left as it was. Seeds 1-12, five
+minutes each: 161 stalls before, 48 after (seed 10: 31 to 2; stalls away from doors 86 to 14).
+**Left**: 34 of the 48 are two doors (seeds 9 and 11) held part open by chrs pressing on them from
+both sides. PD's own door logic: an opening door stops dead at a chr in its sweep unless it has
+`DOORFLAG_UNBLOCKABLEOPEN`, which Felicity's doors (copied into ours) don't. Not changed: it is the
+doors, not the waypoints, and a departure from PD for the user to decide.
 
 **Not yet:** windows, light strips; no outdoor part; the editor can't make or
 edit a Felicity level (a Felicity recipe takes no edits). Of the layout: the hall always closes

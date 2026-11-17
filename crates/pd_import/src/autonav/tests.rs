@@ -114,3 +114,57 @@ fn seed_40s_ways_are_all_in_its_waypoints() {
     let (_, again) = repair(&out, &w.level, &all);
     assert_eq!((again.joined, again.linked.len(), again.added, again.outside, again.unwalked.len()), (all.len(), 0, 0, 0, 0));
 }
+
+#[test]
+fn a_doorways_mouth_is_cleared_and_its_axis_given_waypoints() {
+    // Felicity 10, as the importer makes it: the maker's waypoints, then the doorways
+    let mut seed = Seed::new(10);
+    seed.options.style = "felicity";
+    let b = built::make(&seed, false).unwrap();
+    let gates = gates(&b, 1.0);
+    assert_eq!(gates.len(), b.level.doorways.len());
+    let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("assets");
+    let dir = std::env::temp_dir().join(format!("pd_import_autonav_fel_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("recipe.json"), autolevel::recipe::save(&seed)).unwrap();
+    let w = SimWalk::open(&dir, &assets, SimWalk::res(&assets).unwrap()).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    let (made, _) = crate::place::generate_graph(&w.level);
+    let (out, done) = doorways(&made, &w.level, &gates);
+    println!("{}", done.line());
+    assert!(done.doorways * 10 >= gates.len() * 9, "{} of {} doorways", done.doorways, gates.len());
+    assert!(done.out > 0);
+    let floor = |k: usize| out.waypoint_pos(k) - Vec3::Y * PAD_HEIGHT;
+    let linked: std::collections::HashSet<(usize, usize)> = directed_links(out.waypoints.len(), |k| &out.waypoints[k].neighbours).into_iter().map(|(a, b, _)| (a, b)).collect();
+    let mut given = 0;
+    for g in &gates {
+        let near: Vec<usize> = (0..out.waypoints.len())
+            .filter(|&k| {
+                let d = floor(k) - g.mid;
+                d.dot(g.through).abs() <= g.half_thick + MOUTH && d.dot(g.across).abs() <= g.half_wide + 20.0 && d.y.abs() <= LEVEL
+            })
+            .collect();
+        // nothing in its mouth off its axis, and none in the opening itself (a door's plane)
+        for &k in &near {
+            let d = floor(k) - g.mid;
+            assert!(d.dot(g.across).abs() < 1.0 && d.dot(g.through).abs() >= 60.0, "a waypoint at {d:?} from a doorway's middle");
+        }
+        // its own two: on its axis either side, never skipped, linked through it
+        let axis: Vec<usize> = (0..out.waypoints.len())
+            .filter(|&k| {
+                let d = floor(k) - g.mid;
+                out.waypoint_flags(k).walkdirect && d.dot(g.across).abs() < 1.0 && d.y.abs() <= 10.0 && [150.0, 100.0, 70.0].iter().any(|&r| (d.dot(g.through).abs() - r).abs() < 1.0)
+            })
+            .collect();
+        if axis.len() == 2 {
+            given += 1;
+            let (p, q) = (axis[0], axis[1]);
+            assert!(linked.contains(&(p, q)) && linked.contains(&(q, p)), "a doorway's two waypoints not linked through it");
+        }
+    }
+    assert_eq!(given, done.doorways);
+    // a level with no doorways is given back as it was
+    let (same, none) = doorways(&made, &w.level, &[]);
+    assert_eq!((none.doorways, same.waypoints.len()), (0, made.waypoints.len()));
+}

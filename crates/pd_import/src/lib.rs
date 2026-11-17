@@ -351,6 +351,12 @@ fn finish(r: &Recipe, paths: &Paths, dir: &Path, data: SourceData, layout: &Layo
     };
     if let (Source::Autolevel(a), Some(built)) = (&r.source, &built) {
         if !a.plain_waypoints {
+            // (a level with doorways: their mouths cleared first)
+            let (cleared, done) = autonav::doorways(&graph, &level, &autonav::gates(built, r.scale));
+            if done.doorways > 0 {
+                graph = cleared;
+                report.push(done.line());
+            }
             let (repaired, done) = autonav::repair(&graph, &level, &autonav::legs(built, r.scale));
             graph = repaired;
             report.push(done.line());

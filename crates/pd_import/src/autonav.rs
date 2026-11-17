@@ -248,6 +248,157 @@ impl Work<'_> {
     }
 }
 
+/// A doorway of the generator's (`Level::doorways`, a Felicity level's), in
+/// PD's coordinates: the middle of its opening on the floor, the way through
+/// it and the way across (flat, unit), half its width and half its wall's
+/// thickness.
+#[derive(Clone, Copy, Debug)]
+pub struct Gate {
+    pub mid: Vec3,
+    pub through: Vec3,
+    pub across: Vec3,
+    pub half_wide: f32,
+    pub half_thick: f32,
+}
+
+/// Every doorway of the level `b`, in PD's coordinates.
+pub fn gates(b: &Built, scale: f32) -> Vec<Gate> {
+    b.level
+        .doorways
+        .iter()
+        .map(|d| {
+            let (lo, hi) = (pd_point(d.lo, scale), pd_point(d.hi, scale));
+            let mid = Vec3::new((lo.x + hi.x) / 2.0, lo.y.min(hi.y), (lo.z + hi.z) / 2.0);
+            // the plan's x is PD's x, its y PD's -z
+            let (through, across) = if d.axis == 0 { (Vec3::X, Vec3::Z) } else { (Vec3::Z, Vec3::X) };
+            let size = (hi - lo).abs();
+            let (thick, wide) = if d.axis == 0 { (size.x, size.z) } else { (size.z, size.x) };
+            Gate { mid, through, across, half_wide: wide / 2.0, half_thick: thick / 2.0 }
+        })
+        .collect()
+}
+
+/// How far into each room a doorway's mouth reaches from its wall's face: a
+/// waypoint there, off the doorway's axis, is one a chr coming along the wall
+/// makes for past the jamb, and catches it.
+const MOUTH: f32 = 70.0;
+/// The waypoints a doorway is given stand on its axis this far from its
+/// middle, the first of these that has floor at the doorway's height: clear
+/// of a swinging leaf's sweep (a 106 cm leaf hinged at the jamb, and a chr's
+/// radius), so a chr waiting there never holds a door shut; nearer where the
+/// floor stops sooner (a stair's landing).
+const INSIDE: [f32; 3] = [150.0, 100.0, 70.0];
+
+/// What [`doorways`] did.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Doorways {
+    /// Doorways given waypoints on their axis, and the maker's waypoints taken
+    /// out of their mouths.
+    pub doorways: usize,
+    pub out: usize,
+}
+
+impl Doorways {
+    /// A line for the report.
+    pub fn line(&self) -> String {
+        format!("doorways: {} given waypoints on their axes, {} of the maker's taken out of their mouths", self.doorways, self.out)
+    }
+}
+
+/// `graph` with every doorway's mouth cleared: the maker samples floors on a
+/// lattice, so the waypoint it leaves at a doorway may stand anywhere in its
+/// mouth, a few cm off the wall's face beside the jamb, and a chr coming
+/// along the wall makes for it straight (a go-to skips ahead), meets the
+/// jamb and stalls there (Felicity 10: six stalls in a minute at one
+/// doorway). Each such waypoint comes out, and the doorway gets two on its
+/// axis instead, never skipped (`PADFLAG_AIWALKDIRECT`): one `INSIDE` out on
+/// each side, square in front of the opening, linked to each other through
+/// it (a doorway the maker's probe can't walk straight through both ways is
+/// left as it was). None stands in the opening itself: a chr made to reach a point on a
+/// door's plane stands where the door swings and holds it (Felicity 9: a door
+/// held 12% open for minutes, four chrs stalled at it). The removed
+/// waypoints' neighbours are linked to the one on their side, and each new
+/// one tied to the graph round it, every link as the maker's probe walks it.
+/// A level with no doorways (Complex's) is given back as it was.
+pub fn doorways(graph: &NavGraph, level: &TileLevel, gates: &[Gate]) -> (NavGraph, Doorways) {
+    let mut done = Doorways::default();
+    if gates.is_empty() {
+        return (graph.clone(), done);
+    }
+    let n = graph.waypoints.len();
+    let mut w = Work { level, p: GenParams::default(), pads: graph.waypoints.iter().map(|w| graph.pads[w.padnum].clone()).collect(), fwd: vec![Vec::new(); n] };
+    for (a, b, _) in directed_links(n, |k| &graph.waypoints[k].neighbours) {
+        w.link(a, b);
+    }
+    let back: Vec<Vec<usize>> = (0..n).map(|v| (0..n).filter(|&u| w.fwd[u].contains(&v)).collect()).collect();
+    let gp = w.p;
+    let settle = |p: Vec3| {
+        let (y, poly) = level.cd_find_ground_at_cyl(p + Vec3::Y * gp.step, gp.radius);
+        (poly.is_some() && (y - p.y).abs() <= 30.0).then_some(Vec3::new(p.x, y, p.z))
+    };
+    let mouth = |g: &Gate, f: Vec3| {
+        let d = f - g.mid;
+        d.dot(g.through).abs() <= g.half_thick + MOUTH && d.dot(g.across).abs() <= g.half_wide + gp.radius && d.y.abs() <= LEVEL
+    };
+    let mut gone = vec![false; n];
+    for g in gates {
+        let out = |way: f32| INSIDE.iter().find_map(|&d| settle(g.mid + g.through * (way * d)).filter(|p| (p.y - g.mid.y).abs() <= 10.0));
+        let (Some(a), Some(b)) = (out(-1.0), out(1.0)) else { continue };
+        // a doorway no chr walks straight through (the foot of a stair) is left as it was
+        if probe_walk(level, a, b, &gp).is_none() || probe_walk(level, b, a, &gp).is_none() {
+            continue;
+        }
+        let inside: Vec<usize> = (0..n).filter(|&k| !gone[k] && mouth(g, w.floor(k))).collect();
+        // the doorway's own two, either side of it
+        let mut new = Vec::new();
+        for p in [a, b] {
+            let k = w.pads.len();
+            w.pads.push(NavPad { pos: p + Vec3::Y * PAD_HEIGHT, room: level.floor_room(p, gp.radius), flags: PadFlags { walkdirect: true, ..Default::default() } });
+            w.fwd.push(Vec::new());
+            new.push(k);
+        }
+        let walk = |w: &Work, x: usize, y: usize| probe_walk(level, w.floor(x), w.floor(y), &w.p).is_some();
+        w.link(new[0], new[1]);
+        w.link(new[1], new[0]);
+        // the neighbours of what comes out, to the waypoint on their side
+        for &k in &inside {
+            gone[k] = true;
+            for &nb in w.fwd[k].clone().iter().chain(&back[k]) {
+                if nb >= n || gone[nb] || inside.contains(&nb) {
+                    continue;
+                }
+                let side = if (w.floor(nb) - g.mid).dot(g.through) < 0.0 { new[0] } else { new[1] };
+                if walk(&w, nb, side) {
+                    w.link(nb, side);
+                }
+                if walk(&w, side, nb) {
+                    w.link(side, nb);
+                }
+            }
+        }
+        // and each end tied to the graph round it
+        for end in [new[0], new[1]] {
+            let p = w.floor(end);
+            for t in w.ties(p).into_iter().filter(|&t| t < n && !gone[t]) {
+                w.link(end, t);
+                w.link(t, end);
+            }
+        }
+        gone.extend([false; 2]);
+        done.doorways += 1;
+        done.out += inside.len();
+    }
+    // the graph without what came out
+    let mut index = vec![usize::MAX; w.pads.len()];
+    let mut pads = Vec::new();
+    for (i, pad) in w.pads.iter().enumerate().filter(|(i, _)| !gone[*i]) {
+        index[i] = pads.len();
+        pads.push(pad.clone());
+    }
+    let fwd: Vec<Vec<usize>> = (0..w.pads.len()).filter(|&i| !gone[i]).map(|i| w.fwd[i].iter().filter(|&&j| !gone[j]).map(|&j| index[j]).collect()).collect();
+    (graph_from_links(pads, &fwd, w.p.group_radius), done)
+}
+
 /// `graph` with the generator's `legs` in it: each leg a chr can walk
 /// (either way, or one way where it drops) whose ends the graph does not
 /// already join gets a waypoint at each end, linked to each other and tied to
