@@ -1,5 +1,8 @@
 # Handoff: Felicity levels, windows, a courtyard and the editor
 
+**Superseded by `docs/handoff/felicity-detail.md`** (2026-11-17: the user dropped the courtyard and
+put the editor aside for Felicity's detail). The "Done last session" list below still holds.
+
 Written 2026-11-17 at the end of a session; the next one starts cold. Branch `autolevel-kits`.
 Read `CLAUDE.md` (loaded), then `docs/AUTOLEVEL.md`'s "Felicity" section, all of it, then the files
 below. The previous brief and what came of it: `docs/handoff/felicity-next.md` (items 1 and 2 done,
