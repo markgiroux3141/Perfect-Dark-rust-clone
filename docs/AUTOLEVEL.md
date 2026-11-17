@@ -54,7 +54,7 @@ or `addon/` are that repo's.
 | Walking in this process | pd-walk (`viewer/`) | `pd_import::autowalk` (`SimWalk`, on `pd_sim`'s player and the importer's own tiles) | every route of six levels, the same outcome as pd-walk | done (2026-11-16) |
 | As an arena | new | `autolevel import`: `pd_import::autolevel` (a source of its own: the level made again from its recipe, its rooms and openings as PD's rooms and portals, Complex's materials on the pool's textures) and `pd_import::autonav` (the generator's ways put into the waypoints) | tests in `pd_import` (rooms, portals, textures, tiles, sight, the repair); `pd_snapshot stage autolevel40`; `autolevel shots` | done (2026-11-17); nobody has played one |
 | Kits (what a level is dressed in) | new | `autolevel_build/kit.rs` (`Kit`: palette, schemes, solid tags, tints, brightness targets, the arena whose material rows the import uses); Complex is `complex::KIT`, passed to `geometry`, `mesh`, `bake`, `obj`, `glb`, `Built` and `pd_import::autolevel` | the keys; seed 40's build byte for byte the same as before | Complex only (2026-11-17). A level's shape (storeys, doors, ramps, the module) is still the planner's and Complex's; `built::make` always takes `complex::KIT` until a recipe names its kit |
-| Felicity-style levels | new (not a port) | `autolevel/felicity.rs` (the planner), `autolevel_build/felicity.rs` (the kit and its polygons), `pd_import::autolevel::doors` | `felicity` unit tests (40 seeds: plan check, the same twice, one piece, door shares, stairs); `autolevel build 7 --style felicity` walks 94 of 94 | first version (2026-11-17); nobody has played one. See "Felicity" |
+| Felicity-style levels | new (not a port) | `autolevel/felicity.rs` (the planner), `autolevel_build/felicity.rs` (the kit and its polygons), `pd_import::autolevel::doors` | `felicity` unit tests (40 seeds: plan check, the same twice, one piece, door shares, stairs, types; 60 seeds: the circulation targets); `autolevel build N --style felicity` walks every route of seeds 1-40 | second planner (2026-11-17): corridors first, rooms as offshoots; nobody has played one. See "Felicity" |
 | Recipe (seed + options + edits) | new | `autolevel/recipe.rs` | unit tests | format 1; all fourteen edits apply |
 | Editor | new | `autolevel_edit`, `autolevel/candidates.rs`, `boxes.rs`, `choices.rs` | `--shot`, tests | milestones 1 to 5 done (2026-11-17); nobody has looked at a window |
 
@@ -969,17 +969,54 @@ with a lintel, in walls 40 thick. 19 doors, all one model (`dd_dr_nonref`, 106 x
 swinging, 7 sliding; 15 of 29 doorways have one. Where: 9 of 11 doorways from the hallway or the
 hall into a room, 4 of 12 between two rooms, none into a tiny room or the corridor.
 
-**What the planner makes:** a building 26-32 x 19-24 cells (106), a hallway 4 cells wide along it,
-each band either side cut into a front row on the hallway and, where deep, a back row reached
-through the front rooms (a back room behind a stair room through its neighbour); the upstairs
-band's front row has a stair room at each end (two cells of floor, the flight, a landing) and the
-upper rooms over it in a chain between the landings (a loop, not a dead end); side doors along a
-row now and then (loops); the hall (14-18 cells square, 780 tall) off the hallway's end by a
-double doorway, and often from a room at the building's east end, with a platform 70 up along its
-far wall, three steps up its middle third, and six pillars. Doors by Felicity's shares (0.8 from
-the hallway or hall, 0.33 between rooms, never into a room under 12 cells), two leaves in a
-double doorway, swinging 0.63. 13-26 rooms a seed (seeds 1-30), about 20. Walks: every doorway
-crossed, each plain room door to door, both flights up, the platform.
+**What the planner makes** (version 2, 2026-11-17: circulation first; version 1 cut a building
+into rooms off one hallway and off each other, and played as a maze). On a 106 grid, drawn one
+way round and then turned and mirrored by the seed (eight ways):
+
+- **Two long corridors** side by side (3 or 4 cells wide, 15 to 30 long, 6 to 9 cells apart),
+  both ending on **the hall** (12-16 x 14-19 cells, 780 tall; a platform 70 up along its far
+  wall, three steps up its middle third, six pillars) by a doorway each (a double one where the
+  corridor is 4 wide). **Cross corridors** join the two, drawn one in three each: one at their
+  far ends (a ring), one 5 to 9 cells along (an H; one long corridor may then start at it, a
+  bend), or one at the far ends and one in the middle (a ladder). A corridor meets another
+  through a doorway in its end wall, with no door. Corridor 1 is `office`, corridor 2 `marble`,
+  the last cross corridor `industrial`: three looks to tell where you are.
+- **The gallery**: an upper corridor 14 to 20 cells long over corridor 2, and a **stair room**
+  towards each end of it. A stair room is sized for its stairs, the two of a level different
+  shapes: beside the gallery on its outer side (a straight flight 9-10 x 3-4 cells, both
+  doorways in the one wall; an L 6-7 square; a U 4 x 7-8), in the band between the long
+  corridors (the same, or a flight straight across: its foot on corridor 1, its top on the
+  gallery), or, on an H where corridor 2 is 4 wide, a U in line with corridor 2 where it stops
+  (`END`). The stairs are fitted by the first of the eight frames, in a seeded order, that
+  leaves the foot a doorway onto a ground corridor and the top one onto the gallery; one of
+  each, with no doors.
+- **Rooms** in a row along the outer side of each long corridor (4-8 cells wide, 5-7 deep), in
+  the band between them (as deep as the band; behind a stair room that doesn't fill it, a room
+  off corridor 1), along both sides of the gallery (5-9 wide), and often one or two off each
+  side wall of the hall, clear of its platform. One room 6 or more wide becomes **the
+  washrooms**: two or three rooms 3-4 x 3 together. Up to three **rooms behind rooms** (3-6 x
+  3-4, two doorways deep; nothing is deeper). The footprint is not a rectangle: nothing is
+  built where no room is.
+- **Doorways**: every room off the corridor (or hall) it was cut along, one in five double.
+  Then second ways in: onto any other corridor (0.6) or the hall (0.7) a room is beside, so the
+  rooms between the corridors are mostly short cuts; then, until at most 20-36% of rooms (a
+  seeded share) have one way in and the level has its loops, from a room with one way in onto
+  circulation or into a neighbour (a pair of such rooms first; washrooms only into each other).
+- **Types** by where a room is: `washroom` the cluster, `hallside` a room sharing three cells
+  of wall with the hall, `industrial` a room beside the industrial cross corridor, `marble` a
+  room of 40 cells or more, `office` the rest; a room behind a room is its front room's; a
+  stair room is the corridor's at its foot. Seeds 1-40: 357 office, 142 marble, 105 hallside,
+  83 washroom, 57 industrial.
+- **Doors** by Felicity's shares: 0.8 from circulation into a room, 0.33 between rooms, never
+  into a room under 12 cells, none between corridors or onto stairs, 0.5 on the hall's own
+  doorways; two leaves in a double doorway; swinging 0.63. Seeds 1-40: 655 of 790, 80 of 232,
+  0 of 86, 0 of 278, 39 of 80.
+
+19 to 32 rooms a seed (seeds 1-60), about 26, 7 or 8 of them circulation. A layout that misses
+`circulation::TARGETS` (or has no room for its stairs) is drawn again from the same stream, up
+to 40 times: of seeds 1-60 one is (seed 5, its stairs), none for a target. Walks: every doorway
+crossed, every room and corridor door to door (every pair), each flight from the doorway at its
+foot to the one off its landing, the platform; 121 to 228 a seed, all passing on seeds 1-40.
 
 **The kit:** the procgen theme's roles (`themes.py` `_fel`), each found by its texture in
 Felicity's Setup Editor export: floor 0287 (blue marble), lower band 024F to 141, upper band
@@ -992,7 +1029,7 @@ face inside a doorway). Brightness targets 137 / 85 / 50. The polygons are Compl
 doorway's door is a copy of Felicity's own (`doors::adopt` of `mp11`'s setup: its swinging and
 sliding rows, speeds and close times), on the doorway's middle plane (the portal) and stretched
 to the opening; a double doorway's leaves are a sibling ring, hinged at their outer edges. A
-layout's doors (the editor's) replace them. Seed 7: 14 doors, all closing their portals.
+layout's doors (the editor's) replace them. Seed 7: 18 doors, all closing their portals.
 
 **Room types** (2026-11-17, a room's `scheme`; `autolevel_build::felicity::TYPES`): measured from
 Felicity's own triangles (`PD_PROBE_STAGE=mp11 PD_PROBE_OUT=tris.json cargo test -p pd_import
@@ -1001,7 +1038,7 @@ units per repeat from each triangle's UV gradient, which agrees with the procgen
 `office` (tan bands, timber-beam ceiling 01EC, its v repeat 424 so the 212 lattice never reaches
 the clamp), `marble`, `industrial` (grey 0274 / 0872, plate floor and ceiling 070F), `washroom`
 (tiles 071B / 071D, mirrored tile floor 0271), `hall` (0276 / 027D / 0288 / 0281 bands) and
-`hallside` (0273). The planner draws them at placeholder shares (`room_type`); the hall is `hall`.
+`hallside` (0273). The planner gives them by where a room is (above); the hall is `hall`.
 
 **Stairs** (`autolevel::stairs`): `fit(shape, air, floor, rise, frame)` lays a straight flight
 (132 wide against a wall, a gallery at the top), an L (two half flights round a corner landing)
@@ -1009,8 +1046,9 @@ or a U (a switchback filling a room 240 to 400 wide) in a stair room, by one of 
 and gives the steps and landings as solids, railings on every edge that drops into the well
 (Felicity's see-through rail 0710; sloped ones down the flights go in `Level::ramp_rails`), the
 stretches of wall a doorway may open in at the foot and at the top, and the path up. The planner
-tries the shapes and frames in a seeded order and takes the first whose foot opens on the
-hallway and top on the upper room. Seeds 1-40: 44 straight, 30 L, 6 U; every walk passes.
+sizes each stair room for its shape and takes the first frame, in a seeded order, whose foot
+opens on a ground corridor and top on the gallery (above). Seeds 1-40: 29 L, 28 U, 23 straight;
+every walk passes.
 
 **Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
 corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
@@ -1018,13 +1056,20 @@ halls and stair rooms (kinds `corridor`, `hub`, `stair`) and how the other rooms
 `TARGETS`: 18-34 spaces, 4 or more circulation rooms that reach each other without passing
 through a room, 75% of rooms right off circulation, none deeper than 2, at most 40% with one
 way in, loops at least 0.2 a space. Felicity itself measures 65% / 4 deep, Complex 84% / 2. The
-test `felicity_meets_the_circulation_targets` (ignored) prints every seed's measures; the
-first planner misses on all 60 seeds (64% right off circulation on average, rooms up to 5
-deep). A second planner is to meet them (docs/handoff/felicity-planner.md).
+test `felicity_meets_the_circulation_targets` prints every seed's measures (`-- --nocapture`).
+The first planner missed on all 60 seeds (64% right off circulation on average, rooms up to 5
+deep). The second meets them on all 60 (the brief it was built to: docs/handoff/felicity-planner.md):
+rooms right off circulation 92% on average (least 81%, seed 41), none deeper than 2, rooms with
+one way in 25% (most 33%, seed 22), loops 0.45 a space (least 0.32, seed 12), 7 or 8 circulation
+rooms in one piece with 8 or 10 joins between them, circulation 52% of the floor (the hall is
+most of that).
 
 **Not yet:** Felicity's hall is three bays behind arched walls (here one plain hall); arches
 (the carver makes boxes only); windows, light strips; no outdoor part; the editor can't make or
-edit a Felicity level (a Felicity recipe takes no edits).
+edit a Felicity level (a Felicity recipe takes no edits). Of the layout: every level is the
+two-corridor family (ring, H, bend, ladder), the hall always closes one end, the upper storey
+is one gallery (2 to 7 rooms off it on seeds 1-40, about 4), corridors meet through doorways no wider than 212, and nobody
+has played one.
 
 ## Risks
 
