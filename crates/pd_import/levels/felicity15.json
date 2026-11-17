@@ -1,0 +1,22 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "felicity15",
+  "name": "Felicity 15",
+  "group": "Autolevel",
+  "stagenum": 127,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 15,
+      "options": {
+        "style": "felicity"
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}
