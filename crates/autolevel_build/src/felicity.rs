@@ -48,6 +48,7 @@ use crate::complex::{self as cx, Detail};
 use crate::csg::{self, f3, Face, Poly, Surface, P3};
 use crate::geometry::Lit;
 use crate::kit::{strip, Kit, Paint, Schemes};
+use crate::sweep::{self, Cover, Edge, Leg, Sweep};
 
 const fn paint(role: &'static str, preset: &'static str, flags: &'static [&'static str], name: &'static str, scale: (f64, f64)) -> Paint {
     Paint { role, preset, flags, name, scale }
@@ -196,80 +197,19 @@ fn slice(poly: &[(f64, f64)], z: f64) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
 /// How deep and how wide a doorway's chamfered frame is (Felicity's: 13, at 45 degrees).
 pub const TRIM: i32 = 13;
 
-/// A convex polygon cut by the plane `v[k] = at`: the part below, the part above (either empty).
-fn cut(poly: &[[i32; 3]], k: usize, at: i32) -> (Vec<[i32; 3]>, Vec<[i32; 3]>) {
-    let (mut below, mut above) = (Vec::new(), Vec::new());
-    for i in 0..poly.len() {
-        let (p, q) = (poly[i], poly[(i + 1) % poly.len()]);
-        if p[k] <= at {
-            below.push(p);
-        }
-        if p[k] >= at {
-            above.push(p);
-        }
-        if (p[k] < at && q[k] > at) || (p[k] > at && q[k] < at) {
-            let f = (at - p[k]) as f64 / (q[k] - p[k]) as f64;
-            let mut x = [0; 3];
-            for c in 0..3 {
-                x[c] = if c == k { at } else { (p[c] as f64 + (q[c] - p[c]) as f64 * f).round() as i32 };
-            }
-            below.push(x);
-            above.push(x);
-        }
-    }
-    let tidy = |mut v: Vec<[i32; 3]>| {
-        v.dedup();
-        if v.len() > 1 && v.first() == v.last() {
-            v.pop();
-        }
-        if v.len() < 3 {
-            v.clear();
-        }
-        v
-    };
-    (tidy(below), tidy(above))
-}
-
 /// Cut a doorway's frame out of the carver's faces: on each face of the wall, its faces lose the
 /// strip `TRIM` wide round the opening (beside the jambs and over the lintel), and the faces inside
 /// the opening (the jambs, the lintel's underside; not its floor) start `TRIM` into the wall.
 fn clear_frame(polys: &mut Vec<Poly>, d: &Doorway) {
     let (a, o) = (d.axis, 1 - d.axis);
     let (lo, hi) = ([d.lo.0, d.lo.1, d.lo.2], [d.hi.0, d.hi.1, d.hi.2]);
-    let (s0, s1, z0, zt) = (lo[o] - TRIM, hi[o] + TRIM, lo[2], hi[2] + TRIM);
-    let mut out = Vec::with_capacity(polys.len());
-    for p in polys.drain(..) {
-        let on = |t: i32, sign: f64| p.normal[a] * sign > 0.5 && p.verts.iter().all(|v| v[a] == t);
-        let face = on(lo[a], -1.0) || on(hi[a], 1.0);
-        let meets = p.verts.iter().any(|v| s0 < v[o] && v[o] < s1 && z0 <= v[2] && v[2] < zt)
-            || (p.verts.iter().any(|v| v[o] <= s0) && p.verts.iter().any(|v| v[o] >= s1) && p.verts.iter().any(|v| v[2] < zt));
-        if face && meets {
-            // the wall's face round the opening: cut on the frame's edges, the pieces inside it go
-            let mut pieces = vec![p.verts.clone()];
-            for (k, at) in [(o, s0), (o, s1), (2, zt)] {
-                pieces = pieces
-                    .into_iter()
-                    .flat_map(|v| {
-                        let (b, c) = cut(&v, k, at);
-                        [b, c]
-                    })
-                    .filter(|v| !v.is_empty())
-                    .collect();
-            }
-            for v in pieces {
-                let n = v.len() as f64;
-                let (ms, mz) = (v.iter().map(|q| q[o] as f64).sum::<f64>() / n, v.iter().map(|q| q[2] as f64).sum::<f64>() / n);
-                if (s0 as f64) < ms && ms < s1 as f64 && (z0 as f64) < mz && mz < zt as f64 {
-                    continue;
-                }
-                out.push(Poly { verts: v, ..p.clone() });
-            }
-            continue;
-        }
+    // the wall's face round the opening, on each side
+    let (rlo, rhi) = ([lo[o] - TRIM, lo[2]], [hi[o] + TRIM, hi[2] + TRIM]);
+    sweep::clear(polys, &[Cover { axis: a, at: lo[a], sign: -1, lo: rlo, hi: rhi }, Cover { axis: a, at: hi[a], sign: 1, lo: rlo, hi: rhi }]);
+    polys.retain_mut(|p| {
         let inside = p.verts.iter().all(|v| lo[a] <= v[a] && v[a] <= hi[a] && lo[o] <= v[o] && v[o] <= hi[o] && lo[2] <= v[2] && v[2] <= hi[2]);
         if inside && p.normal[a].abs() < 0.5 && p.normal[2] < 0.5 {
             // a jamb or the lintel's underside: from `TRIM` into the wall to `TRIM` short of its far face
-            let mut p = p;
             for v in p.verts.iter_mut() {
                 v[a] = v[a].clamp(lo[a] + TRIM, hi[a] - TRIM);
             }
@@ -277,14 +217,10 @@ fn clear_frame(polys: &mut Vec<Poly>, d: &Doorway) {
             if p.verts.len() > 1 && p.verts.first() == p.verts.last() {
                 p.verts.pop();
             }
-            if p.verts.len() >= 3 {
-                out.push(p);
-            }
-            continue;
+            return p.verts.len() >= 3;
         }
-        out.push(p);
-    }
-    *polys = out;
+        true
+    });
 }
 
 /// A doorway's chamfered frame: on each face of the wall (room `a`'s on the low side, `b`'s on the
@@ -302,23 +238,29 @@ fn frame(d: &Doorway, trim: Surface, floors: [Surface; 2]) -> Vec<Poly> {
         p[2] = z;
         p
     };
-    let h = std::f64::consts::FRAC_1_SQRT_2;
+    let axis = |k: usize, sign: f64| -> P3 {
+        let mut p = [0.0; 3];
+        p[k] = sign;
+        p
+    };
+    // the bevel, from the opening's edge `TRIM` into the wall to the wall's face `TRIM` outside it
+    // (u across it from the opening, as Felicity's 00EF is laid)
+    let edge = Some(Edge { surface: trim, along_v: true });
     let mut out = Vec::new();
     for (zone, t, into, floor) in [(d.a.as_str(), lo[a] as f64, 1.0, floors[0]), (d.b.as_str(), hi[a] as f64, -1.0, floors[1])] {
-        let (u, w) = (t, t + into * tr);
-        // facing out of the wall into the room (-into along a) and in towards the opening
-        let normal = |no: f64, nz: f64| {
-            let mut n = [0.0; 3];
-            n[a] = -into * h;
-            n[o] = no * h;
-            n[2] = nz * h;
-            n
+        let depth = axis(a, into);
+        // up the near jamb, across the lintel, down the far jamb: `side` towards the opening
+        let leg = |to: P3, side: P3| Leg { to, side, depth, profile: vec![(0.0, tr), (-tr, 0.0)], edges: vec![edge] };
+        let path = Sweep {
+            from: at(t, s0, z0),
+            legs: vec![leg(at(t, s0, zt), axis(o, 1.0)), leg(at(t, s1, zt), axis(2, -1.0)), leg(at(t, s1, z0), axis(o, -1.0))],
+            closed: false,
+            zone,
         };
-        out.push(csg::oriented(&[at(u, s0 - tr, z0), at(w, s0, z0), at(w, s0, zt), at(u, s0 - tr, zt + tr)], normal(1.0, 0.0), trim, zone, None));
-        out.push(csg::oriented(&[at(u, s1 + tr, z0), at(u, s1 + tr, zt + tr), at(w, s1, zt), at(w, s1, z0)], normal(-1.0, 0.0), trim, zone, None));
-        out.push(csg::oriented(&[at(u, s0 - tr, zt + tr), at(u, s1 + tr, zt + tr), at(w, s1, zt), at(w, s0, zt)], normal(0.0, -1.0), trim, zone, None));
+        out.extend(sweep::sweep(&path));
+        let w = t + into * tr;
         for (edge, beyond) in [(s0, s0 - tr), (s1, s1 + tr)] {
-            out.push(csg::oriented(&[at(u, beyond, z0), at(u, edge, z0), at(w, edge, z0)], [0.0, 0.0, 1.0], floor, zone, None));
+            out.push(csg::oriented(&[at(t, beyond, z0), at(t, edge, z0), at(w, edge, z0)], [0.0, 0.0, 1.0], floor, zone, None));
         }
     }
     out
@@ -516,7 +458,57 @@ pub fn polys(lv: &Level, kit: &Kit) -> Result<(Vec<Poly>, Vec<Lit>), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::csg::V3;
     use autolevel::level::{generate, Options};
+
+    /// The frame as it was built before the shape tool: six quads by hand, a reference for `frame`.
+    fn frame_by_hand(d: &Doorway) -> Vec<Vec<V3>> {
+        let (a, o) = (d.axis, 1 - d.axis);
+        let (lo, hi) = ([d.lo.0, d.lo.1, d.lo.2], [d.hi.0, d.hi.1, d.hi.2]);
+        let (s0, s1, z0, zt) = (lo[o], hi[o], lo[2], hi[2]);
+        let at = |t: i32, s: i32, z: i32| -> V3 {
+            let mut p = [0; 3];
+            (p[a], p[o], p[2]) = (t, s, z);
+            p
+        };
+        let mut out = Vec::new();
+        for (t, into) in [(lo[a], 1), (hi[a], -1)] {
+            let (u, w) = (t, t + into * TRIM);
+            out.push(vec![at(u, s0 - TRIM, z0), at(w, s0, z0), at(w, s0, zt), at(u, s0 - TRIM, zt + TRIM)]);
+            out.push(vec![at(u, s1 + TRIM, z0), at(u, s1 + TRIM, zt + TRIM), at(w, s1, zt), at(w, s1, z0)]);
+            out.push(vec![at(u, s0 - TRIM, zt + TRIM), at(u, s1 + TRIM, zt + TRIM), at(w, s1, zt), at(w, s0, zt)]);
+        }
+        out
+    }
+
+    /// A polygon's vertices as a cycle from its least vertex, either way round.
+    fn cycle(v: &[V3]) -> Vec<V3> {
+        let k = (0..v.len()).min_by_key(|&i| v[i]).unwrap_or(0);
+        let fwd: Vec<V3> = (0..v.len()).map(|i| v[(k + i) % v.len()]).collect();
+        let back: Vec<V3> = (0..v.len()).map(|i| v[(k + v.len() - i) % v.len()]).collect();
+        fwd.min(back)
+    }
+
+    #[test]
+    fn the_swept_frames_are_the_frames_built_by_hand() {
+        let lv = generate(3, &Options { style: "felicity", ..Options::default() }).unwrap();
+        let trim = KIT.surface("trim", None, None).unwrap();
+        let floor = KIT.surface("floor", None, None).unwrap();
+        for d in &lv.doorways {
+            let swept: Vec<Poly> = frame(d, trim, [floor, floor]).into_iter().filter(|p| p.surface.material == "trim").collect();
+            let mut got: Vec<Vec<V3>> = swept.iter().map(|p| cycle(&p.verts)).collect();
+            let mut want: Vec<Vec<V3>> = frame_by_hand(d).iter().map(|v| cycle(v)).collect();
+            got.sort();
+            want.sort();
+            assert_eq!(got, want, "{} {}", d.a, d.b);
+            for p in &swept {
+                // facing out of the wall and in towards the opening, u across the bevel (0 to 1)
+                assert!(p.normal[d.axis].abs() > 0.7 && p.normal[d.axis].abs() < 0.71);
+                let us: Vec<f64> = p.uvs.as_ref().unwrap().iter().map(|t| t.0).collect();
+                assert!(us.iter().all(|&u| u.abs() < 1e-9 || (u - 13.0 * 2f64.sqrt() / 18.4).abs() < 1e-9), "{us:?}");
+            }
+        }
+    }
 
     #[test]
     fn a_felicity_level_is_dressed_in_felicitys_materials() {

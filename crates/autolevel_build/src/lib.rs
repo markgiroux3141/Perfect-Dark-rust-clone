@@ -28,5 +28,6 @@ pub mod obj;
 pub mod openings;
 pub mod sunbeam;
 pub mod svg;
+pub mod sweep;
 pub mod textures;
 pub mod walk;

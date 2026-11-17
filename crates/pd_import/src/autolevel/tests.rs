@@ -330,9 +330,10 @@ fn probe_stage_triangles() {
         let id = tex.map_or(-1, |t| t.id as i64);
         let size = tex.and_then(|t| bg["textures"][t.id.to_string()].as_object()).map_or([0, 0], |r| [r["w"].as_i64().unwrap_or(0), r["h"].as_i64().unwrap_or(0)]);
         for t in b.idx.chunks(3) {
-            let v: Vec<[f32; 5]> = t.iter().map(|&i| {
+            // [x, y, z, u, v, r, g, b]: the corner's colour after the uv
+            let v: Vec<[f32; 8]> = t.iter().map(|&i| {
                 let v = &b.verts[i as usize];
-                [v.pos.x, v.pos.y, v.pos.z, v.uv[0], v.uv[1]]
+                [v.pos.x, v.pos.y, v.pos.z, v.uv[0], v.uv[1], v.c[0] as f32, v.c[1] as f32, v.c[2] as f32]
             }).collect();
             rows.push(serde_json::json!([room, id, size, v]));
         }

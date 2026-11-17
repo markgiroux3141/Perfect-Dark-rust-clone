@@ -1224,6 +1224,24 @@ kit's `a_felicity_level_is_dressed_in_felicitys_materials` (six chamfers a frame
 face in the strip, the jambs from 13 in). Felicity 15, seen with `pd_edit --shot felicity15 out.png
 --item door 3 --solid`: the frame reads as Felicity's.
 
+**The shape tool** (`autolevel_build::sweep`, 2026-11-17, the detail brief's step 1): a 2D profile
+swept along a path, for every piece of trim. A path is a start and legs; each leg has its own
+profile (the same number of points on each) in two axes square to it (`side`, `depth`), and each
+profile edge is a face (a kit surface) or nothing (against a wall or the ceiling). Legs meet in a
+mitre: each profile point's line along one leg met with its line along the next, so profiles of
+different depths meet properly (a pilaster 13 deep into a beam 24 deep: the mitre runs from where
+the pilaster's front meets the beam's underside to the wall-ceiling corner, as in Felicity's room
+4). Open ends are cut square; a closed path is mitred all round. UVs are explicit: one axis along
+the path, the other round the profile, and each edge says which (`along_v`). The clearing step
+beside it, `sweep::clear`, takes a piece's `Cover`s (a rectangle in a plane, facing one way) out of
+the carver's faces: each face there that overlaps is cut on the rectangle's edges and the pieces
+inside go (a piece lying wholly on a cut line, a sliver of no area, goes too). The doorway frames
+are now one sweep per wall face (up a jamb, across the lintel, down the other jamb), and
+`clear_frame`'s wall faces are a `clear`. The output is the same polygons (test
+`the_swept_frames_are_the_frames_built_by_hand`; seeds 3 and 15: every vertex and every other
+triangle the same), except that the trim's UVs are now Felicity's (u across the bevel from the
+opening, v along it at 212 a repeat), where the lintel's used to be projected from above.
+
 **Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
 corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
 halls and stair rooms (kinds `corridor`, `hub`, `stair`) and how the other rooms hang off them.
