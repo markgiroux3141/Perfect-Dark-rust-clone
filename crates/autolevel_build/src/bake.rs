@@ -35,6 +35,7 @@ use autolevel::py;
 use crate::complex::{self as cx, Light};
 use crate::csg;
 use crate::geometry::{Lit, BEAM_STRENGTH};
+use crate::kit::Kit;
 use crate::mesh::Room;
 use crate::sunbeam::{pysum, Beam};
 use trace::{Bvh, F3};
@@ -73,16 +74,16 @@ const PASSES: usize = 4;
 /// A room is calibrated until its floor median is within this of its target.
 const CLOSE: f64 = 4.0;
 
-/// Bake the rooms' corner colours. Returns each room's gain, by its name (`Room_NN`), in the
-/// plan's order.
-pub fn light(lv: &Level, rooms: &mut [Room], lit: &[Lit], set: &Settings) -> Result<Vec<(String, f64)>, String> {
+/// Bake the rooms' corner colours, to `kit`'s targets and in its tints. Returns each room's
+/// gain, by its name (`Room_NN`), in the plan's order.
+pub fn light(lv: &Level, rooms: &mut [Room], lit: &[Lit], kit: &Kit, set: &Settings) -> Result<Vec<(String, f64)>, String> {
     let lights = cx::plan_lights(&lv.plan, None, set.spot);
     let mut targets = Vec::with_capacity(rooms.len());
     let mut tints = Vec::with_capacity(rooms.len());
     for r in rooms.iter() {
         let p = lv.plan.get(&r.key).ok_or_else(|| format!("{} is no room of the plan", py::repr(&r.key)))?;
         // the level's moods, then the low road, then the vents: the later ones win
-        let mut want = lv.moods.iter().find(|(k, _)| *k == r.key).map_or(target("floor"), |(_, v)| *v as f64);
+        let mut want = lv.moods.iter().find(|(k, _)| *k == r.key).map_or(kit.target("floor"), |(_, v)| *v as f64);
         if p.scheme == "low" {
             want = set.low_floor;
         }
@@ -90,13 +91,9 @@ pub fn light(lv: &Level, rooms: &mut [Room], lit: &[Lit], set: &Settings) -> Res
             want = set.vent_floor;
         }
         targets.push(want);
-        tints.push(if p.tint.is_empty() {
-            None
-        } else {
-            Some(cx::TINTS.iter().find(|(k, _)| *k == p.tint).ok_or_else(|| format!("no tint {}", py::repr(p.tint)))?.1)
-        });
+        tints.push(if p.tint.is_empty() { None } else { Some(kit.tint(p.tint)?) });
     }
-    let scene = Scene::new(rooms);
+    let scene = Scene::new(rooms, kit);
     let gains = scene.bake(rooms, &lights, &targets, &tints, set);
     let reader = Reader::new();
     // after baking: only the lit faces' corners change
@@ -118,10 +115,6 @@ pub fn light(lv: &Level, rooms: &mut [Room], lit: &[Lit], set: &Settings) -> Res
         }
     }
     Ok(out)
-}
-
-fn target(kind: &str) -> f64 {
-    cx::TARGET.iter().find(|(k, _)| *k == kind).map_or(167.0, |(_, v)| *v as f64)
 }
 
 // ------------------------------------------------------------------ colours
@@ -211,12 +204,12 @@ pub struct Scene {
 }
 
 impl Scene {
-    /// Every polygon of the rooms blocks light, except those of Transparent materials.
-    pub fn new(rooms: &[Room]) -> Scene {
+    /// Every polygon of the rooms blocks light, except those of Transparent materials (`kit`'s).
+    pub fn new(rooms: &[Room], kit: &Kit) -> Scene {
         let mut tris = Vec::new();
         for r in rooms {
             for f in &r.faces {
-                if cx::PALETTE[f.material].flags.contains(&"Transparent") {
+                if kit.palette[f.material].flags.contains(&"Transparent") {
                     continue;
                 }
                 let at = |i: u32| r.verts[f.verts[i as usize] as usize].map(|c| c as f32);

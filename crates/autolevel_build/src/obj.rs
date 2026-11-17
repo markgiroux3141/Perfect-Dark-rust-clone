@@ -19,7 +19,7 @@ use std::path::Path;
 
 use autolevel::py;
 
-use crate::complex as cx;
+use crate::kit::Kit;
 use crate::mesh::Room;
 
 /// The editor's order for a material's flags in its name.
@@ -30,7 +30,7 @@ pub const FLAG_TOKENS: [&str; 10] = ["TopFlag", "EnvMapping", "Transparent", "Cu
 pub struct Report {
     pub rooms: usize,
     pub triangles: usize,
-    /// The materials' names, in order, each with its place in `complex::PALETTE`.
+    /// The materials' names, in order, each with its place in the kit's palette.
     pub materials: Vec<(String, usize)>,
     pub warnings: Vec<String>,
 }
@@ -82,12 +82,13 @@ fn normal(a: [i32; 3], b: [i32; 3], c: [i32; 3]) -> [f64; 3] {
     }
 }
 
-/// The OBJ's text and what it holds. `rooms` in any order; they are written by number.
-pub fn text(rooms: &[Room], header: &str) -> (String, Report) {
+/// The OBJ's text and what it holds. `rooms` in any order; they are written by number. Their
+/// materials are places in `kit`'s palette.
+pub fn text(rooms: &[Room], kit: &Kit, header: &str) -> (String, Report) {
     let mut order: Vec<&Room> = rooms.iter().collect();
     order.sort_by_key(|r| r.number);
     let mut report = Report { rooms: order.len(), ..Report::default() };
-    let mut names: Vec<Option<String>> = vec![None; cx::PALETTE.len()];
+    let mut names: Vec<Option<String>> = vec![None; kit.palette.len()];
     let mut out = String::new();
     let _ = writeln!(out, "# {header}");
     let _ = writeln!(out, "mtllib LevelIndices.mtl");
@@ -101,7 +102,7 @@ pub fn text(rooms: &[Room], header: &str) -> (String, Report) {
         // the room's triangles in face order, the Transparent ones apart: a material is named when first met
         let (mut primary, mut secondary) = (Vec::new(), Vec::new());
         for f in &room.faces {
-            let paint = &cx::PALETTE[f.material];
+            let paint = &kit.palette[f.material];
             if names[f.material].is_none() {
                 let name = material_name(report.materials.len(), paint.flags);
                 report.materials.push((name.clone(), f.material));
@@ -177,21 +178,21 @@ pub fn text(rooms: &[Room], header: &str) -> (String, Report) {
 }
 
 /// The `.mtl`: every material white, with its texture's file name (`level_files.write_mtl`).
-pub fn mtl(materials: &[(String, usize)]) -> String {
+pub fn mtl(kit: &Kit, materials: &[(String, usize)]) -> String {
     let mut out = vec!["# GE64 MTL written by autolevel_build".to_string(), format!("# Material Count: {}", materials.len()), String::new()];
     for (name, m) in materials {
         out.extend([format!("newmtl {name}"), "Ns 64".into(), "Ka 0.000000 0.000000 0.000000".into(), "Kd 1.000000 1.000000 1.000000".into()]);
-        out.extend(["d 1.000000".into(), "illum 2".into(), format!("map_Kd {}", texture_file(cx::PALETTE[*m].preset)), String::new()]);
+        out.extend(["d 1.000000".into(), "illum 2".into(), format!("map_Kd {}", texture_file(kit.palette[*m].preset)), String::new()]);
     }
     out.join("\n")
 }
 
 /// `_texturePresets.txt`: `<preset> <texture file>` for each texture, once, in the materials' order.
-pub fn presets(materials: &[(String, usize)]) -> String {
+pub fn presets(kit: &Kit, materials: &[(String, usize)]) -> String {
     let mut seen: Vec<&str> = Vec::new();
     let mut out = String::new();
     for (_, m) in materials {
-        let preset = cx::PALETTE[*m].preset;
+        let preset = kit.palette[*m].preset;
         if !seen.contains(&preset) {
             seen.push(preset);
             let _ = writeln!(out, "{preset} {}", texture_file(preset));
@@ -202,20 +203,20 @@ pub fn presets(materials: &[(String, usize)]) -> String {
 
 /// Write `<path>` (the .obj), its `.mtl` and `_texturePresets.txt` beside it, and copy the
 /// textures it names from `textures` (when given) into its folder.
-pub fn write(path: &Path, rooms: &[Room], textures: Option<&Path>) -> Result<Report, String> {
+pub fn write(path: &Path, rooms: &[Room], kit: &Kit, textures: Option<&Path>) -> Result<Report, String> {
     let dir = path.parent().unwrap_or(Path::new("."));
     let stem = path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| format!("no file name in {}", path.display()))?;
     fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let (obj, mut report) = text(rooms, "GE64 room geometry written by autolevel_build");
+    let (obj, mut report) = text(rooms, kit, "GE64 room geometry written by autolevel_build");
     let obj = obj.replace("mtllib LevelIndices.mtl", &format!("mtllib {stem}.mtl"));
     let put = |name: String, body: &str| fs::write(dir.join(&name), body).map_err(|e| format!("{name}: {e}"));
     put(format!("{stem}.obj"), &obj)?;
-    put(format!("{stem}.mtl"), &mtl(&report.materials))?;
-    put(format!("{stem}_texturePresets.txt"), &presets(&report.materials))?;
+    put(format!("{stem}.mtl"), &mtl(kit, &report.materials))?;
+    put(format!("{stem}_texturePresets.txt"), &presets(kit, &report.materials))?;
     if let Some(from) = textures {
         let mut done: Vec<String> = Vec::new();
         for (_, m) in &report.materials {
-            let file = texture_file(cx::PALETTE[*m].preset);
+            let file = texture_file(kit.palette[*m].preset);
             if done.contains(&file) {
                 continue;
             }
@@ -234,6 +235,7 @@ pub fn write(path: &Path, rooms: &[Room], textures: Option<&Path>) -> Result<Rep
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::complex::KIT;
     use crate::mesh::Face;
 
     fn room(number: usize, material: usize) -> Room {
@@ -259,8 +261,8 @@ mod tests {
 
     #[test]
     fn a_room_is_written_as_the_python_writes_it() {
-        let floor = cx::PALETTE.iter().position(|p| p.role == "floor").unwrap();
-        let (obj, report) = text(&[room(2, floor)], "test");
+        let floor = KIT.index("floor").unwrap();
+        let (obj, report) = text(&[room(2, floor)], &KIT, "test");
         let want = "# test\nmtllib LevelIndices.mtl\no primary_Room02\n\
             #vcolor 167.000000 167.000000 167.000000\n#vcolor 255.000000 255.000000 255.000000\n#vcolor 167.000000 167.000000 167.000000\n#vcolor 90.000000 90.000000 90.000000\n\
             v 0.000000 0.000000 0.000000\nv 118.000000 0.000000 0.000000\nv 118.000000 0.000000 -118.000000\nv 0.000000 0.000000 -118.000000\n\
@@ -274,20 +276,20 @@ mod tests {
 
     #[test]
     fn rooms_go_by_number_and_glass_goes_second() {
-        let floor = cx::PALETTE.iter().position(|p| p.role == "floor").unwrap();
-        let glass = cx::PALETTE.iter().position(|p| p.role == "window").unwrap();
+        let floor = KIT.index("floor").unwrap();
+        let glass = KIT.index("window").unwrap();
         let mut both = room(1, floor);
         let mut pane = both.faces[0].clone();
         pane.material = glass;
         both.faces.insert(0, pane);
-        let (obj, report) = text(&[room(3, floor), both], "test");
+        let (obj, report) = text(&[room(3, floor), both], &KIT, "test");
         let groups: Vec<&str> = obj.lines().filter(|l| l.starts_with("o ")).collect();
         assert_eq!(groups, ["o primary_Room01", "o secondary_Room01", "o primary_Room03"]);
         // the glass was met first, so it is m0, with its flags in the editor's order
         assert_eq!(report.materials[0].0, "m0TransparentCullBothClampT");
         assert_eq!(report.materials[1].0, "m1");
-        assert!(presets(&report.materials).starts_with("0190 tempImgEd0190.bmp\n073E tempImgEd073E.bmp\n"));
-        assert!(mtl(&report.materials)
+        assert!(presets(&KIT, &report.materials).starts_with("0190 tempImgEd0190.bmp\n073E tempImgEd073E.bmp\n"));
+        assert!(mtl(&KIT, &report.materials)
             .contains("newmtl m1\nNs 64\nKa 0.000000 0.000000 0.000000\nKd 1.000000 1.000000 1.000000\nd 1.000000\nillum 2\nmap_Kd tempImgEd073E.bmp\n"));
     }
 }

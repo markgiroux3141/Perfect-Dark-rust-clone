@@ -14,7 +14,7 @@
 //!   (`autolevel_build::openings`: every face two rooms' air shares), the
 //!   rectangle of the opening itself, wound and ordered as PD's
 //!   `bg_init_portal` takes them ([`crate::rooms::portal_between`]);
-//! - **materials**: Complex's own rows (`assets/stages/ref/bg.json`) on the
+//! - **materials**: the kit's arena's own rows (Complex's: `assets/stages/ref/bg.json`) on the
 //!   pool's textures, so the level carries no image, is drawn through PD's
 //!   combiner (mip-mapped), clamps as Complex's walls do, and sounds as
 //!   Complex does under shots and feet. The generator's palette is Complex's
@@ -54,7 +54,7 @@ use std::sync::{Arc, Mutex};
 
 use autolevel::plan::Point3;
 use autolevel_build::built::{self, Built};
-use autolevel_build::complex as cx;
+use autolevel_build::kit::Kit;
 use glam::{Vec2, Vec3};
 use pd_core::ids::*;
 use serde_json::Value;
@@ -70,8 +70,6 @@ const ZFAR: f32 = 10000.0;
 /// Complex's sky (`g_NoFogEnvironments`' row for `STAGE_MP_COMPLEX`): what
 /// shows where nothing is drawn.
 const SKY: [u8; 3] = [2, 0, 0];
-/// The arena whose materials the generator's palette is.
-const PALETTE_ARENA: &str = "ref";
 
 /// The generator's recipe as text: `src` (a `--src` path) if given, else what
 /// the level's recipe says. Either may be the recipe's file or a build folder
@@ -113,16 +111,16 @@ pub fn pd_point(p: Point3, scale: f32) -> Vec3 {
     Vec3::new(p.0 as f32, p.2 as f32, -p.1 as f32) * scale
 }
 
-/// Complex's material for each palette entry `used` (places in
-/// `complex::PALETTE`), as [`Material`]s in that order.
-fn materials(assets: &Path, used: &[usize]) -> Result<Vec<Material>, String> {
-    let path = assets.join("stages").join(PALETTE_ARENA).join("bg.json");
+/// The kit's arena's material for each palette entry `used` (places in
+/// `kit.palette`), as [`Material`]s in that order.
+fn materials(assets: &Path, kit: &Kit, used: &[usize]) -> Result<Vec<Material>, String> {
+    let path = assets.join("stages").join(kit.stage).join("bg.json");
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let bg: Value = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
     let rows = bg["materials"].as_array().ok_or_else(|| format!("{}: no materials", path.display()))?;
     used.iter()
         .map(|&m| {
-            let paint = &cx::PALETTE[m];
+            let paint = &kit.palette[m];
             let number = u32::from_str_radix(paint.preset, 16).map_err(|_| format!("the palette's {}: {} is no texture number", paint.role, paint.preset))?;
             let (both, clear) = (paint.flags.contains(&"CullBoth"), paint.flags.contains(&"Transparent"));
             // The same texture, culled the same way, in the same layer
@@ -175,7 +173,7 @@ pub fn level_source(r: &Recipe, s: &AutolevelSource, b: &Built, assets: &Path, r
             used.push(f.material);
         }
     }
-    let materials = materials(assets, &used)?;
+    let materials = materials(assets, b.kit, &used)?;
 
     // Every room's air, then everything drawn in it (a ramp's tube is not
     // one of the plan's boxes).

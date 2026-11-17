@@ -17,14 +17,17 @@ use autolevel::level::Level;
 use autolevel::recipe::Recipe;
 
 use crate::geometry::{self, Lit};
+use crate::kit::Kit;
 use crate::mesh::{self, Room};
 use crate::openings::{self, Opening};
-use crate::{bake, complex as cx};
+use crate::{bake, complex};
 
 /// A level made: its layout and its room meshes.
 #[derive(Clone, Debug)]
 pub struct Built {
     pub level: Level,
+    /// What it is dressed in: a face's material is a place in this kit's palette.
+    pub kit: &'static Kit,
     /// A mesh for each room of the plan that has polygons, in the order they are first met.
     pub rooms: Vec<Room>,
     /// The beams that light some of the polygons (`Face::lit`).
@@ -34,19 +37,19 @@ pub struct Built {
 }
 
 /// The level a recipe makes, its polygons as room meshes, lit by the bake's usual settings if
-/// `bake`. Err as `Recipe::generate`, or if a stage after it fails.
+/// `bake`, in Complex's kit. Err as `Recipe::generate`, or if a stage after it fails.
 pub fn make(recipe: &Recipe, bake: bool) -> Result<Built, String> {
-    of(recipe.generate()?, bake)
+    of(recipe.generate()?, &complex::KIT, bake)
 }
 
-/// The rest of `make`, from a layout.
-pub fn of(level: Level, bake: bool) -> Result<Built, String> {
-    let (polys, lit) = geometry::polys(&level)?;
-    let mut rooms = mesh::emit(&level, &polys)?;
+/// The rest of `make`, from a layout, dressed in `kit`.
+pub fn of(level: Level, kit: &'static Kit, bake: bool) -> Result<Built, String> {
+    let (polys, lit) = geometry::polys(&level, kit)?;
+    let mut rooms = mesh::emit(&level, &polys, kit)?;
     if bake {
-        bake::light(&level, &mut rooms, &lit, &bake::Settings::default())?;
+        bake::light(&level, &mut rooms, &lit, kit, &bake::Settings::default())?;
     }
-    Ok(Built { level, rooms, lit, baked: bake })
+    Ok(Built { level, kit, rooms, lit, baked: bake })
 }
 
 impl Built {
@@ -57,13 +60,7 @@ impl Built {
 
     /// The texture presets the level draws, in the order its rooms first use them.
     pub fn presets(&self) -> Vec<&'static str> {
-        let mut out: Vec<&str> = Vec::new();
-        for m in self.rooms.iter().flat_map(|r| r.faces.iter().map(|f| f.material)) {
-            if !out.contains(&cx::PALETTE[m].preset) {
-                out.push(cx::PALETTE[m].preset);
-            }
-        }
-        out
+        self.kit.presets(self.rooms.iter().flat_map(|r| r.faces.iter().map(|f| f.material)))
     }
 }
 

@@ -171,9 +171,9 @@ fn first_zone(ours: &Value, theirs: &Value) -> String {
 fn check(n: usize, case: &Value, seed: u64, o: &Value, lv: &Level) -> Result<(), String> {
     let at = format!("case {n} (seed {seed} {o})");
     assert_eq!((case["seed"].as_u64(), &case["options"]), (Some(seed), o), "the two keys list the same cases");
-    let planned = geometry::planned(lv).map_err(|e| format!("{at}: {e}"))?;
+    let planned = geometry::planned(lv, &cx::KIT).map_err(|e| format!("{at}: {e}"))?;
     let planned_rows: Vec<Value> = planned.iter().map(poly_row).collect();
-    let (polys, lit) = geometry::finish(lv, planned).map_err(|e| format!("{at}: {e}"))?;
+    let (polys, lit) = geometry::finish(lv, &cx::KIT, planned).map_err(|e| format!("{at}: {e}"))?;
     let rows: Vec<Value> = polys.iter().map(poly_row).collect();
     let lit_rows = Value::Array(lit.iter().map(|l| json!([l.room, l.count])).collect());
     if let Ok(dir) = std::env::var("AUTOLEVEL_POLYS_OUT") {

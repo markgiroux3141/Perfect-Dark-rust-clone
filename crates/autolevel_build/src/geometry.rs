@@ -2,18 +2,19 @@
 //! `ge_pd_tools/autolevel/geometry.py`, held to the answer key (`tests/key/polys.json`).
 //!
 //! ```text
-//! let (polys, lit) = geometry::polys(&lv)?;   // every polygon, and the beams that light some
+//! let (polys, lit) = geometry::polys(&lv, &complex::KIT)?;   // every polygon, and the beams that light some
 //! polys[i].lit                                // Some(b): lit[b].beam lights this polygon
 //! ```
 //!
 //! Everything the plan can't say for itself is here: the wall schemes over all the level's
 //! storeys, what the kit's plan style doesn't know (`restyle`), the beams of light through floor
 //! grates and drops, the grates, the glass and the ramps' rails. A material is its role in
-//! `complex::PALETTE`. `planned` is the level as `complex::plan_polys` leaves it, and `finish`
+//! the kit's palette (`kit::Kit`). `planned` is the level as `complex::plan_polys` leaves it, and `finish`
 //! the rest, so the two can be told apart (the key has a digest at each).
 
-use crate::complex::{self as cx, Detail, Scheme, Schemes};
+use crate::complex::{self as cx, Detail};
 use crate::csg::{self, f3, Face, Poly, Surface};
+use crate::kit::{self, Kit, Scheme, Schemes};
 use crate::sunbeam::{self, Beam};
 use autolevel::furnish::WINDOW;
 use autolevel::level::Level;
@@ -125,8 +126,8 @@ struct Zone {
 /// What the kit's plan style doesn't know: pools are water, tanks have panel tops, the low road
 /// has a dark ceiling, rooms have ceilings of their own (`lv.ceilings`), and a room or corridor
 /// on an upper storey starts its wall strips from its own floor (a base strip, the scheme's
-/// second strip, the slab trim), as one on the ground does.
-pub fn restyle(lv: &Level) -> impl Fn(&Face, &cx::Base) -> Result<Surface, String> + '_ {
+/// second strip, the slab trim), as one on the ground does. Roles and schemes are `kit`'s.
+pub fn restyle<'a>(lv: &'a Level, kit: &'a Kit) -> impl Fn(&Face, &cx::Base) -> Result<Surface, String> + 'a {
     let rooms: HashMap<&str, Zone> = lv
         .plan
         .rooms
@@ -148,23 +149,23 @@ pub fn restyle(lv: &Level) -> impl Fn(&Face, &cx::Base) -> Result<Surface, Strin
         .collect();
     // (a pool, a ceiling or a tall room the plan has no room for would be found by the Python
     // too, but every zone carved is a room of the plan)
-    let (table, lines) = (own_schemes(), lines());
-    let ceiling = |role: &str| cx::surface(role, None, if role == "plain" { Some((118.11, 236.22)) } else { None });
+    let (table, lines) = ((kit.schemes)(), lines());
+    let ceiling = move |role: &str| kit.surface(role, None, if role == "plain" { Some((118.11, 236.22)) } else { None });
     move |f, base| {
         let z = f.lo[2];
         let room = rooms.get(f.zone);
         let kind = f.kind();
         let pool = room.and_then(|r| r.pool);
         if kind == "floor" && pool.is_some_and(|water| z <= water) && f.tag != "tank" {
-            return cx::surface("water", None, None);
+            return kit.surface("water", None, None);
         }
         if kind == "floor" && f.tag == "tank" {
-            return cx::surface("grey_panel", None, None);
+            return kit.surface("grey_panel", None, None);
         }
         if kind == "ceiling" && f.tag == "void" {
             if let Some(r) = room {
                 if r.low {
-                    return cx::surface("ceiling_dark", None, None);
+                    return kit.surface("ceiling_dark", None, None);
                 }
                 if let Some(role) = r.ceiling.filter(|_| z >= r.top - 1) {
                     return ceiling(role);
@@ -183,14 +184,14 @@ pub fn restyle(lv: &Level) -> impl Fn(&Face, &cx::Base) -> Result<Surface, Strin
                 };
                 if rf > 0 {
                     let b = lines.iter().copied().filter(|&q| q <= z).max().ok_or("a wall under every line")?;
-                    let standard = cx::scheme(&table, "standard").ok_or("no wall scheme 'standard'")?;
-                    let strips = cx::scheme(&table, r.scheme).unwrap_or(standard);
+                    let standard = kit::scheme(&table, "standard").ok_or("no wall scheme 'standard'")?;
+                    let strips = kit::scheme(&table, r.scheme).unwrap_or(standard);
                     let rel = py::first_min([0, 118, 236, 276, 394, 512, 551, 669, 787], |q| (q - (b - rf)).abs()).expect("nine strips");
-                    let mut role = cx::strip(strips, rel).ok_or_else(|| format!("the wall scheme has no strip at {rel}"))?;
+                    let mut role = kit::strip(strips, rel).ok_or_else(|| format!("the wall scheme has no strip at {rel}"))?;
                     if rel == 0 && role == "panel" {
                         role = "base_pipe";
                     }
-                    return cx::surface(role, Some(b as f64), None);
+                    return kit.surface(role, Some(b as f64), None);
                 }
             }
         }
@@ -227,14 +228,15 @@ pub fn beams(lv: &Level) -> Result<Vec<(String, Beam)>, String> {
     Ok(out)
 }
 
-/// The level as `complex::plan_polys` leaves it: the plan in Complex's grammar, before the beams.
-pub fn planned(lv: &Level) -> Result<Vec<Poly>, String> {
-    cx::plan_polys(&lv.plan, None, &detail(), &schemes(), Some(&restyle(lv)))
+/// The level as `complex::plan_polys` leaves it: the plan in Complex's grammar, dressed in `kit`,
+/// before the beams.
+pub fn planned(lv: &Level, kit: &Kit) -> Result<Vec<Poly>, String> {
+    cx::plan_polys(&lv.plan, kit, None, &detail(), &(kit.schemes)(), Some(&restyle(lv, kit)))
 }
 
 /// The rest of `polys`, from `planned`'s polygons: the lit rooms cut along their beams, the floor
 /// grates, the glass and the ramps' rails.
-pub fn finish(lv: &Level, planned: Vec<Poly>) -> Result<(Vec<Poly>, Vec<Lit>), String> {
+pub fn finish(lv: &Level, kit: &Kit, planned: Vec<Poly>) -> Result<(Vec<Poly>, Vec<Lit>), String> {
     let mut out = planned;
     let mut lit = Vec::new();
     for (low, beam) in beams(lv)? {
@@ -248,7 +250,7 @@ pub fn finish(lv: &Level, planned: Vec<Poly>) -> Result<(Vec<Poly>, Vec<Lit>), S
     if !lit.is_empty() {
         csg::fix_t_junctions(&mut out);
     }
-    let grate = cx::surface("rail", None, None)?; // a walkable mesh square to each cell, flush with the floor
+    let grate = kit.surface("rail", None, None)?; // a walkable mesh square to each cell, flush with the floor
     for (piece, _, (x0, y0, x1, y1), z) in &lv.grates {
         for i in *x0..*x1 {
             for j in *y0..*y1 {
@@ -265,12 +267,12 @@ pub fn finish(lv: &Level, planned: Vec<Poly>) -> Result<(Vec<Poly>, Vec<Lit>), S
     }
     for (room, a, b, z, facing) in &lv.glass {
         let at = |p: &(f64, f64)| [C(p.0) as f64, C(p.1) as f64, *z as f64];
-        out.extend(cx::glass_rail(at(a), at(b), room, f3(*facing), WINDOW as f64)?);
+        out.extend(cx::glass_rail(kit, at(a), at(b), room, f3(*facing), WINDOW as f64)?);
     }
     let height = cx::RAIL_HEIGHT as f64;
     for (room, a, b, facing) in &lv.ramp_rails {
         // the mesh rail, down the open sides of the ramps
-        let surf = cx::surface("rail", Some(a.2.min(b.2) as f64), Some((43.0, height)))?;
+        let surf = kit.surface("rail", Some(a.2.min(b.2) as f64), Some((43.0, height)))?;
         out.extend(csg::rail(f3(*a), f3(*b), height, room, surf, f3(*facing), Some(43.0)));
     }
     Ok((out, lit))
@@ -278,9 +280,9 @@ pub fn finish(lv: &Level, planned: Vec<Poly>) -> Result<(Vec<Poly>, Vec<Lit>), S
 
 /// Every polygon of the level: the plan in Complex's grammar, the lit rooms cut along their
 /// beams, the floor grates, the glass and the ramps' rails. Returns the polygons and the beams
-/// (a polygon's `lit` is its beam's number in that list).
-pub fn polys(lv: &Level) -> Result<(Vec<Poly>, Vec<Lit>), String> {
-    finish(lv, planned(lv)?)
+/// (a polygon's `lit` is its beam's number in that list). Dressed in `kit`.
+pub fn polys(lv: &Level, kit: &Kit) -> Result<(Vec<Poly>, Vec<Lit>), String> {
+    finish(lv, kit, planned(lv, kit)?)
 }
 
 #[cfg(test)]
@@ -296,7 +298,7 @@ mod tests {
             table.iter().map(|(k, _)| *k).collect::<Vec<_>>(),
             ["standard", "striped", "plain", "pipework", "chimney", "flue", "shaft", "reservoir", "low"]
         );
-        let strip = |name: &str, z: i32| cx::strip(cx::scheme(&table, name).unwrap(), z);
+        let strip = |name: &str, z: i32| kit::strip(kit::scheme(&table, name).unwrap(), z);
         assert_eq!((strip("standard", 669), strip("standard", 945), strip("standard", 1772)), (Some("grille"), Some("panel_stripe"), Some("panel")));
         assert_eq!((strip("chimney", 669), strip("chimney", 1220), strip("flue", 1496)), (Some("panel_stripe"), Some("panel_stripe"), Some("pipes")));
         assert_eq!(

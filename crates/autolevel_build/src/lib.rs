@@ -10,8 +10,8 @@
 //! Headless, like `autolevel`: no window and no GPU. A game that only wants the layout need not
 //! carry this crate.
 //!
-//! So far: the polygons. `geometry::polys(&level)` is every polygon of a level, in the Python's
-//! order, each with its surface (a role of `complex::PALETTE`), and `complex::plan_lights` the
+//! So far: the polygons. `geometry::polys(&level, kit)` is every polygon of a level, in the Python's
+//! order, each with its surface (a role of the kit's palette: `kit::Kit`, Complex's `complex::KIT`), and `complex::plan_lights` the
 //! lamps a bake is given.
 
 pub mod bake;
@@ -21,6 +21,7 @@ pub mod complex;
 pub mod csg;
 pub mod geometry;
 pub mod glb;
+pub mod kit;
 pub mod mesh;
 pub mod obj;
 pub mod openings;

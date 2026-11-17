@@ -31,7 +31,7 @@ use std::path::Path;
 use image::ImageEncoder as _;
 use serde_json::{json, Map, Value};
 
-use crate::complex as cx;
+use crate::kit::{Kit, Paint};
 use crate::mesh::{Face, Room};
 use crate::obj::texture_file;
 
@@ -69,9 +69,10 @@ pub struct Pixels {
     pub data: Vec<u8>,
 }
 
-/// A material's name in the file, as the Python's kit names its Blender materials.
-pub fn material_name(paint: &cx::Paint) -> String {
-    format!("cx_{}", paint.role)
+/// A material's name in the file, as the Python's kit names its Blender materials (Complex's:
+/// `cx_floor`).
+pub fn material_name(kit: &Kit, paint: &Paint) -> String {
+    format!("{}_{}", kit.tag, paint.role)
 }
 
 /// The sampler wrap (both axes) for a material's flags.
@@ -207,9 +208,9 @@ fn normal(room: &Room, f: &Face) -> [f32; 3] {
 }
 
 /// What a face must be for the writer: an error names the room.
-fn sound(room: &Room, f: &Face) -> Result<(), String> {
+fn sound(room: &Room, f: &Face, kit: &Kit) -> Result<(), String> {
     let n = f.verts.len();
-    let ok = f.material < cx::PALETTE.len()
+    let ok = f.material < kit.palette.len()
         && f.uvs.len() == n
         && f.colors.len() == n
         && f.verts.iter().all(|&v| (v as usize) < room.verts.len())
@@ -226,10 +227,10 @@ fn floats(v: impl IntoIterator<Item = f32>) -> Vec<u8> {
 }
 
 /// A room's triangles as primitives, one a material, in the order the materials are first used.
-fn primitives(room: &Room) -> Result<Vec<(usize, Prim)>, String> {
+fn primitives(room: &Room, kit: &Kit) -> Result<Vec<(usize, Prim)>, String> {
     let mut prims: Vec<(usize, Prim)> = Vec::new();
     for f in &room.faces {
-        sound(room, f)?;
+        sound(room, f, kit)?;
         if f.tris.is_empty() {
             continue;
         }
@@ -302,7 +303,7 @@ struct Textures {
 impl Textures {
     /// The texture for a material: its preset's image under its flags' wrap. None, with a
     /// warning the first time, if the image's file is missing or cannot be read.
-    fn of(&mut self, paint: &cx::Paint, dir: &Path, buf: &mut Buffer, warnings: &mut Vec<String>) -> Option<usize> {
+    fn of(&mut self, paint: &Paint, dir: &Path, buf: &mut Buffer, warnings: &mut Vec<String>) -> Option<usize> {
         let image = match self.images.iter().find(|(p, _)| *p == paint.preset) {
             Some((_, image)) => *image,
             None => {
@@ -343,8 +344,9 @@ impl Textures {
     }
 }
 
-/// The GLB's bytes and what it holds. `rooms` in any order; they are written by number.
-pub fn bytes(rooms: &[Room], name: &str, textures: Option<&Path>) -> Result<(Vec<u8>, Report), String> {
+/// The GLB's bytes and what it holds. `rooms` in any order; they are written by number. Their
+/// materials are places in `kit`'s palette.
+pub fn bytes(rooms: &[Room], kit: &Kit, name: &str, textures: Option<&Path>) -> Result<(Vec<u8>, Report), String> {
     let mut order: Vec<&Room> = rooms.iter().collect();
     order.sort_by_key(|r| r.number);
     let mut report = Report { rooms: order.len(), ..Report::default() };
@@ -356,7 +358,7 @@ pub fn bytes(rooms: &[Room], name: &str, textures: Option<&Path>) -> Result<(Vec
     for room in order {
         let mut node = json!({"name": room.name, "extras": {"ge_room": room.number, "ge_plan_key": room.key}});
         let mut prims = Vec::new();
-        for (m, p) in primitives(room)? {
+        for (m, p) in primitives(room, kit)? {
             let material = used.iter().position(|u| *u == m).unwrap_or_else(|| {
                 used.push(m);
                 used.len() - 1
@@ -373,13 +375,13 @@ pub fn bytes(rooms: &[Room], name: &str, textures: Option<&Path>) -> Result<(Vec
     let mut tex = Textures::default();
     let (mut materials, mut clear) = (Vec::new(), 0);
     for &m in &used {
-        let paint = &cx::PALETTE[m];
+        let paint = &kit.palette[m];
         let mut pbr = json!({"metallicFactor": 0.0, "roughnessFactor": 0.9});
         if let Some(t) = textures.and_then(|dir| tex.of(paint, dir, &mut buf, &mut report.warnings)) {
             pbr["baseColorTexture"] = json!({"index": t});
         }
         let mut mat = json!({
-            "name": material_name(paint),
+            "name": material_name(kit, paint),
             "extensions": {"KHR_materials_unlit": {}},
             "extras": {"ge_flags": paint.flags.join(" "), "ge_preset": paint.preset},
             "pbrMetallicRoughness": pbr,
@@ -449,8 +451,8 @@ pub fn pack(gltf: &Value, bin: &[u8]) -> Result<Vec<u8>, String> {
 
 /// Write the rooms to `path` as a GLB named `name`, with the textures found in `textures`
 /// (none at all without a folder).
-pub fn write(path: &Path, rooms: &[Room], name: &str, textures: Option<&Path>) -> Result<Report, String> {
-    let (out, report) = bytes(rooms, name, textures)?;
+pub fn write(path: &Path, rooms: &[Room], kit: &Kit, name: &str, textures: Option<&Path>) -> Result<Report, String> {
+    let (out, report) = bytes(rooms, kit, name, textures)?;
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
@@ -461,10 +463,11 @@ pub fn write(path: &Path, rooms: &[Room], name: &str, textures: Option<&Path>) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::complex::KIT;
     use std::path::PathBuf;
 
     fn role(name: &str) -> usize {
-        cx::PALETTE.iter().position(|p| p.role == name).unwrap()
+        KIT.index(name).unwrap()
     }
 
     /// One square floor, cut on its diagonal.
@@ -579,7 +582,7 @@ mod tests {
 
     #[test]
     fn a_room_comes_back_as_it_went_in() {
-        let (glb, report) = bytes(&[room(2, role("floor"))], "a level", None).unwrap();
+        let (glb, report) = bytes(&[room(2, role("floor"))], &KIT, "a level", None).unwrap();
         assert_eq!(report, Report { rooms: 1, materials: 1, bytes: glb.len(), warnings: vec![] });
         let (gltf, bin) = parse(&glb);
         assert_eq!(check(&gltf, &bin), 2);
@@ -642,7 +645,7 @@ mod tests {
         next.colors = vec![[255, 255, 255], [9, 9, 9], [9, 9, 9], [78, 0, 1]];
         r.faces.push(next);
         let count = |r: &Room| {
-            let (gltf, bin) = parse(&bytes(std::slice::from_ref(r), "x", None).unwrap().0);
+            let (gltf, bin) = parse(&bytes(std::slice::from_ref(r), &KIT, "x", None).unwrap().0);
             assert_eq!(check(&gltf, &bin), 4);
             gltf["accessors"][0]["count"].as_u64().unwrap()
         };
@@ -658,7 +661,7 @@ mod tests {
         both.faces.push(room(1, role("floor")).faces.remove(0));
         both.faces.push(room(1, role("window")).faces.remove(0));
         let rooms = [room(0x1A, role("grate")), room(3, role("floor")), both, room(0x0B, role("water_surface"))];
-        let (glb, report) = bytes(&rooms, "x", None).unwrap();
+        let (glb, report) = bytes(&rooms, &KIT, "x", None).unwrap();
         assert_eq!((report.rooms, report.materials), (4, 4));
         let (gltf, bin) = parse(&glb);
         assert_eq!(check(&gltf, &bin), 12);
@@ -681,7 +684,7 @@ mod tests {
 
     #[test]
     fn a_level_with_nothing_in_it_is_still_a_file() {
-        let (glb, report) = bytes(&[], "empty", None).unwrap();
+        let (glb, report) = bytes(&[], &KIT, "empty", None).unwrap();
         let (gltf, bin) = parse(&glb);
         assert_eq!((report.rooms, report.materials, bin.len()), (0, 0, 0));
         assert_eq!(check(&gltf, &bin), 0);
@@ -689,13 +692,13 @@ mod tests {
         // a room with no triangles is a node with no mesh
         let mut bare = room(5, role("floor"));
         bare.faces.clear();
-        let (gltf, bin) = parse(&bytes(&[bare], "bare", None).unwrap().0);
+        let (gltf, bin) = parse(&bytes(&[bare], &KIT, "bare", None).unwrap().0);
         assert_eq!(check(&gltf, &bin), 0);
         assert_eq!(gltf["nodes"], json!([{"name": "Room_05", "extras": {"ge_room": 5, "ge_plan_key": "r5"}}]));
         // and a face that does not agree with itself is an error, not a panic
         let mut bad = room(6, role("floor"));
         bad.faces[0].uvs.pop();
-        assert!(bytes(&[bad], "bad", None).unwrap_err().starts_with("Room_06"));
+        assert!(bytes(&[bad], &KIT, "bad", None).unwrap_err().starts_with("Room_06"));
     }
 
     #[test]
@@ -761,7 +764,7 @@ mod tests {
         let rooms =
             [room(1, role("window")), room(2, role("floor")), room(3, role("grate")), room(4, role("water")), room(5, role("plain")), room(6, role("panel"))];
         let path = dir.join("out").join("level.glb");
-        let report = write(&path, &rooms, "textured", Some(&dir)).unwrap();
+        let report = write(&path, &rooms, &KIT, "textured", Some(&dir)).unwrap();
         let glb = fs::read(&path).unwrap();
         assert_eq!((report.rooms, report.materials, report.bytes), (6, 6, glb.len()));
         // the plain wall's texture is not there, the panel's is no image: two warnings, and the level is written
@@ -796,20 +799,15 @@ mod tests {
     fn a_whole_level_is_written() {
         use autolevel::level::{generate, Options};
         let lv = generate(40, &Options::default()).unwrap();
-        let (polys, _) = crate::geometry::polys(&lv).unwrap();
-        let rooms = crate::mesh::emit(&lv, &polys).unwrap();
+        let (polys, _) = crate::geometry::polys(&lv, &KIT).unwrap();
+        let rooms = crate::mesh::emit(&lv, &polys, &KIT).unwrap();
         // the textures are the ROM's, and not this crate's: the game's pool, dumped into a folder as a
         // build dumps them (`textures::dumps`); without the pool, none
         let pool = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/textures");
-        let mut presets: Vec<&str> = Vec::new();
-        for m in rooms.iter().flat_map(|r| r.faces.iter().map(|f| f.material)) {
-            if !presets.contains(&cx::PALETTE[m].preset) {
-                presets.push(cx::PALETTE[m].preset);
-            }
-        }
+        let presets = KIT.presets(rooms.iter().flat_map(|r| r.faces.iter().map(|f| f.material)));
         let dir = std::env::temp_dir().join(format!("autolevel_glb_level_{}", std::process::id()));
         let textures = crate::textures::is_pool(&pool, &presets).then(|| crate::textures::dumps(&pool, &dir, &presets).unwrap());
-        let (glb, report) = bytes(&rooms, "autolevel_40", textures.as_deref()).unwrap();
+        let (glb, report) = bytes(&rooms, &KIT, "autolevel_40", textures.as_deref()).unwrap();
         let (gltf, bin) = parse(&glb);
         // as the Blender build of seed 40: 61 rooms, 15,303 triangles, 17 materials, two of them see-through
         assert_eq!(check(&gltf, &bin), 15303);

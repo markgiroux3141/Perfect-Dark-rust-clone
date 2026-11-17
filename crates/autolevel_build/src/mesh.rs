@@ -4,7 +4,7 @@
 //! The rules are `emit`'s: a polygon goes to the room its zone names, one that rounding
 //! collapsed (fewer than three different vertices) is left out, a room's vertices are shared
 //! by position in the order they are first met, and its faces keep the polygons' order. Each
-//! face carries its UVs (`csg::project_uvs`), its material (a place in `complex::PALETTE`), the
+//! face carries its UVs (`csg::project_uvs`), its material (a place in its kit's palette), the
 //! beam that lights it and a colour for each corner: the baked lighting, white until `bake`
 //! has run.
 //!
@@ -16,8 +16,8 @@
 
 use autolevel::level::Level;
 
-use crate::complex as cx;
 use crate::csg::{self, Poly, Uv, P3, V3};
+use crate::kit::Kit;
 
 /// One polygon of a room.
 #[derive(Clone, Debug, PartialEq)]
@@ -27,7 +27,7 @@ pub struct Face {
     /// A UV for each corner (v up, as OBJ has it).
     pub uvs: Vec<Uv>,
     pub normal: P3,
-    /// Its place in `complex::PALETTE`.
+    /// Its place in the kit's palette.
     pub material: usize,
     /// The beam that lights it (a place in the level's `Lit` list).
     pub lit: Option<usize>,
@@ -61,8 +61,9 @@ impl Room {
 }
 
 /// The level's polygons as room meshes, in the order the rooms are first met (the writers put
-/// them in order of their numbers). An error if a polygon's zone is no room of the plan.
-pub fn emit(lv: &Level, polys: &[Poly]) -> Result<Vec<Room>, String> {
+/// them in order of their numbers), each face's material its role's place in `kit`'s palette. An
+/// error if a polygon's zone is no room of the plan, or its role none of the kit's.
+pub fn emit(lv: &Level, polys: &[Poly], kit: &Kit) -> Result<Vec<Room>, String> {
     let mut rooms: Vec<Room> = Vec::new();
     let mut index: Vec<std::collections::HashMap<V3, u32>> = Vec::new();
     let mut place: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
@@ -90,8 +91,7 @@ pub fn emit(lv: &Level, polys: &[Poly]) -> Result<Vec<Room>, String> {
             }
             verts.push(i);
         }
-        let material =
-            cx::PALETTE.iter().position(|m| m.role == p.surface.material).ok_or_else(|| format!("no material {:?} in the palette", p.surface.material))?;
+        let material = kit.index(p.surface.material).map_err(|_| format!("no material {:?} in the palette", p.surface.material))?;
         let tris = triangulate(&p.verts);
         room.faces.push(Face { colors: vec![[255; 3]; verts.len()], verts, uvs: csg::project_uvs(p), normal: p.normal, material, lit: p.lit, tris });
     }
@@ -218,8 +218,8 @@ mod tests {
     #[test]
     fn a_level_becomes_its_rooms() {
         let lv = generate(40, &Options::default()).unwrap();
-        let (polys, _) = geometry::polys(&lv).unwrap();
-        let rooms = emit(&lv, &polys).unwrap();
+        let (polys, _) = geometry::polys(&lv, &crate::complex::KIT).unwrap();
+        let rooms = emit(&lv, &polys, &crate::complex::KIT).unwrap();
         // as the Blender build of seed 40 reports: 61 rooms, 15,303 triangles
         assert_eq!(rooms.len(), 61);
         assert_eq!(rooms.iter().map(Room::triangles).sum::<usize>(), 15303);

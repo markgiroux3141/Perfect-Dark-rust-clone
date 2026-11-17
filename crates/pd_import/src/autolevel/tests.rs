@@ -182,7 +182,7 @@ fn the_level_is_drawn_on_the_pools_textures_with_complexs_materials() {
         u
     });
     let of = |role: &str| {
-        let at = cx::PALETTE.iter().position(|p| p.role == role).unwrap();
+        let at = b.kit.index(role).unwrap();
         &src.materials[used.iter().position(|&m| m == at).unwrap_or_else(|| panic!("seed 40 draws no {role}"))]
     };
     let look = |m: &Material| (m.pd.as_ref().unwrap().texture, m.cull_back, m.blend, m.wrap);

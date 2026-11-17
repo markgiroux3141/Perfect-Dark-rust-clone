@@ -11,8 +11,13 @@
 //! Python's `mats` maps a role to a Blender material's name, and the key is written with each
 //! role mapped to itself), so nothing takes `mats`; and the scheme table, which
 //! `autolevel.geometry` swaps into this module while it runs, is a parameter.
+//!
+//! `KIT` is Complex as a [`Kit`]: the palette, the level's schemes (`geometry::schemes`), the
+//! solid tags, tints and brightness targets. The functions here take the kit whose palette they
+//! draw roles from; they are Complex's rules, and any kit given them must have the roles they use.
 
 use crate::csg::{self, f3, oriented, Carver, Face, Lattice, Poly, Surface, P3};
+use crate::kit::{scheme, strip, Kit, Paint, Scheme, Schemes};
 use autolevel::plan::{Plan, Ramp, Room};
 use autolevel::py;
 use std::collections::HashMap;
@@ -68,21 +73,6 @@ pub const WINDOW: i32 = 94;
 pub const GLASS_RAIL: i32 = 82;
 
 // ---------------------------------------------------------------- palette
-/// A material of the kit.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Paint {
-    /// What it is for: the name surfaces know it by.
-    pub role: &'static str,
-    /// The ROM texture preset.
-    pub preset: &'static str,
-    /// GE material flags.
-    pub flags: &'static [&'static str],
-    /// Its name in the Complex export.
-    pub name: &'static str,
-    /// Units per texture repeat.
-    pub scale: (f64, f64),
-}
-
 const fn paint(role: &'static str, preset: &'static str, flags: &'static [&'static str], name: &'static str, scale: f64) -> Paint {
     Paint { role, preset, flags, name, scale: (scale, scale) }
 }
@@ -90,7 +80,7 @@ const fn paint(role: &'static str, preset: &'static str, flags: &'static [&'stat
 const SEE_THROUGH: &[&str] = &["Transparent", "CullBoth", "ClampT"];
 
 /// The kit's materials, in the Python's order.
-pub const PALETTE: [Paint; 19] = [
+const PALETTE: [Paint; 19] = [
     paint("floor", "073E", &[], "m0", 39.37),
     paint("grate", "073E", &["CullBoth"], "m14CullBoth", 39.37),
     paint("base_pipe", "0740", &["ClampT"], "m8ClampT", 118.11),
@@ -112,15 +102,9 @@ pub const PALETTE: [Paint; 19] = [
     Paint { role: "rail", preset: "0748", flags: SEE_THROUGH, name: "m18TransparentCullBothClampT", scale: (43.0, 86.0) },
 ];
 
-/// The palette's entry for a role. Err if the kit has no such role.
-pub fn palette(role: &str) -> Result<&'static Paint, String> {
-    PALETTE.iter().find(|p| p.role == role).ok_or_else(|| format!("the palette has no {}", py::repr(role)))
-}
-
-/// Wall strips, bottom-up: (strip base z, role).
-pub type Scheme = Vec<(i32, &'static str)>;
-/// The wall schemes by name.
-pub type Schemes = Vec<(&'static str, Scheme)>;
+/// Complex, as the generator dresses its levels.
+pub static KIT: Kit =
+    Kit { name: "complex", tag: "cx", stage: "ref", palette: &PALETTE, schemes: crate::geometry::schemes, tags: &TAGS, tints: &TINTS, target: &TARGET };
 
 /// The kit's schemes: Complex's most common vertical pairings (`SCHEMES`).
 pub fn schemes() -> Schemes {
@@ -136,32 +120,14 @@ pub fn schemes() -> Schemes {
     ]
 }
 
-/// The scheme of this name.
-pub fn scheme<'a>(schemes: &'a Schemes, name: &str) -> Option<&'a Scheme> {
-    schemes.iter().find(|(k, _)| *k == name).map(|(_, s)| s)
-}
-
 /// The scheme of this name, where the Python would stop with a KeyError without it.
 fn scheme_must<'a>(schemes: &'a Schemes, name: &str) -> Result<&'a Scheme, String> {
     scheme(schemes, name).ok_or_else(|| format!("no wall scheme {}", py::repr(name)))
 }
 
-/// The role of the strip whose base is at `z`.
-pub fn strip(scheme: &Scheme, z: i32) -> Option<&'static str> {
-    scheme.iter().find(|(b, _)| *b == z).map(|(_, r)| *r)
-}
-
 /// The strip base at or below `z` (`strip_base`).
 pub fn strip_base(z: i32) -> Option<i32> {
     BAND_LINES[..BAND_LINES.len() - 1].iter().copied().filter(|&b| b <= z).max()
-}
-
-// ------------------------------------------------------------- materials
-
-/// A role's surface: its scale from the palette unless one is given.
-pub fn surface(role: &str, band: Option<f64>, scale: Option<(f64, f64)>) -> Result<Surface, String> {
-    let p = palette(role)?;
-    Ok(Surface::new(p.role, scale.unwrap_or(p.scale), band))
 }
 
 // ------------------------------------------------------------------ style
@@ -174,8 +140,9 @@ pub fn surface(role: &str, band: Option<f64>, scale: Option<(f64, f64)>) -> Resu
 /// Floors are diamond plate (water at the pit level in "water" zones), ceilings at storey heights
 /// (236, 512) are plain panels, atrium ceilings (630+) are tiles, and undersides of trim/grate
 /// solids are dark ceiling panels. `lines`: the strip base heights, where a level has its own
-/// (None: `BAND_LINES` less its last).
+/// (None: `BAND_LINES` less its last). Roles are `kit`'s.
 pub fn style<'a>(
+    kit: &'a Kit,
     scheme: &'a str,
     zones: &[(&'a str, &'a str)],
     tags: &'a [(&'a str, &'a str)],
@@ -194,34 +161,34 @@ pub fn style<'a>(
         let band = |z: i32| Some(z as f64);
         let mode = zones.get(f.zone).copied().unwrap_or(scheme);
         if mode == "vent" {
-            return surface("vent", None, None);
+            return kit.surface("vent", None, None);
         }
         if f.kind() == "floor" {
             if mode == "water" && f.lo[2] <= pit {
-                return surface("water", None, None);
+                return kit.surface("water", None, None);
             }
-            return surface(if f.tag == "grate" { "grate" } else { "floor" }, None, None);
+            return kit.surface(if f.tag == "grate" { "grate" } else { "floor" }, None, None);
         }
         if f.kind() == "ceiling" {
             if f.tag == "trim" || f.tag == "grate" {
-                return surface("ceiling_dark", None, None);
+                return kit.surface("ceiling_dark", None, None);
             }
             let tile = f.lo[2] >= 630; // atria; storey ceilings (236, 512) are plain in Complex
-            return surface(if tile { "ceiling_tile" } else { "plain" }, None, if tile { None } else { Some((118.11, 236.22)) });
+            return kit.surface(if tile { "ceiling_tile" } else { "plain" }, None, if tile { None } else { Some((118.11, 236.22)) });
         }
         let z0 = f.lo[2];
         if f.tag == "trim" || f.tag == "grate" {
-            return surface("plain", band(z0), None);
+            return kit.surface("plain", band(z0), None);
         }
         if let Some((_, role)) = tags.iter().find(|(t, _)| *t == f.tag) {
-            return surface(role, band(strip_base(z0)?), None);
+            return kit.surface(role, band(strip_base(z0)?), None);
         }
         let b = strip_base(z0)?;
         if f.tag == "column" {
-            return surface(if b.div_euclid(118).rem_euclid(2) != 0 { "grille" } else { "door_panel" }, band(b), None);
+            return kit.surface(if b.div_euclid(118).rem_euclid(2) != 0 { "grille" } else { "door_panel" }, band(b), None);
         }
         let table = scheme_must(schemes, if mode == "water" { "standard" } else { mode })?;
-        surface(strip(table, b).unwrap_or("plain"), band(b), None)
+        kit.surface(strip(table, b).unwrap_or("plain"), band(b), None)
     }
 }
 
@@ -230,8 +197,8 @@ pub fn style<'a>(
 /// Complex's open ramp: a double-sided grate sheet with an edge strip on each open side (-1 / 1:
 /// the low / high coordinate side). `start` and `end` are centre-line points sharing x or y.
 /// Keep it at about 30 degrees.
-pub fn open_ramp(start: P3, end: P3, zone: &str, width: f64, open_sides: &[i32]) -> Result<Vec<Poly>, String> {
-    Ok(csg::plate_ramp(start, end, width, zone, surface("grate", None, None)?, GRATE_EDGE as f64, open_sides))
+pub fn open_ramp(kit: &Kit, start: P3, end: P3, zone: &str, width: f64, open_sides: &[i32]) -> Result<Vec<Poly>, String> {
+    Ok(csg::plate_ramp(start, end, width, zone, kit.surface("grate", None, None)?, GRATE_EDGE as f64, open_sides))
 }
 
 /// An enclosed ramp corridor the way Complex builds them (rooms 0C, 11, 2B): a sloped tube with
@@ -239,7 +206,7 @@ pub fn open_ramp(start: P3, end: P3, zone: &str, width: f64, open_sides: &[i32])
 /// is two 118-high ClampT strips that run parallel to the slope (the scheme's 0 and 118 strips;
 /// the "plain" scheme's if there is none of that name). The ends are open: leave matching
 /// portals in the rooms they join (`plan_polys` does).
-pub fn ramp_tube(start: P3, end: P3, zone: &str, scheme_name: &str, width: f64, schemes: &Schemes) -> Result<Vec<Poly>, String> {
+pub fn ramp_tube(kit: &Kit, start: P3, end: P3, zone: &str, scheme_name: &str, width: f64, schemes: &Schemes) -> Result<Vec<Poly>, String> {
     let run = if start[0] != end[0] { 0 } else { 1 };
     let side = 1 - run;
     let hw = width / 2.0;
@@ -253,11 +220,17 @@ pub fn ramp_tube(start: P3, end: P3, zone: &str, scheme_name: &str, width: f64, 
     let table = scheme(schemes, scheme_name).unwrap_or(plain);
     let storey = STOREY as f64;
     let mut out = vec![
-        oriented(&[at(start, -hw, 0.0), at(start, hw, 0.0), at(end, hw, 0.0), at(end, -hw, 0.0)], [0.0, 0.0, 1.0], surface("floor", None, None)?, zone, None),
+        oriented(
+            &[at(start, -hw, 0.0), at(start, hw, 0.0), at(end, hw, 0.0), at(end, -hw, 0.0)],
+            [0.0, 0.0, 1.0],
+            kit.surface("floor", None, None)?,
+            zone,
+            None,
+        ),
         oriented(
             &[at(start, -hw, storey), at(start, hw, storey), at(end, hw, storey), at(end, -hw, storey)],
             [0.0, 0.0, -1.0],
-            surface("plain", None, Some((MODULE, MODULE)))?,
+            kit.surface("plain", None, Some((MODULE, MODULE)))?,
             zone,
             None,
         ),
@@ -273,7 +246,7 @@ pub fn ramp_tube(start: P3, end: P3, zone: &str, scheme_name: &str, width: f64, 
         let slope = (end[2] - start[2]) / if d != 0.0 { d } else { 1.0 };
         for (k, role) in strips {
             let band = start[2] + k as f64 * MODULE - slope * along(at(start, off, 0.0));
-            let p = palette(role)?;
+            let p = kit.paint(role)?;
             let surf = Surface { material: p.role, scale: p.scale, band: Some(py::round_to(band, 3)), slope, offset: (0.0, 0.0) };
             let (z0, z1) = ((k * 118) as f64, ((k + 1) * 118) as f64);
             out.push(oriented(&[at(start, off, z0), at(end, off, z0), at(end, off, z1), at(start, off, z1)], n, surf, zone, None));
@@ -284,16 +257,16 @@ pub fn ramp_tube(start: P3, end: P3, zone: &str, scheme_name: &str, width: f64, 
 
 /// Room_18's railing: a double-sided strip of window glass along a catwalk or ramp edge. p0 and
 /// p1 carry their own z, so it can follow a slope (explicit UVs keep the texture parallel to it).
-pub fn glass_rail(p0: P3, p1: P3, zone: &str, facing: P3, height: f64) -> Result<Vec<Poly>, String> {
+pub fn glass_rail(kit: &Kit, p0: P3, p1: P3, zone: &str, facing: P3, height: f64) -> Result<Vec<Poly>, String> {
     let low = if p1[2] < p0[2] { p1[2] } else { p0[2] };
-    Ok(csg::rail(p0, p1, height, zone, surface("window", Some(low), Some((88.0, height)))?, facing, Some(88.0)))
+    Ok(csg::rail(p0, p1, height, zone, kit.surface("window", Some(low), Some((88.0, height)))?, facing, Some(88.0)))
 }
 
 /// A mesh railing along a catwalk edge, `RAIL_HEIGHT` tall, at p0's height or at `level`.
-pub fn railing(p0: P3, p1: P3, zone: &str, facing: P3, level: Option<f64>) -> Result<Vec<Poly>, String> {
+pub fn railing(kit: &Kit, p0: P3, p1: P3, zone: &str, facing: P3, level: Option<f64>) -> Result<Vec<Poly>, String> {
     let z = level.unwrap_or(p0[2]);
     let height = RAIL_HEIGHT as f64;
-    Ok(csg::rail([p0[0], p0[1], z], [p1[0], p1[1], z], height, zone, surface("rail", Some(z), Some((43.0, height)))?, facing, None))
+    Ok(csg::rail([p0[0], p0[1], z], [p1[0], p1[1], z], height, zone, kit.surface("rail", Some(z), Some((43.0, height)))?, facing, None))
 }
 
 // ------------------------------------------------------------- from a plan
@@ -334,8 +307,8 @@ pub type Restyle<'a> = dyn Fn(&Face, &Base) -> Result<Surface, String> + 'a;
 /// of its flat boxes, with `VENT`-high portals and a cap over each.
 ///
 /// `rooms`: keys to build (None: all). Doors to rooms left out stay walled, so a level can be
-/// built one stage at a time.
-pub fn plan_polys(plan: &Plan, rooms: Option<&[&str]>, how: &Detail, schemes: &Schemes, restyle: Option<&Restyle>) -> Result<Vec<Poly>, String> {
+/// built one stage at a time. Roles are `kit`'s, and so are the solid tags.
+pub fn plan_polys(plan: &Plan, kit: &Kit, rooms: Option<&[&str]>, how: &Detail, schemes: &Schemes, restyle: Option<&Restyle>) -> Result<Vec<Poly>, String> {
     let chosen: Vec<&Room> = plan.rooms.iter().filter(|r| rooms.is_none_or(|keys| keys.contains(&r.key.as_str()))).collect();
     let lines = how.lines.as_deref();
     let mut c = Carver::new(how.lattice, how.max_span);
@@ -371,16 +344,16 @@ pub fn plan_polys(plan: &Plan, rooms: Option<&[&str]>, how: &Detail, schemes: &S
         }
     }
     let zones: Vec<(&str, &str)> = chosen.iter().map(|r| (r.key.as_str(), if r.kind == "vent" { "vent" } else { r.scheme })).collect();
-    let base = style("standard", &zones, &TAGS, lines, schemes);
+    let base = style(kit, "standard", &zones, kit.tags, lines, schemes);
     let mut polys = match restyle {
         None => c.polygons(|f| base(f).map(Some), false)?,
         Some(restyle) => c.polygons(|f| restyle(f, &base).map(Some), false)?,
     };
     for (r, rp) in &tubes {
-        polys.extend(ramp_tube(f3(rp.start), f3(rp.end), &r.key, r.scheme, rp.width as f64, schemes)?);
+        polys.extend(ramp_tube(kit, f3(rp.start), f3(rp.end), &r.key, r.scheme, rp.width as f64, schemes)?);
     }
     for (r, rp) in &ducts {
-        let v = surface("vent", None, None)?;
+        let v = kit.surface("vent", None, None)?;
         let (start, end, width) = (f3(rp.start), f3(rp.end), rp.width as f64);
         polys.extend(csg::duct(start, end, width, VENT_SLOPE as f64, &r.key, [v; 3], how.vent_step));
         let run = if start[0] != end[0] { 0 } else { 1 };
@@ -399,21 +372,21 @@ pub fn plan_polys(plan: &Plan, rooms: Option<&[&str]>, how: &Detail, schemes: &S
         for r in &chosen {
             for rp in &r.ramps {
                 if rp.kind == "open" {
-                    polys.extend(open_ramp(f3(rp.start), f3(rp.end), &r.key, rp.width as f64, &rp.open_sides)?);
+                    polys.extend(open_ramp(kit, f3(rp.start), f3(rp.end), &r.key, rp.width as f64, &rp.open_sides)?);
                 } else if rp.kind == "plate" {
                     polys.extend(csg::plate_ramp(
                         f3(rp.start),
                         f3(rp.end),
                         rp.width as f64,
                         &r.key,
-                        surface("floor", None, None)?,
+                        kit.surface("floor", None, None)?,
                         GRATE_EDGE as f64,
                         &rp.open_sides,
                     ));
                 }
             }
             for (p0, p1, facing) in &r.rails {
-                polys.extend(railing(f3(*p0), f3(*p1), &r.key, f3(*facing), None)?);
+                polys.extend(railing(kit, f3(*p0), f3(*p1), &r.key, f3(*facing), None)?);
             }
         }
     }
@@ -543,9 +516,8 @@ mod tests {
     #[test]
     fn units_and_the_palette() {
         assert_eq!((m(5.0), cells(4.0, 0.0), cells(2.5, 0.0)), (197, 472, 295));
-        assert_eq!(palette("rail").unwrap().scale, (43.0, 86.0));
-        assert_eq!(palette("moss").unwrap_err(), "the palette has no 'moss'");
-        assert_eq!(surface("plain", Some(118.0), None).unwrap(), Surface::new("plain", (118.11, 118.11), Some(118.0)));
+        assert_eq!(KIT.paint("rail").unwrap().scale, (43.0, 86.0));
+        assert_eq!(KIT.surface("plain", Some(118.0), None).unwrap(), Surface::new("plain", (118.11, 118.11), Some(118.0)));
         assert_eq!(strip(scheme(&schemes(), "striped").unwrap(), 394), Some("panel_pipes"));
         assert_eq!((strip_base(120), strip_base(787), strip_base(-300)), (Some(118), Some(748), None));
     }
@@ -553,7 +525,8 @@ mod tests {
     #[test]
     fn a_wall_takes_its_schemes_strip_and_special_solids_their_own() {
         let table = schemes();
-        let fn_ = style("standard", &[("duct", "vent"), ("pool", "water")], &TAGS, None, &table);
+        let fn_ = style(&KIT, "standard", &[("duct", "vent"), ("pool", "water")], &TAGS, None, &table);
+        let surface = |role, band, scale| KIT.surface(role, band, scale);
         let face = |axis, sign, z, zone, tag| Face { axis, sign, lo: [0, 0, z], hi: [10, 0, z + 10], zone, tag };
         assert_eq!(fn_(&face(0, 1, 130, "hall", "void")).unwrap(), surface("panel", Some(118.0), None).unwrap());
         assert_eq!(fn_(&face(0, 1, 130, "hall", "trim")).unwrap(), surface("plain", Some(130.0), None).unwrap());
@@ -566,7 +539,7 @@ mod tests {
         assert_eq!(fn_(&face(2, 1, -118, "pool", "void")).unwrap().material, "water");
         assert_eq!(fn_(&face(2, -1, 236, "hall", "void")).unwrap(), surface("plain", None, Some((118.11, 236.22))).unwrap());
         assert_eq!(fn_(&face(2, -1, 630, "hall", "void")).unwrap().material, "ceiling_tile");
-        let other = style("mossy", &[], &TAGS, None, &table);
+        let other = style(&KIT, "mossy", &[], &TAGS, None, &table);
         assert_eq!(other(&face(0, 1, 0, "hall", "void")).unwrap_err(), "no wall scheme 'mossy'");
     }
 }

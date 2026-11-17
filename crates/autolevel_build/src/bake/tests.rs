@@ -20,7 +20,7 @@ fn face(room: &mut Room, pts: &[V3], role: &str) -> usize {
             }) as u32
         })
         .collect();
-    let material = cx::PALETTE.iter().position(|m| m.role == role).unwrap();
+    let material = cx::KIT.index(role).unwrap();
     room.faces.push(Face {
         uvs: vec![(0.0, 0.0); pts.len()],
         normal: csg::newell(pts),
@@ -72,7 +72,7 @@ fn fill(room: &mut Room, color: [u8; 3]) {
 
 /// The rooms lit with every gain 1 and no tint: the raw trace.
 fn raw(rooms: &mut [Room], lights: &[Light], set: &Settings) {
-    let scene = Scene::new(rooms);
+    let scene = Scene::new(rooms, &cx::KIT);
     let traced = scene.trace(rooms, lights, set);
     for (r, t) in rooms.iter_mut().zip(&traced) {
         paint(r, t, lights, 1.0, [1.0; 3]);
@@ -148,7 +148,7 @@ fn calibration_brings_each_floor_to_its_target() {
             lights.push(lamp([x + 5000.0, y, 230.0], 20.0, 0.4));
         }
     }
-    let scene = Scene::new(&rooms);
+    let scene = Scene::new(&rooms, &cx::KIT);
     let gains = scene.bake(&mut rooms, &lights, &[167.0, 126.0, 167.0], &[None, None, None], &set);
     let reader = Reader::new();
     let med = |i: usize| scene.floor_median(&rooms[i], i, &reader);
@@ -163,7 +163,7 @@ fn calibration_brings_each_floor_to_its_target() {
     let mut dark = [room(1), room(2)];
     floor(&mut dark[0], (0, 0), (800, 800), 0, 100);
     floor(&mut dark[1], (9000, 0), (9800, 800), 0, 100);
-    let scene = Scene::new(&dark);
+    let scene = Scene::new(&dark, &cx::KIT);
     let gains = scene.bake(&mut dark, &lights, &[167.0, 167.0], &[None, None], &set);
     assert_eq!(gains[1], gains[0]);
     assert!(dark[1].faces.iter().all(|f| f.colors.iter().all(|c| *c == [52; 3])));
@@ -176,7 +176,7 @@ fn a_tint_colours_a_room_after_it_is_calibrated() {
     let lit = |tint: Option<[f64; 3]>| {
         let mut rooms = [room(1)];
         floor(&mut rooms[0], (0, 0), (800, 800), 0, 100);
-        let scene = Scene::new(&rooms);
+        let scene = Scene::new(&rooms, &cx::KIT);
         let gains = scene.bake(&mut rooms, &lights, &[150.0], &[tint], &set);
         (gains[0], at(&rooms[0], [400, 400, 0]), at(&rooms[0], [200, 200, 0]))
     };
@@ -222,7 +222,7 @@ fn a_glow_reddens_the_corners_that_see_its_line() {
         floor(&mut rooms[0], (0, 0), (600, 200), 0, 100);
         wall(&mut rooms[1], (300, 0), (300, 200), 0, 236, role);
         fill(&mut rooms[0], [120; 3]);
-        let n = Scene::new(&rooms).glow(&mut rooms[0], 0, (100.0, 100.0), [141.0, 0.0, 0.0], 330.0, &Reader::new());
+        let n = Scene::new(&rooms, &cx::KIT).glow(&mut rooms[0], 0, (100.0, 100.0), [141.0, 0.0, 0.0], 330.0, &Reader::new());
         assert!(n > 0);
         rooms
     };
@@ -266,7 +266,7 @@ fn the_bake_is_the_same_on_one_thread_and_on_many() {
     }
     let run = |threads: usize| {
         let mut rooms = build();
-        let scene = Scene::new(&rooms);
+        let scene = Scene::new(&rooms, &cx::KIT);
         let gains = scene.bake(&mut rooms, &lights, &[167.0, 150.0], &[None, Some([1.0, 1.0, 0.7])], &Settings { threads, ..Settings::default() });
         (rooms, gains)
     };
@@ -301,16 +301,16 @@ fn a_level_is_lit() {
     use crate::geometry;
     use autolevel::level::{generate, Options};
     let lv = generate(40, &Options::default()).unwrap();
-    let (polys, lit) = geometry::polys(&lv).unwrap();
-    let mut rooms = mesh::emit(&lv, &polys).unwrap();
+    let (polys, lit) = geometry::polys(&lv, &cx::KIT).unwrap();
+    let mut rooms = mesh::emit(&lv, &polys, &cx::KIT).unwrap();
     let set = Settings::default();
-    let gains = light(&lv, &mut rooms, &lit, &set).unwrap();
+    let gains = light(&lv, &mut rooms, &lit, &cx::KIT, &set).unwrap();
     // a gain for every room, in the plan's order
     let names: Vec<String> = lv.plan.rooms.iter().map(|r| r.object_name()).filter(|n| rooms.iter().any(|r| r.name == *n)).collect();
     assert_eq!(gains.iter().map(|g| g.0.clone()).collect::<Vec<_>>(), names);
     assert_eq!(gains.len(), 61);
     assert!(gains.iter().all(|g| (0.1..=10.0).contains(&g.1)), "{gains:?}");
-    let scene = Scene::new(&rooms);
+    let scene = Scene::new(&rooms, &cx::KIT);
     let reader = Reader::new();
     let (mut tinted, mut low) = (0, 0);
     for (i, r) in rooms.iter().enumerate() {

@@ -764,12 +764,13 @@ fn build(a: &Args, env: &Env, recipe: &Recipe, out: &Path, quiet: bool, inside: 
         println!("{}", plan.display());
         println!("{}", report_json(&lv.report).dump(Some(1)));
     }
-    let (polys, lit) = geometry::polys(&lv)?;
-    let mut rooms = mesh::emit(&lv, &polys)?;
+    let kit = &cx::KIT;
+    let (polys, lit) = geometry::polys(&lv, kit)?;
+    let mut rooms = mesh::emit(&lv, &polys, kit)?;
     let meshed = secs(t);
     let mut sound = true;
     if a.bake {
-        match bake::light(&lv, &mut rooms, &lit, &bake::Settings::default()) {
+        match bake::light(&lv, &mut rooms, &lit, kit, &bake::Settings::default()) {
             Ok(gains) => println!("baked: {} rooms", gains.len()),
             Err(why) if unwritten(&why) => println!("not baked: {why}"),
             Err(why) => {
@@ -780,12 +781,7 @@ fn build(a: &Args, env: &Env, recipe: &Recipe, out: &Path, quiet: bool, inside: 
     }
     let baked = secs(t);
     // the presets this level draws, in the order its rooms first use them
-    let mut presets: Vec<&str> = Vec::new();
-    for m in rooms.iter().flat_map(|r| r.faces.iter().map(|f| f.material)) {
-        if !presets.contains(&cx::PALETTE[m].preset) {
-            presets.push(cx::PALETTE[m].preset);
-        }
-    }
+    let presets = kit.presets(rooms.iter().flat_map(|r| r.faces.iter().map(|f| f.material)));
     let textures = match a.textures(env).and_then(|dir| textures::dumps(&dir, out, &presets)) {
         Ok(dir) => Some(dir),
         Err(why) => {
@@ -793,13 +789,13 @@ fn build(a: &Args, env: &Env, recipe: &Recipe, out: &Path, quiet: bool, inside: 
             None
         }
     };
-    let report = obj::write(&out.join("LevelIndices.obj"), &rooms, textures.as_deref())?;
+    let report = obj::write(&out.join("LevelIndices.obj"), &rooms, kit, textures.as_deref())?;
     println!("built: {} rooms, {} triangles, {} materials", report.rooms, report.triangles, report.materials.len());
     for w in &report.warnings {
         println!("warning: {w}");
     }
     let name = format!("autolevel_{}", lv.seed);
-    match glb::write(&out.join(format!("{name}.glb")), &rooms, &name, textures.as_deref()) {
+    match glb::write(&out.join(format!("{name}.glb")), &rooms, kit, &name, textures.as_deref()) {
         Ok(g) => {
             println!("saved: {} ({} rooms, {} materials, {} bytes)", out.join(format!("{name}.glb")).display(), g.rooms, g.materials, g.bytes);
             for w in &g.warnings {
