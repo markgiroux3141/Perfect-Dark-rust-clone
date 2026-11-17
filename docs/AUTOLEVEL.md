@@ -1092,8 +1092,31 @@ under Complex's catwalks). The walk `walkway_<room>` starts at the flight's foot
 both ends of the first walkway and, with a second, climbs on and walks it end to end. Seeds 1-40:
 60 of 74 tall rooms have one, 11 of them two; the 14 without are mostly short halls whose pillar
 rows leave no 132-wide gap for the flight. `Balcony::upper` names the walls behind the walkways,
-where a doorway on an upper storey could open onto one (not used yet). Tall plain rooms (15% of
+where a doorway on an upper storey opens onto one (a landing's, below). Tall plain rooms (15% of
 the big rooms off the circulation) get none: their door-to-door walks are straight lines.
+
+**Upstairs areas** (2026-11-17, the brief's second item: "more than one upstairs area, with
+stairs into the tall rooms ... each reached two ways"). Sprawling layouts only (the block keeps its
+one gallery):
+
+- **A second gallery** (0.6, drawn once the first is placed, and only with lots to spare): over
+  another long corridor, laid as the first is (its own two stair rooms near its ends, rooms along
+  both sides), `gallery2`. A gallery's stair rooms now open at the top onto their own gallery
+  (`Draft::stairs` names it; `stair_ways` filters), so neither borrows the other's.
+- **Landings** (0.7 a tall room, two at most): an upper corridor `landingN`, 5 to 12 cells along
+  a wall of a tall room (an open room two or three storeys tall, or the hall's side walls) and 3
+  or 4 out from it, a storey up over whatever stands on the ground there. Its two ways: a doorway
+  onto the tall room's walkway (`upper`: the only doorways joining two storeys, never found by
+  `could`, only planned), and a stair room off its far side or an end down to a corridor on the
+  ground, checked to fit before it is kept (`stair_fits`: some way round puts its foot on the
+  ground corridor and its top on the landing). Rooms hang off its other walls. The tall room must
+  be 8 cells deep away from that wall, and `balconies` then takes only the ways round that put the
+  walkway along it and over the doorway; a room that gets none fails the layout, which is drawn
+  again (`TRIES`).
+
+Seeds 1-40: 9 second galleries and 8 landings (seeds 5, 8, 15, 17, 32, 34 and 40; seed 5 has two;
+seed 15 a second gallery and a landing); every upper corridor has two ways or more (test
+`every_upstairs_area_is_reached_two_ways`), and every walk passes. Seed 10 has neither.
 
 **Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
 corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
@@ -1118,8 +1141,8 @@ and 2. The waypoint maker's (shared with every generated level): not fixed yet.
 **Not yet:** Felicity's hall is three bays behind arched walls (here one plain hall); arches
 (the carver makes boxes only); windows, light strips; no outdoor part; the editor can't make or
 edit a Felicity level (a Felicity recipe takes no edits). Of the layout: the hall always closes
-one end, the upper storey is one gallery (2 to 7 rooms off it on seeds 1-40, about 4), no doorway
-opens onto a walkway (each is reached by its own flight only), and nobody has played one.
+one end, the block family's upper storey is one gallery, a walkway's only doorways are a
+landing's, and nobody has played one.
 
 ## Risks
 
