@@ -24,14 +24,20 @@
 //! with a style of Felicity's own over it: a wall takes its strip by its height above its own
 //! storey's floor; a face inside a doorway is jamb; steps, landings and the platform are treads
 //! on top and risers on their sides.
+//!
+//! **Arches** (`autolevel::level::Arch`, the carver's boxes can't make one): over each, the
+//! carver's faces under its curve come out (the lintel's underside, the jambs above the
+//! springing) and `arch` puts in the soffit along the curve and, on each face of the wall, the
+//! corners above it filled in, each piece in the wall's own strip there. A doorway's soffit is
+//! jamb; a screen's is the hall's band 0288, as Felicity's own arches are.
 
 use std::collections::HashMap;
 
 use autolevel::felicity::{DOOR_H, PLATFORM, ROOM_H, STOREY};
-use autolevel::level::Level;
+use autolevel::level::{Arch, Level};
 
 use crate::complex::{self as cx, Detail};
-use crate::csg::{self, f3, Face, Poly, Surface};
+use crate::csg::{self, f3, Face, Poly, Surface, P3};
 use crate::geometry::Lit;
 use crate::kit::{strip, Kit, Paint, Schemes};
 
@@ -128,6 +134,127 @@ fn lines(lv: &Level, schemes: &Schemes) -> Vec<i32> {
     out
 }
 
+/// Take out the carver's faces under an arch's curve: every face across the opening (not on a
+/// face of the wall) that lies wholly between its springing and its top goes, and a jamb that
+/// rises from below the springing is cut down to it.
+fn clear_under(polys: &mut Vec<Poly>, a: &Arch) {
+    let o = 1 - a.axis;
+    let within = |v: &[i32; 3]| a.t.0 <= v[a.axis] && v[a.axis] <= a.t.1 && a.s.0 <= v[o] && v[o] <= a.s.1 && v[2] <= a.top;
+    polys.retain_mut(|p| {
+        if p.normal[a.axis].abs() > 0.5 || !p.verts.iter().all(within) {
+            return true;
+        }
+        let low = p.verts.iter().map(|v| v[2]).min().unwrap_or(a.top);
+        if low >= a.spring {
+            return false;
+        }
+        if p.normal[2].abs() < 0.5 {
+            for v in p.verts.iter_mut() {
+                v[2] = v[2].min(a.spring);
+            }
+            p.verts.dedup();
+            if p.verts.len() > 1 && p.verts.first() == p.verts.last() {
+                p.verts.pop();
+            }
+        }
+        p.verts.len() >= 3
+    });
+}
+
+/// A convex polygon in (along, height) cut by the line `height = z`: the part below, the part above.
+#[allow(clippy::type_complexity)]
+fn slice(poly: &[(f64, f64)], z: f64) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
+    let (mut below, mut above) = (Vec::new(), Vec::new());
+    for i in 0..poly.len() {
+        let (p, q) = (poly[i], poly[(i + 1) % poly.len()]);
+        if p.1 <= z {
+            below.push(p);
+        }
+        if p.1 >= z {
+            above.push(p);
+        }
+        if (p.1 < z && q.1 > z) || (p.1 > z && q.1 < z) {
+            let x = p.0 + (q.0 - p.0) * (z - p.1) / (q.1 - p.1);
+            below.push((x, z));
+            above.push((x, z));
+        }
+    }
+    (below, above)
+}
+
+/// An arch's polygons: the soffit along its curve across the wall (each room's half in it), and
+/// on each face of the wall the two corners above the curve filled in, cut at the `cuts` (the
+/// wall's strip lines) so that each piece takes `face`'s surface for the wall there.
+fn arch(a: &Arch, soffit: Surface, cuts: &[i32], face: &dyn Fn(&str, &Face) -> Result<Surface, String>) -> Result<Vec<Poly>, String> {
+    let o = 1 - a.axis;
+    let at = |t: f64, (s, z): (f64, f64)| -> P3 {
+        let mut p = [0.0; 3];
+        p[a.axis] = t;
+        p[o] = s;
+        p[2] = z;
+        p
+    };
+    // pieces about every 40 along the curve, 6 to 16, an even number (the crown is a point)
+    let rough = a.curve(16);
+    let length: f64 = rough.windows(2).map(|w| ((w[1].0 - w[0].0).powi(2) + (w[1].1 - w[0].1).powi(2)).sqrt()).sum();
+    let n = (((length / 40.0).round() as usize).clamp(6, 16) + 1) & !1;
+    let curve = a.curve(n);
+    let sides = [(a.a.as_str(), a.t.0 as f64, a.mid as f64, -1.0), (a.b.as_str(), a.mid as f64, a.t.1 as f64, 1.0)];
+    let mut out = Vec::new();
+    for w in curve.windows(2) {
+        let ((s0, z0), (s1, z1)) = (w[0], w[1]);
+        if (s1 - s0).abs() + (z1 - z0).abs() < 1.0 {
+            continue;
+        }
+        // facing in under the curve
+        let mut normal = [0.0; 3];
+        normal[o] = z1 - z0;
+        normal[2] = -(s1 - s0);
+        for &(zone, t0, t1, _) in &sides {
+            if t1 > t0 {
+                out.push(csg::oriented(&[at(t0, w[0]), at(t1, w[0]), at(t1, w[1]), at(t0, w[1])], normal, soffit, zone, None));
+            }
+        }
+    }
+    let (top, half) = (a.top as f64, n / 2);
+    let lines: Vec<f64> = cuts.iter().filter(|&&z| a.spring < z && z < a.top).map(|&z| z as f64).collect();
+    for (corner, part) in [((a.s.0 as f64, top), &curve[..=half]), ((a.s.1 as f64, top), &curve[half..])] {
+        for w in part.windows(2) {
+            let mut rest = vec![corner, w[0], w[1]];
+            let mut pieces = Vec::new();
+            for &z in &lines {
+                let (below, above) = slice(&rest, z);
+                pieces.push(below);
+                rest = above;
+            }
+            pieces.push(rest);
+            for piece in pieces {
+                let mut round: Vec<(i32, i32)> = piece.iter().map(|&(s, z)| (s.round() as i32, z.round() as i32)).collect();
+                round.dedup();
+                if round.len() > 1 && round.first() == round.last() {
+                    round.pop();
+                }
+                if round.len() < 3 {
+                    continue;
+                }
+                let (lo_s, hi_s) = (round.iter().map(|p| p.0).min().unwrap_or(0), round.iter().map(|p| p.0).max().unwrap_or(0));
+                let (lo_z, hi_z) = (round.iter().map(|p| p.1).min().unwrap_or(0), round.iter().map(|p| p.1).max().unwrap_or(0));
+                for &(zone, _, _, sign) in &sides {
+                    let t = if sign < 0.0 { a.t.0 } else { a.t.1 };
+                    let (mut lo, mut hi) = ([0; 3], [0; 3]);
+                    (lo[a.axis], hi[a.axis], lo[o], hi[o], lo[2], hi[2]) = (t, t, lo_s, hi_s, lo_z, hi_z);
+                    let f = Face { axis: a.axis, sign: sign as i32, lo, hi, zone, tag: "void" };
+                    let mut normal = [0.0; 3];
+                    normal[a.axis] = sign;
+                    let verts: Vec<P3> = piece.iter().map(|&p| at(t as f64, p)).collect();
+                    out.push(csg::oriented(&verts, normal, face(zone, &f)?, zone, None));
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// What the style knows of a room.
 struct Zone {
     floor: i32,
@@ -179,6 +306,15 @@ pub fn polys(lv: &Level, kit: &Kit) -> Result<(Vec<Poly>, Vec<Lit>), String> {
         doorways.entry(d.b.as_str()).or_default().push((b_lo, hi));
     }
     let none = Vec::new();
+    // a wall's strip: its storey's, or its walkway's (a hall's walls are one storey, plain above
+    // its bands, but above a walkway, behind it)
+    let table = crate::kit::scheme(&schemes, "office").ok_or("no wall scheme 'office'")?;
+    let wall = |room: &Zone, f: &Face| -> Result<Surface, String> {
+        let base = room.base(f);
+        let table = crate::kit::scheme(&schemes, room.scheme).unwrap_or(table);
+        let at = table.iter().map(|(b, _)| *b).filter(|&b| b <= f.lo[2] - base).max().unwrap_or(0);
+        kit.surface(strip(table, at).unwrap_or("plain"), Some((base + at) as f64), None)
+    };
     let style = |f: &Face, _base: &cx::Base| -> Result<Surface, String> {
         let room = rooms.get(f.zone).ok_or_else(|| format!("a face in {}, which is no room of the plan", f.zone))?;
         let within = |(lo, hi): &([i32; 3], [i32; 3])| (0..3).all(|k| lo[k] <= f.lo[k] && f.hi[k] <= hi[k]);
@@ -200,17 +336,22 @@ pub fn polys(lv: &Level, kit: &Kit) -> Result<(Vec<Poly>, Vec<Lit>), String> {
                     "platform" => return kit.surface("lower", Some(0.0), None),
                     _ => {}
                 }
-                // the strip of its storey (a hall's walls are one storey, plain above its bands,
-                // but above a walkway, behind it)
-                let base = room.base(f);
-                let table = crate::kit::scheme(&schemes, room.scheme).or_else(|| crate::kit::scheme(&schemes, "office")).ok_or("no wall scheme 'office'")?;
-                let at = table.iter().map(|(b, _)| *b).filter(|&b| b <= z - base).max().unwrap_or(0);
-                kit.surface(strip(table, at).unwrap_or("plain"), Some((base + at) as f64), None)
+                wall(room, f)
             }
         }
     };
-    let how = Detail { lattice: [Some(212.0), Some(212.0), None], max_span: 212, vent_step: 106.0, extras: true, lines: Some(lines(lv, &schemes)) };
+    let cuts = lines(lv, &schemes);
+    let how = Detail { lattice: [Some(212.0), Some(212.0), None], max_span: 212, vent_step: 106.0, extras: true, lines: Some(cuts.clone()) };
     let mut polys = cx::plan_polys(&lv.plan, kit, None, &how, &schemes, Some(&style))?;
+    // the arches: the carver's faces under each curve out, the arch's own in
+    for a in &lv.arches {
+        clear_under(&mut polys, a);
+        let soffit = if a.kind == "screen" { kit.surface("hall_band", None, None)? } else { kit.surface("jamb", Some(a.floor as f64), None)? };
+        let face =
+            |zone: &str, f: &Face| -> Result<Surface, String> { wall(rooms.get(zone).ok_or_else(|| format!("an arch in {zone}, which is no room"))?, f) };
+        polys.extend(arch(a, soffit, &cuts, &face)?);
+    }
+    csg::fix_t_junctions(&mut polys);
     // the railings down the flights' open sides (the landings' flat ones are the plan's own)
     let height = cx::RAIL_HEIGHT as f64;
     for (room, a, b, facing) in &lv.ramp_rails {
@@ -247,5 +388,19 @@ mod tests {
         // the 24 treads, the hall's 3 steps and the platform: treads; the doorways' faces: jambs
         assert!(count("tread") >= 28);
         assert!(count("jamb") >= 3 * lv.doorways.len());
+        // every arch: a soffit under its curve, slanted, and nothing of the carver's left across
+        // the opening wholly above its springing
+        assert!(!lv.arches.is_empty());
+        for a in &lv.arches {
+            let o = 1 - a.axis;
+            let within = |p: &Poly| {
+                p.verts.iter().all(|v| a.t.0 <= v[a.axis] && v[a.axis] <= a.t.1 && a.s.0 <= v[o] && v[o] <= a.s.1 && a.spring <= v[2] && v[2] <= a.top)
+            };
+            let soffit = polys.iter().filter(|p| within(p) && p.normal[o].abs() > 0.01 && p.normal[2].abs() > 0.01).count();
+            assert!(soffit >= 6, "{} {}: {soffit} soffit pieces", a.a, a.b);
+            let flat = polys.iter().filter(|p| within(p) && p.normal[a.axis].abs() < 0.5 && (p.normal[o].abs() < 0.01 || p.normal[2].abs() < 0.01)).count();
+            // (the crown's own piece is flat on top: one each side of the middle)
+            assert!(flat <= 2, "{} {}: {flat} of the carver's faces left", a.a, a.b);
+        }
     }
 }

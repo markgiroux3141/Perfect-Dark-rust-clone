@@ -42,6 +42,9 @@ pub const SLAB: i32 = 24;
 const LEAST: i32 = 300;
 /// What a walkway stops short of, and what a flight keeps off, round anything in the room.
 const CLEAR: i32 = 40;
+/// Headroom over a walkway: what stands wholly higher than this over it is no obstacle (a
+/// screen's beam over the arch it passes through).
+pub const HEAD: i32 = 200;
 
 /// A tall room's walkways and the flights up to them, in world units.
 #[derive(Clone, Debug, PartialEq)]
@@ -73,6 +76,7 @@ fn overlap(p: (i32, i32, i32, i32), q: (i32, i32, i32, i32)) -> bool {
 pub fn fit((lo, hi): ((i32, i32), (i32, i32)), floor: i32, rise: i32, levels: i32, frame: Frame, at: i32, standing: &[Solid]) -> Result<Balcony, String> {
     let len = frame.sizes(hi.0 - lo.0, hi.1 - lo.1);
     let (a_len, b_len) = len;
+    let standing: Vec<&Solid> = standing.iter().filter(|s| s.0 .2 < floor + rise + HEAD).collect();
     let run = RISERS * GOING;
     // local rectangles as the plan's
     let rect = |a0: i32, b0: i32, a1: i32, b1: i32| {
@@ -85,7 +89,7 @@ pub fn fit((lo, hi): ((i32, i32), (i32, i32)), floor: i32, rise: i32, levels: i3
     }
     // the first walkway, as far along as nothing stands in its way
     let mut a1 = a_len;
-    for (s, t, _) in standing {
+    for (s, t, _) in standing.iter().copied() {
         let (p, q) = ((s.0 - CLEAR, s.1 - CLEAR), (t.0 + CLEAR, t.1 + CLEAR));
         // the solid's stretch along a, where it is within the walkway's depth
         let local = [frame.local(lo, len, p.0, p.1), frame.local(lo, len, q.0, q.1)];

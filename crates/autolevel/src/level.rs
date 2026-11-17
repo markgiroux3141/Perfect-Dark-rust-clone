@@ -291,6 +291,53 @@ impl Doorway {
     }
 }
 
+/// An arched opening: a rectangular opening whose top corners are filled in under a curve, a
+/// semicircle where it rises half its width, else a flatter segment of a circle (drawn by the
+/// kit: `autolevel_build::felicity`). The Felicity planner's doorless doorways between corridors,
+/// halls and stair rooms, and the arches of the hall's screens. Complex's levels have none.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Arch {
+    /// The rooms either side: `a` on the low side of the wall, `b` on the high (the same room for
+    /// a screen standing in one).
+    pub a: String,
+    pub b: String,
+    /// The axis the wall is square to, the wall's two faces along it, and the plane where the
+    /// rooms meet.
+    pub axis: usize,
+    pub t: (i32, i32),
+    pub mid: i32,
+    /// The opening along the wall, its floor, where its curve springs, and its top (the crown).
+    pub s: (i32, i32),
+    pub floor: i32,
+    pub spring: i32,
+    pub top: i32,
+    /// "doorway" or "screen": how the kit dresses it.
+    pub kind: &'static str,
+}
+
+impl Arch {
+    /// The curve from one side of the opening to the other as (along the wall, height), in `n`
+    /// pieces: a circle through both springing points and the crown.
+    pub fn curve(&self, n: usize) -> Vec<(f64, f64)> {
+        let (s0, s1) = (self.s.0 as f64, self.s.1 as f64);
+        let (c, h) = ((s1 - s0) / 2.0, (self.top - self.spring) as f64);
+        let r = (c * c + h * h) / (2.0 * h);
+        let (mid, zc) = ((s0 + s1) / 2.0, self.top as f64 - r);
+        let (from, to) = ((r - h).atan2(-c), (r - h).atan2(c));
+        (0..=n)
+            .map(|i| {
+                let a = from + (to - from) * i as f64 / n as f64;
+                // the ends exactly on the springing points, the middle on the crown
+                match i {
+                    0 => (s0, self.spring as f64),
+                    _ if i == n => (s1, self.spring as f64),
+                    _ => (mid + r * a.cos(), zc + r * a.sin()),
+                }
+            })
+            .collect()
+    }
+}
+
 /// What door stands in a doorway.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DoorKind {
@@ -382,6 +429,8 @@ pub struct Level {
     pub fixes: Vec<Fix>,
     /// Doorways through walls, where doors may stand (a Felicity level's; none in Complex's).
     pub doorways: Vec<Doorway>,
+    /// Arched openings (a Felicity level's; none in Complex's).
+    pub arches: Vec<Arch>,
     pub report: Report,
 }
 
@@ -453,6 +502,7 @@ pub fn stage_level(mut b: Build, dropped: Vec<String>) -> Result<Level, String> 
         dead_ends,
         fixes: b.fixes,
         doorways: Vec::new(),
+        arches: Vec::new(),
         report: Report::default(),
     };
     lv.windows = windows::windows(&lv);
@@ -477,5 +527,32 @@ mod tests {
         assert_eq!(generate(1, &o).unwrap_err(), "cover: one of ('mixed', 'pillars', 'crates', 'none')");
         let o = Options { walkway: 3, ..Options::default() };
         assert_eq!(generate(1, &o).unwrap_err(), "walkway: 1 or 2 cells");
+    }
+
+    #[test]
+    fn an_arch_springs_from_both_sides_and_crowns_at_its_top() {
+        let arch = |w: i32, spring: i32| Arch {
+            a: "a".into(),
+            b: "b".into(),
+            axis: 0,
+            t: (-20, 20),
+            mid: 0,
+            s: (100, 100 + w),
+            floor: 0,
+            spring,
+            top: 212,
+            kind: "doorway",
+        };
+        // a semicircle on a cell, a flatter segment on two
+        for (w, spring) in [(106, 159), (212, 159), (318, 133)] {
+            let c = arch(w, spring).curve(8);
+            assert_eq!(c.len(), 9);
+            assert_eq!((c[0], c[8]), ((100.0, spring as f64), ((100 + w) as f64, spring as f64)));
+            let crown = c[4];
+            assert!((crown.0 - (100.0 + w as f64 / 2.0)).abs() < 1e-9 && (crown.1 - 212.0).abs() < 1e-9, "{crown:?}");
+            // rising to the crown and falling after, all inside the opening
+            assert!(c.windows(2).take(4).all(|p| p[1].1 >= p[0].1) && c.windows(2).skip(4).all(|p| p[1].1 <= p[0].1));
+            assert!(c.iter().all(|&(x, z)| (100.0..=(100 + w) as f64).contains(&x) && (spring as f64..=212.0).contains(&z)));
+        }
     }
 }

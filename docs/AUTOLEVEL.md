@@ -996,7 +996,7 @@ way round and then turned and mirrored by the seed (eight ways):
 
 - **Two long corridors** side by side (3 or 4 cells wide, 15 to 30 long, 6 to 9 cells apart),
   both ending on **the hall** (12-16 x 14-19 cells, 780 tall; a platform 70 up along its far
-  wall, three steps up its middle third, six pillars) by a doorway each (a double one where the
+  wall, three steps up its middle third; six pillars until the screens, below) by a doorway each (a double one where the
   corridor is 4 wide). **Cross corridors** join the two, drawn one in three each: one at their
   far ends (a ring), one 5 to 9 cells along (an H; one long corridor may then start at it, a
   bend), or one at the far ends and one in the middle (a ladder). A corridor meets another
@@ -1090,8 +1090,8 @@ plain ceiling panel 024B, and starts the wall strips again at a walkway's top on
 (a hall's walls are otherwise one tall storey); the bake hangs lamps under it (`plan_lights`, as
 under Complex's catwalks). The walk `walkway_<room>` starts at the flight's foot, climbs, goes to
 both ends of the first walkway and, with a second, climbs on and walks it end to end. Seeds 1-40:
-60 of 74 tall rooms have one, 11 of them two; the 14 without are mostly short halls whose pillar
-rows leave no 132-wide gap for the flight. `Balcony::upper` names the walls behind the walkways,
+60 of 74 tall rooms had one, 11 of them two, while the hall stood on pillars (a short hall's pillar
+rows left no 132-wide gap for the flight); with the screens (below) all 68 do, 10 of them two. `Balcony::upper` names the walls behind the walkways,
 where a doorway on an upper storey opens onto one (a landing's, below). Tall plain rooms (15% of
 the big rooms off the circulation) get none: their door-to-door walks are straight lines.
 
@@ -1118,6 +1118,37 @@ Seeds 1-40: 9 second galleries and 8 landings (seeds 5, 8, 15, 17, 32, 34 and 40
 seed 15 a second gallery and a landing); every upper corridor has two ways or more (test
 `every_upstairs_area_is_reached_two_ways`), and every walk passes. Seed 10 has neither.
 
+**Arches and the hall's bays** (2026-11-17, the brief's third item; the user chose each option:
+cross walls, circulation only, round then segmental). Felicity measured first (its triangles,
+`probe_stage_triangles`): its hall's arches are round-headed, about 580 wide and 640 tall, a
+semicircle springing about 360 up on straight jambs, soffits in the hall's band 0288, in deep walls
+between bays 778 tall; its doorways are not arched (106 x 212 under a lintel, with small 45-degree
+chamfered trims). So:
+
+- **The hall stands in three bays**: two screens across it, 80 thick (`felicity::screens`), the
+  second just short of the platform's steps, the first halfway to it, so the last bay is the
+  platform's. Each screen is three round-headed arches on piers a cell wide: one beside each side
+  wall, 400 wide and springing at 400 (a walkway along the side wall passes under it, its rail top
+  at 369), and a wide one between on a semicircle as high as the hall allows (springing at 400, or
+  lower so its crown stays 60 under the ceiling); a beam over each. A screen moves (20 at a time,
+  200 at most) to keep 40 clear of any doorway a storey up in a side wall (a landing's), or is left
+  out. The six pillars are gone. A walkway's flight keeps out of a screen's footprint, and
+  `balcony::fit` ignores what stands wholly higher than `balcony::HEAD` (200) over a walkway (the
+  beams). Seeds 1-40: every hall has both screens.
+- **Arched doorways**: every doorless doorway between two rooms of the circulation (corridors, the
+  hall, open rooms, stair rooms; 420 on seeds 1-40) gets an arch inside its own 212 box, so the
+  doorway contract and the portals are unchanged: a semicircle on a one-cell doorway (springing at
+  159), a segment of a circle rising a quarter of the width on wider ones (159 on two cells, 133 on
+  three). Rooms keep Felicity's rectangular doorways, door or none.
+- **The piece** (`level::Arch`, its `curve`; drawn by `autolevel_build::felicity`'s `arch`): the
+  carver still cuts the opening as a box; then every face of its across the opening wholly
+  between the springing and the top comes out (the lintel's underside, the jambs above the
+  springing; a jamb rising from below is cut down to the springing: no new split lines), and the
+  arch puts in the soffit along the curve (6 to 16 pieces, about 40 each, half in each room) and,
+  on each face of the wall, the two corners above the curve, cut at the wall's strip lines so each
+  piece takes the wall's strip there. A doorway's soffit is jamb (0264), a screen's the hall's band
+  (0288). Then `fix_t_junctions` again.
+
 **Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
 corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
 halls and stair rooms (kinds `corridor`, `hub`, `stair`) and how the other rooms hang off them.
@@ -1138,8 +1169,7 @@ stalls are all at one doorway in `upper1`, where the waypoint maker put a waypoi
 wall in the doorway's mouth and chrs coming along the wall catch the jamb. Seeds 19 and 5 have 0
 and 2. The waypoint maker's (shared with every generated level): not fixed yet.
 
-**Not yet:** Felicity's hall is three bays behind arched walls (here one plain hall); arches
-(the carver makes boxes only); windows, light strips; no outdoor part; the editor can't make or
+**Not yet:** windows, light strips; no outdoor part; the editor can't make or
 edit a Felicity level (a Felicity recipe takes no edits). Of the layout: the hall always closes
 one end, the block family's upper storey is one gallery, a walkway's only doorways are a
 landing's, and nobody has played one.
