@@ -1,0 +1,3 @@
+# Wide lines, as the clone writes them (it has no rustfmt.toml; its lines run long).
+max_width = 160
+use_small_heuristics = "Max"

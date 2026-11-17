@@ -66,6 +66,29 @@ pub enum Source {
     Ge(GeSource),
     Pd(PdSource),
     Jka(JkaSource),
+    Autolevel(AutolevelSource),
+}
+
+/// A level the level generator makes ([`crate::autolevel`]), named by what
+/// makes it: the generator's recipe (a seed, options, a person's edits). The
+/// level is made again from it on every import, with its own rooms, portals
+/// and navigation; no file of its geometry is read.
+#[derive(Clone, Debug, Deserialize)]
+pub struct AutolevelSource {
+    /// The generator's recipe itself (`{"format": 1, "seed": 40}`, as
+    /// `autolevel import` writes it: the level's recipe then needs nothing
+    /// else), or the path of its file, or of a build folder that holds one
+    /// (`out/autolevel/seed40`: its `recipe.json`); `--src` overrides it with
+    /// such a path.
+    pub recipe: serde_json::Value,
+    /// The clear colour where nothing is drawn (else Complex's near black).
+    #[serde(default)]
+    pub sky: Option<[u8; 3]>,
+    /// Leave the simulants' waypoints to the generic maker
+    /// ([`pd_sim::nav::gen`]) alone, without what the generator knows of its
+    /// own level ([`crate::autonav`]).
+    #[serde(default)]
+    pub plain_waypoints: bool,
 }
 
 /// A Jedi Academy map ([`crate::jka`]): a compiled `.bsp`, with the game's
@@ -140,6 +163,23 @@ pub struct GltfSource {
     /// fit.
     #[serde(default = "max_texture")]
     pub max_texture: u32,
+    /// A translucent triangle facing up is a floor, stood on and seen and
+    /// shot through ([`crate::source::grate_of_triangle`]): a level whose
+    /// catwalks are grates. Off, it is no tile: another game's water.
+    #[serde(default)]
+    pub grates: bool,
+    /// A ceiling lower than a standing head over the floor beneath it is a
+    /// wall ([`crate::source::LevelSource::wall_low_ceilings`]), as Complex's
+    /// crawl space's is: a level with vents to squat through. Off, no
+    /// ceiling is a tile, and a player stands up through a vent's.
+    #[serde(default)]
+    pub low_ceilings: bool,
+    /// An upright wall triangle whose top or bottom slopes is a ramp wall
+    /// ([`crate::source::LevelSource::mark_ramp_walls`]), tested at its real
+    /// height: a level with open ramps to walk beside and under. Off, it
+    /// blocks over its whole box.
+    #[serde(default)]
+    pub ramp_walls: bool,
 }
 
 fn max_texture() -> u32 {

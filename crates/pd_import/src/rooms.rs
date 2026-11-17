@@ -13,10 +13,16 @@
 //! Because the boxes tile the footprint and their portals cover every shared
 //! side, a line of sight from one room to another always crosses portals, and
 //! the portal pass finds every room a player can see.
+//!
+//! A level that has rooms PD can use brings them
+//! ([`crate::source::OwnRooms`]: a generated level's rooms and doorways), and
+//! then nothing is split or cut: [`Partition::of`] is those rooms, each
+//! polygon in the room it names, the portals the level's own openings
+//! ([`portal_between`]).
 
 use glam::{Vec2, Vec3};
 
-use crate::source::{LevelSource, Vert};
+use crate::source::{LevelSource, OwnRooms, Vert};
 
 /// A room's footprint: `lo`..`hi` in (x, z).
 #[derive(Clone, Copy, Debug)]
@@ -36,6 +42,8 @@ impl Rect {
 }
 
 enum Node {
+    /// The source's own rooms: no tree, a polygon says its room.
+    Own,
     Leaf(usize),
     /// Cut at `at` on `axis` (0: x, 1: z); `lo` holds what is below it.
     Split { axis: usize, at: f32, lo: Box<Node>, hi: Box<Node> },
@@ -55,6 +63,8 @@ pub struct Partition {
     pub ylo: f32,
     pub yhi: f32,
     tree: Node,
+    /// A source's own rooms, in place of the split.
+    own: Option<OwnRooms>,
 }
 
 /// Something a polygon is made of that can be cut: a position, lerped.
@@ -103,6 +113,24 @@ fn xz(p: Vec3, axis: usize) -> f32 {
 }
 
 impl Partition {
+    /// The level's rooms: its own if it brings them, else its footprint split
+    /// into about `rooms`.
+    pub fn of(src: &LevelSource, rooms: usize) -> Partition {
+        match &src.rooms {
+            Some(own) => {
+                let rects = own.boxes.iter().map(|(lo, hi)| Rect { lo: Vec2::new(lo.x, lo.z), hi: Vec2::new(hi.x, hi.z) }).collect();
+                let (ylo, yhi) = own.boxes.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(a, b), (lo, hi)| (a.min(lo.y), b.max(hi.y)));
+                Partition { rects, ylo, yhi, tree: Node::Own, own: Some(own.clone()) }
+            }
+            None => Partition::build(src, rooms),
+        }
+    }
+
+    /// Are these the source's own rooms (nothing cut)?
+    pub fn is_own(&self) -> bool {
+        self.own.is_some()
+    }
+
     /// Split `src`'s footprint into about `rooms` rooms by its floor area.
     pub fn build(src: &LevelSource, rooms: usize) -> Partition {
         let (lo, hi) = src.bounds();
@@ -125,7 +153,7 @@ impl Partition {
         let target = total / rooms.max(1) as f32;
         let mut rects = Vec::new();
         let tree = split(Rect { lo: Vec2::new(lo.x, lo.z), hi: Vec2::new(hi.x, hi.z) }, floors, target, &mut rects);
-        Partition { rects, ylo: lo.y - 200.0, yhi: hi.y + 1000.0, tree }
+        Partition { rects, ylo: lo.y - 200.0, yhi: hi.y + 1000.0, tree, own: None }
     }
 
     pub fn rooms(&self) -> usize {
@@ -134,15 +162,23 @@ impl Partition {
 
     /// Room `room`'s box.
     pub fn bbox(&self, room: u16) -> (Vec3, Vec3) {
+        if let Some(own) = &self.own {
+            return own.boxes[room as usize - 1];
+        }
         let r = &self.rects[room as usize - 1];
         (Vec3::new(r.lo.x, self.ylo, r.lo.y), Vec3::new(r.hi.x, self.yhi, r.hi.y))
     }
 
-    /// The room whose footprint holds `p`.
+    /// The room whose footprint holds `p` (of a source's own rooms, the
+    /// first whose box does; 1 if none).
     pub fn room_at(&self, p: Vec3) -> u16 {
         let mut n = &self.tree;
         loop {
             match n {
+                Node::Own => {
+                    let boxes = self.own.as_ref().map_or(&[][..], |o| &o.boxes[..]);
+                    return boxes.iter().position(|(lo, hi)| p.cmpge(*lo).all() && p.cmple(*hi).all()).map_or(1, |i| i as u16 + 1);
+                }
                 Node::Leaf(i) => return *i as u16 + 1,
                 Node::Split { axis, at, lo, hi } => n = if xz(p, *axis) <= *at { lo } else { hi },
             }
@@ -150,16 +186,24 @@ impl Partition {
     }
 
     /// A convex polygon cut by every room side it crosses: each piece and its
-    /// room. Slivers (under a square centimetre) are dropped.
-    pub fn cut<V: Cut>(&self, poly: Vec<V>) -> Vec<(u16, Vec<V>)> {
+    /// room. Slivers (under a square centimetre) are dropped. With a source's
+    /// own rooms the polygon is whole, in `room` (the one it names).
+    pub fn cut<V: Cut>(&self, room: u16, poly: Vec<V>) -> Vec<(u16, Vec<V>)> {
+        if self.own.is_some() {
+            return if (1..=self.rects.len()).contains(&(room as usize)) { vec![(room, poly)] } else { Vec::new() };
+        }
         let mut out = Vec::new();
         cut_node(&self.tree, poly, &mut out);
         out.retain(|(_, p)| p.len() >= 3 && area(p) >= 1.0);
         out
     }
 
-    /// Every rectangle two rooms share, as a portal from `ylo` to `yhi`.
+    /// Every rectangle two rooms share, as a portal from `ylo` to `yhi`; a
+    /// source's own portals.
     pub fn portals(&self) -> Vec<Portal> {
+        if let Some(own) = &self.own {
+            return own.portals.clone();
+        }
         let mut out = Vec::new();
         let n = self.rects.len();
         for i in 0..n {
@@ -220,6 +264,7 @@ fn split(rect: Rect, floors: Vec<(Vec2, f32)>, target: f32, rects: &mut Vec<Rect
 
 fn cut_node<V: Cut>(n: &Node, poly: Vec<V>, out: &mut Vec<(u16, Vec<V>)>) {
     match n {
+        Node::Own => {}
         Node::Leaf(i) => out.push((*i as u16 + 1, poly)),
         Node::Split { axis, at, lo, hi } => {
             let (min, max) = poly.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(a, b), v| (a.min(xz(v.pos(), *axis)), b.max(xz(v.pos(), *axis))));
@@ -266,6 +311,44 @@ pub fn clip_plane<V: Cut>(poly: &[V], n: Vec3, d: f32) -> Vec<V> {
         }
     }
     out
+}
+
+/// The opening `rect` (its corners in order round it, flat) between two
+/// rooms, as a portal PD's `bg_init_portal` (`bg.c:6020`) takes the right way
+/// round: the corners are counter-clockwise seen from `front`'s side, and
+/// `behind` is the room on the other. PD's portal faces `room2` along the winding's
+/// normal negated (`g_PortalMetrics`, `bg.c:1818`), and swaps the file's two
+/// rooms only when the first's centre (its box's middle) is in front of the
+/// portal and the second's is not: so the rooms are written `[behind,
+/// front]`, wound to face `front`, which PD keeps unless both rooms' boxes
+/// have their middles on the wrong sides of their own opening. Err then,
+/// naming the rooms: nothing written can make PD take such a portal right
+/// (its rooms' boxes must change).
+pub fn portal_between(behind: u16, front: u16, rect: [Vec3; 4], boxes: &[(Vec3, Vec3)]) -> Result<Portal, String> {
+    // Newell's normal: towards the side the corners are counter-clockwise from.
+    let mut n = Vec3::ZERO;
+    for i in 0..4 {
+        let (a, b) = (rect[i], rect[(i + 1) % 4]);
+        n += Vec3::new((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y));
+    }
+    // PD's is that negated: it faces where the corners are clockwise from,
+    // which must be `front`, so the corners are written the other way round.
+    let mut verts = rect;
+    verts.reverse();
+    let normal = n.normalize_or_zero();
+    if normal == Vec3::ZERO {
+        return Err(format!("the opening between rooms {behind:#x} and {front:#x} at {} has no area", rect[0]));
+    }
+    let centre = |room: u16| boxes.get(room as usize - 1).map(|(lo, hi)| (*lo + *hi) * 0.5);
+    let (Some(cb), Some(cf)) = (centre(behind), centre(front)) else {
+        return Err(format!("the opening at {} names a room the level has not ({behind:#x}, {front:#x} of {})", rect[0], boxes.len()));
+    };
+    let d = normal.dot(rect[0]);
+    // bg_init_portal: swapped when room1's centre is in front and room2's is not.
+    if normal.dot(cb) > d && normal.dot(cf) < d {
+        return Err(format!("the opening between rooms {behind:#x} and {front:#x} at {}: both rooms' boxes have their middles on the far side of it, and PD would take the portal the wrong way round", rect[0]));
+    }
+    Ok(Portal { rooms: [behind, front], verts })
 }
 
 /// A polygon's area (cm²).

@@ -3,8 +3,8 @@
     python tools/check_boundaries.py
 
 The rule is in docs/ARCHITECTURE.md: n64 (without its `gpu` feature), pd_core,
-pd_sim, pd_menu and the level importer (pd_import) never depend on wgpu, winit, kira, gilrs or egui, directly or
-transitively; nothing below `engine` depends on `engine`; and the engine's
+pd_sim, pd_menu, the level importer (pd_import) and the level generator (autolevel, autolevel_build) never depend
+on wgpu, winit, kira, gilrs or egui, directly or transitively; nothing below `engine` depends on `engine`; and the engine's
 source never names the game or the console.
 """
 import os
@@ -12,7 +12,7 @@ import re
 import subprocess
 import sys
 
-HEADLESS = ["n64", "pd_core", "pd_sim", "pd_menu", "pd_import"]
+HEADLESS = ["n64", "pd_core", "pd_sim", "pd_menu", "pd_import", "autolevel", "autolevel_build"]
 FORBIDDEN = {"wgpu", "winit", "kira", "gilrs", "egui", "egui-wgpu", "egui-winit", "engine"}
 
 
@@ -47,10 +47,10 @@ def main() -> int:
     bad = 0
     for crate in HEADLESS:
         hits = sorted(deps(crate) & FORBIDDEN)
-        print(f"{crate:8} {'ok' if not hits else 'FORBIDDEN: ' + ', '.join(hits)}")
+        print(f"{crate:15} {'ok' if not hits else 'FORBIDDEN: ' + ', '.join(hits)}")
         bad += bool(hits)
     words = engine_vocabulary()
-    print(f"{'engine':8} {'ok' if not words else 'mentions the game:'}")
+    print(f"{'engine':15} {'ok' if not words else 'mentions the game:'}")
     for w in words:
         print(f"         {w}")
     bad += bool(words)

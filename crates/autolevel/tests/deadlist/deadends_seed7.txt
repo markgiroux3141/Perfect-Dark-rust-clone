@@ -1,0 +1,17 @@
+seed 7: 10 dead ends as it falls, 2 of them too long, too far or too high (more than 8 cells of corridor, 20 cells' walk, or 2 storeys up to nothing)
+  ! basin@0 -> small2 (small2, small6): 28 cells, 0 of corridor, 2 storeys  [28 cells to its tip]
+  ! spire1@0 -> tiny3@276 (tiny3): 9 cells, 9 of corridor, 1 storey  [9 cells of corridor]
+        could join tiny3 on 276 to spire1 (on 0, 276, 551, 827, 1102, 1378; 2 cells)
+        could join tiny3 on 276 to colossal (on 0, 276, 551, 827; 5 cells)
+    colossal@276 -> tiny5 (tiny5): 7 cells, 0 of corridor, 1 storey
+    vast@276 -> tiny1@276 (tiny1): 7 cells, 7 of corridor, 0 storeys
+    long@276 -> long@551 (decks): 4 cells, 0 of corridor, 1 storey
+    tower@551 -> tower@827 (decks): 4 cells, 0 of corridor, 1 storey
+    vast@0 -> small4@0 (small4): 2 cells, 2 of corridor, 0 storeys
+    colossal@551.2 -> small3 (small3): 1 cells, 0 of corridor, 0 storeys
+    tower@276 -> tiny2 (tiny2): 1 cells, 0 of corridor, 0 storeys
+    vast@276 -> small7 (small7): 1 cells, 0 of corridor, 0 storeys
+done about them (2):
+    left out small2
+    joined tiny3 on 276 to spire1 by a corridor, 9 cells with 1 ramp (c35)
+left: 0 too long, 9 allowed (7 of them rooms to camp in)

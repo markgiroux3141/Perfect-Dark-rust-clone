@@ -612,7 +612,7 @@ impl Materials<'_> {
                     Look::Blend | Look::Add => Blend::Translucent,
                 };
                 let wrap = if clamp { Wrap::Clamp } else { Wrap::Repeat };
-                self.materials.push(Material { texture: Some(self.textures.len() - 1), wrap: [wrap; 2], blend, cull_back: !sh.two_sided, zwrite: blend != Blend::Translucent, decal: false, surface });
+                self.materials.push(Material { texture: Some(self.textures.len() - 1), wrap: [wrap; 2], blend, cull_back: !sh.two_sided, zwrite: blend != Blend::Translucent, decal: false, surface, pd: None });
                 self.by_image.insert(k, self.materials.len() - 1);
                 self.materials.len() - 1
             }
@@ -756,7 +756,7 @@ pub fn load(r: &Recipe, src: &JkaSource, bsp_bytes: &[u8], vfs: &Vfs, report: &m
         .iter()
         .map(|t| {
             let m = &shader_mats[bsp.surfaces[t.surf].shader];
-            Tri { v: t.v.map(|v| Vert { pos: pd(v.p), uv: v.st, col: byte(v.col) }), material: m.material, xlu: m.xlu }
+            Tri { v: t.v.map(|v| Vert { pos: pd(v.p), uv: v.st, col: byte(v.col) }), material: m.material, xlu: m.xlu, room: 0 }
         })
         .collect();
 
@@ -766,7 +766,7 @@ pub fn load(r: &Recipe, src: &JkaSource, bsp_bytes: &[u8], vfs: &Vfs, report: &m
         let m = &shader_mats[bsp.surfaces[t.surf].shader];
         let p = t.v.map(|v| pd(v.p));
         if let Some((flags, floorcol)) = tile_of_triangle(p, t.v.map(|v| byte(v.col)), m.xlu) {
-            collision.push(ColPoly { verts: p.to_vec(), flags, floortype: m.floortype, grab: src.climb_ledges, floorcol });
+            collision.push(ColPoly { verts: p.to_vec(), flags, floortype: m.floortype, grab: src.climb_ledges, floorcol, room: 0 });
         }
     }
     // Solid brushes with nothing drawn: every face.
@@ -797,7 +797,7 @@ pub fn load(r: &Recipe, src: &JkaSource, bsp_bytes: &[u8], vfs: &Vfs, report: &m
                 for k in 1..poly.len().saturating_sub(1) {
                     let tri = [poly[0], poly[k], poly[k + 1]];
                     if let Some((flags, _)) = tile_of_triangle(tri, [[128, 128, 128, 255]; 3], false) {
-                        collision.push(ColPoly { verts: tri.to_vec(), flags, floortype: FLOORTYPE_DEFAULT, grab: src.climb_ledges, floorcol: 0 });
+                        collision.push(ColPoly { verts: tri.to_vec(), flags, floortype: FLOORTYPE_DEFAULT, grab: src.climb_ledges, floorcol: 0, room: 0 });
                     }
                 }
             }
@@ -871,6 +871,7 @@ pub fn load(r: &Recipe, src: &JkaSource, bsp_bytes: &[u8], vfs: &Vfs, report: &m
         collision,
         markers,
         env: Env { sky: sky_colour, near: 15.0, far: 10000f32.max((hi - lo).length() * 1.2), fog: None },
+        rooms: None,
     })
 }
 

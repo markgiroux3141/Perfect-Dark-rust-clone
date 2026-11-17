@@ -12,7 +12,30 @@
 //! PD's and GoldenEye's setups place), + Door, click a doorway's floor; it is
 //! fitted to the opening, and moved and turned like an item.
 //!
+//! "Generate…" hosts the level generator's own editor (`autolevel_edit`: the
+//! plan of a seed's level, its room boxes, joins and each room's choices) in
+//! place of the view, with the arena's name, code and stage number above it;
+//! "Make it an arena" writes the level's recipe and imports it, and the
+//! level then opens here as any other. A generated level has "Generator…"
+//! beside its tabs, to shape it again.
+//!
+//! Over the generator's plan is a switch, "Plan | 3D". "3D" shows the level
+//! the generator last made as the game will draw it (`pd_edit::preview`: a
+//! preview import of the geometry alone, about 0.6 s on a thread after each
+//! change, in a scratch folder; while it is made, or where the recipe makes
+//! no level, the last one stays and a line says so), with the fly camera as
+//! above. "Walk" (G) drops PD's player where the camera is, onto the floor
+//! under it: WASD or the arrows walk (left and right turn), the right button
+//! looks, C crouches a level down and Space up (two levels down fit a vent),
+//! Escape flies again from the player's eyes. On the plan the camera is a
+//! pink arrowhead, and a right click there sends the camera to that place.
+//! "Go to <room>" puts it over the room selected in the generator's panel.
+//!
 //! `pd_edit --shot <code> <out.png> [...]`: the view to a PNG (see `shot`).
+//! `pd_edit --shot-generated <out.png> [--seed N | --recipe FILE] [--at
+//! x,y,z,yaw,pitch | --view NAME | --room KEY] [--walk x,y,z,theta | --walk
+//! NAME [--forward TICKS] [--crouch]] [--plan] [--list]`: the generator's 3D
+//! view, a walker's, or the plan with the camera marked, to a PNG (see `shot`).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -27,12 +50,15 @@ use glam::Vec3;
 use pd_edit::camera::{self, FlyCam, Motion};
 use pd_edit::doc::{Doc, Item, Kind, Sel, PAD_HEIGHT};
 use pd_edit::draw3d::Draw3d;
+use pd_edit::generator::{self, Form};
 use pd_edit::gizmo::{self, Handle};
 use pd_edit::jobs::{Job, Work};
 use pd_edit::newlevel::NewLevel;
 use pd_edit::overlay::{self, Highlight, Show};
 use pd_edit::paths::EditPaths;
+use pd_edit::preview::{self, Controls};
 use pd_edit::scene::Scene;
+use pd_edit::space::{Middle, Space};
 use pd_import::doors::{Catalogue, Game as DoorGame};
 use pd_import::layout::{Layout, Motion as DoorMotion, Side, Swing};
 use pd_import::recipe::Recipe;
@@ -118,10 +144,42 @@ impl Level {
     }
 }
 
+/// The level generator's editor, hosted, and the arena its level becomes.
+struct Generating {
+    ed: autolevel_edit::ui::Editor,
+    form: Form,
+    /// The middle of the window: the plan, or the level in 3D.
+    space: Space,
+    /// The generator's renderer holds the BG of this level's preview.
+    bg_loaded: bool,
+}
+
+impl Generating {
+    fn new(recipe: autolevel::recipe::Recipe, form: Form, paths: &EditPaths) -> Generating {
+        // (the generator's editor is made from its command line's reading)
+        let mut args = autolevel_edit::cli::parse(&[], &|path| Err(format!("{path}: no file is read here"))).expect("an empty command line");
+        args.recipe = recipe;
+        let root = preview::Scratch::root();
+        preview::Scratch::sweep(&root);
+        Generating { ed: autolevel_edit::ui::Editor::new(args), form, space: Space::new(paths.assets.clone(), root), bg_loaded: false }
+    }
+
+    /// The room in hand in the generator's panel: the one whose box is
+    /// selected, else the one picked to join from.
+    fn room(&self) -> Option<String> {
+        self.ed.doc.selected().or(self.ed.doc.picked().map(|(room, _)| room)).map(str::to_owned)
+    }
+}
+
 struct App {
     paths: EditPaths,
+    /// The level generator, in place of the view.
+    generating: Option<Generating>,
     res: Option<Arc<WorldRes>>,
     renderer: Option<Renderer>,
+    /// The generator's 3D view's own renderer (it holds a preview's BG while
+    /// `renderer` keeps the open level's), made when the first preview arrives.
+    gen_renderer: Option<Renderer>,
     presenter: Option<Presenter>,
     draw3d: Option<Draw3d>,
     target: Option<RenderTarget>,
@@ -130,6 +188,9 @@ struct App {
     cam: FlyCam,
     looking: bool,
     hover_view: bool,
+    /// Nothing in the panels has the keys (a text field, a focused slider):
+    /// the generator's 3D view may take the arrows and Space.
+    keys_free: bool,
     tab: Tab,
     tool: Tool,
     team: u8,
@@ -173,8 +234,10 @@ impl App {
     fn new(paths: EditPaths, open_code: Option<String>) -> App {
         App {
             paths,
+            generating: None,
             res: None,
             renderer: None,
+            gen_renderer: None,
             presenter: None,
             draw3d: None,
             target: None,
@@ -183,6 +246,7 @@ impl App {
             cam: FlyCam::new(Vec3::new(0.0, 500.0, 0.0), 0.0, 0.0),
             looking: false,
             hover_view: false,
+            keys_free: true,
             tab: Tab::Items,
             tool: Tool::Select,
             team: 0,
@@ -231,6 +295,12 @@ impl App {
     /// Open the level of the recipe at `path`: its layout (or the stage's
     /// placement, adopted), its stage (imported first if it must be).
     fn open(&mut self, path: PathBuf, ctx: &mut Ctx) {
+        self.open_with(path, ctx, false);
+    }
+
+    /// [`Self::open`]; `fresh`: imported again even if it has been (its
+    /// recipe has just been written anew).
+    fn open_with(&mut self, path: PathBuf, ctx: &mut Ctx, fresh: bool) {
         if self.job.is_some() {
             return self.say("wait for the running job to finish", true);
         }
@@ -250,7 +320,7 @@ impl App {
         self.sel = None;
         self.link_from = None;
         self.new_level = None;
-        if self.paths.is_imported(&code) {
+        if self.paths.is_imported(&code) && !fresh {
             let Some(res) = self.res.clone() else { return };
             match Scene::load(&self.paths.asset_dir(), &code, res, self.weapons()) {
                 Ok(scene) => {
@@ -603,6 +673,9 @@ impl App {
                     self.new_level = Some(NewLevel::for_file(&p, &self.paths));
                 }
             }
+            if ui.button("Generate…").on_hover_text("A level from a seed, by the level generator: shape it on its plan, then make it an arena").clicked() && self.generating.is_none() {
+                self.generate(None);
+            }
         });
         if let Some(job) = &self.job {
             ui.horizontal(|ui| {
@@ -614,6 +687,10 @@ impl App {
             ui.colored_label(if *err { egui::Color32::from_rgb(255, 120, 90) } else { egui::Color32::from_rgb(150, 220, 150) }, m);
         }
         ui.separator();
+        if self.generating.is_some() {
+            self.generator_panel(ui, ctx);
+            return;
+        }
         if self.new_level.is_some() {
             self.new_level_form(ui, ctx);
             return;
@@ -647,6 +724,10 @@ impl App {
                     self.link_from = None;
                 }
             }
+            let made = self.level.as_ref().and_then(|l| generator::of(&l.recipe));
+            if made.is_some() && ui.button("Generator…").on_hover_text("This level was generated: shape it again on its plan").clicked() {
+                self.generate(made);
+            }
         });
         ui.separator();
         egui::ScrollArea::vertical().show(ui, |ui| match self.tab {
@@ -655,6 +736,65 @@ impl App {
             Tab::Doors => self.doors_tab(ui),
             Tab::Level => self.level_tab(ui),
         });
+    }
+
+    /// Take the level generator in hand: on a level made before (its form
+    /// and the generator's recipe), or on seed 40 as it falls.
+    fn generate(&mut self, made: Option<(Form, autolevel::recipe::Recipe)>) {
+        let (form, recipe) = made.unwrap_or_else(|| (Form::for_seed(40, &self.paths), autolevel::recipe::Recipe::new(40)));
+        self.generating = Some(Generating::new(recipe, form, &self.paths));
+        self.new_level = None;
+        self.hover_view = false;
+    }
+
+    /// The generator's panel: the arena its level becomes, then its own.
+    fn generator_panel(&mut self, ui: &mut egui::Ui, ctx: &mut Ctx) {
+        let Some(g) = self.generating.as_mut() else { return };
+        g.form.follow(g.ed.doc.recipe.seed, &self.paths);
+        ui.label(egui::RichText::new("Level generator").strong());
+        let was = (g.form.name.clone(), g.form.code.clone());
+        egui::Grid::new("generated").num_columns(2).show(ui, |ui| {
+            ui.label("Name");
+            ui.text_edit_singleline(&mut g.form.name);
+            ui.end_row();
+            ui.label("Code");
+            ui.text_edit_singleline(&mut g.form.code);
+            ui.end_row();
+            ui.label("Stage number");
+            ui.add(egui::DragValue::new(&mut g.form.stagenum).range(0x60..=0x7f).hexadecimal(2, false, true));
+            ui.end_row();
+        });
+        if was != (g.form.name.clone(), g.form.code.clone()) {
+            g.form.auto = false;
+        }
+        let problem = g.form.problem(&self.paths);
+        if let Some(p) = &problem {
+            ui.colored_label(egui::Color32::from_rgb(255, 170, 90), p);
+        }
+        if g.form.has_layout(&self.paths) {
+            ui.label(egui::RichText::new("This level has items placed by hand: they are kept, and may be out of place if its rooms change.").weak());
+        }
+        // (a recipe that makes no level makes no arena; the generator's panel says why)
+        let ready = problem.is_none() && self.job.is_none() && g.ed.doc.error().is_none() && g.ed.doc.made().is_some();
+        let (mut make, mut close) = (false, false);
+        ui.horizontal(|ui| {
+            make = ui.add_enabled(ready, egui::Button::new("Make it an arena")).on_hover_text("Write the level's recipe and import it (the waypoints take a few seconds); it then opens here").clicked();
+            close = ui.button("Close").on_hover_text("Leave the generator; nothing is written").clicked();
+        });
+        ui.separator();
+        g.ed.panel(ui);
+        if make {
+            let written = g.form.write(&g.ed.doc.recipe, &self.paths);
+            match written {
+                Ok(path) => {
+                    self.generating = None;
+                    self.open_with(path, ctx, true);
+                }
+                Err(e) => self.say(e, true),
+            }
+        } else if close {
+            self.generating = None;
+        }
     }
 
     fn start_list(&mut self, ui: &mut egui::Ui, ctx: &mut Ctx) {
@@ -1728,10 +1868,31 @@ impl Game for App {
         } else {
             Motion::default()
         };
-        // Shift+D duplicates; it doesn't strafe.
-        let m = if ctx.input.key_down(KeyCode::ShiftLeft) && ctx.input.key_down(KeyCode::KeyD) && !self.looking { Motion { right: 0.0, ..m } } else { m };
+        // Shift+D duplicates; it doesn't strafe (the generator's 3D view has no such key).
+        let m = if self.generating.is_none() && ctx.input.key_down(KeyCode::ShiftLeft) && ctx.input.key_down(KeyCode::KeyD) && !self.looking { Motion { right: 0.0, ..m } } else { m };
         let dt = ctx.clock.tick_dt() as f32;
-        self.cam.update(&m, dt);
+        match self.generating.as_mut() {
+            // The generator's 3D view: its own camera flies, or its walker walks.
+            Some(g) if g.space.middle == Middle::Space => {
+                let pressed = |k: KeyCode| ctx.input.key_pressed(k);
+                let controls = if active && self.keys_free {
+                    Controls {
+                        forward: (key(KeyCode::KeyW) - key(KeyCode::KeyS) + key(KeyCode::ArrowUp) - key(KeyCode::ArrowDown)).clamp(-1.0, 1.0),
+                        right: key(KeyCode::KeyD) - key(KeyCode::KeyA),
+                        turn: key(KeyCode::ArrowRight) - key(KeyCode::ArrowLeft),
+                        look: m.look,
+                        // (the game's keys: C or Ctrl down a level, Space up)
+                        crouch_down: pressed(KeyCode::KeyC) || pressed(KeyCode::ControlLeft) || pressed(KeyCode::ControlRight),
+                        crouch_up: pressed(KeyCode::Space),
+                    }
+                } else {
+                    Controls::default()
+                };
+                g.space.advance(&m, controls, dt);
+            }
+            Some(_) => {}
+            None => self.cam.update(&m, dt),
+        }
         if let Some(t0) = self.preview {
             if t0.elapsed().as_secs_f32() > 10.0 {
                 self.preview = None;
@@ -1740,6 +1901,20 @@ impl Game for App {
                 while self.preview_acc >= 1.0 / 60.0 {
                     scene.world.step(4, &[pd_sim::player::PlayerInput::default()]);
                     self.preview_acc -= 1.0 / 60.0;
+                }
+            }
+        }
+        if let Some(g) = self.generating.as_mut() {
+            g.ed.tick();
+            // The 3D view follows the recipe; a preview that has just come on
+            // show has its BG loaded (a few hundredths of a second).
+            if g.space.follow(&g.ed.doc.recipe) {
+                if let Some(pv) = g.space.preview() {
+                    let renderer = self.gen_renderer.get_or_insert_with(|| Renderer::new(&ctx.gpu.device, &ctx.gpu.queue, FORMAT));
+                    match renderer.load_stage(&ctx.gpu.device, &ctx.gpu.queue, &pv.asset_dir(), preview::CODE) {
+                        Ok(()) => g.bg_loaded = true,
+                        Err(e) => g.space.note = Some((format!("loading the 3D view: {e}"), true)),
+                    }
                 }
             }
         }
@@ -1758,9 +1933,40 @@ impl Game for App {
             self.looking = false;
             ctx.set_cursor_captured(false);
         }
-        self.shortcuts(egui);
-        egui::SidePanel::left("pd_edit").resizable(true).default_width(370.0).show(egui, |ui| self.panel(ui, ctx));
-        egui::CentralPanel::default().frame(egui::Frame::NONE).show(egui, |ui| self.viewport(ui, ctx));
+        self.keys_free = !egui.wants_keyboard_input() && egui.memory(|m| m.focused().is_none());
+        // With the generator in hand the keys and the middle of the window are its own
+        // (its 3D view's keys first: the generator's panel takes Escape for itself).
+        match self.generating.as_mut() {
+            Some(g) => g.space.keys(egui, self.res.as_ref()),
+            None => self.shortcuts(egui),
+        }
+        let width = if self.generating.is_some() { 430.0 } else { 370.0 };
+        egui::SidePanel::left("pd_edit").resizable(true).default_width(width).show(egui, |ui| self.panel(ui, ctx));
+        if let Some(g) = self.generating.as_mut() {
+            let room = g.room();
+            egui::TopBottomPanel::top("generator view").show(egui, |ui| g.space.bar(ui, &g.ed.doc.recipe, room.as_deref(), self.res.as_ref()));
+        }
+        egui::CentralPanel::default().frame(egui::Frame::NONE).show(egui, |ui| match self.generating.as_mut() {
+            Some(g) if g.space.middle == Middle::Plan => {
+                let rect = ui.max_rect();
+                g.ed.canvas(ui);
+                // The 3D view's camera on the plan; a right click sends it there.
+                let made = g.ed.doc.made().cloned();
+                g.space.over_plan(ui, rect, g.ed.fit, made.as_ref().map(|m| &m.level));
+                self.hover_view = false;
+            }
+            Some(g) => {
+                // The level in 3D is drawn under this (`render`); the right
+                // button looks, as in the ordinary view.
+                let resp = g.space.over_view(ui, &g.ed.doc.recipe);
+                self.hover_view = resp.hovered() || self.looking;
+                if resp.hovered() && ui.input(|i| i.pointer.secondary_pressed()) {
+                    ctx.set_cursor_captured(true);
+                    self.looking = true;
+                }
+            }
+            None => self.viewport(ui, ctx),
+        });
         let title = match &self.level {
             Some(l) => format!("pd_edit: {}{}", l.recipe.name, if l.doc.dirty() { " *" } else { "" }),
             None => "pd_edit".into(),
@@ -1771,7 +1977,21 @@ impl Game for App {
     fn render(&mut self, ctx: &mut Ctx, frame: &mut Frame) {
         let [_, _, vw, vh] = frame.viewport;
         let (w, h) = ((vw.round() as u32).max(1), (vh.round() as u32).max(1));
-        let scene = self.level.as_ref().filter(|l| l.bg_loaded).and_then(|l| l.scene.as_ref());
+        // The generator's 3D view: the preview's BG, from its camera or its walker.
+        let space = self.generating.as_ref().filter(|g| g.space.middle == Middle::Space && g.bg_loaded).map(|g| &g.space);
+        if let (Some(space), Some(renderer), Some(presenter)) = (space, self.gen_renderer.as_ref(), self.presenter.as_ref()) {
+            if self.target.as_ref().is_none_or(|t| t.width != w || t.height != h) {
+                self.target = Some(RenderTarget::new(ctx.gpu, w, h, FORMAT, true));
+            }
+            let target = self.target.as_ref().unwrap();
+            let (znear, zfar) = renderer.z_range();
+            let view = space.view(w as f32 / h as f32, znear, zfar);
+            pd_edit::shot::draw_bg(renderer, &ctx.gpu.queue, &mut frame.encoder, target, &view);
+            presenter.present(ctx.gpu, frame, target, (w, h), Filter::Linear);
+            return;
+        }
+        // (the generator's plan covers the view: nothing of the level is drawn under it)
+        let scene = self.level.as_ref().filter(|l| l.bg_loaded && self.generating.is_none()).and_then(|l| l.scene.as_ref());
         let (Some(renderer), Some(presenter), Some(draw3d), Some(scene)) = (self.renderer.as_mut(), self.presenter.as_ref(), self.draw3d.as_ref(), scene) else {
             frame.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("pd_edit clear"),
@@ -1804,6 +2024,16 @@ fn main() {
     if args.first().is_some_and(|a| a == "--shot") {
         match pd_edit::shot::run(&args[1..]) {
             Ok(p) => println!("{}", p.display()),
+            Err(e) => {
+                eprintln!("pd_edit: {e}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+    if args.first().is_some_and(|a| a == "--shot-generated") {
+        match pd_edit::shot::run_generated(&args[1..]) {
+            Ok(lines) => println!("{}", lines.join("\n")),
             Err(e) => {
                 eprintln!("pd_edit: {e}");
                 std::process::exit(1);

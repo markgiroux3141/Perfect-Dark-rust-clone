@@ -8,9 +8,11 @@
 //!
 //! ```text
 //! recipe (levels/<code>.json)
-//!   ├─ source importer (oot, gltf, jka) ──► LevelSource: triangles + materials +
-//!   │                             textures, collision polygons, markers, environment
+//!   ├─ source importer (oot, gltf, jka, autolevel) ──► LevelSource: triangles +
+//!   │                             materials + textures, collision polygons, markers,
+//!   │                             environment (and, a generated level's, its own rooms)
 //!   │    └─ rooms ──► boxes over the floor area, every polygon cut to them, portals
+//!   │                 (or the source's own rooms and portals, nothing cut)
 //!   │         └─ write ──► bg.json + bg.bin + tex/, tiles.json   (the geometry)
 //!   ├─ ge (GoldenEye) ──► tools/ge-extract: the level already in PD's formats
 //!   │                     (its rooms, portals, tiles; its doors, their pads
@@ -19,7 +21,8 @@
 //!   │                     data where unchanged
 //!   └─ source.json: the source's own gameplay data and markers (for --place)
 //!        └─ Stage::load, TileLevel::for_stage          (as the game loads it)
-//!             └─ waypoints (nav::gen; cached in custom/cache/nav/ for --place)
+//!             └─ waypoints (nav::gen; cached in custom/cache/nav/ for --place;
+//!                  a generated level's repaired with its generator's ways)
 //!                  └─ place ──► the layout (levels/<code>.layout.json) as it
 //!                       is, the rest generated: spawns, weapons + ammo, hills,
 //!                       bases, cover (after the source's own pads and props)
@@ -32,11 +35,21 @@
 //! the arena menu lists it under "Custom". The hand-placed layout is
 //! committed beside the recipe ([`layout`]); `pd_edit` writes it.
 //!
+//! A level generated here (`autolevel`) has a source of its own
+//! ([`autolevel`]): it is made again from the generator's recipe, with the
+//! generator's rooms as PD's rooms, its doorways as portals and Complex's own
+//! materials on the pool's textures. [`autowalk`] is its recipe, and its
+//! routes walked on the tiles the import makes.
+//!
 //! Importers: [`oot`] (Ocarina of Time scenes, from the OoT Clone repo's
 //! extractor), [`gltf`] (any glTF 2.0 file), [`ge`] (GoldenEye 007 levels,
 //! from the ROM by `tools/ge-extract`), [`pd`] (PD's own arenas, rebuilt in
-//! Blender), [`jka`] (Jedi Academy maps, with the game's `base` directory).
+//! Blender), [`jka`] (Jedi Academy maps, with the game's `base` directory),
+//! [`autolevel`] (the level generator's levels).
 
+pub mod autolevel;
+pub mod autonav;
+pub mod autowalk;
 pub mod batch;
 pub mod cache;
 pub mod doors;
@@ -175,7 +188,7 @@ pub fn replace(r: &Recipe, paths: &Paths, layout: &Layout, how: Finish) -> Resul
 /// `custom/stages/<code>/`, and what the source brings besides (saved there).
 pub fn geometry(r: &Recipe, paths: &Paths) -> Result<(PathBuf, SourceData), String> {
     let (dir, data) = match &r.source {
-        Source::Oot(_) | Source::Gltf(_) | Source::Jka(_) => {
+        Source::Oot(_) | Source::Gltf(_) | Source::Jka(_) | Source::Autolevel(_) => {
             let (src, report) = level_source(r, paths)?.expect("a LevelSource importer");
             write_geometry(r, src, paths, report)?
         }
@@ -198,9 +211,9 @@ pub fn geometry(r: &Recipe, paths: &Paths) -> Result<(PathBuf, SourceData), Stri
     Ok((dir, data))
 }
 
-/// The level as a [`LevelSource`] (an OoT scene, a glTF, a Jedi Academy map)
-/// with the report so far; `None` for the sources that write PD's stage
-/// files themselves (GoldenEye's, PD's own).
+/// The level as a [`LevelSource`] (an OoT scene, a glTF, a Jedi Academy map,
+/// a generated level) with the report so far; `None` for the sources that
+/// write PD's stage files themselves (GoldenEye's, PD's own).
 pub fn level_source(r: &Recipe, paths: &Paths) -> Result<Option<(LevelSource, Vec<String>)>, String> {
     let mut report = vec![title(r)];
     let src = match &r.source {
@@ -218,6 +231,7 @@ pub fn level_source(r: &Recipe, paths: &Paths) -> Result<Option<(LevelSource, Ve
             let bytes = jka::read_map(&map, &vfs)?;
             jka::load(r, j, &bytes, &vfs, &mut report).map_err(|e| format!("{map}: {e}"))?
         }
+        Source::Autolevel(a) => autolevel::load(r, a, paths.src.as_deref(), &paths.assets, &mut report)?,
         Source::Ge(_) | Source::Pd(_) => return Ok(None),
     };
     Ok(Some((src, report)))
@@ -229,6 +243,9 @@ pub fn level_source(r: &Recipe, paths: &Paths) -> Result<Option<(LevelSource, Ve
 /// budget), its risers and ledges as for the clone, split into `opts.rooms`.
 pub fn export_ge64(r: &Recipe, paths: &Paths, out: &Path, opts: &ge64::Options, jka_light: Option<(f32, f32)>) -> Result<Vec<String>, String> {
     let mut r = r.clone();
+    if matches!(r.source, Source::Autolevel(_)) {
+        return Err(format!("{}: the generator writes a level's Setup Editor files itself (autolevel build: LevelIndices.obj, in its own rooms)", r.code));
+    }
     if let (Source::Jka(j), Some((tolerance, min_edge))) = (&mut r.source, jka_light) {
         j.light_tolerance = tolerance;
         j.light_min_edge = min_edge;
@@ -290,11 +307,18 @@ fn write_geometry(r: &Recipe, mut src: LevelSource, paths: &Paths, mut report: V
         (hi.y - lo.y) / 100.0
     ));
     let rooms = if r.rooms > 0 { r.rooms } else { auto_rooms(&src) };
-    let part = rooms::Partition::build(&src, rooms);
+    let part = rooms::Partition::of(&src, rooms);
     let dir = fresh_stage_dir(paths, r)?;
     let ntris = write::write_bg(&dir, r, &src, &part)?;
     let ntiles = write::write_tiles(&dir, r, &src, &part)?;
-    report.push(format!("geometry: {} rooms, {} portals, {} BG triangles, {} tiles", part.rooms(), part.portals().len(), ntris, ntiles));
+    report.push(format!(
+        "geometry: {} rooms{}, {} portals, {} BG triangles, {} tiles",
+        part.rooms(),
+        if part.is_own() { " (the level's own)" } else { "" },
+        part.portals().len(),
+        ntris,
+        ntiles
+    ));
     Ok((dir, SourceData { fixed: write::Gameplay::default(), how: SourceHow::Generate(src.markers), report }))
 }
 
@@ -318,6 +342,16 @@ fn finish(r: &Recipe, paths: &Paths, dir: &Path, data: SourceData, layout: &Layo
     let level = TileLevel::for_stage(&stage);
     let (mut graph, line) = cache::graph(paths, &r.code, dir, &level, how.fresh_graph)?;
     report.push(line);
+    // A generated level: the ways its generator knows, put into the graph
+    // where the maker left them out (the level made again: half a second).
+    if let Source::Autolevel(a) = &r.source {
+        if !a.plain_waypoints {
+            let built = autolevel::make(a, paths.src.as_deref())?;
+            let (repaired, done) = autonav::repair(&graph, &level, &autonav::legs(&built, r.scale));
+            graph = repaired;
+            report.push(done.line());
+        }
+    }
     if let Some(edits) = layout.waypoints.as_ref().filter(|e| !e.is_empty()) {
         let (edited, line) = waypoints::apply(&graph, edits, &level);
         graph = edited;
@@ -370,12 +404,55 @@ pub fn check(assets: &AssetDir, code: &str) -> Result<Vec<String>, String> {
     let res = Arc::new(pd_sim::world::WorldRes::load(assets)?);
     let setup = pd_sim::harness::with_weapons(pd_sim::harness::setup(0, 6, BOTDIFF_NORMAL), &pd_sim::harness::DEFAULT_SET);
     let setup = pd_core::mp::MatchSetup { stagenum: stage.stagenum, ..setup };
-    let w = pd_sim::world::World::new(setup, stage.clone(), level.clone(), res, 1)?;
+    let w = pd_sim::world::World::new(setup.clone(), stage.clone(), level.clone(), res.clone(), 1)?;
     let m = pd_sim::harness::abtest::run_match(w, 60);
+    // The same match again (a seed's match is the same every time), to tell
+    // the falls apart: a chr running down a 30° ramp leaves the ground at
+    // its top and lands half-way down, a metre lower, twice a ramp, and the
+    // harness counts each landing as a ledge fall. Those are not falls.
+    let hops = ramp_hops(pd_sim::world::World::new(setup, stage.clone(), level.clone(), res, 1)?, &level, 60);
     report.push(format!(
-        "check: a minute of six Normal simulants: {} kills, {} shots ({} hits), {} stalls, {} ledge falls",
-        m.kills, m.shots, m.hits, m.stalls, m.ledge_falls
+        "check: a minute of six Normal simulants: {} kills, {} shots ({} hits), {} stalls, {} ledge falls ({} of them hops down ramps, {} off ledges)",
+        m.kills,
+        m.shots,
+        m.hits,
+        m.stalls,
+        m.ledge_falls,
+        hops.min(m.ledge_falls),
+        m.ledge_falls.saturating_sub(hops)
     ));
     Ok(report)
+}
+
+/// Of the landings the harness counts as ledge falls in `seconds` of the
+/// match `w` (more than a metre below where the fall began,
+/// `harness::abtest::run_match`), how many began or ended on a ramp: a chr
+/// running down one, in the air between its top and its foot.
+fn ramp_hops(mut w: pd_sim::world::World, level: &TileLevel, seconds: u32) -> u32 {
+    let on_ramp = |p: Vec3| level.cd_find_ground_at_cyl(p + Vec3::Y * 20.0, 20.0).1.is_some_and(|i| level.geom.polys[i].floor_kind() == Some(pd_sim::stage::FloorKind::Ramp));
+    let (first, n) = (w.players.len(), w.chrs.len());
+    let mut fall_top: Vec<Option<Vec3>> = vec![None; n];
+    let mut hops = 0;
+    for _ in 0..60 * seconds {
+        pd_sim::harness::step_idle(&mut w);
+        for (k, top) in fall_top.iter_mut().enumerate().skip(first) {
+            if w.chr_is_dead(k) {
+                *top = None;
+                continue;
+            }
+            let c = &w.chrs[k];
+            match (*top, c.fallspeed.y != 0.0) {
+                (None, true) => *top = Some(Vec3::new(c.prevpos.x, c.manground, c.prevpos.z)),
+                (Some(from), false) => {
+                    if from.y - c.manground > 100.0 && (on_ramp(from) || on_ramp(Vec3::new(c.pos.x, c.manground, c.pos.z))) {
+                        hops += 1;
+                    }
+                    *top = None;
+                }
+                _ => {}
+            }
+        }
+    }
+    hops
 }
 

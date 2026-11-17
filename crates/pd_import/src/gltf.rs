@@ -21,7 +21,11 @@
 //!   named with `-nocol` draws without colliding, `-colonly` collides without
 //!   drawing (invisible walls, simple collision), `-ladder` makes its upright
 //!   triangles a ladder (`GEOFLAG_LADDER`); `extras.pd` may say the same
-//!   (`"nocol"`, `"colonly"`, `"ladder"`).
+//!   (`"nocol"`, `"colonly"`, `"ladder"`). A level made to be walked as PD's
+//!   own are asks for more in its recipe (each off unless named): `grates`
+//!   (a translucent triangle facing up is a floor), `low_ceilings` (a ceiling
+//!   under a standing head's height is a wall, so a vent is squatted through)
+//!   and `ramp_walls` (the walls under ramps flagged `GEOFLAG_RAMPWALL`).
 //! - **Markers**: nodes named `pd_spawn*`, `pd_weapon*` (or `pd_item*`) and
 //!   `pd_prize*` mark spawns, weapon spots and the prize weapon's spot, facing
 //!   along their +Z.
@@ -167,6 +171,7 @@ pub fn load(r: &Recipe, src: &GltfSource, path: &Path, report: &mut Vec<String>)
             zwrite: blend != Blend::Translucent,
             decal: false,
             surface: pd_sim::stage::bghit::SURFACETYPE_DEFAULT,
+            pd: None,
         });
         mats.push(Mat { index: materials.len() - 1, factor, textured: texture.is_some(), texcoord: bct["texCoord"].as_u64().unwrap_or(0) as usize, xlu: blend == Blend::Translucent });
     }
@@ -185,6 +190,9 @@ pub fn load(r: &Recipe, src: &GltfSource, path: &Path, report: &mut Vec<String>)
         }
     }
     let (mut unlit, mut skipped_prims) = (0usize, 0usize);
+    // What the recipe's own tile rules made, and the ceilings they look at.
+    let mut grates = 0usize;
+    let mut ceilings: Vec<(u16, [Vec3; 3])> = Vec::new();
     for (ni, world) in glb.scene_nodes() {
         let node = &glb.nodes()[ni];
         tags[ni] = Tags::of(node, parent[ni].map(|p| tags[p]).unwrap_or_default());
@@ -258,17 +266,27 @@ pub fn load(r: &Recipe, src: &GltfSource, path: &Path, report: &mut Vec<String>)
                     Vert { pos: wpos[i], uv: Vec2::new(uv[2 * i], uv[2 * i + 1]), col: c }
                 });
                 if !t.colonly {
-                    tris.push(Tri { v, material: m.index, xlu: m.xlu });
+                    tris.push(Tri { v, material: m.index, xlu: m.xlu, room: 0 });
                 }
                 if t.nocol {
                     continue;
                 }
                 // Invisible collision is opaque to sight and shots.
-                let Some((mut flags, floorcol)) = tile_of_triangle(p, v.map(|x| x.col), m.xlu && !t.colonly) else { continue };
+                let (xlu, cols) = (m.xlu && !t.colonly, v.map(|x| x.col));
+                let tile = match tile_of_triangle(p, cols, xlu) {
+                    None if src.grates && xlu => grate_of_triangle(p, cols).inspect(|_| grates += 1),
+                    tile => tile,
+                };
+                let Some((mut flags, floorcol)) = tile else {
+                    if src.low_ceilings && is_ceiling(p) {
+                        ceilings.push((0, p));
+                    }
+                    continue;
+                };
                 if t.ladder && flags & GEOFLAG_WALL != 0 {
                     flags |= GEOFLAG_LADDER;
                 }
-                collision.push(ColPoly { verts: p.to_vec(), flags, floortype: FLOORTYPE_DEFAULT, grab: src.climb_ledges, floorcol });
+                collision.push(ColPoly { verts: p.to_vec(), flags, floortype: FLOORTYPE_DEFAULT, grab: src.climb_ledges, floorcol, room: 0 });
             }
         }
     }
@@ -287,12 +305,29 @@ pub fn load(r: &Recipe, src: &GltfSource, path: &Path, report: &mut Vec<String>)
         skipped_prims,
         markers.len()
     ));
-    Ok(LevelSource {
+    let mut level = LevelSource {
         textures,
         materials,
         tris,
         collision,
         markers,
         env: Env { sky: src.sky.unwrap_or([120, 140, 170]), near: ZNEAR, far: ZFAR.max((hi - lo).length() * 1.2), fog: None },
-    })
+        rooms: None,
+    };
+    // The recipe's tile rules, each said only when it is on.
+    let mut made = Vec::new();
+    if src.grates {
+        made.push(format!("{grates} translucent triangles facing up made floors (grates)"));
+    }
+    if src.low_ceilings {
+        let low = level.wall_low_ceilings(&ceilings);
+        made.push(format!("{low} of {} ceiling triangles under {LOW_CEILING} cm made walls", ceilings.len()));
+    }
+    if src.ramp_walls {
+        made.push(format!("{} wall triangles flagged as ramp walls", level.mark_ramp_walls()));
+    }
+    if !made.is_empty() {
+        report.push(format!("tiles: {}", made.join(", ")));
+    }
+    Ok(level)
 }

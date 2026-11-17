@@ -1,0 +1,20 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "autolevel1",
+  "name": "Autolevel 1",
+  "group": "Autolevel",
+  "stagenum": 125,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 1,
+      "options": {},
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

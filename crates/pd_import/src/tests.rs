@@ -13,7 +13,7 @@ const FLOOR: u32 = GEOFLAG_FLOOR1 | GEOFLAG_FLOOR2 | GEOFLAG_BLOCK_SIGHT | GEOFL
 const WALL: u32 = GEOFLAG_WALL | GEOFLAG_BLOCK_SIGHT | GEOFLAG_BLOCK_SHOOT;
 
 fn col(verts: [Vec3; 4], flags: u32) -> ColPoly {
-    ColPoly { verts: verts.to_vec(), flags, floortype: FLOORTYPE_DIRT, grab: true, floorcol: 0 }
+    ColPoly { verts: verts.to_vec(), flags, floortype: FLOORTYPE_DIRT, grab: true, floorcol: 0, room: 0 }
 }
 
 /// A horizontal quad at `y` over `lo..hi` (x, z).
@@ -64,11 +64,11 @@ fn yard() -> LevelSource {
             let v: Vec<Vert> = p.verts.iter().map(|&pos| Vert { pos, uv: Vec2::new(pos.x, pos.z) / 500.0, col: [200, 200, 200, 255] }).collect();
             [[v[0], v[1], v[2]], [v[0], v[2], v[3]]]
         })
-        .map(|v| Tri { v, material: 0, xlu: false })
+        .map(|v| Tri { v, material: 0, xlu: false, room: 0 })
         .collect();
     LevelSource {
         textures: vec![Texture { png: png.into_inner(), w: 2, h: 2 }],
-        materials: vec![Material { texture: Some(0), wrap: [Wrap::Repeat; 2], blend: Blend::Opaque, cull_back: false, zwrite: true, decal: false, surface: 7 }],
+        materials: vec![Material { texture: Some(0), wrap: [Wrap::Repeat; 2], blend: Blend::Opaque, cull_back: false, zwrite: true, decal: false, surface: 7, pd: None }],
         tris,
         collision,
         markers: vec![
@@ -76,6 +76,7 @@ fn yard() -> LevelSource {
             Marker { kind: MarkerKind::Prize, pos: Vec3::new(2300.0, 120.0, 900.0), facing: 0.0 },
         ],
         env: Env { sky: [200, 200, 150], near: 15.0, far: 10000.0, fog: Some((990, 1000)) },
+        rooms: None,
     }
 }
 
@@ -125,6 +126,124 @@ fn steps_are_dropped_and_ledges_become_ladders() {
     assert_eq!(nograb.mark_ledges(), 0);
 }
 
+/// A triangle as a tile.
+fn tri(verts: [Vec3; 3], flags: u32) -> ColPoly {
+    ColPoly { verts: verts.to_vec(), flags, floortype: FLOORTYPE_DEFAULT, grab: false, floorcol: 0, room: 0 }
+}
+
+/// A quad as two triangle tiles.
+fn tris(q: [Vec3; 4], flags: u32) -> [ColPoly; 2] {
+    [tri([q[0], q[1], q[2]], flags), tri([q[0], q[2], q[3]], flags)]
+}
+
+/// Collision alone, as a source.
+fn bare(collision: Vec<ColPoly>) -> LevelSource {
+    LevelSource { textures: Vec::new(), materials: Vec::new(), tris: Vec::new(), collision, markers: Vec::new(), env: Env { sky: [0; 3], near: 15.0, far: 10000.0, fog: None }, rooms: None }
+}
+
+/// A source's tiles as the game collides with them.
+fn tiles(src: &LevelSource) -> pd_sim::stage::TileLevel {
+    let polys = src.collision.iter().map(|p| pd_sim::stage::GeomPoly::from_tile(1, p.flags, p.floortype, p.verts.clone())).collect();
+    pd_sim::stage::TileLevel::new(pd_sim::stage::LevelGeom { polys, rooms: vec![1] })
+}
+
+/// Is a standing player (the eye 159 up, the cylinder from 30 over the feet
+/// to the eye) with feet at `y` in a wall?
+fn standing_blocked(l: &pd_sim::stage::TileLevel, x: f32, y: f32, z: f32) -> bool {
+    l.cd_test_volume_simple(Vec3::new(x, y + 159.0, z), 30.0, true, 0.0, -129.0, &[]) == pd_sim::stage::CdResult::Collision
+}
+
+/// A translucent triangle facing up is no tile by the arenas' rule (water),
+/// and a floor seen and shot through by the grates' rule: stood on, and no
+/// bar to sight. Upright or facing down it is no grate.
+#[test]
+fn a_grate_is_a_floor_seen_through() {
+    let v = Vec3::new;
+    let up = [v(0.0, 276.0, 0.0), v(0.0, 276.0, 400.0), v(400.0, 276.0, 0.0)];
+    let cols = [[200, 100, 50, 255]; 3];
+    assert_eq!(tile_of_triangle(up, cols, true), None, "water, as it was");
+    let (flags, floorcol) = grate_of_triangle(up, cols).expect("a grate");
+    assert_eq!(flags, GEOFLAG_FLOOR1 | GEOFLAG_FLOOR2);
+    assert_eq!(Some(floorcol), tile_of_triangle(up, cols, false).map(|t| t.1), "coloured as an opaque floor");
+    let upright = [v(0.0, 0.0, 0.0), v(400.0, 0.0, 0.0), v(400.0, 236.0, 0.0)];
+    let down = [up[0], up[2], up[1]];
+    assert_eq!((grate_of_triangle(upright, cols), grate_of_triangle(down, cols)), (None, None));
+    assert!(is_ceiling(down) && !is_ceiling(up) && !is_ceiling(upright));
+
+    // Over a floor at 0: the grate at 276 is the ground of someone on it, and a line through it is clear.
+    let ground = tris(flat(Vec2::ZERO, Vec2::splat(400.0), 0.0), FLOOR);
+    let l = tiles(&bare(vec![ground[0].clone(), ground[1].clone(), tri(up, flags)]));
+    assert_eq!(l.cd_find_ground_at_cyl(Vec3::new(100.0, 276.0 + 159.0, 100.0), 30.0).0, 276.0);
+    assert!(l.los(Vec3::new(100.0, 400.0, 100.0), Vec3::new(100.0, 100.0, 100.0)), "seen through");
+    assert!(!l.los(Vec3::new(100.0, 100.0, 100.0), Vec3::new(100.0, -100.0, 100.0)), "the floor under it is not");
+}
+
+/// A ceiling under a standing head's height over the floor beneath it is a
+/// wall tile; one a storey up, one over nothing, and a duct's sloping ceiling
+/// 177 over its sloping floor are none. Under it a standing player is in a
+/// wall and a squatting one is not.
+#[test]
+fn a_low_ceiling_is_a_wall() {
+    let v = Vec3::new;
+    let mut floor: Vec<ColPoly> = tris(flat(Vec2::ZERO, Vec2::splat(400.0), 0.0), FLOOR).to_vec();
+    // a duct's floor climbing 276 over x 1000..1472, and a deck at 276 over the first floor
+    floor.extend(tris([v(1000.0, 0.0, 0.0), v(1000.0, 0.0, 118.0), v(1472.0, 276.0, 118.0), v(1472.0, 276.0, 0.0)], FLOOR));
+    floor.extend(tris(flat(Vec2::ZERO, Vec2::splat(400.0), 276.0), FLOOR));
+    let n = floor.len();
+    let mut src = bare(floor);
+    let ceilings = [
+        [v(0.0, 118.0, 0.0), v(400.0, 118.0, 0.0), v(400.0, 118.0, 400.0)],      // a vent's
+        [v(0.0, 236.0, 0.0), v(400.0, 236.0, 400.0), v(0.0, 236.0, 400.0)],      // a room's, under the deck's slab
+        [v(2000.0, 118.0, 0.0), v(2400.0, 118.0, 0.0), v(2400.0, 118.0, 400.0)], // over nothing
+        [v(1000.0, 177.0, 0.0), v(1472.0, 453.0, 0.0), v(1472.0, 453.0, 118.0)], // the duct's
+        [v(0.0, 420.0, 0.0), v(400.0, 420.0, 0.0), v(400.0, 420.0, 400.0)],      // 144 over the deck
+    ];
+    // each with its room (a level that has rooms of its own; 0 otherwise)
+    let ceilings: Vec<(u16, [Vec3; 3])> = ceilings.into_iter().enumerate().map(|(i, c)| (i as u16 + 1, c)).collect();
+    assert_eq!(src.wall_low_ceilings(&ceilings), 2);
+    assert_eq!(src.collision.len(), n + 2);
+    let made: Vec<(f32, u16)> = src.collision[n..].iter().map(|p| (p.verts[0].y, p.room)).collect();
+    assert_eq!(made, [(118.0, 1), (420.0, 5)]);
+    assert!(src.collision[n..].iter().all(|p| p.flags == WALL));
+    let l = tiles(&src);
+    // (300, 100) is under the 118 ceiling's triangle (x > z)
+    assert!(standing_blocked(&l, 300.0, 0.0, 100.0), "a standing head is in a 118 ceiling");
+    assert!(!standing_blocked(&l, 100.0, 0.0, 300.0), "and clear of the 236 one");
+    // squatting, the eye is 69 up and the cylinder's top 80 (`player_get_bbox`)
+    assert_eq!(l.cd_test_volume_simple(Vec3::new(300.0, 69.0, 100.0), 30.0, true, 11.0, -39.0, &[]), pd_sim::stage::CdResult::NoCollision);
+}
+
+/// The strip along an open ramp's side (a sloped parallelogram 16 deep) and
+/// the triangle under a solid ramp's side are ramp walls; a plain wall's two
+/// triangles are not. A ramp wall blocks where it is, not over its whole box:
+/// a player walks under the open ramp's high end.
+#[test]
+fn the_walls_under_ramps_are_ramp_walls() {
+    let v = Vec3::new;
+    let mut c: Vec<ColPoly> = tris(flat(Vec2::new(-500.0, -500.0), Vec2::new(500.0, 1500.0), 0.0), FLOOR).to_vec();
+    // The ramp: x 0..200, rising 0 to 276 over z 0..472; its strip on x = 0, a solid side on x = 200.
+    let (a, b, cc, d) = (v(0.0, 0.0, 0.0), v(0.0, 276.0, 472.0), v(200.0, 276.0, 472.0), v(200.0, 0.0, 0.0));
+    c.extend(tris([a, b, cc, d], FLOOR));
+    let ramp_from = c.len();
+    let (lo0, lo1) = (v(0.0, -16.0, 0.0), v(0.0, 260.0, 472.0));
+    c.extend(tris([lo0, a, b, lo1], WALL));
+    c.push(tri([d, cc, v(200.0, 0.0, 472.0)], WALL));
+    // A plain wall, 236 tall, along z = -500.
+    c.extend(tris(upright(Vec2::new(-500.0, -500.0), Vec2::new(500.0, -500.0), 0.0, 236.0), WALL));
+    let mut src = bare(c);
+    let boxed = tiles(&src);
+    assert!(standing_blocked(&boxed, -20.0, 0.0, 440.0), "unflagged, the strip blocks over its whole box");
+    assert_eq!(src.mark_ramp_walls(), 3);
+    let flagged: Vec<bool> = src.collision[ramp_from..].iter().map(|p| p.flags & GEOFLAG_RAMPWALL != 0).collect();
+    assert_eq!(flagged, [true, true, true, false, false]);
+    assert!(src.collision[..ramp_from].iter().all(|p| p.flags == FLOOR));
+    let l = tiles(&src);
+    assert!(standing_blocked(&l, -20.0, 0.0, 150.0), "beside the strip where it is 70-90 up");
+    assert!(!standing_blocked(&l, -20.0, 0.0, 440.0), "under it where it is 240 up");
+    assert!(standing_blocked(&l, 220.0, 0.0, 300.0), "beside the solid side where it is 175 tall");
+    assert!(standing_blocked(&l, 0.0, 0.0, -480.0), "and the plain wall is a wall");
+}
+
 /// The rooms tile the footprint, every cut piece lies in its room, and every
 /// pair of rooms sharing a side has a portal on it.
 #[test]
@@ -136,7 +255,7 @@ fn rooms_tile_the_level_and_portals_join_them() {
     assert!((area - 3000.0 * 2000.0).abs() < 1.0, "the rooms cover the yard once: {area}");
     let mut pieces_area = 0.0;
     for p in src.collision.iter().filter(|p| p.flags & GEOFLAG_FLOOR1 != 0 && p.verts[0].y == 0.0) {
-        for (room, piece) in part.cut(p.verts.clone()) {
+        for (room, piece) in part.cut(0, p.verts.clone()) {
             let r = part.rects[room as usize - 1];
             for v in &piece {
                 assert!(v.x >= r.lo.x - 0.01 && v.x <= r.hi.x + 0.01 && v.z >= r.lo.y - 0.01 && v.z <= r.hi.y + 0.01, "{v} outside room {room}");

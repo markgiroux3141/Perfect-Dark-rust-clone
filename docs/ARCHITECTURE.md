@@ -25,6 +25,10 @@ pd_game ──► pd_render ──► engine
 pd_tools ──► everything (headless snapshots, probes, debug viewers)
 pd_import ──► pd_sim, pd_core (offline: another game's level into stage files)
 pd_edit ──► pd_import, pd_render, engine, ... (the level editor, a window)
+
+autolevel_build ──► autolevel (the level generator; headless, neither knows PD's crates)
+pd_import ──► autolevel_build (the `autolevel` binary: walks on pd_sim, imports as an arena)
+autolevel_edit ──► autolevel, engine (the generator's editor, a window)
 ```
 
 Arrows point at what a crate may use. Nothing points back up.
@@ -41,6 +45,11 @@ Arrows point at what a crate may use. Nothing points back up.
 | **`pd_tools`** | `pd_snapshot` (offscreen PNGs of menus, guns, stages, matches, pickups), probes, offline audio renders (`pd_music`: a tune, or a menu → match → death → end flow, to a WAV), the bot/nav debug viewer | ship in the game |
 | **`pd_edit`** | the level editor: a custom level's layout (items, waypoint edits, doors from the catalogues of PD's and GoldenEye's door models) edited over the stage as the game loads it, in a fly-through view (`pd_render::Renderer::render_free`) with an egui panel; it runs `pd_import` to place the layout and to import a new glTF; `pd_edit --shot` renders its view to a PNG | ship in the game; hold level data of its own (the layout file is `pd_import`'s) |
 | **`pd_import`** | the custom level importer: a recipe (`levels/<code>.json`), the source importers (`oot`: Ocarina of Time scenes from the OoT Clone repo's extractor; `ge`: GoldenEye 007 levels, which `tools/ge-extract` converts from the ROM straight into PD's stage formats, rooms, portals, tiles, doors and door models included; `pd`: one of PD's arenas rebuilt in Blender, a glTF laid over the arena room by room, its unchanged rooms' data kept, tiles and portals made for the rest, its setup kept; or several of PD's stages fused, each turned and moved into place) into one `LevelSource`, the collision preprocessing (step risers, ledges as ladders, water), rooms and portals by a k-d split, the four stage files, the gameplay data (`nav::gen`'s waypoints baked in, spawns, weapons and ammo, hills, bases, cover), a check match; headless | ship in the game; be needed at run time |
+| **`autolevel`** | the level generator's layout ([AUTOLEVEL.md](AUTOLEVEL.md)): from a seed and options, rooms scattered, joined by corridors, furnished, dead ends put right, and the plan, walks and report of the level; the recipe (seed, options and a person's edits, as JSON) and the joins that could be made from a room (`candidates`). A port of the Blender MCP repo's Python, held to an answer key (`tests/key/`): a seed's level never changes by accident | depend on any other workspace crate; read or write a file but the recipe's JSON |
+| **`autolevel_build`** | what makes a layout a level: its polygons in Complex's grammar, room meshes, a ray-traced bake of the lighting, the GE64 OBJ and GLB writers, the plan as SVG, and the `autolevel` command line's code (`cli`), with walking behind a trait (`walk::Walker`; pd-walk as a program is its implementation here) | depend on `pd_*` or `engine` (so the generator can be lifted out again); hold anything ROM-derived (textures are read from `assets/textures`) |
+| **`autolevel_edit`** | the generator's editor: a recipe document with undo, the plan view as lists of primitives (drawn by egui, or rasterised to a PNG by `--shot` with no window), the dead-end list, picking a room and choosing a corridor to join it, taking a corridor out, room boxes by hand (move, resize, add, delete, pin) and one room's choices (layout, cover, inside, brightness, ceiling). The lib builds with no window; its `ui` module (the egui panels, behind the `window` feature) is what the crate's own window and `pd_edit` host | ship in the game; hold level data of its own (the recipe is `autolevel`'s) |
+
+`pd_import` also holds the generator's ties to the game: `autolevel` (the importer's source for generated levels: the level made again from its recipe, the generator's rooms and openings as PD's rooms and portals, Complex's own materials on the pool's textures), `autonav` (its waypoints repaired with the generator's own ways), `autowalk` (`SimWalk`: a level walked in-process on `pd_sim`'s player, on the tiles the importer makes of it) and the `autolevel` binary (`src/bin/autolevel.rs`: `autolevel_build::cli` with that walker, plus `autolevel import`, a built level as an arena, and `autolevel shots`, its views drawn by `pd_snapshot`).
 
 ### Why these boundaries
 
@@ -144,7 +153,7 @@ Levels converted from other games (`crates/pd_import`, run by hand: `pd_import <
 custom/
   levels.json                the custom arenas: code, stage number (0x60-0x7f, CUSTOM_STAGENUMS), menu name
   stages/<code>/             the four stage files, in pd_stage.py's formats, plus
-                             tex/<n>.png  the level's own textures (ids 0x10000 | material in bg.json)
+                             tex/<n>.png  the level's own textures (ids 0x10000 | material in bg.json); none for a generated level, which draws the pool's
                              report.txt   the import's report
                              ge.json      a GoldenEye level's hand-off from tools/ge-extract to pd_import
   models/<stem>.json + .bin  a level's own models (GoldenEye's doors: all 48 of them once

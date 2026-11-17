@@ -1,0 +1,25 @@
+[package]
+name = "autolevel_edit"
+description = "The level editor for autolevel: a recipe document with undo, a plan view drawn from lists of primitives, and the dead-end list. The lib has no window in it; main.rs opens one on the engine. Built to merge into pd_edit."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+
+# `autolevel_edit --shot` writes the plan view to a PNG with no window and no GPU; without
+# `--shot` it opens the window, which is for the user, not for Claude to drive.
+[[bin]]
+name = "autolevel_edit"
+path = "src/main.rs"
+
+# The window (main.rs's ui.rs, on the engine's runner and its egui) is a feature, on by default,
+# so the lib and `--shot` also build without the engine: `--no-default-features`. The lib uses
+# none of it.
+[features]
+default = ["window"]
+window = ["dep:engine"]
+
+[dependencies]
+autolevel = { workspace = true }
+image = { workspace = true }
+engine = { workspace = true, optional = true }

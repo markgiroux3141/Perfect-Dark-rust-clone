@@ -25,6 +25,9 @@ members = [
     "crates/pd_tools",
     "crates/pd_import",
     "crates/pd_edit",
+    "crates/autolevel",
+    "crates/autolevel_build",
+    "crates/autolevel_edit",
 ]
 default-members = ["crates/pd_game", "crates/pd_edit"]
 
@@ -64,6 +67,9 @@ pd_menu = { path = "crates/pd_menu" }
 pd_render = { path = "crates/pd_render" }
 pd_game = { path = "crates/pd_game" }
 pd_import = { path = "crates/pd_import" }
+# The level generator (docs/AUTOLEVEL.md): the layout, then what makes it a level to play.
+autolevel = { path = "crates/autolevel" }
+autolevel_build = { path = "crates/autolevel_build" }
 
 # Day-to-day build: optimised but no fat LTO, so incremental relinks stay ~1-2 s.
 [profile.release]

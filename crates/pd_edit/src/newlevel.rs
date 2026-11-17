@@ -52,7 +52,7 @@ fn title_from(stem: &str) -> String {
 }
 
 /// The custom stage numbers the recipes and the custom tree use.
-fn used_stagenums(paths: &EditPaths) -> Vec<u8> {
+pub(crate) fn used_stagenums(paths: &EditPaths) -> Vec<u8> {
     let mut used: Vec<u8> = Vec::new();
     for e in paths.recipes() {
         if let Some(n) = std::fs::read_to_string(&e.path).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).and_then(|v| v["stagenum"].as_u64()) {

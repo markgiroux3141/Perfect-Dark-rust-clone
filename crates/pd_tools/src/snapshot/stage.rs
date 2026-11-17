@@ -1,4 +1,4 @@
-//! `pd_snapshot <outdir> stage <code> [--size WxH] [--spawns n] [--frames n] [--all-rooms] [--full] [--farsight] [--at x,y,z,theta]`:
+//! `pd_snapshot <outdir> stage <code> [--size WxH] [--spawns n] [--frames n] [--all-rooms] [--full] [--farsight] [--at x,y,z,theta] [--views file.json]`:
 //! a player's view of a stage from its spawn pads, through the game's own path
 //! (a `pd_sim` world with one player, `pd_render`'s BG on a headless GPU).
 //! Each shot places the player as `player_start_new_life` would at spawn pad
@@ -16,7 +16,10 @@
 //! `<code>_spawn<k>_farsight.png`. `--full`: the player's whole frame
 //! (objects, the sky, the HUD) as `<code>_spawn<k>_full.png`. `--at`: one view instead,
 //! from the player's feet at `x,y,z` facing `theta` degrees, as the game's F1 panel
-//! shows them (`P1 feet (x, y, z) θ`), as `<code>_at.png`.
+//! shows them (`P1 feet (x, y, z) θ`), as `<code>_at.png`. `--views`: many such views in one
+//! run (the stage is loaded once), from a JSON list of `{"name", "x", "y", "z", "theta"}`
+//! (feet and facing as `--at`'s), each written as `<name>.png`; the level generator's
+//! `autolevel shots` writes such a list for a generated arena.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -38,6 +41,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let mut all_rooms = false;
     let mut full = false;
     let mut at: Option<[f32; 4]> = None;
+    let mut views: Option<Vec<(String, [f32; 4])>> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let mut val = |name: &str| it.next().cloned().ok_or(format!("{name} needs a value"));
@@ -57,6 +61,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
                 let v: Vec<f32> = val("--at")?.split(',').map(|s| s.trim().parse::<f32>()).collect::<Result<_, _>>().map_err(|e| format!("--at: {e}"))?;
                 at = Some(v.try_into().map_err(|_| "--at is x,y,z,theta")?);
             }
+            "--views" => views = Some(read_views(&val("--views")?)?),
             s if !s.starts_with("--") && code.is_none() => code = Some(s.to_owned()),
             s => return Err(format!("stage: unknown argument {s:?}")),
         }
@@ -80,9 +85,11 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
     let mut paths = Vec::new();
     // A pad's place and facing (tan2f(look.x, look.z)), or --at's: PD's
     // theta faces (-sin θ, 0, cos θ), so the facing is -θ.
-    let starts: Vec<(String, glam::Vec3, f32)> = match at {
-        Some([x, y, z, theta]) => vec![(format!("{code}_at"), glam::Vec3::new(x, y + 53.0, z), -theta.to_radians())],
-        None => stage.spawn_pads.iter().enumerate().take(spawns).map(|(k, &pad)| (format!("{code}_spawn{k}_pad{pad:04x}"), stage.pads[pad].pos, stage.pads[pad].look_angle())).collect(),
+    let feet = |[x, y, z, theta]: [f32; 4]| (glam::Vec3::new(x, y + 53.0, z), -theta.to_radians());
+    let starts: Vec<(String, glam::Vec3, f32)> = match (views, at) {
+        (Some(views), _) => views.into_iter().map(|(name, v)| (name, feet(v).0, feet(v).1)).collect(),
+        (None, Some(v)) => vec![(format!("{code}_at"), feet(v).0, feet(v).1)],
+        (None, None) => stage.spawn_pads.iter().enumerate().take(spawns).map(|(k, &pad)| (format!("{code}_spawn{k}_pad{pad:04x}"), stage.pads[pad].pos, stage.pads[pad].look_angle())).collect(),
     };
     for (k, (name, pos, facing)) in starts.into_iter().enumerate() {
         world.players[0].start_new_life(&level, &[], pos, facing);
@@ -133,4 +140,23 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
         paths.push(path);
     }
     Ok(paths)
+}
+
+/// `--views`' file: a JSON list of `{"name", "x", "y", "z", "theta"}`, each a view from the
+/// player's feet at x, y, z facing theta degrees (as `--at`), to be written as `<name>.png`.
+/// A name is letters, digits, `_`, `-` and `.` only, since it becomes a file's.
+fn read_views(path: &str) -> Result<Vec<(String, [f32; 4])>, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("--views {path}: {e}"))?;
+    let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("--views {path}: {e}"))?;
+    let list = v.as_array().ok_or_else(|| format!("--views {path}: a list of views"))?;
+    let mut out = Vec::new();
+    for (n, view) in list.iter().enumerate() {
+        let name = view.get("name").and_then(|v| v.as_str()).ok_or_else(|| format!("--views {path}: view {n} has no name"))?;
+        if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')) {
+            return Err(format!("--views {path}: {name:?} is no file name (letters, digits, _ - .)"));
+        }
+        let num = |key: &str| view.get(key).and_then(|v| v.as_f64()).map(|v| v as f32).ok_or_else(|| format!("--views {path}: {name} has no {key}"));
+        out.push((name.to_owned(), [num("x")?, num("y")?, num("z")?, num("theta")?]));
+    }
+    Ok(out)
 }

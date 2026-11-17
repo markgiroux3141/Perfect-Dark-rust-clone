@@ -25,6 +25,16 @@ fn texture_id(material: usize) -> u32 {
     0x10000 | material as u32
 }
 
+/// A texture's `bg.json` `textures` key and size in texels: a pool texture's
+/// number for one of PD's own materials, else the stage's own id.
+fn texture_of(src: &LevelSource, m: usize) -> Option<(u32, f32, f32)> {
+    let mat = &src.materials[m];
+    match &mat.pd {
+        Some(pd) => Some((pd.texture, pd.size.0 as f32, pd.size.1 as f32)),
+        None => mat.texture.map(|t| (texture_id(m), src.textures[t].w as f32, src.textures[t].h as f32)),
+    }
+}
+
 /// fast3d's combiner mux ids (`gbi.h:364-396`, as `pd_bg.py` numbers them).
 const CC_TEXEL0: u8 = 1;
 const CC_SHADE: u8 = 4;
@@ -52,6 +62,10 @@ fn v3(v: Vec3) -> Value {
 /// alpha 1 or the texture's; `G_RM_FOG_SHADE_A` on a fog stage.
 fn material_json(src: &LevelSource, m: usize, fog: bool) -> Value {
     let mat = &src.materials[m];
+    // One of PD's own: its row as the arena has it.
+    if let Some(pd) = &mat.pd {
+        return pd.row.clone();
+    }
     let alpha = if mat.blend == Blend::Opaque { [AC_ZERO, AC_ZERO, AC_ZERO, AC_ONE] } else { [AC_ZERO, AC_ZERO, AC_ZERO, AC_TEXEL0] };
     let cyc = [CC_TEXEL0, CC_ZERO_A, CC_SHADE, CC_ZERO_D, alpha[0], alpha[1], alpha[2], alpha[3]];
     let combine: Vec<u8> = cyc.iter().chain(cyc.iter()).copied().collect();
@@ -104,7 +118,7 @@ pub fn write_bg(dir: &Path, r: &Recipe, src: &LevelSource, part: &Partition) -> 
     // Cut every triangle into its rooms: (room, xlu, material) -> triangles.
     let mut groups: HashMap<(u16, bool, usize), Vec<[Vert; 3]>> = HashMap::new();
     for t in &src.tris {
-        for (room, piece) in part.cut(t.v.to_vec()) {
+        for (room, piece) in part.cut(t.room, t.v.to_vec()) {
             let g = groups.entry((room, t.xlu, t.material)).or_default();
             for k in 1..piece.len() - 1 {
                 g.push([piece[0], piece[k], piece[k + 1]]);
@@ -132,8 +146,7 @@ pub fn write_bg(dir: &Path, r: &Recipe, src: &LevelSource, part: &Partition) -> 
     for key in keys {
         let (room, xlu, m) = key;
         let tris = &groups[&key];
-        let tex = src.materials[m].texture.map(|t| &src.textures[t]);
-        let (tw, th) = tex.map_or((1.0, 1.0), |t| (t.w as f32, t.h as f32));
+        let (tw, th) = texture_of(src, m).map_or((1.0, 1.0), |(_, w, h)| (w, h));
         // Vertices shared within the batch.
         let mut verts: Vec<Vert> = Vec::new();
         let mut index: HashMap<[u32; 8], u16> = HashMap::new();
@@ -153,6 +166,10 @@ pub fn write_bg(dir: &Path, r: &Recipe, src: &LevelSource, part: &Partition) -> 
         }
         ntris += idx.len() / 3;
         let first = *colours.get(&room).unwrap_or(&0);
+        // The renderer's colour indices are 16 bits (`pd_render::bg`'s `cidx`).
+        if first + verts.len() > 0x10000 {
+            return Err(format!("room {room}: {} vertex colours, and a room's colour table holds 65,536 (the room must be divided)", first + verts.len()));
+        }
         let cidx: Vec<usize> = (first..first + verts.len()).collect();
         colours.insert(room, first + verts.len());
         for v in &verts {
@@ -181,7 +198,10 @@ pub fn write_bg(dir: &Path, r: &Recipe, src: &LevelSource, part: &Partition) -> 
     }
     let mut textures = serde_json::Map::new();
     for (m, mat) in src.materials.iter().enumerate() {
-        if let Some(t) = mat.texture {
+        if let Some(pd) = &mat.pd {
+            // The game's pool texture, by its own number: no file of the level's.
+            textures.insert(pd.texture.to_string(), pd.texture_row.clone());
+        } else if let Some(t) = mat.texture {
             let tx = &src.textures[t];
             textures.insert(
                 texture_id(m).to_string(),
@@ -223,7 +243,7 @@ pub fn write_bg(dir: &Path, r: &Recipe, src: &LevelSource, part: &Partition) -> 
 pub fn write_tiles(dir: &Path, r: &Recipe, src: &LevelSource, part: &Partition) -> Result<usize, String> {
     let mut tiles: Vec<(u16, Value)> = Vec::new();
     for p in &src.collision {
-        for (room, piece) in part.cut(p.verts.clone()) {
+        for (room, piece) in part.cut(p.room, p.verts.clone()) {
             tiles.push((room, json!({"room": room, "flags": p.flags, "floortype": p.floortype, "floorcol": p.floorcol, "verts": piece.iter().map(|&v| v3(v)).collect::<Vec<_>>()})));
         }
     }

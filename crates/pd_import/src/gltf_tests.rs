@@ -144,7 +144,7 @@ fn recipe(path: &std::path::Path) -> Recipe {
         name: "Test glTF".into(),
         stagenum: 0x7e,
         scale: 100.0,
-        source: Source::Gltf(GltfSource { path: path.to_string_lossy().into_owned(), sky: None, sun: None, climb_ledges: false, max_texture: 8 }),
+        source: Source::Gltf(GltfSource { path: path.to_string_lossy().into_owned(), sky: None, sun: None, climb_ledges: false, max_texture: 8, grates: false, low_ceilings: false, ramp_walls: false }),
         rooms: 4,
         spawns: 4,
         weapons: 3,
@@ -191,6 +191,58 @@ fn a_gltf_becomes_a_level_source() {
     assert_eq!(src.materials[0].wrap, [crate::source::Wrap::Clamp, crate::source::Wrap::Repeat]);
     assert_eq!(src.markers.len(), 1);
     assert!((src.markers[0].facing - std::f32::consts::FRAC_PI_2).abs() < 1e-4 && src.markers[0].pos == Vec3::new(-800.0, 0.0, 800.0));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The recipe's tile rules, off unless named: a floor with a translucent
+/// grate over it, a vent's ceiling 118 cm up and a room's 300 cm up. Off, the
+/// tiles are the floor's alone, as they always were; on, the grate is a floor
+/// seen through and the low ceiling a wall, and the report says so.
+#[test]
+fn the_recipes_tile_rules_are_off_unless_named() {
+    let dir = std::env::temp_dir().join(format!("pd_import_gltf_rules_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("vent.glb");
+    let mut g = GlbOut::default();
+    let m = g.quads(&[floor(Vec2::splat(-4.0), Vec2::splat(4.0), 0.0)], 0, None);
+    g.node(json!({"name": "Floor", "mesh": m}));
+    let m = g.quads(&[floor(Vec2::new(-4.0, -4.0), Vec2::new(0.0, 0.0), 2.76)], 1, None);
+    g.node(json!({"name": "Grate", "mesh": m}));
+    let down = |q: [Vec3; 4]| [q[3], q[2], q[1], q[0]];
+    let m = g.quads(&[down(floor(Vec2::new(0.0, 0.0), Vec2::new(4.0, 1.18), 1.18)), down(floor(Vec2::new(0.0, 2.0), Vec2::new(4.0, 4.0), 3.0))], 0, None);
+    g.node(json!({"name": "Ceilings", "mesh": m}));
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([200, 180, 160, 255])).write_to(&mut png, image::ImageFormat::Png).unwrap();
+    let materials = json!([
+        {"name": "ground", "pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}},
+        {"name": "mesh", "doubleSided": true, "alphaMode": "BLEND", "pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}},
+    ]);
+    g.write(&path, materials, png.get_ref());
+
+    let mut r = recipe(&path);
+    let Source::Gltf(off) = r.source.clone() else { unreachable!() };
+    let mut report = Vec::new();
+    let src = crate::gltf::load(&r, &off, &path, &mut report).unwrap();
+    assert_eq!((src.tris.len(), src.collision.len()), (8, 2), "the floor's two tiles");
+    assert!(!report.iter().any(|l| l.starts_with("tiles:")), "{report:#?}");
+
+    let on = GltfSource { grates: true, low_ceilings: true, ramp_walls: true, ..off };
+    r.source = Source::Gltf(on.clone());
+    let mut report = Vec::new();
+    let src = crate::gltf::load(&r, &on, &path, &mut report).unwrap();
+    assert_eq!(src.tris.len(), 8);
+    let count = |flags: u32| src.collision.iter().filter(|p| p.flags == flags).count();
+    assert_eq!(src.collision.len(), 6);
+    assert_eq!(count(GEOFLAG_FLOOR1 | GEOFLAG_FLOOR2), 2, "the grate: a floor seen and shot through");
+    assert_eq!(count(GEOFLAG_WALL | GEOFLAG_BLOCK_SIGHT | GEOFLAG_BLOCK_SHOOT), 2, "the vent's ceiling");
+    assert!(src.collision.iter().filter(|p| p.flags & GEOFLAG_WALL != 0).all(|p| p.verts.iter().all(|v| (v.y - 118.0).abs() < 0.01)));
+    let line = report.iter().find(|l| l.starts_with("tiles:")).expect("the rules' line");
+    assert_eq!(line, "tiles: 2 translucent triangles facing up made floors (grates), 2 of 4 ceiling triangles under 172 cm made walls, 0 wall triangles flagged as ramp walls");
+
+    // A recipe file that names none of them has none of them.
+    let text = json!({"format": "pd-import-recipe/1", "code": "x", "name": "X", "stagenum": 0x7e, "scale": 1.0, "source": {"game": "gltf", "path": "x.glb"}});
+    let Source::Gltf(read) = serde_json::from_value::<Recipe>(text).unwrap().source else { unreachable!() };
+    assert_eq!((read.grates, read.low_ceilings, read.ramp_walls), (false, false, false));
     std::fs::remove_dir_all(&dir).unwrap();
 }
 

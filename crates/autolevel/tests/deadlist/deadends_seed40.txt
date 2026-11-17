@@ -1,0 +1,25 @@
+seed 40: 11 dead ends as it falls, 2 of them too long, too far or too high (more than 8 cells of corridor, 20 cells' walk, or 2 storeys up to nothing)
+  ! spire1@551 -> spire1@1102 (decks): 12 cells, 0 of corridor, 2 storeys  [climbs 2 storeys to nothing]
+        could join spire1 on 1102 to loft3 (on 551; 15 cells)
+        could join spire1 on 1102 to tower (on 0, 276, 551; 15 cells)
+        could join spire1 on 1102 to vast (on 0, 276, 551; 15 cells)
+        could join spire1 on 827 to loft3 (on 551; 8 cells)
+        could join spire1 on 827 to vast (on 0, 276, 551; 10 cells)
+        could join spire1 on 827 to tower (on 0, 276, 551; 12 cells)
+  ! tower@276 -> tower@827 (decks): 10 cells, 0 of corridor, 2 storeys  [climbs 2 storeys to nothing]
+        could join tower on 551 to loft3 (on 551; 2 cells)
+        could join tower on 551 to vast (on 0, 276, 551; 2 cells)
+        could join tower on 551 to colossal (on 0, 276, 551, 827; 7 cells)
+    spire2@0 -> small7@-276 (small7): 20 cells, 5 of corridor, 1 storey
+    vast@276 -> small8 (small8): 10 cells, 0 of corridor, 1 storey
+    basin@0 -> basin@276 (decks): 4 cells, 0 of corridor, 1 storey
+    colossal@276 -> tiny5@276 (tiny5): 4 cells, 4 of corridor, 0 storeys
+    long@0 -> long@276 (decks): 4 cells, 0 of corridor, 1 storey
+    medium4@0 -> medium4@-276 (decks): 4 cells, 0 of corridor, 1 storey
+    colossal@276 -> small2 (small2): 1 cells, 0 of corridor, 0 storeys
+    colossal@551 -> tiny1 (tiny1): 1 cells, 0 of corridor, 0 storeys
+    vast@276 -> tiny2 (tiny2): 1 cells, 0 of corridor, 0 storeys
+done about them (2):
+    joined spire1 on 1102 to loft3 by a corridor, 14 cells with 2 ramps (c39a)
+    joined tower on 551 to colossal by a corridor, 6 cells (c42)
+left: 0 too long, 10 allowed (6 of them rooms to camp in)

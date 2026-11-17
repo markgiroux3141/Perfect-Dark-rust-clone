@@ -19,6 +19,9 @@ pd_sim = { workspace = true }
 pd_menu = { workspace = true }
 pd_render = { workspace = true }
 pd_import = { workspace = true }
+# The level generator's recipe, and its editor's panels (hosted: "Generate…").
+autolevel = { workspace = true }
+autolevel_edit = { path = "../autolevel_edit" }
 glam = { workspace = true }
 bytemuck = { workspace = true }
 serde_json = { workspace = true }

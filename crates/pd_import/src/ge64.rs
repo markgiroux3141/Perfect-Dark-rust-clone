@@ -184,7 +184,7 @@ pub fn export(code: &str, src: &LevelSource, opts: &Options, out: &Path) -> Resu
     type ByMaterial = HashMap<usize, Vec<[Vert; 3]>>;
     let mut groups: HashMap<(u16, bool), ByMaterial> = HashMap::new();
     for t in &src.tris {
-        for (room, piece) in part.cut(t.v.to_vec()) {
+        for (room, piece) in part.cut(t.room, t.v.to_vec()) {
             let g = groups.entry((room, t.xlu)).or_default().entry(t.material).or_default();
             for k in 1..piece.len() - 1 {
                 g.push([piece[0], piece[k], piece[k + 1]]);
@@ -265,7 +265,7 @@ pub fn export(code: &str, src: &LevelSource, opts: &Options, out: &Path) -> Resu
     // ── The clipping: every tile cut into its rooms ────────────────────────
     let mut by_room: HashMap<u16, Vec<(&ColPoly, Vec<Vec3>)>> = HashMap::new();
     for p in &src.collision {
-        for (room, piece) in part.cut(p.verts.clone()) {
+        for (room, piece) in part.cut(p.room, p.verts.clone()) {
             by_room.entry(room).or_default().push((p, piece));
         }
     }

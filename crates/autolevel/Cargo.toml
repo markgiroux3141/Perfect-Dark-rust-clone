@@ -1,0 +1,12 @@
+[package]
+name = "autolevel"
+description = "Complex-style levels from a seed: rooms scattered, joined by corridors, furnished and checked. Headless; a port of ge_pd_tools.autolevel that gives the same level for the same seed."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+
+# The recipe's file (src/recipe.rs) is JSON; nothing else here reads or writes a file.
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

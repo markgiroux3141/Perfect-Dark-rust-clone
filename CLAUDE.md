@@ -36,9 +36,29 @@ cargo run --release -p pd_import --bin pd_import -- kokiri   # convert a custom 
                                             #   `--jka <dir> [--clone]`: every Jedi Academy MP map in extra maps/base's pk3s: Setup Editor folders (+ arenas)
 cargo run --release -p pd_import --bin pd_import -- --place <code>   # place a level again with its layout
                                             #   (levels/<code>.layout.json; the cached waypoints); `--adopt <code>` writes one
-target/release/pd_edit.exe [<code>]         # the level editor (a window: for the user); `--shot <code> <out.png>
+target/release/pd_edit.exe [<code>]         # the level editor (a window: for the user; "Generate…" hosts the level generator's editor,
+                                            #   with "Plan | 3D" over it: the level in 3D as it is shaped, and "Walk" to walk it;
+                                            #   "Make it an arena" imports what it makes); `--shot-generated <out.png> [--seed N | --recipe FILE]
+                                            #   [--view NAME | --room KEY | --at x,y,z,yaw,pitch] [--walk NAME [--forward TICKS] [--crouch]] [--plan] [--list]`
+                                            #   is that 3D view with no window (a preview in a scratch folder, no arena; ~1.7 s); `--shot <code> <out.png>
                                             #   [--at x,y,z,yaw,pitch | --item weapon 3 | --item door 3] [--waypoints] [--open]`
                                             #   is its view as a PNG (`--open`: every door opened two seconds before)
+cargo build --release -p pd_import          # also builds target/release/autolevel.exe, the level generator (docs/AUTOLEVEL.md):
+                                            #   `autolevel build 40` plans, builds, bakes and walks seed 40 into out/autolevel/seed40
+                                            #   (GLB, GE64 OBJ, plan.svg, report.json; ~0.6 s, the walks in-process on pd_sim);
+                                            #   `autolevel import out/autolevel/seed40` makes it the arena `autolevel40` (stage 124):
+                                            #   the generator's rooms and doorways as PD's rooms and portals, on the pool's textures,
+                                            #   its recipe kept in levels/autolevel40.json (`--gltf`: as any glTF instead);
+                                            #   `autolevel shots out/autolevel/seed40` then draws its views with the game (DIR/shots/*.png);
+                                            #   also `sweep`, `plan`, `batch`, `walk`, `deadends`, `--recipe FILE`; `autolevel --help`
+cargo run --release -p autolevel_edit -- --seed 40 --shot out.png [--storey Z] [--pick ROOM@STOREY [--join N]] [--remove KEY]
+                                            #   the generator's editor: its plan view as a PNG with no window (how to look at a
+                                            #   level's plan), the dead-end list, the joins that could be made; without --shot a window (the user's).
+                                            #   Room boxes: `--rooms --select ROOM --lots --move ROOM@X,Y --rect ROOM@X0,Y0,X1,Y1 --pin ROOM@FLOOR
+                                            #   --delete ROOM --add KIND@X0,Y0,X1,Y1@FLOOR@TOP --try` (a refusal is drawn and exits 1). One room's
+                                            #   choices: `--layout --cover --inside --brightness --ceiling --own ROOM@VALUE`, `--choices ROOM`
+cargo test --release -p autolevel -p autolevel_build -p autolevel_edit   # the generator against its answer keys (~60 s); these three
+                                            #   crates alone are run through rustfmt (`cargo fmt -p ...`, their own rustfmt.toml)
 cargo run --release -p pd_tools --bin pd_music -- <out.wav> <tune|--flow> [secs]   # offline music renders (MUSIC_* name or number; --list)
 cargo run --release -p pd_tools --bin pd_lab # the simulant/route viewer (a window: for the user, not for Claude to drive)
 python tools/check_boundaries.py            # headless crates stay headless
@@ -63,7 +83,8 @@ python tools/pd-assets/check_against_spikes.py   # assets/ against the old repo'
 
 ## Where things are
 
-- `crates/`: the ten crates (see ARCHITECTURE.md § Crates); `pd_import` is the custom level importer (offline, M15), `pd_edit` the level editor (M18).
+- `crates/`: the thirteen crates (see ARCHITECTURE.md § Crates); `pd_import` is the custom level importer (offline, M15), `pd_edit` the level editor (M18).
+- `crates/autolevel`, `autolevel_build`, `autolevel_edit`: the level generator (Complex-style arenas from a seed) and its editor, moved here from the Blender MCP repo (M21). **Read [docs/AUTOLEVEL.md](docs/AUTOLEVEL.md) before touching them**: a seed's level must never change by accident (the answer keys in `tests/key/` are written by that repo's `scripts/autolevel_key.py` from its frozen Python), and they are not PD ports, so the decomp rules don't apply to them.
 - `custom/`: converted levels (gitignored; another game's data), laid over `assets/` at run time (ARCHITECTURE.md § Custom levels).
 - `assets/`: generated, committed; layout in ARCHITECTURE.md § Assets.
 - `tools/pd-assets/`: Python exporters (stdlib only; `pd_bg_preview.py` needs numpy + Pillow).

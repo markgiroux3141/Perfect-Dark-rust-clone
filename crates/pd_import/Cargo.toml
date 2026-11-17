@@ -11,9 +11,22 @@ publish.workspace = true
 name = "pd_import"
 path = "src/bin/pd_import.rs"
 
+# The level generator's command line: here, not in autolevel_build, because it
+# walks its levels on pd_sim (autowalk) and imports them.
+[[bin]]
+name = "autolevel"
+path = "src/bin/autolevel.rs"
+
 [dependencies]
 pd_core = { workspace = true }
 pd_sim = { workspace = true }
+# Generated levels: their routes walked on pd_sim, their recipes (autowalk),
+# and the generator's command line (bin/autolevel.rs). The layout crate,
+# autolevel, comes with it.
+autolevel_build = { workspace = true }
+# The layout itself: the importer's source for generated levels (autolevel.rs)
+# makes the level from its recipe and reads its rooms, doors and navigation.
+autolevel = { workspace = true }
 glam = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -50,6 +50,30 @@ pub struct Material {
     /// What a shot hitting it sounds and looks like: PD's `SURFACETYPE_*`
     /// (`g_Textures[].surfacetype` and `soundsurfacetype`, `tex.c:160`).
     pub surface: u8,
+    /// One of PD's own materials in place of everything above (`texture` is
+    /// `None` then): a level drawn on the game's texture pool.
+    pub pd: Option<PdMaterial>,
+}
+
+/// A material of one of PD's arenas, on a texture of the game's pool
+/// (`assets/textures/<nnnn>.png`): its rows of the arena's `bg.json`, written
+/// into the level's as they are. The level then carries no image of its own
+/// for it, is drawn through PD's own combiner for that texture (mip-mapped,
+/// the alpha where PD takes it from), wraps and clamps as the arena does, and
+/// a shot or a footstep on it sounds as on the arena (the pool's surface
+/// types).
+#[derive(Clone, Debug)]
+pub struct PdMaterial {
+    /// The pool texture's number (`0x073e`).
+    pub texture: u32,
+    /// Its size in texels: a vertex's `uv` (0..1 across it, v up the image as
+    /// the Setup Editor shows it, which is down the pool's rows) times this
+    /// is PD's s, t.
+    pub size: (u32, u32),
+    /// `bg.json` `materials[k]`.
+    pub row: serde_json::Value,
+    /// `bg.json` `textures[<number>]`.
+    pub texture_row: serde_json::Value,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -76,6 +100,9 @@ pub struct Tri {
     pub material: usize,
     /// Drawn in the translucent pass (the source's own draw buffer).
     pub xlu: bool,
+    /// Its room, from 1, in a level that brings its own rooms
+    /// ([`LevelSource::rooms`]); 0 otherwise (the split decides).
+    pub room: u16,
 }
 
 /// A convex, planar collision polygon, flagged as a PD tile is.
@@ -92,6 +119,8 @@ pub struct ColPoly {
     /// A floor's colour, `r << 8 | g << 4 | b` (`geotilei.floorcol`, four
     /// bits each): an object's fog starts from its tint (`floor_tint`).
     pub floorcol: u32,
+    /// Its room, as [`Tri::room`].
+    pub room: u16,
 }
 
 /// A triangle facing up at least this much is a floor (45°).
@@ -122,6 +151,34 @@ pub fn tile_of_triangle(pos: [Vec3; 3], col: [[u8; 4]; 3], xlu: bool) -> Option<
     } else {
         Some((GEOFLAG_WALL | GEOFLAG_BLOCK_SIGHT | GEOFLAG_BLOCK_SHOOT, 0))
     }
+}
+
+/// A ceiling lower than this over the floor beneath it is a wall tile
+/// ([`LevelSource::wall_low_ceilings`]): a standing head, Joanna's 159 cm eye
+/// and the 13 above it (`player.c:1495`).
+pub const LOW_CEILING: f32 = 172.0;
+
+/// A triangle's unit normal's y; `None` for one without area.
+fn facing(pos: [Vec3; 3]) -> Option<f32> {
+    let n = (pos[1] - pos[0]).cross(pos[2] - pos[0]);
+    (n.length_squared() >= 1e-6).then(|| n.normalize().y)
+}
+
+/// A translucent triangle facing up as a tile: a grate, a mesh catwalk. Stood
+/// on, seen and shot through (`GEOFLAG_FLOOR1 | FLOOR2` alone), as PD's own
+/// clipping makes its grated walkways (G5's, Pipes'). [`tile_of_triangle`]
+/// makes it none, which is right for another game's water and wrong for a
+/// level whose translucent floors are walked on. `(flags, floorcol)`.
+pub fn grate_of_triangle(pos: [Vec3; 3], col: [[u8; 4]; 3]) -> Option<(u32, u32)> {
+    use pd_core::ids::*;
+    let avg = |c: usize| (col.iter().map(|v| v[c] as u32).sum::<u32>() / 3) >> 4;
+    (facing(pos)? >= FLOOR_NY).then(|| (GEOFLAG_FLOOR1 | GEOFLAG_FLOOR2, avg(0) << 8 | avg(1) << 4 | avg(2)))
+}
+
+/// Does the triangle face down enough to be a ceiling ([`tile_of_triangle`]
+/// makes no tile of one)?
+pub fn is_ceiling(pos: [Vec3; 3]) -> bool {
+    facing(pos).is_some_and(|ny| ny <= CEILING_NY)
 }
 
 /// A place the source game marks: where players start, where it put its
@@ -181,6 +238,22 @@ pub struct LevelSource {
     pub collision: Vec<ColPoly>,
     pub markers: Vec<Marker>,
     pub env: Env,
+    /// The level's own rooms and portals, for a source that has them (a
+    /// generated level's: [`crate::autolevel`]); `None`: its footprint is
+    /// split into rooms ([`crate::rooms`]).
+    pub rooms: Option<OwnRooms>,
+}
+
+/// Rooms and portals a source brings: every [`Tri`] and [`ColPoly`] names its
+/// room, nothing is cut, and the portals are the level's own openings.
+#[derive(Clone, Debug)]
+pub struct OwnRooms {
+    /// Room `i + 1`'s box (`g_Rooms[].bbmin`, `bbmax`): what holds its air
+    /// and everything drawn in it.
+    pub boxes: Vec<(Vec3, Vec3)>,
+    /// Every opening between two rooms, each wound so PD takes its rooms the
+    /// right way round ([`crate::rooms::portal_between`]).
+    pub portals: Vec<crate::rooms::Portal>,
 }
 
 /// The linear channel `c` (0..1) as the sRGB byte. glTF's vertex colours are
@@ -200,29 +273,89 @@ pub const MAX_RISER: f32 = 60.0;
 /// shoulder height.
 pub const MAX_LEDGE: f32 = 160.0;
 
-/// Is `v` on the floor polygon `p` (over it within `tol` in XZ, on its plane
-/// within `tol`)?
-fn on_floor(v: Vec3, p: &[Vec3], tol: f32) -> bool {
+/// The height of the floor polygon `p`'s plane at (x, z), if that is over it
+/// (inside every edge in XZ, give or take `tol`).
+fn floor_at(p: &[Vec3], x: f32, z: f32, tol: f32) -> Option<f32> {
     let mut n = Vec3::ZERO;
     for i in 0..p.len() {
         let (a, b) = (p[i], p[(i + 1) % p.len()]);
         n += Vec3::new((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y));
     }
     if n.y.abs() < 1e-3 {
-        return false;
-    }
-    let y = p[0].y - (n.x * (v.x - p[0].x) + n.z * (v.z - p[0].z)) / n.y;
-    if (y - v.y).abs() > tol {
-        return false;
+        return None;
     }
     // Inside every edge (in XZ, the winding's way), give or take `tol`.
     let s = n.y.signum();
-    (0..p.len()).all(|i| {
+    let inside = (0..p.len()).all(|i| {
         let (a, b) = (p[i], p[(i + 1) % p.len()]);
         let e = glam::Vec2::new(b.x - a.x, b.z - a.z);
         let len = e.length().max(1e-6);
-        -s * (e.x * (v.z - a.z) - e.y * (v.x - a.x)) / len >= -tol
-    })
+        -s * (e.x * (z - a.z) - e.y * (x - a.x)) / len >= -tol
+    });
+    inside.then(|| p[0].y - (n.x * (x - p[0].x) + n.z * (z - p[0].z)) / n.y)
+}
+
+/// Is `v` on the floor polygon `p` (over it within `tol` in XZ, on its plane
+/// within `tol`)?
+fn on_floor(v: Vec3, p: &[Vec3], tol: f32) -> bool {
+    floor_at(p, v.x, v.z, tol).is_some_and(|y| (y - v.y).abs() <= tol)
+}
+
+/// Every floor of a level's collision, bucketed by the 2 m cells its box
+/// (grown by 1 cm) covers: the floors that can be under or beside a point.
+struct Floors<'a> {
+    collision: &'a [ColPoly],
+    cells: std::collections::HashMap<(i32, i32), Vec<usize>>,
+}
+
+impl<'a> Floors<'a> {
+    const CELL: f32 = 200.0;
+
+    fn cell(x: f32) -> i32 {
+        (x / Self::CELL).floor() as i32
+    }
+
+    fn new(collision: &'a [ColPoly]) -> Floors<'a> {
+        let floor = pd_core::ids::GEOFLAG_FLOOR1 | pd_core::ids::GEOFLAG_FLOOR2;
+        let mut cells: std::collections::HashMap<(i32, i32), Vec<usize>> = Default::default();
+        for (i, p) in collision.iter().enumerate().filter(|(_, p)| p.flags & floor != 0) {
+            let (lo, hi) = p.verts.iter().fold((Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)), |(a, b), v| (a.min(*v), b.max(*v)));
+            for cx in Self::cell(lo.x - 1.0)..=Self::cell(hi.x + 1.0) {
+                for cz in Self::cell(lo.z - 1.0)..=Self::cell(hi.z + 1.0) {
+                    cells.entry((cx, cz)).or_default().push(i);
+                }
+            }
+        }
+        Floors { collision, cells }
+    }
+
+    /// The floors whose boxes come within 1 cm of `v` in XZ.
+    fn near(&self, v: Vec3) -> impl Iterator<Item = &'a [Vec3]> + '_ {
+        let collision = self.collision;
+        self.cells.get(&(Self::cell(v.x), Self::cell(v.z))).into_iter().flatten().map(move |&f| collision[f].verts.as_slice())
+    }
+
+    /// Does `v` rest on a floor (on its plane and over it, within 1 cm)?
+    fn rests(&self, v: Vec3) -> bool {
+        self.near(v).any(|f| on_floor(v, f, 1.0))
+    }
+
+    /// The highest floor directly under `p`, at or below its height.
+    fn under(&self, p: Vec3) -> Option<f32> {
+        self.near(p).filter_map(|f| floor_at(f, p.x, p.z, 0.01)).filter(|&y| y <= p.y + 1.0).fold(None, |best: Option<f32>, y| Some(best.map_or(y, |b| b.max(y))))
+    }
+
+    /// Does `p` lie on a floor's edge (within half a centimetre)?
+    fn on_edge(&self, p: Vec3) -> bool {
+        self.near(p).any(|f| {
+            (0..f.len()).any(|i| {
+                let (a, b) = (f[i], f[(i + 1) % f.len()]);
+                let ab = b - a;
+                let t = if ab.length_squared() > 0.0 { ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0) } else { 0.0 };
+                (a + ab * t).distance(p) < 0.5
+            })
+        })
+    }
 }
 
 /// The walls between two floors (every corner resting on a floor: at its
@@ -230,19 +363,8 @@ fn on_floor(v: Vec3, p: &[Vec3], tol: f32) -> bool {
 /// `range` (cm).
 fn walls_between_floors(collision: &[ColPoly], range: std::ops::RangeInclusive<f32>) -> Vec<bool> {
     let floor = pd_core::ids::GEOFLAG_FLOOR1 | pd_core::ids::GEOFLAG_FLOOR2;
-    // Every floor, bucketed by the 2 m cells its box covers.
-    const CELL: f32 = 200.0;
-    let cell = |x: f32| (x / CELL).floor() as i32;
-    let mut floors: std::collections::HashMap<(i32, i32), Vec<usize>> = Default::default();
-    for (i, p) in collision.iter().enumerate().filter(|(_, p)| p.flags & floor != 0) {
-        let (lo, hi) = p.verts.iter().fold((Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)), |(a, b), v| (a.min(*v), b.max(*v)));
-        for cx in cell(lo.x - 1.0)..=cell(hi.x + 1.0) {
-            for cz in cell(lo.z - 1.0)..=cell(hi.z + 1.0) {
-                floors.entry((cx, cz)).or_default().push(i);
-            }
-        }
-    }
-    let rests = |v: Vec3| floors.get(&(cell(v.x), cell(v.z))).is_some_and(|fs| fs.iter().any(|&f| on_floor(v, &collision[f].verts, 1.0)));
+    let floors = Floors::new(collision);
+    let rests = |v: Vec3| floors.rests(v);
     collision
         .iter()
         .map(|p| {
@@ -321,6 +443,81 @@ impl LevelSource {
         let mut it = riser.into_iter();
         self.collision.retain(|_| !it.next().unwrap_or(false));
         before - self.collision.len()
+    }
+
+    /// Make walls of the low ceilings among `ceilings` (drawn triangles facing
+    /// down, which are no tiles): one with some part less than a standing
+    /// head ([`LOW_CEILING`]) above the floor beneath it, sampled at its
+    /// middle and at its corners pulled a fifth of the way in. PD's designers
+    /// flag the ceilings that matter this way and leave the rest out:
+    /// Complex's crawl space has its 118 cm ceiling as wall tiles, which is
+    /// what refuses standing up in it (`bwalk_update_crouch_offset`) and keeps
+    /// a squat a squat. A level made of drawn triangles alone has vents with
+    /// nothing over them otherwise. Each ceiling comes with its room (0 where
+    /// the level has none of its own). Returns how many.
+    pub fn wall_low_ceilings(&mut self, ceilings: &[(u16, [Vec3; 3])]) -> usize {
+        use pd_core::ids::{GEOFLAG_BLOCK_SHOOT, GEOFLAG_BLOCK_SIGHT, GEOFLAG_WALL};
+        let floors = Floors::new(&self.collision);
+        let low: Vec<&(u16, [Vec3; 3])> = ceilings
+            .iter()
+            .filter(|(_, c)| {
+                let mid = (c[0] + c[1] + c[2]) / 3.0;
+                std::iter::once(mid).chain(c.iter().map(|&v| v + (mid - v) * 0.2)).any(|p| floors.under(p).is_some_and(|f| p.y - f < LOW_CEILING))
+            })
+            .collect();
+        let n = low.len();
+        let walls: Vec<ColPoly> = low
+            .into_iter()
+            .map(|(room, c)| ColPoly { verts: c.to_vec(), flags: GEOFLAG_WALL | GEOFLAG_BLOCK_SIGHT | GEOFLAG_BLOCK_SHOOT, floortype: pd_core::ids::FLOORTYPE_DEFAULT, grab: false, floorcol: 0, room: *room })
+            .collect();
+        self.collision.extend(walls);
+        n
+    }
+
+    /// Flag the ramp walls (`GEOFLAG_RAMPWALL`): PD's designers flag the
+    /// triangular walls under a ramp so, and such a wall is tested at its real
+    /// height where the player is (`cd_test_ramp_wall`), not by its box, so a
+    /// player walks beside a ramp's low end and under an open one. Here an
+    /// upright wall triangle is one when its top or bottom slopes: it has a
+    /// sloped edge and either no level edge (the strip under a ramp's edge, a
+    /// duct's side) or a sloped edge along a floor's edge (the side of a solid
+    /// ramp). A plain wall's diagonal (a rectangle split in two) is neither,
+    /// so plain walls keep PD's box test. Returns how many.
+    pub fn mark_ramp_walls(&mut self) -> usize {
+        use pd_core::ids::{GEOFLAG_FLOOR1, GEOFLAG_FLOOR2, GEOFLAG_RAMPWALL, GEOFLAG_WALL};
+        let floors = Floors::new(&self.collision);
+        let flat = |a: Vec3, b: Vec3| glam::Vec2::new(a.x - b.x, a.z - b.z).length() >= 0.5;
+        let level = |a: Vec3, b: Vec3| (a.y - b.y).abs() < 0.5 && flat(a, b);
+        let sloped = |a: Vec3, b: Vec3| (a.y - b.y).abs() >= 0.5 && flat(a, b);
+        let ramp: Vec<bool> = self
+            .collision
+            .iter()
+            .map(|p| {
+                let v = &p.verts;
+                if p.flags & GEOFLAG_WALL == 0 || p.flags & (GEOFLAG_FLOOR1 | GEOFLAG_FLOOR2) != 0 || v.len() < 3 {
+                    return false;
+                }
+                let n = (1..v.len() - 1).map(|i| (v[i] - v[0]).cross(v[i + 1] - v[0])).sum::<Vec3>().normalize_or_zero();
+                if n == Vec3::ZERO || n.y.abs() > 0.1 {
+                    return false;
+                }
+                let edges = (0..v.len()).map(|i| (v[i], v[(i + 1) % v.len()]));
+                if !edges.clone().any(|(a, b)| sloped(a, b)) {
+                    return false;
+                }
+                if !edges.clone().any(|(a, b)| level(a, b)) {
+                    return true;
+                }
+                edges.filter(|&(a, b)| sloped(a, b)).any(|(a, b)| floors.on_edge(a) && floors.on_edge(b) && floors.on_edge((a + b) * 0.5))
+            })
+            .collect();
+        let n = ramp.iter().filter(|r| **r).count();
+        for (p, r) in self.collision.iter_mut().zip(ramp) {
+            if r {
+                p.flags |= GEOFLAG_RAMPWALL;
+            }
+        }
+        n
     }
 
     /// The box around everything drawn and collided with.

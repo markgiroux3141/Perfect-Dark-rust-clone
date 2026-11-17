@@ -1,0 +1,14 @@
+[package]
+name = "autolevel_build"
+description = "What makes an autolevel layout a level to play: its polygons in Complex's grammar, room meshes, the GE64 OBJ and GLB writers, a ray-traced bake and the command line. Headless; replaces the Blender side of ge_pd_tools.autolevel."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+autolevel = { workspace = true }
+# report.json, walks.json and the GLB's JSON chunk
+serde_json = { workspace = true }
+# The GLB embeds its textures as PNGs; they are read as the Setup Editor dumps them, BMPs.
+image = { workspace = true, features = ["bmp"] }

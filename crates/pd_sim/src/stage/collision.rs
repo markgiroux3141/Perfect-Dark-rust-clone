@@ -28,6 +28,11 @@
 //! * A PD stage's rooms neighbour across its portals ([`TileLevel::for_stage`]).
 //!   `// SUBST:` a test fixture has no portals: its rooms neighbour when their
 //!   polygon edges run along each other ([`infer_room_neighbours`]).
+//! * `// SUBST:` the ground search keeps the first 20 floor tiles in PD; here,
+//!   when it meets more than 20, the 20 nearest below the probe. The first
+//!   substitution finds floors on every storey at once, which PD's rooms keep
+//!   apart, and an imported level's tiles are its drawn triangles. Of PD's
+//!   arenas only Car Park (`mp5`) has spots where the answer differs.
 //! * `// SUBST:` sight and shot rays test the fan triangles of each polygon (what
 //!   `cd_is_line_intersecting_tilei` does) with a standard segment/triangle test in
 //!   place of `func0002f490`.
@@ -1222,7 +1227,8 @@ impl TileLevel {
 
     /// `cd_find_ground_at_cyl_ctfril` (`collision.c:2219`) + `cd_find_ground_finalise`
     /// (`collision.c:1826`, NTSC 1.0+): the floor tiles and the props' floors the
-    /// cylinder's circle touches (up to 20, no vertical test). If the centre is
+    /// cylinder's circle touches (up to 20, no vertical test; of more tiles
+    /// than 20, the nearest below `pos.y`: SUBST below). If the centre is
     /// over any of them, the highest height there that is below `pos.y` (a
     /// `GEOFLAG_STEP` tile's even if higher, once nothing else is); a
     /// `GEOFLAG_DIE` tile is never under the centre. Otherwise (or when a slope
@@ -1232,12 +1238,41 @@ impl TileLevel {
         // (tile or prop floor, intile)
         let mut collisions: Vec<(GroundSrc, bool)> = Vec::new();
         for &poly in self.floors.near_cyl(&self.grid, pos, radius).iter() {
-            if collisions.len() >= 20 {
-                break;
-            }
             if self.tile_in_range(poly, pos, radius, false, 0.0, 0.0) && self.volume_collect_tile(poly, pos.x, pos.z, radius).is_some() {
                 collisions.push((GroundSrc::Tile(poly), false));
             }
+        }
+        // SUBST: PD keeps the first 20 floor tiles it collects, of the rooms
+        // the chr is in / when more than 20 are touched we keep the 20 nearest
+        // below `pos.y` (by each tile's lowest point; those wholly above it,
+        // which can never be the ground, last), in the list's order. Our
+        // candidates are every room's (the SUBST in this file's header), so
+        // floors are found on every storey at once, and a level imported from
+        // drawn triangles (`pd_import`'s glTF levels) has far finer tiles
+        // than PD's hand-made ones: by a corner several triangles share,
+        // under a tall room's stacked catwalks, the first 20 can leave out
+        // the deck stood on, and the player drops through it. With 20 or
+        // fewer nothing changes. Probed over every arena's floor tiles
+        // (2026-11-16): 14 never touch more than 20; Warehouse does at 49
+        // spots with the same answer; Car Park at 171, where 60 of 684 probes
+        // now find the floor under the player and the first 20 (of every
+        // storey's tiles, which PD's own room list would not have held) gave
+        // none, or one a storey down.
+        if collisions.len() > 20 {
+            let poly = |c: &(GroundSrc, bool)| match c.0 {
+                GroundSrc::Tile(p) | GroundSrc::Floor(p) => p,
+            };
+            let below = |p: usize| {
+                let lo = self.bbox[p].0.y;
+                if lo < pos.y {
+                    pos.y - lo
+                } else {
+                    f32::MAX
+                }
+            };
+            collisions.sort_by(|a, b| below(poly(a)).total_cmp(&below(poly(b))).then(poly(a).cmp(&poly(b))));
+            collisions.truncate(20);
+            collisions.sort_by_key(poly);
         }
         for (k, f) in floors.iter().enumerate() {
             if collisions.len() >= 20 {
@@ -1917,6 +1952,51 @@ mod tests {
         let over = TileLevel::new(LevelGeom { polys: vec![quad(280.0, 0.0, 200.0), quad(0.0, -500.0, 700.0)], rooms: vec![] });
         assert_eq!(over.cd_find_ground_at_cyl(Vec3::new(190.0, 349.0, 100.0), 20.0).0, 280.0);
         assert_eq!(over.cd_find_ground_at_cyl(Vec3::new(210.0, 349.0, 100.0), 20.0).0, 0.0);
+    }
+
+    /// Six floors stacked 276 cm apart, each four quads (eight triangles)
+    /// round one shared corner: 48 floor tiles under a player standing by
+    /// that corner, as under a tower's catwalks in a level imported from its
+    /// drawn triangles. The ground is the floor stood on, on every storey,
+    /// not whichever 20 tiles come first (the SUBST in
+    /// `cd_find_ground_at_cyl_ctfril`). Two storeys of them are 16 tiles: as
+    /// PD has it, whatever order they come in.
+    #[test]
+    fn the_ground_is_the_floor_stood_on_under_many_stacked_floors() {
+        let storeys = |n: usize, top_first: bool| {
+            let mut polys = Vec::new();
+            for k in 0..n {
+                let y = 276.0 * if top_first { n - 1 - k } else { k } as f32;
+                for (sx, sz) in [(-1.0f32, -1.0f32), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
+                    let (a, b, c, d) = (Vec3::new(0.0, y, 0.0), Vec3::new(236.0 * sx, y, 0.0), Vec3::new(236.0 * sx, y, 236.0 * sz), Vec3::new(0.0, y, 236.0 * sz));
+                    for tri in [[a, b, c], [a, c, d]] {
+                        polys.push(GeomPoly::new(tri.to_vec(), true, false, true, true, Some(1)));
+                    }
+                }
+            }
+            TileLevel::new(LevelGeom { polys, rooms: vec![1] })
+        };
+        let spots = [(7.0, -7.0), (0.0, 0.0), (-14.0, 9.0), (100.0, 100.0)];
+        for top_first in [false, true] {
+            let tower = storeys(6, top_first);
+            for k in 0..6 {
+                let y = 276.0 * k as f32;
+                for (x, z) in spots {
+                    assert_eq!(tower.cd_find_ground_at_cyl(Vec3::new(x, y + 159.0, z), 30.0).0, y, "storey {k} at ({x}, {z}), top first: {top_first}");
+                }
+            }
+            // 20 or fewer: every touched tile is looked at, as before
+            let two = storeys(2, top_first);
+            for (k, y) in [(0, 0.0), (1, 276.0)] {
+                for (x, z) in spots {
+                    assert_eq!(two.cd_find_ground_at_cyl(Vec3::new(x, y + 159.0, z), 30.0).0, y, "of two, storey {k} at ({x}, {z})");
+                }
+            }
+        }
+        // A prop's floor still counts among them: a lift's at 100 by the corner of two storeys.
+        let lift = PropFloor { verts: [Vec3::new(-50.0, 100.0, -50.0), Vec3::new(50.0, 100.0, -50.0), Vec3::new(50.0, 100.0, 50.0), Vec3::new(-50.0, 100.0, 50.0)], flags: GEOFLAG_FLOOR1, prop: 7, room: Some(1) };
+        let g = storeys(2, false).cd_find_ground_at_cyl_ctfril(Vec3::new(7.0, 100.0 + 159.0, -7.0), 30.0, &[lift]);
+        assert_eq!((g.y, g.prop), (100.0, Some(7)));
     }
 
     /// A ramp's triangular side wall (`GEOFLAG_RAMPWALL`) meets a cylinder
