@@ -354,12 +354,12 @@ fn stair_size(rng: &mut PyRandom, shape: Shape, north: bool, m: i32) -> Option<(
 }
 
 /// Where stairs `st` in stair room `s` may take their doorways: (lot, cell along the shared wall)
-/// onto a corridor on the stair room's floor at the foot, and at the top onto an upper corridor
-/// (`top`, if given, else any).
-fn stair_ways(lots: &[Lot], s: usize, st: &Stairs, top: Option<usize>) -> (Vec<(usize, i32)>, Vec<(usize, i32)>) {
+/// onto a corridor on the stair room's floor at the foot (or onto `hub`, the tall room a landing's
+/// stairs stand beside), and at the top onto an upper corridor (`top`, if given, else any).
+fn stair_ways(lots: &[Lot], s: usize, st: &Stairs, top: Option<usize>, hub: Option<usize>) -> (Vec<(usize, i32)>, Vec<(usize, i32)>) {
     let l = &lots[s];
     let (mut foot, mut up) = (Vec::new(), Vec::new());
-    for (n, c) in lots.iter().enumerate().filter(|(_, c)| c.kind == Kind::Corridor) {
+    for (n, c) in lots.iter().enumerate().filter(|&(n, c)| c.kind == Kind::Corridor || hub == Some(n)) {
         let Some((wall, s0, s1)) = side(l, c) else { continue };
         let (spans, ways) = if c.floor == l.floor {
             (&st.foot, &mut foot)
@@ -373,13 +373,13 @@ fn stair_ways(lots: &[Lot], s: usize, st: &Stairs, top: Option<usize>) -> (Vec<(
     (foot, up)
 }
 
-/// Whether some way round, stairs of `shape` fit stair room `s` with a doorway at the foot and one
-/// at the top onto `top`.
-fn stair_fits(lots: &[Lot], s: usize, shape: Shape, top: usize) -> bool {
+/// Whether some way round, stairs of `shape` fit stair room `s` with a doorway at the foot (onto a
+/// corridor, or `hub`) and one at the top onto `top`.
+fn stair_fits(lots: &[Lot], s: usize, shape: Shape, top: usize, hub: Option<usize>) -> bool {
     let ((x0, y0, _), (x1, y1, _)) = lots[s].air();
     Frame::ALL.iter().any(|&f| {
         stair::fit(shape, (x0, y0), (x1, y1), lots[s].floor, STOREY, f).is_ok_and(|st| {
-            let (foot, up) = stair_ways(lots, s, &st, Some(top));
+            let (foot, up) = stair_ways(lots, s, &st, Some(top), hub);
             !foot.is_empty() && !up.is_empty()
         })
     })
@@ -391,9 +391,9 @@ struct Draft {
     lots: Vec<Lot>,
     /// Doorways to make, in order: the two lots and how wide (cells).
     doors: Vec<(usize, usize, i32)>,
-    /// The stair rooms, the stairs each is sized for, and the upper corridor its top must open
-    /// on (None: any).
-    stairs: Vec<(usize, Shape, Option<usize>)>,
+    /// The stair rooms, the stairs each is sized for, the upper corridor its top must open on
+    /// (None: any), and the tall room its foot may open on instead of a corridor (a landing's).
+    stairs: Vec<(usize, Shape, Option<usize>, Option<usize>)>,
     /// The washrooms.
     wash: Vec<usize>,
     rooms: usize,
@@ -605,8 +605,10 @@ fn sprawl(rng: &mut PyRandom) -> Result<Draft, String> {
             let mut at = 0;
             while at < wl - 2 && d.lots.len() < MOST {
                 let (w, depth) = (rng.randint(4, 9) as i32, rng.randint(4, 7) as i32);
-                let r = beside(&gl, dir, at, w.min(wl - at), depth);
-                if wl - at >= 3 && ok(d, r, STOREY, STOREY + ROOM_H) {
+                // as deep as it was drawn, or shortened to stop at what is in the way (often a
+                // tall room's wall, which it may then open onto: `onto_walkways`)
+                let r = (3..=depth).rev().map(|dd| beside(&gl, dir, at, w.min(wl - at), dd)).find(|r| ok(d, *r, STOREY, STOREY + ROOM_H));
+                if let Some(r) = r.filter(|_| wl - at >= 3) {
                     let k = d.room(r, STOREY);
                     d.doors.push((from, k, 1));
                     at += w;
@@ -618,6 +620,9 @@ fn sprawl(rng: &mut PyRandom) -> Result<Draft, String> {
     };
     // a second gallery, now and then, over another long corridor
     let (mut galleries, mut want) = (0, 1);
+    // the galleries' rooms are hung last of the upper storey: the landings and the rooms along the
+    // tall rooms come first (the lots run out)
+    let mut gallery_rooms: Vec<(usize, [usize; 2])> = Vec::new();
     for &c in &long {
         if galleries >= want {
             break;
@@ -662,9 +667,9 @@ fn sprawl(rng: &mut PyRandom) -> Result<Draft, String> {
         let gallery = d.lot(&key, g, STOREY, Kind::Corridor, "office");
         for (r, shape) in &placed {
             let s = d.lot(&format!("stairs{}", d.stairs.len() + 1), *r, 0, Kind::Stair, "office");
-            d.stairs.push((s, *shape, Some(gallery)));
+            d.stairs.push((s, *shape, Some(gallery), None));
         }
-        upper_rooms(&mut d, rng, gallery, &if ax { [1, 3] } else { [0, 2] });
+        gallery_rooms.push((gallery, if ax { [1, 3] } else { [0, 2] }));
         if galleries == 1 && d.lots.len() + 4 <= MOST && rng.random() < SECOND {
             want = 2;
         }
@@ -694,8 +699,13 @@ fn sprawl(rng: &mut PyRandom) -> Result<Draft, String> {
                 continue;
             }
             for _ in 0..8 {
-                let lu = (rng.randint(5, 12) as i32).min(wl);
-                let at = rng.randint(0, (wl - lu) as i64) as i32;
+                // short enough to leave three cells of the wall at an end where it can (a room
+                // there stands along the tall room too, and may open onto its walkway)
+                let lu = (rng.randint(5, 12) as i32).min(wl).min(if wl >= 8 { wl - 3 } else { wl });
+                let mut at = rng.randint(0, (wl - lu) as i64) as i32;
+                if wl - lu >= 3 && at < 3 && wl - lu - at < 3 {
+                    at = if rng.random() < 0.5 { 0 } else { wl - lu };
+                }
                 let u = beside(&tl, dir, at, lu, rng.randint(3, 4) as i32);
                 if !ok(&d, u, STOREY, STOREY + ROOM_H) {
                     continue;
@@ -717,10 +727,15 @@ fn sprawl(rng: &mut PyRandom) -> Result<Draft, String> {
                         }
                         let sn = d.lot(&format!("stairs{}", d.stairs.len() + 1), r, 0, Kind::Stair, "office");
                         let sl = &d.lots[sn];
-                        let beside_ground = d.lots.iter().any(|c| c.kind == Kind::Corridor && c.floor == 0 && side(sl, c).is_some_and(|(_, a, b)| b - a >= 3));
-                        if beside_ground && could(&d.lots, sn, un) && stair_fits(&d.lots, sn, shape, un) {
+                        // its foot onto a corridor on the ground, or into the tall room it overlooks
+                        let beside_ground = d
+                            .lots
+                            .iter()
+                            .enumerate()
+                            .any(|(c, cl)| (cl.kind == Kind::Corridor || c == t) && cl.floor == 0 && side(sl, cl).is_some_and(|(_, a, b)| b - a >= 3));
+                        if beside_ground && could(&d.lots, sn, un) && stair_fits(&d.lots, sn, shape, un, Some(t)) {
                             landings += 1;
-                            d.stairs.push((sn, shape, Some(un)));
+                            d.stairs.push((sn, shape, Some(un), Some(t)));
                             d.doors.push((t, un, 1));
                             let back = (dir + 2) % 4;
                             let walls: Vec<usize> = (0..4).filter(|&k| k != back).collect();
@@ -733,6 +748,48 @@ fn sprawl(rng: &mut PyRandom) -> Result<Draft, String> {
                 d.lots.pop();
             }
         }
+    }
+
+    // ---- upper rooms along the tall rooms' walls, off an upper corridor beside them (each is then
+    // likely to open onto the tall room's walkway too: `onto_walkways`); the hall's side walls only,
+    // and a tall room with a landing on the landing's wall
+    let talls: Vec<usize> = (0..d.lots.len()).filter(|&n| levels(&d.lots[n]) >= 1).collect();
+    for t in talls {
+        if d.lots.len() >= MOST || rng.random() >= ALONG {
+            continue;
+        }
+        let tl = d.lots[t].clone();
+        let landing = d.doors.iter().find_map(|&(i, j, _)| (i == t && d.lots[j].floor == STOREY).then(|| side(&tl, &d.lots[j]).map(|s| s.0)).flatten());
+        let uppers: Vec<Lot> = d.lots.iter().filter(|l| l.floor == STOREY && l.kind == Kind::Corridor).cloned().collect();
+        let mut can: Vec<(Rect, usize)> = Vec::new();
+        for dir in if tl.kind == Kind::Hall { vec![1, 3] } else { vec![0, 1, 2, 3] } {
+            if landing.is_some_and(|w| w != ['E', 'N', 'W', 'S'][dir]) {
+                continue;
+            }
+            let wl = wall_len(&tl, dir);
+            for at in -3..wl - 3 {
+                for (w, depth) in (3..=6).flat_map(|w| (3..=5).map(move |dd| (w, dd))) {
+                    let r = beside(&tl, dir, at, w, depth);
+                    let room =
+                        Lot { key: String::new(), x0: r.0, y0: r.1, x1: r.2, y1: r.3, floor: STOREY, top: STOREY + ROOM_H, kind: Kind::Room, scheme: "office" };
+                    let along = (at + w).min(wl) - at.max(0);
+                    let off = uppers.iter().position(|u| side(u, &room).is_some_and(|(_, s0, s1)| s1 - s0 >= 3));
+                    if let (true, Some(u)) = (along >= 3 && ok(&d, r, STOREY, STOREY + ROOM_H), off) {
+                        let key = &uppers[u].key;
+                        can.push((r, d.lots.iter().position(|l| l.key == *key).expect("an upper corridor")));
+                    }
+                }
+            }
+        }
+        if !can.is_empty() {
+            let (r, u) = *rng.choice(&can);
+            let k = d.room(r, STOREY);
+            d.doors.push((u, k, 1));
+        }
+    }
+
+    for (gallery, dirs) in gallery_rooms {
+        upper_rooms(&mut d, rng, gallery, &dirs);
     }
 
     // ---- rooms along every wall of the circulation on the ground, every size, gaps between
@@ -920,7 +977,7 @@ fn block(rng: &mut PyRandom) -> Result<Draft, String> {
     let gallery = d.lot("gallery", (u0, ym1, u1, yn0), STOREY, Kind::Corridor, "office");
     for (n, (r, shape)) in placed.iter().enumerate() {
         let s = d.lot(&format!("stairs{}", n + 1), *r, 0, Kind::Stair, "office");
-        d.stairs.push((s, *shape, None));
+        d.stairs.push((s, *shape, None, None));
     }
 
     // ---- the rows of rooms off the corridors' outer sides, upstairs and down, and off the hall
@@ -1197,74 +1254,89 @@ const CLEAR_UP: i32 = 40;
 fn balconies(brng: &mut PyRandom, lots: &[Lot], gaps: &[Gap], far: char, hall: &Hall) -> Result<Vec<(usize, Balcony)>, String> {
     let mut out = Vec::new();
     for (n, l) in lots.iter().enumerate() {
-        let levels = match l.kind {
-            Kind::Hall => 1,
-            Kind::Open => (l.top - l.floor - ROOM_H) / STOREY,
-            _ => 0,
-        };
-        if levels < 1 {
+        if levels(l) < 1 {
             continue;
         }
-        let mut standing = fixtures(l, far);
-        // the hall's screens: their piers and beams stand in it, and no flight crosses one
-        let mut keep: Vec<(i32, i32, i32, i32)> = Vec::new();
-        if l.kind == Kind::Hall {
-            standing.extend(hall.solids.iter().copied());
-            keep.extend(hall.feet.iter().copied());
-        }
-        let ((x0, y0, _), (x1, y1, _)) = l.air();
-        // each doorway on the floor, and its mouth either side
-        let mut mouths: Vec<(i32, i32, i32, i32)> = gaps
-            .iter()
-            .filter(|g| (g.a == n || g.b == n) && g.z == l.floor)
-            .map(|g| {
-                let (lo, hi) = gap_box(g);
-                if g.axis == 0 {
-                    (lo.0 - MOUTH, lo.1, hi.0 + MOUTH, hi.1)
-                } else {
-                    (lo.0, lo.1 - MOUTH, hi.0, hi.1 + MOUTH)
-                }
-            })
-            .collect();
-        // the flight against the wall at the walkway's end if it can be, else out in the room
-        // (half a cell at a time along the walkway, from a place drawn)
-        // each doorway onto the walkway: its wall (E, N, W, S) and its stretch along it
-        let ups: Vec<(char, i32, i32)> = gaps
-            .iter()
-            .filter(|g| (g.a == n || g.b == n) && g.z == l.floor + STOREY)
-            .map(|g| {
-                let wall = match (g.axis, g.a == n) {
-                    (0, true) => 'E',
-                    (0, false) => 'W',
-                    (_, true) => 'N',
-                    _ => 'S',
-                };
-                (wall, g.k * CELL, (g.k + g.wide) * CELL)
-            })
-            .collect();
-        mouths.extend(keep);
         let mut frames = Frame::ALL;
         brng.shuffle(&mut frames);
-        let fits = |frame: Frame, at: i32| {
-            balcony::fit(((x0, y0), (x1, y1)), l.floor, STOREY, levels, frame, at, &standing).ok().filter(|b| {
-                !mouths.iter().any(|m| m.0 < b.ground.2 && b.ground.0 < m.2 && m.1 < b.ground.3 && b.ground.1 < m.3)
-                    && ups.iter().all(|&(wall, lo, hi)| b.upper[0].side == wall && b.upper[0].holds(lo, hi))
-            })
-        };
-        let mut found = frames.iter().find_map(|&f| fits(f, 0));
-        if found.is_none() {
-            let span = (x1 - x0).max(y1 - y0);
-            let steps = (span / (CELL / 2)) as i64;
-            let first = brng.randint(0, steps);
-            found = frames.iter().find_map(|&f| (0..=steps).find_map(|i| fits(f, ((first + i) % (steps + 1)) as i32 * (CELL / 2))));
-        }
-        match found {
+        let ups = gaps.iter().any(|g| (g.a == n || g.b == n) && g.z == l.floor + STOREY);
+        match walkway(lots, gaps, n, far, hall, &frames, &mut |steps| brng.randint(0, steps)) {
             Some(b) => out.push((n, b)),
-            None if !ups.is_empty() => return Err(format!("no walkway in {} for the doorway onto it", l.key)),
+            None if ups => return Err(format!("no walkway in {} for the doorway onto it", l.key)),
             None => {}
         }
     }
     Ok(out)
+}
+
+/// How many walkways a tall room takes: one a storey up in the hall and in an open room two
+/// storeys tall, two in an open room three storeys tall; none elsewhere.
+fn levels(l: &Lot) -> i32 {
+    match l.kind {
+        Kind::Hall => 1,
+        Kind::Open => (l.top - l.floor - ROOM_H) / STOREY,
+        _ => 0,
+    }
+}
+
+/// The walkways of tall room `n`: the first of `frames` whose flight, against the wall at the
+/// walkway's end, keeps clear of the room's doorways on the floor and of what stands in it
+/// (`balcony::fit`), and whose walkway's wall holds every doorway onto it a storey up; else the
+/// first with its flight out in the room, half a cell at a time along the walkway from the place
+/// `first(steps)` gives (it is asked only then). None if nothing fits.
+fn walkway(lots: &[Lot], gaps: &[Gap], n: usize, far: char, hall: &Hall, frames: &[Frame], first: &mut dyn FnMut(i64) -> i64) -> Option<Balcony> {
+    let l = &lots[n];
+    let levels = levels(l);
+    let mut standing = fixtures(l, far);
+    // the hall's screens: their piers and beams stand in it, and no flight crosses one
+    let mut keep: Vec<(i32, i32, i32, i32)> = Vec::new();
+    if l.kind == Kind::Hall {
+        standing.extend(hall.solids.iter().copied());
+        keep.extend(hall.feet.iter().copied());
+    }
+    let ((x0, y0, _), (x1, y1, _)) = l.air();
+    // each doorway on the floor, and its mouth either side
+    let mut mouths: Vec<(i32, i32, i32, i32)> = gaps
+        .iter()
+        .filter(|g| (g.a == n || g.b == n) && g.z == l.floor)
+        .map(|g| {
+            let (lo, hi) = gap_box(g);
+            if g.axis == 0 {
+                (lo.0 - MOUTH, lo.1, hi.0 + MOUTH, hi.1)
+            } else {
+                (lo.0, lo.1 - MOUTH, hi.0, hi.1 + MOUTH)
+            }
+        })
+        .collect();
+    // each doorway onto the walkway: its wall (E, N, W, S) and its stretch along it
+    let ups: Vec<(char, i32, i32)> = gaps
+        .iter()
+        .filter(|g| (g.a == n || g.b == n) && g.z == l.floor + STOREY)
+        .map(|g| {
+            let wall = match (g.axis, g.a == n) {
+                (0, true) => 'E',
+                (0, false) => 'W',
+                (_, true) => 'N',
+                _ => 'S',
+            };
+            (wall, g.k * CELL, (g.k + g.wide) * CELL)
+        })
+        .collect();
+    mouths.extend(keep);
+    let fits = |frame: Frame, at: i32| {
+        balcony::fit(((x0, y0), (x1, y1)), l.floor, STOREY, levels, frame, at, &standing).ok().filter(|b| {
+            !mouths.iter().any(|m| m.0 < b.ground.2 && b.ground.0 < m.2 && m.1 < b.ground.3 && b.ground.1 < m.3)
+                && ups.iter().all(|&(wall, lo, hi)| b.upper[0].side == wall && b.upper[0].holds(lo, hi))
+        })
+    };
+    let found = frames.iter().find_map(|&f| fits(f, 0));
+    if found.is_some() {
+        return found;
+    }
+    let span = (x1 - x0).max(y1 - y0);
+    let steps = (span / (CELL / 2)) as i64;
+    let first = first(steps);
+    frames.iter().find_map(|&f| (0..=steps).find_map(|i| fits(f, ((first + i) % (steps + 1)) as i32 * (CELL / 2))))
 }
 
 /// Draw a layout: the draft turned, its doorways placed, the stairs fitted, second ways into
@@ -1283,7 +1355,7 @@ fn layout(rng: &mut PyRandom, brng: &mut PyRandom, sprawling: bool) -> Result<La
     // ---- each stair room's stairs: the first frame (in a seeded order) that leaves the foot a
     // doorway onto a corridor on the ground and the top one onto the gallery
     let mut flights: Vec<(usize, Stairs)> = Vec::new();
-    for &(s, shape, up) in &d.stairs {
+    for &(s, shape, up, hub) in &d.stairs {
         let l = &lots[s];
         let ((ax0, ay0, _), (ax1, ay1, _)) = l.air();
         let mut frames = Frame::ALL;
@@ -1291,7 +1363,7 @@ fn layout(rng: &mut PyRandom, brng: &mut PyRandom, sprawling: bool) -> Result<La
         let mut found = None;
         for frame in frames {
             let Ok(st) = stair::fit(shape, (ax0, ay0), (ax1, ay1), l.floor, STOREY, frame) else { continue };
-            let (foot, top) = stair_ways(&lots, s, &st, up);
+            let (foot, top) = stair_ways(&lots, s, &st, up, hub);
             if !foot.is_empty() && !top.is_empty() {
                 found = Some((st, *rng.choice(&foot), *rng.choice(&top)));
                 break;
@@ -1350,6 +1422,7 @@ fn layout(rng: &mut PyRandom, brng: &mut PyRandom, sprawling: bool) -> Result<La
         let Some(&(r, n)) = (if both.is_empty() { can.first().map(|_| rng.choice(&can)) } else { Some(rng.choice(&both)) }) else { break };
         gaps.extend(gap(rng, &lots, r, n, 1, None));
     }
+    onto_walkways(rng, &lots, &mut gaps, far);
 
     // ---- room types, by where a room is and how big
     let hall = lots.iter().position(|l| l.kind == Kind::Hall).expect("a hall");
@@ -1380,6 +1453,67 @@ fn layout(rng: &mut PyRandom, brng: &mut PyRandom, sprawling: bool) -> Result<La
     let hall = Hall { solids, arches, feet };
     let balconies = balconies(brng, &lots, &gaps, far, &hall)?;
     Ok(Layout { lots, gaps, flights, balconies, hall, far })
+}
+
+/// The chance an upper room beside a tall room opens onto its walkway.
+const ONTO: f64 = 0.8;
+/// The chance a tall room takes an upper room planned along its wall, off an upper corridor.
+const ALONG: f64 = 0.8;
+
+/// Upper rooms beside a tall room open onto its walkway (`ONTO`), a second way in: all of a tall
+/// room's on one wall, the walkway's (a landing's wall if it has one, else one drawn; the hall's
+/// side walls only, its screens stand across the others' flights), and each kept only if a walkway
+/// still fits holding every doorway onto it (`walkway`, tried every way round, drawing nothing).
+fn onto_walkways(rng: &mut PyRandom, lots: &[Lot], gaps: &mut Vec<Gap>, far: char) {
+    let wall_of = |g: &Gap, n: usize| match (g.axis, g.a == n) {
+        (0, true) => 'E',
+        (0, false) => 'W',
+        (_, true) => 'N',
+        _ => 'S',
+    };
+    for t in (0..lots.len()).filter(|&t| levels(&lots[t]) >= 1) {
+        let tl = &lots[t];
+        let side_walls: &[char] = if matches!(far, 'E' | 'W') { &['N', 'S'] } else { &['E', 'W'] };
+        let mut by_wall: Vec<(char, Vec<usize>)> = Vec::new();
+        for (r, rl) in lots.iter().enumerate() {
+            if rl.kind != Kind::Room || linked(gaps, r, t) || upper(tl, rl).is_none() {
+                continue;
+            }
+            let Some((wall, s0, s1)) = side(tl, rl) else { continue };
+            if s1 - s0 < 3 || (tl.kind == Kind::Hall && !side_walls.contains(&wall)) {
+                continue;
+            }
+            match by_wall.iter_mut().find(|w| w.0 == wall) {
+                Some(w) => w.1.push(r),
+                None => by_wall.push((wall, vec![r])),
+            }
+        }
+        if by_wall.is_empty() {
+            continue;
+        }
+        let held: Vec<char> = gaps.iter().filter(|g| (g.a == t || g.b == t) && g.z == tl.floor + STOREY).map(|g| wall_of(g, t)).collect();
+        let wall = match held.first() {
+            Some(w) => *w,
+            None => rng.choice(&by_wall).0,
+        };
+        let Some((_, rooms)) = by_wall.iter().find(|w| w.0 == wall) else { continue };
+        for &r in rooms {
+            if rng.random() >= ONTO {
+                continue;
+            }
+            let Some(g) = gap(rng, lots, r, t, 1, None) else { continue };
+            gaps.push(g);
+            let hall = if tl.kind == Kind::Hall {
+                let (solids, arches, feet) = screens(tl, far, gaps, t);
+                Hall { solids, arches, feet }
+            } else {
+                Hall::default()
+            };
+            if walkway(lots, gaps, t, far, &hall, &Frame::ALL, &mut |_| 0).is_none() {
+                gaps.pop();
+            }
+        }
+    }
 }
 
 /// The hall's own frame: `u` from the wall the building is on to the far wall, `v` along them.
@@ -1854,14 +1988,18 @@ mod tests {
                 assert_eq!(steps.len(), 12);
                 assert_eq!((steps[0], steps[11]), (24, 283));
                 assert!(steps.windows(2).all(|w| (23..=24).contains(&(w[1] - w[0]))));
-                // a doorway at its foot and one off its landing, both onto corridors
+                // a doorway at its foot and one off its landing, both onto corridors (a landing's
+                // stairs may stand on the tall room it overlooks instead)
                 let ways: Vec<&Doorway> = lv.doorways.iter().filter(|d| d.a == r.key || d.b == r.key).collect();
                 let mut floors: Vec<i32> = ways.iter().map(|d| d.lo.2).collect();
                 floors.sort();
                 assert_eq!(floors, [0, STOREY], "seed {seed} {}", r.key);
-                for d in ways {
-                    let other = lv.plan.get(if d.a == r.key { &d.b } else { &d.a }).unwrap();
-                    assert_eq!((other.kind, other.floor), ("corridor", d.lo.2), "seed {seed} {}", r.key);
+                let other = |d: &Doorway| lv.plan.get(if d.a == r.key { &d.b } else { &d.a }).unwrap();
+                let landing = ways.iter().any(|d| other(d).key.starts_with("landing"));
+                for d in &ways {
+                    let o = other(d);
+                    let foot_on_hub = landing && o.kind == "hub" && d.lo.2 == o.floor;
+                    assert!((o.kind == "corridor" || foot_on_hub) && o.floor == d.lo.2, "seed {seed} {}: {} {}", r.key, o.kind, o.key);
                 }
                 // and a walk up it
                 assert!(lv.walks.iter().any(|(name, _)| *name == format!("stairs_{}", r.key)), "seed {seed} {}", r.key);
@@ -1910,21 +2048,48 @@ mod tests {
                 // a doorway onto a tall room lands on a walkway along that wall
                 for d in walkways {
                     let t = other(d, &u.key);
-                    let face = if t.boxes[0].0 .0 == d.hi.0 || t.boxes[0].0 .1 == d.hi.1 { d.hi } else { d.lo };
-                    let on = t.solids.iter().any(|(lo, hi, tag)| {
-                        let along = 1 - d.axis;
-                        *tag == "walkway"
-                            && hi.2 == d.lo.2
-                            && (crate::plan::at(*lo, d.axis) == crate::plan::at(face, d.axis) || crate::plan::at(*hi, d.axis) == crate::plan::at(face, d.axis))
-                            && crate::plan::at(*lo, along) <= crate::plan::at(d.lo, along)
-                            && crate::plan::at(d.hi, along) <= crate::plan::at(*hi, along)
-                    });
-                    assert!(on, "seed {seed} {} into {}: no walkway at the doorway", u.key, t.key);
+                    assert!(on_walkway(t, d), "seed {seed} {} into {}: no walkway at the doorway", u.key, t.key);
                 }
             }
         }
         println!("{seconds} second galleries, {landings} landings on seeds 1-40");
         assert!(seconds >= 4 && landings >= 6, "{seconds} second galleries, {landings} landings");
+    }
+
+    /// Whether doorway `d` into tall room `t` a storey up opens onto a walkway along its wall.
+    fn on_walkway(t: &Room, d: &Doorway) -> bool {
+        let face = if t.boxes[0].0 .0 == d.hi.0 || t.boxes[0].0 .1 == d.hi.1 { d.hi } else { d.lo };
+        let along = 1 - d.axis;
+        t.solids.iter().any(|(lo, hi, tag)| {
+            *tag == "walkway"
+                && hi.2 == d.lo.2
+                && (crate::plan::at(*lo, d.axis) == crate::plan::at(face, d.axis) || crate::plan::at(*hi, d.axis) == crate::plan::at(face, d.axis))
+                && crate::plan::at(*lo, along) <= crate::plan::at(d.lo, along)
+                && crate::plan::at(d.hi, along) <= crate::plan::at(*hi, along)
+        })
+    }
+
+    #[test]
+    fn upper_rooms_beside_a_tall_room_open_onto_its_walkway() {
+        let (mut rooms, mut halls) = (0, 0);
+        for seed in 1..=40 {
+            let lv = generate(seed).unwrap();
+            for d in &lv.doorways {
+                let (a, b) = (lv.plan.get(&d.a).unwrap(), lv.plan.get(&d.b).unwrap());
+                let (t, u) = if a.kind == "hub" { (a, b) } else { (b, a) };
+                if t.kind != "hub" || u.kind != "room" || d.lo.2 == t.floor {
+                    continue;
+                }
+                // a storey up, onto the walkway along that wall, and the room has another way in
+                assert_eq!(d.lo.2, t.floor + STOREY, "seed {seed} {}", u.key);
+                assert!(on_walkway(t, d), "seed {seed} {} into {}: no walkway at the doorway", u.key, t.key);
+                assert!(lv.doorways.iter().filter(|e| e.a == u.key || e.b == u.key).count() >= 2, "seed {seed} {}", u.key);
+                rooms += 1;
+                halls += (t.key == "hall") as usize;
+            }
+        }
+        println!("{rooms} upper rooms open onto a walkway on seeds 1-40, {halls} onto the hall's");
+        assert!(rooms >= 10, "{rooms} upper rooms onto walkways");
     }
 
     #[test]

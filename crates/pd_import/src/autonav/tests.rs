@@ -145,12 +145,8 @@ fn a_doorways_mouth_is_cleared_and_its_axis_given_waypoints() {
                 d.dot(g.through).abs() <= g.half_thick + MOUTH && d.dot(g.across).abs() <= g.half_wide + 20.0 && d.y.abs() <= LEVEL
             })
             .collect();
-        // nothing in its mouth off its axis, and none in the opening itself (a door's plane)
-        for &k in &near {
-            let d = floor(k) - g.mid;
-            assert!(d.dot(g.across).abs() < 1.0 && d.dot(g.through).abs() >= 60.0, "a waypoint at {d:?} from a doorway's middle");
-        }
-        // its own two: on its axis either side, never skipped, linked through it
+        // its own two: on its axis either side, never skipped, linked through it (a doorway the
+        // probe can't walk straight through, a stair's foot, is left as it was)
         let axis: Vec<usize> = (0..out.waypoints.len())
             .filter(|&k| {
                 let d = floor(k) - g.mid;
@@ -158,6 +154,11 @@ fn a_doorways_mouth_is_cleared_and_its_axis_given_waypoints() {
             })
             .collect();
         if axis.len() == 2 {
+            // nothing in its mouth off its axis, and none in the opening itself (a door's plane)
+            for &k in &near {
+                let d = floor(k) - g.mid;
+                assert!(d.dot(g.across).abs() < 1.0 && d.dot(g.through).abs() >= 60.0, "a waypoint at {d:?} from a doorway's middle");
+            }
             given += 1;
             let (p, q) = (axis[0], axis[1]);
             assert!(linked.contains(&(p, q)) && linked.contains(&(q, p)), "a doorway's two waypoints not linked through it");

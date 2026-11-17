@@ -1094,6 +1094,8 @@ both ends of the first walkway and, with a second, climbs on and walks it end to
 rows left no 132-wide gap for the flight); with the screens (below) all 68 do, 10 of them two. `Balcony::upper` names the walls behind the walkways,
 where a doorway on an upper storey opens onto one (a landing's, below). Tall plain rooms (15% of
 the big rooms off the circulation) get none: their door-to-door walks are straight lines.
+`walkway` is the fitting for one room (`balconies` runs it with the frames shuffled by its stream;
+`onto_walkways` with none drawn, to ask whether one fits).
 
 **Upstairs areas** (2026-11-17, the brief's second item: "more than one upstairs area, with
 stairs into the tall rooms ... each reached two ways"). Sprawling layouts only (the block keeps its
@@ -1105,18 +1107,37 @@ one gallery):
   (`Draft::stairs` names it; `stair_ways` filters), so neither borrows the other's.
 - **Landings** (0.7 a tall room, two at most): an upper corridor `landingN`, 5 to 12 cells along
   a wall of a tall room (an open room two or three storeys tall, or the hall's side walls) and 3
-  or 4 out from it, a storey up over whatever stands on the ground there. Its two ways: a doorway
-  onto the tall room's walkway (`upper`: the only doorways joining two storeys, never found by
-  `could`, only planned), and a stair room off its far side or an end down to a corridor on the
-  ground, checked to fit before it is kept (`stair_fits`: some way round puts its foot on the
-  ground corridor and its top on the landing). Rooms hang off its other walls. The tall room must
-  be 8 cells deep away from that wall, and `balconies` then takes only the ways round that put the
-  walkway along it and over the doorway; a room that gets none fails the layout, which is drawn
+  or 4 out from it, a storey up over whatever stands on the ground there, and short enough to leave
+  three cells of that wall free at one end where the wall is 8 or more (a room there stands along
+  the tall room too). Its two ways: a doorway onto the tall room's walkway (`upper`: the only
+  doorways joining two storeys, never found by `could`, only planned), and a stair room off its far
+  side or an end down to a corridor on the ground **or into the tall room itself** (2026-11-17: most
+  stair rooms off a landing stand beside the tall room and nothing else; `Draft::stairs` names the
+  room the foot may open on), checked to fit before it is kept (`stair_fits`: some way round puts
+  its foot on the ground and its top on the landing). Rooms hang off its other walls. The tall room
+  must be 8 cells deep away from that wall, and `balconies` then takes only the ways round that put
+  the walkway along it and over the doorway; a room that gets none fails the layout, which is drawn
   again (`TRIES`).
+- **The galleries' rooms are hung last** of the upper storey, after the landings and the rooms
+  along tall rooms (below): the lots (`MOST`) used to run out before a landing could take its rooms.
 
-Seeds 1-40: 9 second galleries and 8 landings (seeds 5, 8, 15, 17, 32, 34 and 40; seed 5 has two;
-seed 15 a second gallery and a landing); every upper corridor has two ways or more (test
-`every_upstairs_area_is_reached_two_ways`), and every walk passes. Seed 10 has neither.
+Seeds 1-40: 8 second galleries and 23 landings (8 before the stair foot could open into the tall
+room); every upper corridor has two ways or more (test `every_upstairs_area_is_reached_two_ways`),
+and every walk passes.
+
+**Upper rooms onto walkways** (2026-11-17, the handoff brief's item 1; the user chose "more upper
+rooms by tall rooms" over a walkway turning the hall's corner): an upper room beside a tall room
+opens onto its walkway as a second way in (`onto_walkways`, `ONTO` 0.8, after the "one way in"
+doorways so every ground doorway of the tall room is known). All of a tall room's are on one wall,
+the walkway's: a landing's wall if it has one, else one drawn; the hall's side walls only (on its
+near wall a flight would cross the first screen). Each is kept only if a walkway still fits holding
+every doorway onto it: `walkway` (the fitting `balconies` uses, tried every way round with nothing
+drawn), so the layout never fails for one. To make such rooms: a room off an upper corridor that
+meets something is shortened to fit (3 cells at least) instead of dropped, and each tall room
+(`ALONG` 0.8) takes a room planned along its wall a storey up that shares three cells with an upper
+corridor (a landing's free end, mostly). Seeds 1-40: 14 upper rooms open onto a walkway, 3 of them
+onto the hall's (2 before); test `upper_rooms_beside_a_tall_room_open_onto_its_walkway`. Layouts
+drawn again on seeds 1-60: 94 (79 before), most for too many rooms with one way in.
 
 **Arches and the hall's bays** (2026-11-17, the brief's third item; the user chose each option:
 cross walls, circulation only, round then segmental). Felicity measured first (its triangles,
