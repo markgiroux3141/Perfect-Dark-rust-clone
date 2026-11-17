@@ -101,6 +101,8 @@ const LANDING: f64 = 0.7;
 const LANDINGS: usize = 2;
 /// The chance a block layout's hall takes a landing (its only tall room).
 const BLOCK_LANDING: f64 = 0.9;
+/// The share of layouts built round the hall (past its far wall), not ending at it.
+const ROUND: f64 = 0.5;
 
 /// What a lot is.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -129,6 +131,9 @@ struct Lot {
     top: i32,
     kind: Kind,
     scheme: &'static str,
+    /// The hall's far wall (0 east, 1 north, 2 west, 3 south; turned with the lots): it takes no
+    /// doorway, nor its side walls beside the platform (`shared`). None for any other lot.
+    far: Option<usize>,
 }
 
 impl Lot {
@@ -265,15 +270,33 @@ fn rooms_along(rng: &mut PyRandom, free: &[(i32, i32)], lo: i32, hi: i32) -> Vec
 /// low side. None if they don't share a wall.
 fn shared(i: &Lot, j: &Lot) -> Option<(usize, i32, i32, i32)> {
     let span = |a0: i32, a1: i32, b0: i32, b1: i32| (a0.max(b0), a1.min(b1));
-    if i.x1 == j.x0 {
+    let (axis, line, mut s0, mut s1) = if i.x1 == j.x0 {
         let (s0, s1) = span(i.y0, i.y1, j.y0, j.y1);
-        return (s1 > s0).then_some((0, i.x1, s0, s1));
-    }
-    if i.y1 == j.y0 {
+        (0, i.x1, s0, s1)
+    } else if i.y1 == j.y0 {
         let (s0, s1) = span(i.x0, i.x1, j.x0, j.x1);
-        return (s1 > s0).then_some((1, i.y1, s0, s1));
+        (1, i.y1, s0, s1)
+    } else {
+        return None;
+    };
+    // the hall's far wall is no wall to share, nor its side walls beside the platform (its four
+    // cells and one): nothing opens onto the platform from the floor
+    for h in [i, j] {
+        let Some(f) = h.far else { continue };
+        if axis == f % 2 {
+            if line == [h.x1, h.y1, h.x0, h.y0][f] {
+                return None;
+            }
+        } else {
+            match f {
+                0 => s1 = s1.min(h.x1 - 5),
+                1 => s1 = s1.min(h.y1 - 5),
+                2 => s0 = s0.max(h.x0 + 5),
+                _ => s0 = s0.max(h.y0 + 5),
+            }
+        }
     }
-    None
+    (s1 > s0).then_some((axis, line, s0, s1))
 }
 
 /// The wall of `l` that `c` is behind (E, N, W, S) and the span they share along it, in cells.
@@ -425,7 +448,8 @@ impl Draft {
             Kind::Stair => floor + STOREY + ROOM_H,
             _ => floor + ROOM_H,
         };
-        self.lots.push(Lot { key: key.to_string(), x0: r.0, y0: r.1, x1: r.2, y1: r.3, floor, top, kind, scheme });
+        let far = (kind == Kind::Hall).then_some(0);
+        self.lots.push(Lot { key: key.to_string(), x0: r.0, y0: r.1, x1: r.2, y1: r.3, floor, top, kind, scheme, far });
         self.lots.len() - 1
     }
 
@@ -484,6 +508,16 @@ fn beside(l: &Lot, dir: usize, at: i32, width: i32, len: i32) -> Rect {
     }
 }
 
+/// How much of lot `l`'s wall `dir` (from its low end) a doorway may open in, in the draft's frame:
+/// all of it but the hall's far wall and the stretch of its side walls beside the platform.
+fn usable(l: &Lot, dir: usize) -> i32 {
+    match (l.far, dir) {
+        (Some(_), 0) => 0,
+        (Some(_), 1 | 3) => wall_len(l, dir) - 5,
+        _ => wall_len(l, dir),
+    }
+}
+
 /// Whether a lot runs along x (its long way).
 fn along_x(l: &Lot) -> bool {
     l.x1 - l.x0 >= l.y1 - l.y0
@@ -503,15 +537,31 @@ fn sprawl(rng: &mut PyRandom) -> Result<Draft, String> {
     let (hw, hd) = (rng.randint(12, 16) as i32, rng.randint(14, 19) as i32);
     let hall = d.lot("hall", (0, 0, hw, hd), 0, Kind::Hall, "hall");
     // past the far wall, and beside the platform (its four cells and one), nothing
-    let blocked = [(hw, -60, hw + 60, hd + 60), (hw - 5, hd, hw + 60, hd + 60), (hw - 5, -60, hw + 60, 0)];
+    // or, half the time (`ROUND`), the building may grow round it: past its far wall and beside its
+    // platform (no doorway opens there: `shared`), so the hall stands inside the building
+    let round = rng.random() < ROUND;
+    let blocked = if round { Vec::new() } else { vec![(hw, -60, hw + 60, hd + 60), (hw - 5, hd, hw + 60, hd + 60), (hw - 5, -60, hw + 60, 0)] };
     let ok = |d: &Draft, r: Rect, floor: i32, top: i32| d.clear(r, floor, top) && !blocked.iter().any(|b| overlaps(*b, r));
     let tall = |rng: &mut PyRandom| ROOM_H + STOREY * *rng.choice(&[0, 0, 0, 1, 1, 2]);
     let corridor_scheme = |rng: &mut PyRandom| *rng.choice(&["office", "office", "marble", "industrial"]);
 
     // ---- the circulation: two corridors off the hall, then pieces off pieces
-    let mut anchors: Vec<(usize, usize)> = vec![(hall, 2), (hall, if rng.random() < 0.5 { 1 } else { 3 })];
+    let first_side = if rng.random() < 0.5 { 1 } else { 3 };
+    let mut anchors: Vec<(usize, usize)> = vec![(hall, 2), (hall, first_side)];
     let want = rng.randint(6, 10) as usize;
     let (mut corridors, mut opens, mut pieces) = (0, 0, 0);
+    // built round the hall: first a corridor along its other side wall and out past its far wall,
+    // a doorway onto the hall where the wall is free, and arms to grow from its far end and its
+    // outer side (the two pieces off the hall come after, as ever)
+    if round {
+        let (y, out, dir) = if first_side == 1 { (0, -1, 3) } else { (hd, 1, 1) };
+        let (cw, past, from) = (rng.randint(3, 4) as i32, rng.randint(4, 9) as i32, rng.randint(3, 6) as i32);
+        corridors += 1;
+        let scheme = corridor_scheme(rng);
+        let c = d.lot(&format!("corridor{corridors}"), band(hw - 5 - from, hw + past, y, out, cw), 0, Kind::Corridor, scheme);
+        d.doors.push((hall, c, 1));
+        anchors.extend([(c, dir), (c, 0)]);
+    }
     let mut tries = 0;
     while pieces < want && tries < 300 && !anchors.is_empty() {
         tries += 1;
@@ -529,7 +579,7 @@ fn sprawl(rng: &mut PyRandom) -> Result<Draft, String> {
         };
         let (from, dir) = anchors[i];
         let l = d.lots[from].clone();
-        let wl = wall_len(&l, dir);
+        let wl = usable(&l, dir);
         let corridor = pieces < 2 || rng.random() < 0.55;
         let (r, top) = if corridor {
             let w = (*rng.choice(&[3, 3, 4, 4, 5])).min(wl);
@@ -688,7 +738,7 @@ fn sprawl(rng: &mut PyRandom) -> Result<Draft, String> {
         // the hall's walkway runs along a side wall (its screens stand across the others')
         let mut dirs: Vec<usize> = if d.lots[t].kind == Kind::Hall { vec![1, 3] } else { vec![0, 1, 2, 3] };
         rng.shuffle(&mut dirs);
-        if landing(&mut d, rng, t, &dirs, landings + 1, i32::MAX, &ok) {
+        if landing(&mut d, rng, t, &dirs, landings + 1, if t == hall { hw - 5 } else { i32::MAX }, &ok) {
             landings += 1;
         }
     }
@@ -713,8 +763,18 @@ fn sprawl(rng: &mut PyRandom) -> Result<Draft, String> {
             for at in -3..wl - 3 {
                 for (w, depth) in (3..=6).flat_map(|w| (3..=5).map(move |dd| (w, dd))) {
                     let r = beside(&tl, dir, at, w, depth);
-                    let room =
-                        Lot { key: String::new(), x0: r.0, y0: r.1, x1: r.2, y1: r.3, floor: STOREY, top: STOREY + ROOM_H, kind: Kind::Room, scheme: "office" };
+                    let room = Lot {
+                        key: String::new(),
+                        x0: r.0,
+                        y0: r.1,
+                        x1: r.2,
+                        y1: r.3,
+                        floor: STOREY,
+                        top: STOREY + ROOM_H,
+                        kind: Kind::Room,
+                        scheme: "office",
+                        far: None,
+                    };
                     let along = (at + w).min(wl) - at.max(0);
                     let off = uppers.iter().position(|u| side(u, &room).is_some_and(|(_, s0, s1)| s1 - s0 >= 3));
                     if let (true, Some(u)) = (along >= 3 && ok(&d, r, STOREY, STOREY + ROOM_H), off) {
@@ -744,7 +804,7 @@ fn sprawl(rng: &mut PyRandom) -> Result<Draft, String> {
     for &c in &order {
         let l = d.lots[c].clone();
         for dir in 0..4 {
-            let wl = wall_len(&l, dir);
+            let wl = usable(&l, dir);
             let mut at = 0;
             while wl - at >= 3 && d.lots.len() < MOST {
                 if rng.random() < 0.18 {
@@ -1023,6 +1083,20 @@ fn block(rng: &mut PyRandom) -> Result<Draft, String> {
         let s = d.lot(&format!("stairs{}", n + 1), *r, 0, Kind::Stair, "office");
         d.stairs.push((s, *shape, None, None));
     }
+    // ---- half the time (`ROUND`) a corridor along a side of the hall, out past its far wall, with
+    // rooms off its outer side and, past the far wall, behind the hall: the hall no longer ends the
+    // building (nothing opens through its far wall or beside its platform: `shared`)
+    let mut round: Option<(i32, i32, usize, i32, i32)> = None; // the hall's wall line, out, the corridor, its width, how far past
+    if rng.random() < ROUND {
+        let (y, out) = *rng.choice(&[(hy0 + hd, 1), (hy0, -1)]);
+        let (cw, past) = (rng.randint(3, 4) as i32, rng.randint(6, 10) as i32);
+        let r = band(w, w + hw + past, y, out, cw);
+        if d.clear(r, 0, ROOM_H) {
+            let c = d.lot("corridor3", r, 0, Kind::Corridor, "office");
+            d.doors.push((hall, c, 1));
+            round = Some((y, out, c, cw, past));
+        }
+    }
 
     // ---- a landing off the hall's walkway along a side wall (`landing`), all of it beside the hall
     // so nothing of the corridors' rows meets it. Its stairs (a U, mostly: foot and top at one end)
@@ -1072,9 +1146,22 @@ fn block(rng: &mut PyRandom) -> Result<Draft, String> {
             .collect();
         fronts.splice(n..=n, wash);
     }
+    // off the corridor round the hall: along its outer side, and past the far wall behind the hall
+    if let Some((y, out, c, cw, past)) = round {
+        let mut rooms = rooms_along(rng, &[(w, w + hw + past)], 4, 7);
+        rooms.truncate(2);
+        let depth = rng.randint(4, 6) as i32;
+        row(&mut fronts, rooms, y + out * cw, out, depth, 0, c);
+        let rooms = rooms_along(rng, &[(w + hw, w + hw + past)], 3, 6);
+        let depth = rng.randint(4, 6) as i32;
+        row(&mut fronts, rooms, y, -out, depth, 0, c);
+    }
     // off the hall's two side walls, clear of its platform (the far four cells) and of a landing's
-    // stair room
+    // stair room (not the side the corridor round it runs along)
     for (y, out) in [(hy0 + hd, 1), (hy0, -1)] {
+        if round.is_some_and(|r| r.0 == y) {
+            continue;
+        }
         if rng.random() < 0.6 {
             let depth = rng.randint(4, 6) as i32;
             let stairs: Vec<(i32, i32)> = d
@@ -1090,6 +1177,10 @@ fn block(rng: &mut PyRandom) -> Result<Draft, String> {
     }
     let mut made: Vec<(usize, Front)> = Vec::new();
     for f in &fronts {
+        // (a landing's stair room may stand where a row of the corridor round the hall would)
+        if !d.clear(f.rect(), f.floor, f.floor + ROOM_H) {
+            continue;
+        }
         let r = d.room(f.rect(), f.floor);
         d.doors.push((f.on, r, double(rng)));
         if f.wash {
@@ -1143,6 +1234,15 @@ fn turn(lots: &mut [Lot], flip_x: bool, flip_y: bool, swap: bool) -> char {
     let xs = lots.iter().map(|l| l.x0).min().unwrap_or(0) + lots.iter().map(|l| l.x1).max().unwrap_or(0);
     let ys = lots.iter().map(|l| l.y0).min().unwrap_or(0) + lots.iter().map(|l| l.y1).max().unwrap_or(0);
     for l in lots.iter_mut() {
+        l.far = l.far.map(|f| {
+            let f = if flip_x { [2, 1, 0, 3][f] } else { f };
+            let f = if flip_y { [0, 3, 2, 1][f] } else { f };
+            if swap {
+                [1, 0, 3, 2][f]
+            } else {
+                f
+            }
+        });
         if flip_x {
             (l.x0, l.x1) = (xs - l.x1, xs - l.x0);
         }
@@ -1888,7 +1988,11 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
     }
     // the hall's platform, from a corridor's doorway: along the near wall to the middle, then
     // through the screens' middle arches and up the steps
-    if let Some(d) = doorways.iter().find(|d| [&d.a, &d.b].contains(&&lots[hall].key) && [&d.a, &d.b].iter().any(|k| k.starts_with("corridor"))) {
+    // (a doorway in the near wall: square to the far wall's axis, which takes none itself)
+    let near_axis = if matches!(far, 'E' | 'W') { 0 } else { 1 };
+    if let Some(d) =
+        doorways.iter().find(|d| d.axis == near_axis && [&d.a, &d.b].contains(&&lots[hall].key) && [&d.a, &d.b].iter().any(|k| k.starts_with("corridor")))
+    {
         let start = inside(d, d.a == lots[hall].key);
         let (u, v) = (INSIDE - WALL / 2, frame.along(start.0, start.1));
         let at = |u: i32, v: i32, z: i32| {
@@ -2295,6 +2399,39 @@ mod tests {
         }
         println!("{with} of {tall} tall plain rooms have a walkway");
         assert!(tall > 0 && with * 3 >= tall, "{with} of {tall}");
+    }
+
+    #[test]
+    fn the_building_often_goes_on_past_the_hall() {
+        let (mut round, mut blocks) = (0, 0);
+        for seed in 1..=40 {
+            let lv = generate(seed).unwrap();
+            let hall = lv.plan.get("hall").unwrap();
+            let (lo, hi) = hall.boxes[0];
+            let p = hall.solids.iter().find(|s| s.2 == "platform").unwrap();
+            // the far wall is the one the platform stands along: (axis, which end)
+            let far = if p.1 .0 == hi.0 && p.0 .0 > lo.0 {
+                (0, true)
+            } else if p.0 .0 == lo.0 && p.1 .0 < hi.0 {
+                (0, false)
+            } else if p.1 .1 == hi.1 && p.0 .1 > lo.1 {
+                (1, true)
+            } else {
+                (1, false)
+            };
+            let at = |b: (i32, i32, i32), k: usize| if k == 0 { b.0 } else { b.1 };
+            let wall = if far.1 { at(hi, far.0) } else { at(lo, far.0) };
+            // past it: a room wholly beyond the far wall's line
+            let past = lv.plan.rooms.iter().any(|r| if far.1 { at(r.boxes[0].0, far.0) > wall } else { at(r.boxes[0].1, far.0) < wall });
+            round += past as usize;
+            blocks += (past && lv.plan.get("cross1").is_some()) as usize;
+            // nothing opens through the far wall
+            for d in lv.doorways.iter().filter(|d| d.a == "hall" || d.b == "hall") {
+                assert!(!(d.axis == far.0 && at(d.lo, far.0) <= wall && wall <= at(d.hi, far.0)), "seed {seed}: a doorway through the hall's far wall");
+            }
+        }
+        println!("{round} of 40 layouts go on past the hall's far wall, {blocks} of them blocks");
+        assert!(round >= 10 && blocks >= 2, "{round} past the hall, {blocks} blocks");
     }
 
     #[test]

@@ -1184,6 +1184,32 @@ chamfered trims). So:
   piece takes the wall's strip there. A doorway's soffit is jamb (0264), a screen's the hall's band
   (0288). Then `fix_t_junctions` again.
 
+**Built round the hall** (2026-11-17, the handoff brief's item 1; the user chose "build round
+it"): the hall need not close an end of the building.
+
+- **The rule**: the hall's lot knows its far wall (`Lot::far`, east in the draft, turned with the
+  lots), and `shared` gives no wall to share there, nor along the side walls' last five cells (the
+  platform's four and one). So nothing anywhere (`could`, `gap`, `stair_ways`) opens a doorway
+  through the far wall or onto the platform; `usable` is how much of a lot's wall a doorway may
+  take, for the growth and the rows of rooms.
+- **Sprawl** (`ROUND` 0.5): the zones kept clear past the far wall and beside the platform are
+  lifted, and before the growth a corridor is laid along one side wall of the hall from five
+  cells or so before the platform's stretch to 4-9 cells past the far wall, a doorway onto the
+  hall where the wall is free, with arms to grow from at its far end and its outer side (the two
+  pieces off the hall's own walls still come first, off its near wall and its other side).
+- **Block** (`ROUND` 0.5): `corridor3` along a side wall of the hall from its near wall to 6-10
+  cells past its far wall, 3-4 wide, a doorway onto the hall; two rooms at most off its outer side
+  and a row of rooms past the far wall, behind the hall. The hall's side rooms skip that side; a
+  front that meets something already there (a landing's stair room) is left out.
+- The platform walk starts at a corridor's doorway in the near wall (the round corridor's is in a
+  side wall, where the walkway's flight may stand).
+
+Seeds 1-40: 15 layouts go on past the hall's far wall, 3 of them blocks (test
+`the_building_often_goes_on_past_the_hall`, which also checks no doorway is in the far wall).
+Layouts drawn again on seeds 1-60: 129 (79 before this brief's item 1), most for too many rooms
+with one way in (the round corridor's rooms, the landings' rooms); every seed finds one well within
+`TRIES`.
+
 **Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
 corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
 halls and stair rooms (kinds `corridor`, `hub`, `stair`) and how the other rooms hang off them.
@@ -1232,8 +1258,9 @@ a few true drops of 577 from its room 14 into 16). It is PD's movement on stairs
 tried: whether flagging ours so changes anything; PD's own drops show it doesn't stop these.)
 
 **Not yet:** windows, light strips; no outdoor part; the editor can't make or
-edit a Felicity level (a Felicity recipe takes no edits). Of the layout: the hall always closes
-one end, and nobody has played one.
+edit a Felicity level (a Felicity recipe takes no edits). Nobody has played the layouts of the
+handoff brief's item 1 (upper rooms onto walkways, walkways in tall plain rooms, the block's
+landing, building round the hall).
 
 ## Risks
 
