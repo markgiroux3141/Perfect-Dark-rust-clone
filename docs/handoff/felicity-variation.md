@@ -1,5 +1,11 @@
 # Handoff: Felicity levels, the next round of variation
 
+**Status (2026-11-17): all four items done**, one commit each on `autolevel-kits` (`b577a9c`
+walkways, `dd35c14` second gallery and landings, `5f86f66` arches and the hall's bays, `e7f4e1c`
+doorway waypoints). What each does, and what is left (doors held shut by simulants on both sides,
+PD's own door logic; a decision for the user), is in `docs/AUTOLEVEL.md`, "Felicity". The brief
+below is as it was written.
+
 Written 2026-11-17 at the end of a long session; the next session starts cold. Branch
 `autolevel-kits` (last commit `e97a8f0`, the sprawling family). Read `CLAUDE.md` (loaded),
 then `docs/AUTOLEVEL.md`'s "Felicity" section (the whole of it: both families, room types,
