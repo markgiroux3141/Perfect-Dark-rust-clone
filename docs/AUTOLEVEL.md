@@ -1242,6 +1242,37 @@ are now one sweep per wall face (up a jamb, across the lintel, down the other ja
 triangle the same), except that the trim's UVs are now Felicity's (u across the bevel from the
 opening, v along it at 212 a repeat), where the lintel's used to be projected from above.
 
+**Ceiling braces** (2026-11-17, the detail brief's step 1; **from Felicity**, not CI Training).
+Measured first (`probe_stage_triangles`, which now gives each corner's colour too): Felicity's two
+biggest blue-floor rooms (4 and 17, about 8 x 6 cells) each have a cross of beams under the
+ceiling, 40 wide and 24 deep (the underside 235 up a 259 room), on a pilaster 13 deep and 40 wide at
+each end, floor to ceiling. The pilasters are tile 0256, the beams' sides the plain panel 024B,
+their undersides 0262 (a strip of four tiles, the third a light panel), about two repeats an arm
+from the wall in. Felicity bakes the undersides full white (254), the pilasters' fronts 137 at the
+floor to 254 at the top, and a 254 pool on the floor under the cross; the ceiling stays at 44.
+
+- **Where** (`autolevel::dress`, stream `<seed>/felicity/dress/braces`, after the plan check so no
+  room moves): a one-storey `office` or `marble` room 5 cells or more each way, `BRACED` (0.7) of
+  them, gets beams both ways, wall to wall: `round(span / 424) - 1` (one at least) along each span,
+  evenly placed, so an 8 x 6 room gets Felicity's cross and a 13 x 11 one a grid of four. A pilaster
+  keeps `MARGIN` (40) off every doorway's opening in its wall and 60 off the corners; a beam slides
+  up to 160 (steps of 20) to clear them, or is left out. `Level::braces`; `dress::arms` cuts each
+  beam at the beams crossing it (the kit and the lamps both use it). Seeds 1-40: 159 of the 234
+  rooms that could be are braced, 312 beams (test
+  `braced_rooms_keep_their_pilasters_clear_of_every_doorway`).
+- **Drawn** (`autolevel_build::felicity`'s `arm`, `crossing`): each arm is one sweep from its wall
+  end (the pilaster up the wall mitred into the beam, and down the far pilaster when a beam crosses
+  nothing), the crossings a square of plain strip. The strip is whole repeats an arm (`PANEL` 180:
+  Felicity's arms of 278-396 hold two each), u from the wall in. `sweep::clear` takes out the
+  ceiling over each beam, the wall behind each pilaster and the floor under it (test
+  `braces_are_swept_and_nothing_of_the_carvers_is_left_behind_them`). Role `lamp` (0262).
+- **Light**: a lamp under each panel (`Level::lamps`, `dress::lamps`) in place of the room's lamp
+  grid (`bake::light`: `plan_lights` for the other rooms); after the bake every `lamp` face is 254,
+  as Felicity's are. Complex has neither, and is unchanged.
+- Gameplay: the pilasters are 13 deep; every walk passes on seeds 1-40, and Felicity 15 shows no
+  stalls in a minute of six simulants. On seed 15 only upper rooms are braced (upper1, upper6,
+  upper7); its ground rooms are too small, or hallside or industrial.
+
 **Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
 corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
 halls and stair rooms (kinds `corridor`, `hub`, `stair`) and how the other rooms hang off them.
@@ -1289,7 +1320,7 @@ a few true drops of 577 from its room 14 into 16). It is PD's movement on stairs
 (Felicity's risers are vertical floor tiles flagged `GEOFLAG_STEP`; ours are wall tiles. Not
 tried: whether flagging ours so changes anything; PD's own drops show it doesn't stop these.)
 
-**Not yet:** windows, light strips; no outdoor part; the editor can't make or
+**Not yet:** windows, corridor ribs, the floor-level pieces (pipes, struts, deep frames), washroom fittings, raised doorways; no outdoor part; the editor can't make or
 edit a Felicity level (a Felicity recipe takes no edits). Nobody has played the layouts of the
 handoff brief's item 1 (upper rooms onto walkways, walkways in tall plain rooms, the block's
 landing, building round the hall).

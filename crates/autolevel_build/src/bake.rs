@@ -77,7 +77,16 @@ const CLOSE: f64 = 4.0;
 /// Bake the rooms' corner colours, to `kit`'s targets and in its tints. Returns each room's
 /// gain, by its name (`Room_NN`), in the plan's order.
 pub fn light(lv: &Level, rooms: &mut [Room], lit: &[Lit], kit: &Kit, set: &Settings) -> Result<Vec<(String, f64)>, String> {
-    let lights = cx::plan_lights(&lv.plan, None, set.spot);
+    // a room with lamps of its own (a Felicity room's light panels) has them in place of its grid
+    let lights = if lv.lamps.is_empty() {
+        cx::plan_lights(&lv.plan, None, set.spot)
+    } else {
+        let others: Vec<&str> = lv.plan.rooms.iter().map(|r| r.key.as_str()).filter(|k| !lv.lamps.iter().any(|(r, _)| r == k)).collect();
+        let mut lights = cx::plan_lights(&lv.plan, Some(&others), set.spot);
+        let how = cx::Lamps { spot: set.spot, ..cx::Lamps::default() };
+        lights.extend(lv.lamps.iter().map(|(_, p)| Light { pos: csg::f3(*p), color: [how.strength; 3], radius: how.radius, size: how.size, spot: how.spot }));
+        lights
+    };
     let mut targets = Vec::with_capacity(rooms.len());
     let mut tints = Vec::with_capacity(rooms.len());
     for r in rooms.iter() {
@@ -106,6 +115,12 @@ pub fn light(lv: &Level, rooms: &mut [Room], lit: &[Lit], kit: &Kit, set: &Setti
     for (key, (x, y)) in &lv.glows {
         if let Some(at) = rooms.iter().position(|r| r.key == *key) {
             scene.glow(&mut rooms[at], at, (*x as f64, *y as f64), set.glow, set.glow_radius, &reader);
+        }
+    }
+    // a kit's light panels glow: full white (Felicity's braces, 254)
+    if let Ok(m) = kit.index("lamp") {
+        for f in rooms.iter_mut().flat_map(|r| r.faces.iter_mut()).filter(|f| f.material == m) {
+            f.colors.fill([254; 3]);
         }
     }
     let mut out = Vec::with_capacity(rooms.len());

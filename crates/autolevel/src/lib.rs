@@ -37,6 +37,7 @@ pub mod choices;
 pub mod circulation;
 pub mod deadends;
 pub mod deadlist;
+pub mod dress;
 pub mod felicity;
 pub mod furnish;
 pub mod level;

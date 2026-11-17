@@ -41,6 +41,8 @@ pub struct Leg {
     pub profile: Vec<(f64, f64)>,
     /// Each edge's look (one fewer than the points); None: no face.
     pub edges: Vec<Option<Edge>>,
+    /// The distance along the path at this leg's start, where it starts again (None: carried on).
+    pub along: Option<f64>,
 }
 
 /// A profile swept along a path.
@@ -138,6 +140,9 @@ pub fn sweep(s: &Sweep) -> Vec<Poly> {
     let mut out = Vec::new();
     let mut run = 0.0;
     for (i, leg) in s.legs.iter().enumerate() {
+        if let Some(a) = leg.along {
+            run = a;
+        }
         let (start, end) = (&sections[i], if s.closed && i == n - 1 { &sections[0] } else { &sections[i + 1] });
         let along = |v: P3| run + dot(sub(v, points[i]), dirs[i]);
         // round the profile: from the first point of each run of edges that look the same
@@ -302,8 +307,8 @@ mod tests {
         let s = Sweep {
             from: [0.0, 0.0, 0.0],
             legs: vec![
-                Leg { to: [0.0, 0.0, 259.0], side: [0.0, 1.0, 0.0], depth: [1.0, 0.0, 0.0], profile: p13, edges: e.clone() },
-                Leg { to: [400.0, 0.0, 259.0], side: [0.0, 1.0, 0.0], depth: [0.0, 0.0, -1.0], profile: p24, edges: e },
+                Leg { to: [0.0, 0.0, 259.0], side: [0.0, 1.0, 0.0], depth: [1.0, 0.0, 0.0], profile: p13, edges: e.clone(), along: None },
+                Leg { to: [400.0, 0.0, 259.0], side: [0.0, 1.0, 0.0], depth: [0.0, 0.0, -1.0], profile: p24, edges: e, along: None },
             ],
             closed: false,
             zone: "r",
@@ -333,7 +338,7 @@ mod tests {
     #[test]
     fn a_closed_path_is_mitred_all_round() {
         let e = Some(Edge { surface: surface(), along_v: true });
-        let leg = |to: P3, side: P3| Leg { to, side, depth: [0.0, 1.0, 0.0], profile: vec![(0.0, 10.0), (-10.0, 0.0)], edges: vec![e] };
+        let leg = |to: P3, side: P3| Leg { to, side, depth: [0.0, 1.0, 0.0], profile: vec![(0.0, 10.0), (-10.0, 0.0)], edges: vec![e], along: None };
         // round a 100 x 100 opening in the plane y = 0, the profile facing in and out of the wall
         let s = Sweep {
             from: [0.0, 0.0, 0.0],

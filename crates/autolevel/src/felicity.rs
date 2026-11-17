@@ -1928,6 +1928,10 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
         return Err(format!("felicity seed {seed}: plan check: {}", problems[..problems.len().min(3)].join("; ")));
     }
 
+    // ---- dressing: its own streams, so no room moves
+    let braces = crate::dress::braces(seed, &plan, &doorways);
+    let lamps = crate::dress::lamps(&crate::dress::arms(&braces).0);
+
     // ---- walks and views (cells of the plan's MODULE, as every walk is written)
     let c = |u: i32| u as f64 / MODULE;
     let mut walks: Vec<(String, Vec<Step>)> = Vec::new();
@@ -2072,6 +2076,8 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
         fixes: Vec::new(),
         doorways,
         arches,
+        braces,
+        lamps,
         report,
     })
 }

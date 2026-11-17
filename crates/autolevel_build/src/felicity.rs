@@ -41,6 +41,7 @@
 
 use std::collections::HashMap;
 
+use autolevel::dress::{self, Arm, Crossing, BEAM_D, BEAM_W, LIGHT, PILASTER};
 use autolevel::felicity::{DOOR_H, PLATFORM, ROOM_H, STOREY};
 use autolevel::level::{Arch, Doorway, Level};
 
@@ -55,7 +56,7 @@ const fn paint(role: &'static str, preset: &'static str, flags: &'static [&'stat
 }
 
 /// The kit's materials (names: Felicity's Setup Editor export's, where it has the texture).
-const PALETTE: [Paint; 28] = [
+const PALETTE: [Paint; 29] = [
     // office and marble
     paint("floor", "0287", &[], "m2", (128.3, 134.8)),
     paint("lower", "024F", &[], "m0", (89.9, 94.5)),
@@ -71,6 +72,9 @@ const PALETTE: [Paint; 28] = [
     // a doorway's chamfered frame (Felicity's 00EF: 16 x 64 texels, about 18 across the bevel and
     // 212 up it)
     paint("trim", "00EF", &[], "trim", (18.4, 212.0)),
+    // a ceiling brace's underside (Felicity's 0262: four tiles, the third a light panel; its u
+    // repeat is set for each arm, so it holds whole repeats)
+    paint("lamp", "0262", &[], "lamp", (180.0, 40.0)),
     // the stairwells' railings: Felicity's see-through rail
     paint("rail", "0710", &["Transparent", "CullBoth", "MirrorS", "ClampT"], "m14TransparentCullBothMirrorSClampT", (49.0, 94.0)),
     // industrial
@@ -250,7 +254,7 @@ fn frame(d: &Doorway, trim: Surface, floors: [Surface; 2]) -> Vec<Poly> {
     for (zone, t, into, floor) in [(d.a.as_str(), lo[a] as f64, 1.0, floors[0]), (d.b.as_str(), hi[a] as f64, -1.0, floors[1])] {
         let depth = axis(a, into);
         // up the near jamb, across the lintel, down the far jamb: `side` towards the opening
-        let leg = |to: P3, side: P3| Leg { to, side, depth, profile: vec![(0.0, tr), (-tr, 0.0)], edges: vec![edge] };
+        let leg = |to: P3, side: P3| Leg { to, side, depth, profile: vec![(0.0, tr), (-tr, 0.0)], edges: vec![edge], along: None };
         let path = Sweep {
             from: at(t, s0, z0),
             legs: vec![leg(at(t, s0, zt), axis(o, 1.0)), leg(at(t, s1, zt), axis(2, -1.0)), leg(at(t, s1, z0), axis(o, -1.0))],
@@ -337,6 +341,87 @@ fn arch(a: &Arch, soffit: Surface, cuts: &[i32], face: &dyn Fn(&str, &Face) -> R
         }
     }
     Ok(out)
+}
+
+/// A unit vector along `axis`, `sign` long.
+fn unit_along(axis: usize, sign: f64) -> P3 {
+    let mut p = [0.0; 3];
+    p[axis] = sign;
+    p
+}
+
+/// What a brace's arm covers of the carver's faces: the ceiling over it, and at each wall end the
+/// wall behind its pilaster and the floor under it.
+fn arm_covers(a: &Arm) -> Vec<Cover> {
+    let (k, h) = (a.axis, BEAM_W / 2);
+    // a rectangle in the floor or ceiling, `t0..t1` along the arm and `at +- h` across it
+    let flat = |t0: i32, t1: i32| if k == 0 { ([t0, a.at - h], [t1, a.at + h]) } else { ([a.at - h, t0], [a.at + h, t1]) };
+    let (lo, hi) = flat(a.t.0, a.t.1);
+    let mut out = vec![Cover { axis: 2, at: a.top, sign: -1, lo, hi }];
+    for (wall, t, into) in [(a.walls.0, a.t.0, 1), (a.walls.1, a.t.1, -1)] {
+        if wall {
+            out.push(Cover { axis: k, at: t, sign: into, lo: [a.at - h, a.floor], hi: [a.at + h, a.top] });
+            let (lo, hi) = flat(t.min(t + into * PILASTER), t.max(t + into * PILASTER));
+            out.push(Cover { axis: 2, at: a.floor, sign: 1, lo, hi });
+        }
+    }
+    out
+}
+
+/// A brace's arm (`autolevel::dress`): from a wall end, a pilaster up the wall mitred into the
+/// beam along the ceiling (and down the far wall's pilaster if both ends are walls), as one sweep.
+/// The beam's sides are `side`, its underside `lamp` (its strip from the wall in, whole repeats),
+/// the pilasters `pilaster`.
+fn arm(a: &Arm, side: Surface, lamp: Surface, pilaster: Surface) -> Vec<Poly> {
+    let (k, o) = (a.axis, 1 - a.axis);
+    let pt = |t: i32, z: i32| -> P3 {
+        let mut p = [0.0; 3];
+        (p[k], p[o], p[2]) = (t as f64, a.at as f64, z as f64);
+        p
+    };
+    // the path runs from the end the strip starts at
+    let (start, end, walls, dir) = if a.from_high() { (a.t.1, a.t.0, (a.walls.1, a.walls.0), -1.0) } else { (a.t.0, a.t.1, a.walls, 1.0) };
+    let each = (a.t.1 - a.t.0) as f64 / a.repeats() as f64;
+    let lamp = Surface { scale: (each, BEAM_W as f64), ..lamp };
+    let h = (BEAM_W / 2) as f64;
+    let box_of = |deep: i32| vec![(-h, 0.0), (-h, deep as f64), (h, deep as f64), (h, 0.0)];
+    let up = |e: Surface| Some(Edge { surface: e, along_v: true });
+    let along = |e: Surface| Some(Edge { surface: e, along_v: false });
+    let across = unit_along(o, 1.0);
+    let post = |to: P3, into: f64| Leg {
+        to,
+        side: across,
+        depth: unit_along(k, into),
+        profile: box_of(PILASTER),
+        edges: vec![up(pilaster), up(pilaster), up(pilaster)],
+        along: None,
+    };
+    let mut legs = Vec::new();
+    if walls.0 {
+        legs.push(post(pt(start, a.top), dir));
+    }
+    legs.push(Leg {
+        to: pt(end, a.top),
+        side: across,
+        depth: [0.0, 0.0, -1.0],
+        profile: box_of(BEAM_D),
+        edges: vec![along(side), along(lamp), along(side)],
+        along: Some(0.0),
+    });
+    if walls.1 {
+        legs.push(post(pt(end, a.floor), -dir));
+    }
+    let from = if walls.0 { pt(start, a.floor) } else { pt(start, a.top) };
+    sweep::sweep(&Sweep { from, legs, closed: false, zone: &a.room })
+}
+
+/// Where two braces cross: the square of underside under both, a plain tile of the strip.
+fn crossing(c: &Crossing, lamp: Surface) -> Poly {
+    let (h, z) = ((BEAM_W / 2) as f64, (c.top - BEAM_D) as f64);
+    let (x, y) = (c.x as f64, c.y as f64);
+    let corners = [[x - h, y - h, z], [x + h, y - h, z], [x + h, y + h, z], [x - h, y + h, z]];
+    let uvs = [(0.0, 0.0), (LIGHT.0 / 2.0, 0.0), (LIGHT.0 / 2.0, 1.0), (0.0, 1.0)];
+    csg::oriented(&corners, [0.0, 0.0, -1.0], lamp, &c.room, Some(&uvs))
 }
 
 /// What the style knows of a room.
@@ -445,6 +530,18 @@ pub fn polys(lv: &Level, kit: &Kit) -> Result<(Vec<Poly>, Vec<Lit>), String> {
         clear_frame(&mut polys, d);
         polys.extend(frame(d, trim, [floor(&d.a)?, floor(&d.b)?]));
     }
+    // the ceiling braces: each arm's faces in, and what they cover of the carver's out
+    let (arms, crossings) = dress::arms(&lv.braces);
+    let (side, lamp, pilaster) = (kit.surface("plain", None, None)?, kit.surface("lamp", None, None)?, kit.surface("upper", None, None)?);
+    for a in &arms {
+        sweep::clear(&mut polys, &arm_covers(a));
+        polys.extend(arm(a, side, lamp, pilaster));
+    }
+    for c in &crossings {
+        let h = BEAM_W / 2;
+        sweep::clear(&mut polys, &[Cover { axis: 2, at: c.top, sign: -1, lo: [c.x - h, c.y - h], hi: [c.x + h, c.y + h] }]);
+        polys.push(crossing(c, lamp));
+    }
     csg::fix_t_junctions(&mut polys);
     // the railings down the flights' open sides (the landings' flat ones are the plan's own)
     let height = cx::RAIL_HEIGHT as f64;
@@ -487,6 +584,40 @@ mod tests {
         let fwd: Vec<V3> = (0..v.len()).map(|i| v[(k + i) % v.len()]).collect();
         let back: Vec<V3> = (0..v.len()).map(|i| v[(k + v.len() - i) % v.len()]).collect();
         fwd.min(back)
+    }
+
+    #[test]
+    fn braces_are_swept_and_nothing_of_the_carvers_is_left_behind_them() {
+        let lv = (1..=10).map(|seed| generate(seed, &Options { style: "felicity", ..Options::default() }).unwrap()).find(|lv| !lv.braces.is_empty()).unwrap();
+        let (polys, _) = polys(&lv, &KIT).unwrap();
+        let (arms, crossings) = dress::arms(&lv.braces);
+        let lamps = polys.iter().filter(|p| p.surface.material == "lamp").count();
+        assert_eq!(lamps, arms.len() + crossings.len());
+        for a in &arms {
+            let (k, o, h) = (a.axis, 1 - a.axis, BEAM_W / 2);
+            // the underside: the arm's length, 24 down, its strip whole repeats long
+            let under = polys
+                .iter()
+                .find(|p| {
+                    p.surface.material == "lamp"
+                        && p.zone == a.room
+                        && p.verts.iter().all(|v| v[o] >= a.at - h && v[o] <= a.at + h && v[k] >= a.t.0 && v[k] <= a.t.1)
+                })
+                .unwrap_or_else(|| panic!("{a:?}: no underside"));
+            assert!(under.verts.iter().all(|v| v[2] == a.top - BEAM_D));
+            for p in polys.iter().filter(|p| p.zone == a.room && p.surface.material != "lamp") {
+                let mean = |c: usize| p.verts.iter().map(|v| v[c] as f64).sum::<f64>() / p.verts.len() as f64;
+                let over = (a.at - h) as f64 <= mean(o) && mean(o) <= (a.at + h) as f64 && (a.t.0 as f64) < mean(k) && mean(k) < a.t.1 as f64;
+                // no ceiling over the beam
+                assert!(!(over && p.normal[2] < -0.99 && p.verts.iter().all(|v| v[2] == a.top)), "{a:?}: a ceiling face over it");
+                // no wall behind a pilaster
+                for (wall, t) in [(a.walls.0, a.t.0), (a.walls.1, a.t.1)] {
+                    let behind =
+                        wall && p.normal[k].abs() > 0.99 && p.verts.iter().all(|v| v[k] == t) && (a.at - h) as f64 <= mean(o) && mean(o) <= (a.at + h) as f64;
+                    assert!(!behind, "{a:?}: a wall face behind its pilaster");
+                }
+            }
+        }
     }
 
     #[test]
