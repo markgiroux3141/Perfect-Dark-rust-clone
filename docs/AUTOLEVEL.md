@@ -1272,6 +1272,15 @@ floor to 254 at the top, and a 254 pool on the floor under the cross; the ceilin
 - Gameplay: the pilasters are 13 deep; every walk passes on seeds 1-40, and Felicity 15 shows no
   stalls in a minute of six simulants. On seed 15 only upper rooms are braced (upper1, upper6,
   upper7); its ground rooms are too small, or hallside or industrial.
+- **Corridor ribs** (2026-11-17, the user: "try corridor ribs and see how it looks"; **not
+  Felicity's**: its hallway has none; the rhythm is CI Training's corridors', the piece Felicity's
+  brace): every one-storey `office` or `marble` corridor (ground corridors, galleries, landings)
+  gets beams across its short span only, `RIB` (318, three cells) apart along it
+  (`round(length / 318) - 1`), each where its pilasters clear the corridor's doorways as a room's
+  do. No draw (the rooms' stream is untouched: the same 159 rooms are braced). Seeds 1-40: 768 ribs
+  in 235 corridors. Felicity 15: corridor3 (marble, ground) has 4, the galleries 3 each, landing1
+  2; a minute of six simulants stalls 4 times, all at one door held part open from both sides
+  (PD's doors, as before), none by a pilaster.
 
 **Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
 corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
@@ -1320,7 +1329,7 @@ a few true drops of 577 from its room 14 into 16). It is PD's movement on stairs
 (Felicity's risers are vertical floor tiles flagged `GEOFLAG_STEP`; ours are wall tiles. Not
 tried: whether flagging ours so changes anything; PD's own drops show it doesn't stop these.)
 
-**Not yet:** windows, corridor ribs, the floor-level pieces (pipes, struts, deep frames), washroom fittings, raised doorways; no outdoor part; the editor can't make or
+**Not yet:** windows, the floor-level pieces (pipes, struts, deep frames), washroom fittings, raised doorways; no outdoor part; the editor can't make or
 edit a Felicity level (a Felicity recipe takes no edits). Nobody has played the layouts of the
 handoff brief's item 1 (upper rooms onto walkways, walkways in tall plain rooms, the block's
 landing, building round the hall).

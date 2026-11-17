@@ -32,6 +32,9 @@ pub const LIGHT: (f64, f64) = (0.5, 0.75);
 pub const EVERY: f64 = 424.0;
 /// The least span (inside the walls) both ways for a room to be braced: 5 cells.
 pub const LEAST: i32 = 5 * 106 - WALL;
+/// How far apart a corridor's ribs are (3 cells): not Felicity's (its hallway has none), CI
+/// Training's corridors' rhythm, in Felicity's brace.
+pub const RIB: f64 = 318.0;
 /// The share of the rooms that could be braced that are.
 pub const BRACED: f64 = 0.7;
 /// How far a pilaster keeps off a doorway's opening in its wall (the frame's 13 and more).
@@ -138,22 +141,28 @@ fn clear(c: i32, lo: i32, hi: i32, openings: &[(i32, i32)]) -> bool {
 }
 
 /// The braces of a Felicity level: in the rooms of `plan` that may have them (`BRACED` of them,
-/// drawn in the plan's order), beams both ways, each where it clears its walls' doorways.
+/// drawn in the plan's order), beams both ways, and in every one-storey office or marble corridor
+/// ribs across it every `RIB`, each where it clears its walls' doorways.
 pub fn braces(seed: u64, plan: &Plan, doorways: &[Doorway]) -> Vec<Brace> {
     let mut rng = PyRandom::named(&format!("{seed}/felicity/dress/braces"));
     let mut out = Vec::new();
     for r in &plan.rooms {
         let Some(&(lo, hi)) = r.boxes.first() else { continue };
         let (lo, hi) = ([lo.0, lo.1, lo.2], [hi.0, hi.1, hi.2]);
-        let may = r.kind == "room" && matches!(r.scheme, "office" | "marble") && hi[2] - lo[2] == ROOM_H && (0..2).all(|k| hi[k] - lo[k] >= LEAST);
-        if !may || rng.random() >= BRACED {
+        let blue = matches!(r.scheme, "office" | "marble") && hi[2] - lo[2] == ROOM_H;
+        // a corridor's ribs: across its short span only, every `RIB` along it, none drawn
+        let ribbed = r.kind == "corridor" && blue;
+        let may = r.kind == "room" && blue && (0..2).all(|k| hi[k] - lo[k] >= LEAST);
+        if !ribbed && (!may || rng.random() >= BRACED) {
             continue;
         }
-        for k in 0..2 {
+        let long = if hi[0] - lo[0] >= hi[1] - lo[1] { 0 } else { 1 };
+        for k in (0..2).filter(|&k| !ribbed || k == long) {
             // beams placed along `k`, each running along the other axis, wall to wall
             let run = 1 - k;
             let span = hi[k] - lo[k];
-            let n = (((span as f64 / EVERY).round() as i32) - 1).max(1);
+            let every = if ribbed { RIB } else { EVERY };
+            let n = (((span as f64 / every).round() as i32) - 1).max(1);
             // the openings in the two walls the beams meet
             let openings: Vec<(i32, i32)> = doorways
                 .iter()
@@ -203,17 +212,27 @@ mod tests {
     #[test]
     fn braced_rooms_keep_their_pilasters_clear_of_every_doorway() {
         use crate::level::{generate, Options};
-        let (mut braced, mut could, mut beams) = (0, 0, 0);
+        let (mut braced, mut could, mut beams, mut corridors, mut ribs) = (0, 0, 0, 0, 0);
         for seed in 1..=40 {
             let lv = generate(seed, &Options { style: "felicity", ..Options::default() }).unwrap();
             for r in &lv.plan.rooms {
                 let (lo, hi) = r.boxes[0];
-                let may = r.kind == "room" && matches!(r.scheme, "office" | "marble") && hi.2 - lo.2 == ROOM_H && hi.0 - lo.0 >= LEAST && hi.1 - lo.1 >= LEAST;
+                let blue = matches!(r.scheme, "office" | "marble") && hi.2 - lo.2 == ROOM_H;
+                let may = r.kind == "room" && blue && hi.0 - lo.0 >= LEAST && hi.1 - lo.1 >= LEAST;
+                let ribbed = r.kind == "corridor" && blue;
                 could += may as usize;
                 let mine: Vec<&Brace> = lv.braces.iter().filter(|b| b.room == r.key).collect();
-                assert!(may || mine.is_empty(), "seed {seed}: {} braced", r.key);
-                braced += !mine.is_empty() as usize;
-                beams += mine.len();
+                assert!(may || ribbed || mine.is_empty(), "seed {seed}: {} braced", r.key);
+                if ribbed {
+                    corridors += 1;
+                    ribs += mine.len();
+                    // across the corridor only
+                    let long = if hi.0 - lo.0 >= hi.1 - lo.1 { 0 } else { 1 };
+                    assert!(mine.iter().all(|b| b.axis == 1 - long), "seed {seed}: {} ribbed along", r.key);
+                } else {
+                    braced += !mine.is_empty() as usize;
+                    beams += mine.len();
+                }
                 for b in mine {
                     let across = 1 - b.axis;
                     for d in lv.doorways.iter().filter(|d| (d.a == r.key || d.b == r.key) && d.axis == b.axis) {
@@ -229,7 +248,7 @@ mod tests {
             }
             assert_eq!(lamps(&arms(&lv.braces).0), lv.lamps);
         }
-        println!("seeds 1-40: {braced} of {could} rooms that could be are braced, {beams} beams");
+        println!("seeds 1-40: {braced} of {could} rooms that could be are braced, {beams} beams; {ribs} ribs in {corridors} corridors");
         assert!(braced * 2 > could);
     }
 
