@@ -1092,8 +1092,12 @@ under Complex's catwalks). The walk `walkway_<room>` starts at the flight's foot
 both ends of the first walkway and, with a second, climbs on and walks it end to end. Seeds 1-40:
 60 of 74 tall rooms had one, 11 of them two, while the hall stood on pillars (a short hall's pillar
 rows left no 132-wide gap for the flight); with the screens (below) all 68 do, 10 of them two. `Balcony::upper` names the walls behind the walkways,
-where a doorway on an upper storey opens onto one (a landing's, below). Tall plain rooms (15% of
-the big rooms off the circulation) get none: their door-to-door walks are straight lines.
+where a doorway on an upper storey opens onto one (a landing's, below). **Tall plain rooms** (15% of
+the big rooms off the circulation, two storeys) get one too (2026-11-17, the brief's item 1): their
+door-to-door walks are straight lines between points `INSIDE` in from each doorway, so the flight's
+footprint keeps `LINE` (60) off every such line as well as off the doorways' mouths. Seeds 1-40: 7
+of 14 tall plain rooms (the rest are under 8 cells deep, or the lines leave no place); test
+`tall_plain_rooms_have_walkways_clear_of_their_walks`.
 `walkway` is the fitting for one room (`balconies` runs it with the frames shuffled by its stream;
 `onto_walkways` with none drawn, to ask whether one fits).
 

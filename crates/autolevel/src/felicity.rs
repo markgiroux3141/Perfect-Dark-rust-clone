@@ -1269,14 +1269,37 @@ fn balconies(brng: &mut PyRandom, lots: &[Lot], gaps: &[Gap], far: char, hall: &
     Ok(out)
 }
 
-/// How many walkways a tall room takes: one a storey up in the hall and in an open room two
-/// storeys tall, two in an open room three storeys tall; none elsewhere.
+/// How many walkways a tall room takes: one a storey up in the hall, in an open room two
+/// storeys tall and in a tall plain room, two in an open room three storeys tall; none elsewhere.
 fn levels(l: &Lot) -> i32 {
     match l.kind {
         Kind::Hall => 1,
-        Kind::Open => (l.top - l.floor - ROOM_H) / STOREY,
+        Kind::Open | Kind::Room => (l.top - l.floor - ROOM_H) / STOREY,
         _ => 0,
     }
+}
+
+/// How far a flight on a plain room's floor keeps from the straight line between two of its
+/// doorways (its walks go door to door in a line): a chr's width and some.
+const LINE: f64 = 60.0;
+
+/// Whether the segment `p`-`q` passes within `pad` of the rectangle `r` (x0, y0, x1, y1).
+fn crosses(p: (f64, f64), q: (f64, f64), r: (i32, i32, i32, i32), pad: f64) -> bool {
+    let (x0, y0, x1, y1) = (r.0 as f64 - pad, r.1 as f64 - pad, r.2 as f64 + pad, r.3 as f64 + pad);
+    // the segment clipped to the rectangle, one axis at a time (Liang-Barsky)
+    let (mut t0, mut t1) = (0.0f64, 1.0f64);
+    for (from, d, lo, hi) in [(p.0, q.0 - p.0, x0, x1), (p.1, q.1 - p.1, y0, y1)] {
+        if d == 0.0 {
+            if from < lo || from > hi {
+                return false;
+            }
+            continue;
+        }
+        let (a, b) = ((lo - from) / d, (hi - from) / d);
+        t0 = t0.max(a.min(b));
+        t1 = t1.min(a.max(b));
+    }
+    t0 <= t1
 }
 
 /// The walkways of tall room `n`: the first of `frames` whose flight, against the wall at the
@@ -1323,9 +1346,28 @@ fn walkway(lots: &[Lot], gaps: &[Gap], n: usize, far: char, hall: &Hall, frames:
         })
         .collect();
     mouths.extend(keep);
+    // a plain room's walks go door to door in straight lines (from `INSIDE` in from each doorway's
+    // middle), which its flight keeps off
+    let ends: Vec<(f64, f64)> = gaps
+        .iter()
+        .filter(|g| l.kind == Kind::Room && (g.a == n || g.b == n) && g.z == l.floor)
+        .map(|g| {
+            let (lo, hi) = gap_box(g);
+            let into = if g.a == n { -INSIDE } else { INSIDE };
+            let (mid, across) = if g.axis == 0 { ((lo.0 + hi.0) / 2 + into, (lo.1 + hi.1) / 2) } else { ((lo.1 + hi.1) / 2 + into, (lo.0 + hi.0) / 2) };
+            if g.axis == 0 {
+                (mid as f64, across as f64)
+            } else {
+                (across as f64, mid as f64)
+            }
+        })
+        .collect();
+    let lines: Vec<((f64, f64), (f64, f64))> =
+        (0..ends.len()).flat_map(|i| (i + 1..ends.len()).map(move |j| (i, j))).map(|(i, j)| (ends[i], ends[j])).collect();
     let fits = |frame: Frame, at: i32| {
         balcony::fit(((x0, y0), (x1, y1)), l.floor, STOREY, levels, frame, at, &standing).ok().filter(|b| {
             !mouths.iter().any(|m| m.0 < b.ground.2 && b.ground.0 < m.2 && m.1 < b.ground.3 && b.ground.1 < m.3)
+                && !lines.iter().any(|&(p, q)| crosses(p, q, b.ground, LINE))
                 && ups.iter().all(|&(wall, lo, hi)| b.upper[0].side == wall && b.upper[0].holds(lo, hi))
         })
     };
@@ -2160,6 +2202,29 @@ mod tests {
         println!("{with} of {tall} tall rooms have walkways, {two} of them two");
         // most tall rooms take one (a short hall's pillars leave no room for the flight)
         assert!(with * 4 >= tall * 3 && two >= 3, "{with} of {tall}, {two} with two");
+    }
+
+    #[test]
+    fn tall_plain_rooms_have_walkways_clear_of_their_walks() {
+        let (mut tall, mut with) = (0, 0);
+        for seed in 1..=40 {
+            let lv = generate(seed).unwrap();
+            for r in lv.plan.rooms.iter().filter(|r| r.kind == "room" && r.hi().2 - r.floor >= ROOM_H + STOREY) {
+                tall += 1;
+                let decks: Vec<&Solid> = r.solids.iter().filter(|s| s.2 == "walkway").collect();
+                if decks.is_empty() {
+                    continue;
+                }
+                with += 1;
+                // one walkway a storey up, twelve steps to it, and a walk up and along it (the
+                // door-to-door walks, straight lines, are walked with the rest)
+                assert!(decks.iter().all(|d| d.1 .2 == r.floor + STOREY), "seed {seed} {}", r.key);
+                assert_eq!(r.solids.iter().filter(|s| s.2 == "step").count() as i32, RISERS, "seed {seed} {}", r.key);
+                assert!(lv.walks.iter().any(|(name, _)| *name == format!("walkway_{}", r.key)), "seed {seed} {}", r.key);
+            }
+        }
+        println!("{with} of {tall} tall plain rooms have a walkway");
+        assert!(tall > 0 && with * 2 >= tall, "{with} of {tall}");
     }
 
     #[test]
