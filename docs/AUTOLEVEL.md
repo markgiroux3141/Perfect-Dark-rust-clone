@@ -1095,15 +1095,15 @@ rows left no 132-wide gap for the flight); with the screens (below) all 68 do, 1
 where a doorway on an upper storey opens onto one (a landing's, below). **Tall plain rooms** (15% of
 the big rooms off the circulation, two storeys) get one too (2026-11-17, the brief's item 1): their
 door-to-door walks are straight lines between points `INSIDE` in from each doorway, so the flight's
-footprint keeps `LINE` (60) off every such line as well as off the doorways' mouths. Seeds 1-40: 7
-of 14 tall plain rooms (the rest are under 8 cells deep, or the lines leave no place); test
+footprint keeps `LINE` (60) off every such line as well as off the doorways' mouths. Seeds 1-40: 6
+of 16 tall plain rooms (the rest are under 8 cells deep, or the lines leave no place); test
 `tall_plain_rooms_have_walkways_clear_of_their_walks`.
 `walkway` is the fitting for one room (`balconies` runs it with the frames shuffled by its stream;
 `onto_walkways` with none drawn, to ask whether one fits).
 
 **Upstairs areas** (2026-11-17, the brief's second item: "more than one upstairs area, with
-stairs into the tall rooms ... each reached two ways"). Sprawling layouts only (the block keeps its
-one gallery):
+stairs into the tall rooms ... each reached two ways"). Second galleries in sprawling layouts only;
+landings in both (the block's since the next brief's item 1, below):
 
 - **A second gallery** (0.6, drawn once the first is placed, and only with lots to spare): over
   another long corridor, laid as the first is (its own two stair rooms near its ends, rooms along
@@ -1122,11 +1122,21 @@ one gallery):
   must be 8 cells deep away from that wall, and `balconies` then takes only the ways round that put
   the walkway along it and over the doorway; a room that gets none fails the layout, which is drawn
   again (`TRIES`).
+- **The block's landing** (`BLOCK_LANDING` 0.9; the hall is its only tall room): `landing` (the
+  sprawl's code, as a function taking the family's "may build here" rule and a reach along the
+  wall) on one of the hall's side walls, everything beside the hall (x from its near wall), the
+  landing three cells short of the stretch clear of the platform. Its stair room, off the landing's
+  far end and flush with the hall's wall (`landing` tries that place as well as the one drawn), is
+  mostly a U: foot and top at one end, so the foot opens into the hall right by the landing and
+  the room runs on beside the platform with no doorway there. `stair_ways` never puts a foot
+  doorway into the hall where its mouth meets the platform or its steps (`fixtures`, the hall's
+  far wall known: east in the draft, `far` after the turn). The hall's side rooms keep off the
+  stair room. Seeds 1-40: 7 of the 14 block layouts have one.
 - **The galleries' rooms are hung last** of the upper storey, after the landings and the rooms
   along tall rooms (below): the lots (`MOST`) used to run out before a landing could take its rooms.
 
-Seeds 1-40: 8 second galleries and 23 landings (8 before the stair foot could open into the tall
-room); every upper corridor has two ways or more (test `every_upstairs_area_is_reached_two_ways`),
+Seeds 1-40: 8 second galleries and 28 landings (8 before the stair foot could open into the tall
+room, 7 of them the block's); every upper corridor has two ways or more (test `every_upstairs_area_is_reached_two_ways`),
 and every walk passes.
 
 **Upper rooms onto walkways** (2026-11-17, the handoff brief's item 1; the user chose "more upper
@@ -1139,8 +1149,8 @@ every doorway onto it: `walkway` (the fitting `balconies` uses, tried every way 
 drawn), so the layout never fails for one. To make such rooms: a room off an upper corridor that
 meets something is shortened to fit (3 cells at least) instead of dropped, and each tall room
 (`ALONG` 0.8) takes a room planned along its wall a storey up that shares three cells with an upper
-corridor (a landing's free end, mostly). Seeds 1-40: 14 upper rooms open onto a walkway, 3 of them
-onto the hall's (2 before); test `upper_rooms_beside_a_tall_room_open_onto_its_walkway`. Layouts
+corridor (a landing's free end, mostly). Seeds 1-40: 8 upper rooms open onto a walkway, 2 of them
+onto the hall's (2 before; 14 before the block's landings moved the draws); test `upper_rooms_beside_a_tall_room_open_onto_its_walkway`. Layouts
 drawn again on seeds 1-60: 94 (79 before), most for too many rooms with one way in.
 
 **Arches and the hall's bays** (2026-11-17, the brief's third item; the user chose each option:
@@ -1223,8 +1233,7 @@ tried: whether flagging ours so changes anything; PD's own drops show it doesn't
 
 **Not yet:** windows, light strips; no outdoor part; the editor can't make or
 edit a Felicity level (a Felicity recipe takes no edits). Of the layout: the hall always closes
-one end, the block family's upper storey is one gallery, a walkway's only doorways are a
-landing's, and nobody has played one.
+one end, and nobody has played one.
 
 ## Risks
 
