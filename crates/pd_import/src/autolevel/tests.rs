@@ -308,3 +308,35 @@ fn what_a_player_on_any_route_can_see_is_drawn() {
     assert!(most < 40, "{most} rooms in one view");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// A stage's BG as triangles, for measuring an arena's materials (which
+/// texture goes on floors, walls and ceilings, how high, at what scale):
+/// `PD_PROBE_STAGE=mp11 PD_PROBE_OUT=tris.json cargo test -p pd_import
+/// --release probe_stage_triangles -- --ignored`. Each row: room, texture
+/// (or -1), its size, then the three corners as x, y, z, u, v.
+#[test]
+#[ignore]
+fn probe_stage_triangles() {
+    use pd_core::model::ModelDef;
+    let code = std::env::var("PD_PROBE_STAGE").unwrap_or_else(|_| "mp11".into());
+    let out = std::env::var("PD_PROBE_OUT").unwrap_or_else(|_| format!("{code}_tris.json"));
+    let dir = assets().join("stages").join(&code);
+    let bg: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("bg.json")).unwrap()).unwrap();
+    let def = ModelDef::load_file(&pd_core::assets::AssetDir::new(&assets()), &dir.join("bg.json"), &dir.join("bg.bin")).unwrap();
+    let mut rows = Vec::new();
+    for b in &def.batches {
+        let room = bg["nodes"][b.node]["room"].as_i64().unwrap_or(0);
+        let tex = def.materials[b.material].texture.as_ref();
+        let id = tex.map_or(-1, |t| t.id as i64);
+        let size = tex.and_then(|t| bg["textures"][t.id.to_string()].as_object()).map_or([0, 0], |r| [r["w"].as_i64().unwrap_or(0), r["h"].as_i64().unwrap_or(0)]);
+        for t in b.idx.chunks(3) {
+            let v: Vec<[f32; 5]> = t.iter().map(|&i| {
+                let v = &b.verts[i as usize];
+                [v.pos.x, v.pos.y, v.pos.z, v.uv[0], v.uv[1]]
+            }).collect();
+            rows.push(serde_json::json!([room, id, size, v]));
+        }
+    }
+    std::fs::write(&out, serde_json::to_string(&rows).unwrap()).unwrap();
+    println!("{} triangles of {code} to {out}", rows.len());
+}

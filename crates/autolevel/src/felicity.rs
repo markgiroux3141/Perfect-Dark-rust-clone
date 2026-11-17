@@ -39,6 +39,7 @@ use crate::pyrand::PyRandom;
 use crate::report::Report;
 use crate::route::Grid;
 use crate::space::Space;
+use crate::stairs::{self as stair, Frame, Shape, Stairs};
 
 /// The grid: a door's width.
 pub const CELL: i32 = 106;
@@ -72,10 +73,8 @@ enum Kind {
     Spine,
     Room,
     Hall,
-    /// A stair room; `east`: its flight rises towards +x (else towards -x).
-    Stair {
-        east: bool,
-    },
+    /// A stair room (its stairs: `stairs::fit`).
+    Stair,
 }
 
 /// A room on the grid: cells [x0, x1) x [y0, y1), its floor and its ceiling (units).
@@ -124,6 +123,18 @@ struct Gap {
     k: i32,
     wide: i32,
     z: i32,
+}
+
+/// A room's type (its `scheme`: `autolevel_build::felicity::TYPES`) for a draw in [0, 1): offices
+/// mostly, then the marble rooms, the industrial ones and the washrooms. (Placeholder shares: a
+/// type should follow where a room is and how big.)
+fn room_type(roll: f64) -> &'static str {
+    match roll {
+        r if r < 0.55 => "office",
+        r if r < 0.70 => "marble",
+        r if r < 0.85 => "industrial",
+        _ => "washroom",
+    }
 }
 
 /// Widths in [lo, hi] cells summing to `len`, at random (`len` at least `lo`).
@@ -184,7 +195,7 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
     // ---- the building and its hallway
     let (bw, bd) = (rng.randint(26, 32) as i32, rng.randint(19, 24) as i32);
     let sy = rng.randint(6, (bd - SPINE - 6) as i64) as i32;
-    let spine = add(&mut lots, "hallway".into(), (0, sy, bw, sy + SPINE), 0, ROOM_H, Kind::Spine, "marble");
+    let spine = add(&mut lots, "hallway".into(), (0, sy, bw, sy + SPINE), 0, ROOM_H, Kind::Spine, "office");
     // the band upstairs: north of the hallway, or south
     let up_north = rng.random() < 0.5;
     let mut rooms = 0;
@@ -216,8 +227,8 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
         let n = widths.len();
         for (i, w) in widths.into_iter().enumerate() {
             let stair = up && (i == 0 || i == n - 1);
-            let scheme = if rng.random() < 0.25 { "marble" } else { "default" };
-            let (key, top, kind) = if stair { (name("stairs"), STOREY + ROOM_H, Kind::Stair { east: i == 0 }) } else { (name("room"), ROOM_H, Kind::Room) };
+            let scheme = room_type(rng.random());
+            let (key, top, kind) = if stair { (name("stairs"), STOREY + ROOM_H, Kind::Stair) } else { (name("room"), ROOM_H, Kind::Room) };
             let at = add(&mut lots, key, (x, f0, x + w, f1), 0, top, kind, scheme);
             if stair {
                 stairs.push(at);
@@ -230,7 +241,7 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
         if b1 > b0 {
             let mut x = 0;
             for w in cuts(&mut rng, bw, 3, 8) {
-                let scheme = if rng.random() < 0.25 { "marble" } else { "default" };
+                let scheme = room_type(rng.random());
                 brow.push(add(&mut lots, name("room"), (x, b0, x + w, b1), 0, ROOM_H, Kind::Room, scheme));
                 x += w;
             }
@@ -240,7 +251,7 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
             // the upper rooms over the front row, between the stairs
             let mut x = STAIR;
             for w in cuts(&mut rng, bw - 2 * STAIR, 3, 8) {
-                let scheme = if rng.random() < 0.25 { "marble" } else { "default" };
+                let scheme = room_type(rng.random());
                 upstairs.push(add(&mut lots, name("upper"), (x, f0, x + w, f1), STOREY, STOREY + ROOM_H, Kind::Room, scheme));
                 x += w;
             }
@@ -250,7 +261,7 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
     // ---- the hall, off the hallway's east end
     let (hw, hd) = (rng.randint(14, 18) as i32, rng.randint(14, 18) as i32);
     let hy0 = (sy + SPINE / 2 - hd / 2 + rng.randint(-2, 2) as i32).clamp(sy + SPINE + 1 - hd, sy - 1);
-    let hall = add(&mut lots, "hall".into(), (bw, hy0, bw + hw, hy0 + hd), 0, HALL_H, Kind::Hall, "marble");
+    let hall = add(&mut lots, "hall".into(), (bw, hy0, bw + hw, hy0 + hd), 0, HALL_H, Kind::Hall, "hall");
 
     // ---- doorways
     let mut gaps: Vec<Gap> = Vec::new();
@@ -272,14 +283,43 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
         Some(Gap { a: lo, b: hi, axis, line, k, wide, z })
     };
     let pick_wide = |rng: &mut PyRandom| if rng.random() < 0.25 { 2 } else { 1 };
+    // each stair room's stairs: the first shape and frame (in a seeded order) that leave its
+    // foot a doorway on the hallway's wall and its top one on the upper room's
+    let mut flights: Vec<(usize, Stairs, i32, i32)> = Vec::new(); // (lot, its stairs, the foot's cell, the top's)
+    for &s in &stairs {
+        let l = &lots[s];
+        let up = if l.x0 == 0 { upstairs[0] } else { upstairs[upstairs.len() - 1] };
+        let hall_side = if lots[spine].y1 == l.y0 { 'S' } else { 'N' };
+        let up_side = if lots[up].x0 == l.x1 { 'E' } else { 'W' };
+        let ((ax0, ay0, _), (ax1, ay1, _)) = l.air();
+        let mut shapes = Shape::ALL;
+        rng.shuffle(&mut shapes);
+        let mut frames = Frame::ALL;
+        rng.shuffle(&mut frames);
+        let cells = |k: i32| (k * CELL, (k + 1) * CELL);
+        let mut found = None;
+        'shapes: for shape in shapes {
+            for frame in frames {
+                let Ok(st) = stair::fit(shape, (ax0, ay0), (ax1, ay1), l.floor, STOREY, frame) else { continue };
+                let opens = |spans: &[stair::Span], side: char, k: i32| spans.iter().any(|p| p.side == side && p.holds(cells(k).0, cells(k).1));
+                let foot: Vec<i32> = (l.x0 + 1..=l.x1 - 2).filter(|&k| opens(&st.foot, hall_side, k)).collect();
+                let (s0, s1) = (l.y0.max(lots[up].y0), l.y1.min(lots[up].y1));
+                let top: Vec<i32> = (s0 + 1..=s1 - 2).filter(|&k| opens(&st.top, up_side, k)).collect();
+                if !foot.is_empty() && !top.is_empty() {
+                    let (f, t) = (*rng.choice(&foot), *rng.choice(&top));
+                    found = Some((st, f, t));
+                    break 'shapes;
+                }
+            }
+        }
+        let (st, f, t) = found.ok_or_else(|| format!("felicity seed {seed}: no stairs fit {}", l.key))?;
+        flights.push((s, st, f, t));
+    }
+    let flight_of = |s: usize| flights.iter().find(|f| f.0 == s);
     // every front room off the hallway (a stair room at its foot)
     for row in &front {
         for &r in row {
-            let k = match lots[r].kind {
-                Kind::Stair { east: true } => Some(lots[r].x0 + 1),
-                Kind::Stair { east: false } => Some(lots[r].x1 - 2),
-                _ => None,
-            };
+            let k = flight_of(r).map(|f| f.2);
             let wide = if k.is_some() { 1 } else { pick_wide(&mut rng) };
             gaps.extend(gap(&mut rng, &lots, spine, r, wide, 0, k));
         }
@@ -289,7 +329,7 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
         for &r in brow {
             let best = row
                 .iter()
-                .filter(|&&f| !matches!(lots[f].kind, Kind::Stair { .. }))
+                .filter(|&&f| !matches!(lots[f].kind, Kind::Stair))
                 .filter_map(|&f| shared(&lots[f], &lots[r]).or_else(|| shared(&lots[r], &lots[f])).map(|(_, _, s0, s1)| (s1 - s0, f)))
                 .filter(|(n, _)| *n >= 3)
                 .max_by_key(|(n, f)| (*n, std::cmp::Reverse(*f)));
@@ -334,7 +374,7 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
     for (row, always) in front.iter().chain(&back).map(|r| (r, false)).chain(std::iter::once((&upstairs, true))) {
         for pair in row.windows(2) {
             let (i, j) = (pair[0], pair[1]);
-            if matches!(lots[i].kind, Kind::Stair { .. }) || matches!(lots[j].kind, Kind::Stair { .. }) {
+            if matches!(lots[i].kind, Kind::Stair) || matches!(lots[j].kind, Kind::Stair) {
                 continue;
             }
             if always || rng.random() < 0.3 {
@@ -349,7 +389,7 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
     // the stairs' landings onto the upper rooms
     for &s in &stairs {
         let up = if lots[s].x0 == 0 { upstairs[0] } else { upstairs[upstairs.len() - 1] };
-        gaps.extend(gap(&mut rng, &lots, s, up, 1, STOREY, None));
+        gaps.extend(gap(&mut rng, &lots, s, up, 1, STOREY, flight_of(s).map(|f| f.3)));
     }
     // the hall: off the hallway's end (double), and from a room at the building's east end
     gaps.extend(gap(&mut rng, &lots, spine, hall, 2, 0, Some(sy + 1)));
@@ -391,6 +431,7 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
 
     // ---- the plan: each lot's air, its half of each doorway, the steps
     let mut plan = Plan::new(&format!("Felicity {seed}"));
+    let mut ramp_rails = Vec::new();
     for (n, l) in lots.iter().enumerate() {
         let mut boxes = vec![l.air()];
         for (g, d) in gaps.iter().zip(&doorways) {
@@ -415,24 +456,19 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
         room.kind = match l.kind {
             Kind::Spine => "corridor",
             Kind::Hall => "hub",
+            Kind::Stair => "stair",
             _ => "room",
         };
         room.scheme = l.scheme;
         room.walkable = vec!["step", "landing", "platform"];
         let ((ax0, ay0, _), (ax1, ay1, _)) = l.air();
         match l.kind {
-            Kind::Stair { east } => {
-                // two cells of floor at the foot, then the flight, then the landing
-                let foot = if east { (l.x0 + 2) * CELL } else { (l.x1 - 2) * CELL };
-                let dir = if east { 1 } else { -1 };
-                for i in 0..RISERS {
-                    let top = (((i + 1) * STOREY) as f64 / RISERS as f64).round() as i32;
-                    let (p, q) = (foot + dir * i * GOING, foot + dir * (i + 1) * GOING);
-                    room.solids.push(((p.min(q), ay0, l.floor), (p.max(q), ay1, l.floor + top), "step"));
-                }
-                let edge = foot + dir * RISERS * GOING;
-                let (p, q) = if east { (edge, ax1) } else { (ax0, edge) };
-                room.solids.push(((p, ay0, l.floor), (q, ay1, l.floor + STOREY), "landing"));
+            Kind::Stair => {
+                let (_, st, _, _) = flight_of(n).expect("a stair room's stairs");
+                room.solids.extend(st.solids.iter().copied());
+                room.rails.extend(st.rails.iter().copied());
+                ramp_rails.extend(st.sloped_rails(&l.key));
+                room.note = format!("{} stairs", st.shape.name());
             }
             Kind::Hall => {
                 // the platform along the east wall, three steps up to its middle third
@@ -497,24 +533,16 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
         }
     }
     // up each flight, from the hallway's doorway to the landing's
-    for &s in &stairs {
-        let l = &lots[s];
-        let ((_, ay0, _), (_, ay1, _)) = l.air();
-        let ym = c((ay0 + ay1) / 2);
-        let east = matches!(l.kind, Kind::Stair { east: true });
-        let foot = if east { (l.x0 + 2) * CELL } else { (l.x1 - 2) * CELL };
-        let dir = if east { 1 } else { -1 };
+    for (s, st, _, _) in &flights {
+        let l = &lots[*s];
         let below = doorways.iter().find(|d| (d.a == l.key || d.b == l.key) && d.lo.2 == l.floor);
         let above = doorways.iter().find(|d| (d.a == l.key || d.b == l.key) && d.lo.2 == l.floor + STOREY);
         if let (Some(below), Some(above)) = (below, above) {
             let start = inside(below, below.a == l.key);
             let top = inside(above, above.a == l.key);
-            let pts = vec![
-                Step::at(start),
-                Step::by((c(foot - dir * 60), ym, l.floor), 1),
-                Step::by((c(foot + dir * (RISERS * GOING + 30)), ym, l.floor + STOREY), 1),
-                Step::at(top),
-            ];
+            let mut pts = vec![Step::at(start)];
+            pts.extend(st.path.iter().map(|p| Step::by((c(p.0), c(p.1), p.2), 1)));
+            pts.push(Step::at(top));
             walks.push((format!("stairs_{}", l.key), pts));
         }
     }
@@ -533,9 +561,15 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
         }
     }
     let mut views: Vec<(String, View)> = Vec::new();
-    for l in &lots {
+    for (n, l) in lots.iter().enumerate() {
         let ((x0, y0, _), (x1, y1, _)) = l.air();
-        views.push((l.key.clone(), (c(x0 + 60), c(y0 + 60), l.floor, c(x1), c(y1))));
+        // a stair room from the foot of its stairs, looking at the top landing (its corner may
+        // be inside a landing)
+        let view = match flight_of(n).map(|f| (f.1.path.first().copied(), f.1.path.last().copied())) {
+            Some((Some(foot), Some(top))) => (c(foot.0), c(foot.1), l.floor, c(top.0), c(top.1)),
+            _ => (c(x0 + 60), c(y0 + 60), l.floor, c(x1), c(y1)),
+        };
+        views.push((l.key.clone(), view));
     }
 
     // ---- what the rest of the generator reads: the rooms as spaces, a report
@@ -574,7 +608,7 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
         pools: Vec::new(),
         walks,
         views,
-        ramp_rails: Vec::new(),
+        ramp_rails,
         moods: Vec::new(),
         ceilings: Vec::new(),
         glows: Vec::new(),
@@ -633,6 +667,51 @@ mod tests {
         assert!((0.6..0.9).contains(&share(hub_doors, hub)), "{hub_doors} of {hub}");
         assert!((0.15..0.4).contains(&share(other_doors, other)), "{other_doors} of {other}");
         assert!(leaves > hub_doors + other_doors && swing > 0);
+    }
+
+    /// The level of corridors with rooms as offshoots the user asked for (`circulation::TARGETS`),
+    /// on seeds 1-60. Ignored until a planner meets it: `cargo test -p autolevel --release
+    /// felicity_meets_the_circulation_targets -- --ignored --nocapture` prints every seed's
+    /// measures and what each misses.
+    #[test]
+    #[ignore]
+    fn felicity_meets_the_circulation_targets() {
+        use crate::circulation::{of, TARGETS};
+        let mut failed = 0;
+        for seed in 1..=60 {
+            let c = of(&generate(seed).unwrap().plan);
+            let misses = c.misses(&TARGETS);
+            println!(
+                "seed {seed:2}: {}{}",
+                c.row(),
+                if misses.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "
+         MISSES: {}",
+                        misses.join("; ")
+                    )
+                }
+            );
+            failed += !misses.is_empty() as usize;
+        }
+        assert_eq!(failed, 0, "{failed} of 60 seeds miss the targets");
+    }
+
+    #[test]
+    fn stair_rooms_take_every_shape() {
+        let mut seen = std::collections::BTreeMap::new();
+        for seed in 1..=40 {
+            for r in generate(seed).unwrap().plan.rooms.iter().filter(|r| r.key.starts_with("stairs")) {
+                *seen.entry(r.note.clone()).or_insert(0) += 1;
+                if r.note.starts_with('U') || seed < 4 {
+                    println!("seed {seed}: {} {}", r.key, r.note);
+                }
+            }
+        }
+        println!("{seen:?}");
+        assert_eq!(seen.len(), 3, "{seen:?}");
     }
 
     #[test]

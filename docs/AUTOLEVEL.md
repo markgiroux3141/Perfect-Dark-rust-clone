@@ -994,9 +994,37 @@ sliding rows, speeds and close times), on the doorway's middle plane (the portal
 to the opening; a double doorway's leaves are a sibling ring, hinged at their outer edges. A
 layout's doors (the editor's) replace them. Seed 7: 14 doors, all closing their portals.
 
-**Not yet:** Felicity's hall is three bays behind arched walls (here one plain hall); no windows,
-rails, light strips or the timber-beam ceiling (01EC clamps in v: a deep room smears it); no
-outdoor part; the editor can't make or edit a Felicity level (a Felicity recipe takes no edits).
+**Room types** (2026-11-17, a room's `scheme`; `autolevel_build::felicity::TYPES`): measured from
+Felicity's own triangles (`PD_PROBE_STAGE=mp11 PD_PROBE_OUT=tris.json cargo test -p pd_import
+--release probe_stage_triangles -- --ignored`: every BG triangle with its room, texture and UVs;
+units per repeat from each triangle's UV gradient, which agrees with the procgen theme to 0.1).
+`office` (tan bands, timber-beam ceiling 01EC, its v repeat 424 so the 212 lattice never reaches
+the clamp), `marble`, `industrial` (grey 0274 / 0872, plate floor and ceiling 070F), `washroom`
+(tiles 071B / 071D, mirrored tile floor 0271), `hall` (0276 / 027D / 0288 / 0281 bands) and
+`hallside` (0273). The planner draws them at placeholder shares (`room_type`); the hall is `hall`.
+
+**Stairs** (`autolevel::stairs`): `fit(shape, air, floor, rise, frame)` lays a straight flight
+(132 wide against a wall, a gallery at the top), an L (two half flights round a corner landing)
+or a U (a switchback filling a room 240 to 400 wide) in a stair room, by one of eight frames,
+and gives the steps and landings as solids, railings on every edge that drops into the well
+(Felicity's see-through rail 0710; sloped ones down the flights go in `Level::ramp_rails`), the
+stretches of wall a doorway may open in at the foot and at the top, and the path up. The planner
+tries the shapes and frames in a seeded order and takes the first whose foot opens on the
+hallway and top on the upper room. Seeds 1-40: 44 straight, 30 L, 6 U; every walk passes.
+
+**Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
+corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
+halls and stair rooms (kinds `corridor`, `hub`, `stair`) and how the other rooms hang off them.
+`TARGETS`: 18-34 spaces, 4 or more circulation rooms that reach each other without passing
+through a room, 75% of rooms right off circulation, none deeper than 2, at most 40% with one
+way in, loops at least 0.2 a space. Felicity itself measures 65% / 4 deep, Complex 84% / 2. The
+test `felicity_meets_the_circulation_targets` (ignored) prints every seed's measures; the
+first planner misses on all 60 seeds (64% right off circulation on average, rooms up to 5
+deep). A second planner is to meet them (docs/handoff/felicity-planner.md).
+
+**Not yet:** Felicity's hall is three bays behind arched walls (here one plain hall); arches
+(the carver makes boxes only); windows, light strips; no outdoor part; the editor can't make or
+edit a Felicity level (a Felicity recipe takes no edits).
 
 ## Risks
 
