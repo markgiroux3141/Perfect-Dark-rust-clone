@@ -969,6 +969,27 @@ with a lintel, in walls 40 thick. 19 doors, all one model (`dd_dr_nonref`, 106 x
 swinging, 7 sliding; 15 of 29 doorways have one. Where: 9 of 11 doorways from the hallway or the
 hall into a room, 4 of 12 between two rooms, none into a tiny room or the corridor.
 
+**Two families** (2026-11-17, the user after playing version 2: "very uniform and compact ...
+more sprawling and random, different sized rooms, branching, not so much of a grid like an
+office building ... big open rooms and very tall rooms"). A seed picks its family once (`SPRAWL`,
+0.7) and keeps it through its redraws; seeds 1-40: 26 sprawl, 14 block.
+
+- **Sprawl** (`felicity::sprawl`): grown from the hall, piece by piece: a corridor (3 to 5
+  cells wide, 6 to 18 long) or a **big open room** (kind `Open`, a hub: 7-14 x 7-12 cells, one to
+  three storeys tall, up to 8.3 m; four pillars when 9 cells or more each way; one at least) off a
+  wall of a piece already there, at its end (a run or a bend) or its side (a branch), the newest
+  likeliest so arms reach out. The first two corridors come off the hall's own walls. Pieces
+  that end up wall to wall are joined (0.8: loops), a corridor's end opening all but a cell each
+  side (an archway up to three cells: doors only in doorways up to two). The gallery goes over
+  a long corridor with its stair rooms beside it; then rooms of every size along every wall of
+  the circulation (3-8 cells, now and then 9-13 by 7-11; 15% of the big ones two storeys tall),
+  with stretches of bare wall left, so the outline is ragged; a washroom cluster once; up to
+  three rooms behind rooms. Nothing past the hall's far wall or beside its platform. Seeds 1-40:
+  1 to 4 open rooms, 26 to 32 lots; the first draw meets every circulation target, and fails
+  outright (no room for the stairs beside the gallery) on about a third of seeds, which redraw.
+  Open rooms take doors as the hall does (0.5) and get second ways in as corridors do.
+- **Block**: version 2, below.
+
 **What the planner makes** (version 2, 2026-11-17: circulation first; version 1 cut a building
 into rooms off one hallway and off each other, and played as a maze). On a 106 grid, drawn one
 way round and then turned and mirrored by the seed (eight ways):
@@ -1063,6 +1084,12 @@ rooms right off circulation 92% on average (least 81%, seed 41), none deeper tha
 one way in 25% (most 33%, seed 22), loops 0.45 a space (least 0.32, seed 12), 7 or 8 circulation
 rooms in one piece with 8 or 10 joins between them, circulation 52% of the floor (the hall is
 most of that).
+
+**Simulant stalls** (`PD_PROBE_STAGE=<code> cargo test -p pd_import --release probe_stalls --
+--ignored --nocapture`: the import check's match, and where each 3-s stall is): seed 10's six
+stalls are all at one doorway in `upper1`, where the waypoint maker put a waypoint 10 cm from the
+wall in the doorway's mouth and chrs coming along the wall catch the jamb. Seeds 19 and 5 have 0
+and 2. The waypoint maker's (shared with every generated level): not fixed yet.
 
 **Not yet:** Felicity's hall is three bays behind arched walls (here one plain hall); arches
 (the carver makes boxes only); windows, light strips; no outdoor part; the editor can't make or

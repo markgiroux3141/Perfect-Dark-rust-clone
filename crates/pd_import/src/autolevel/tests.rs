@@ -340,3 +340,46 @@ fn probe_stage_triangles() {
     std::fs::write(&out, serde_json::to_string(&rows).unwrap()).unwrap();
     println!("{} triangles of {code} to {out}", rows.len());
 }
+
+/// Where simulants stall on an imported generated level: the importer's
+/// check match (six Normal simulants, a minute, seed 1), and for each 3-s
+/// stall (a go-to that hasn't moved, as `abtest` counts them) the chr's
+/// feet, its room (the generator's key) and the waypoint it is making for:
+/// `PD_PROBE_STAGE=felicity10 cargo test -p pd_import --release
+/// probe_stalls -- --ignored --nocapture`. The level's build folder is
+/// `out/autolevel/<code>` (its recipe names the rooms).
+#[test]
+#[ignore]
+fn probe_stalls() {
+    use pd_core::assets::AssetDir;
+    use pd_sim::chr::Act;
+    let code = std::env::var("PD_PROBE_STAGE").unwrap_or_else(|_| "felicity10".into());
+    let root = assets().join("..");
+    let a = AssetDir::new(&assets()).with_custom_dir(&root.join("custom"));
+    let stage = Arc::new(pd_sim::stage::Stage::load(&a, &code).unwrap());
+    let level = Arc::new(pd_sim::stage::TileLevel::for_stage(&stage));
+    let recipe = autolevel::recipe::load(&std::fs::read_to_string(root.join("out/autolevel").join(&code).join("recipe.json")).unwrap()).unwrap();
+    let b = built::make(&recipe, false).unwrap();
+    let key = |room: u16| b.level.plan.rooms.iter().find(|r| r.room_id == room as usize).map_or("?".to_string(), |r| r.key.clone());
+    let res = Arc::new(pd_sim::world::WorldRes::load(&a).unwrap());
+    let setup = pd_sim::harness::with_weapons(pd_sim::harness::setup(0, 6, BOTDIFF_NORMAL), &pd_sim::harness::DEFAULT_SET);
+    let setup = pd_core::mp::MatchSetup { stagenum: stage.stagenum, ..setup };
+    let mut w = pd_sim::world::World::new(setup, stage.clone(), level, res, 1).unwrap();
+    let mut still = vec![0i32; w.chrs.len()];
+    for _ in 0..60 * 60 {
+        pd_sim::harness::step_idle(&mut w);
+        let t = w.lv.lvframe60;
+        for k in 0..w.chrs.len() {
+            let c = &w.chrs[k];
+            let moved = glam::Vec2::new(c.pos.x - c.prevpos.x, c.pos.z - c.prevpos.z).length() > 0.5;
+            if w.chr_is_dead(k) || c.actiontype != Act::GoPos || moved {
+                still[k] = t;
+            } else if t - still[k] == 180 {
+                let rooms = stage.rooms.bg_find_rooms_by_pos(c.pos, 4).0;
+                let to = c.act_gopos.waypoints.get(c.act_gopos.curindex).copied();
+                let towards = to.map(|wp| stage.pads[stage.waypoints[wp].padnum].pos);
+                println!("{:5.1}s chr {k} at {:.0} in {:?}, making for waypoint {to:?} at {towards:?}", t as f32 / 60.0, c.pos, rooms.iter().map(|&r| key(r)).collect::<Vec<_>>());
+            }
+        }
+    }
+}
