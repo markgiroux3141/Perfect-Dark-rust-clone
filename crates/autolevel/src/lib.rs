@@ -28,6 +28,7 @@
 //! To come, in pipeline order: polygons from the plan (the Python's `geometry`, `csg`, `sunbeam`
 //! and `styles/complex`), the writers, the bake and a command line.
 
+pub mod balcony;
 pub mod boxes;
 pub mod build;
 pub mod candidates;

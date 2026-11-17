@@ -134,6 +134,22 @@ struct Zone {
     /// Its storeys repeat (false: a hall, one tall storey).
     storeys: bool,
     scheme: &'static str,
+    /// Its walkways (`autolevel::balcony`): a wall above one, behind it, starts its strips again
+    /// at the walkway's top, as a storey's would.
+    decks: Vec<([i32; 3], [i32; 3])>,
+}
+
+impl Zone {
+    /// The floor a wall face's strips stand on: its storey's (a hall's own floor: one tall
+    /// storey), or the top of the walkway it is behind.
+    fn base(&self, f: &Face) -> i32 {
+        let z = f.lo[2];
+        let own = if self.storeys { self.floor + (z - self.floor).div_euclid(STOREY) * STOREY } else { self.floor };
+        let o = 1 - f.axis;
+        let behind =
+            |(lo, hi): &&([i32; 3], [i32; 3])| hi[2] <= z && (lo[f.axis] == f.lo[f.axis] || hi[f.axis] == f.lo[f.axis]) && lo[o] <= f.lo[o] && f.hi[o] <= hi[o];
+        self.decks.iter().filter(behind).map(|d| d.1[2]).max().map_or(own, |top| top.max(own))
+    }
 }
 
 /// A room type's floor and ceiling roles (an unknown type is an office).
@@ -144,8 +160,15 @@ fn type_of(scheme: &str) -> (&'static str, &'static str) {
 /// Every polygon of a Felicity level, dressed in `kit`. No beams light a Felicity level.
 pub fn polys(lv: &Level, kit: &Kit) -> Result<(Vec<Poly>, Vec<Lit>), String> {
     let schemes = (kit.schemes)();
-    let rooms: HashMap<&str, Zone> =
-        lv.plan.rooms.iter().map(|r| (r.key.as_str(), Zone { floor: r.floor, storeys: r.kind != "hub", scheme: r.scheme })).collect();
+    let rooms: HashMap<&str, Zone> = lv
+        .plan
+        .rooms
+        .iter()
+        .map(|r| {
+            let decks = r.solids.iter().filter(|s| s.2 == "walkway").map(|(lo, hi, _)| ([lo.0, lo.1, lo.2], [hi.0, hi.1, hi.2])).collect();
+            (r.key.as_str(), Zone { floor: r.floor, storeys: r.kind != "hub", scheme: r.scheme, decks })
+        })
+        .collect();
     // each doorway's two halves, by the room they are in
     let mut doorways: HashMap<&str, Vec<([i32; 3], [i32; 3])>> = HashMap::new();
     for d in &lv.doorways {
@@ -163,20 +186,23 @@ pub fn polys(lv: &Level, kit: &Kit) -> Result<(Vec<Poly>, Vec<Lit>), String> {
         let z = f.lo[2];
         let (floor, ceiling) = type_of(room.scheme);
         match f.kind() {
-            "floor" => kit.surface(if matches!(f.tag, "step" | "landing" | "platform") { "tread" } else { floor }, None, None),
+            "floor" => kit.surface(if matches!(f.tag, "step" | "landing" | "platform" | "walkway") { "tread" } else { floor }, None, None),
             "ceiling" if door.is_some() => kit.surface("jamb", None, None),
+            // the underside of a walkway, or of a flight standing on nothing
+            "ceiling" if matches!(f.tag, "walkway" | "step") => kit.surface("ceiling", None, None),
             "ceiling" => kit.surface(ceiling, None, None),
             _ => {
                 if let Some((lo, _)) = door {
                     return kit.surface("jamb", Some(lo[2] as f64), None);
                 }
                 match f.tag {
-                    "step" | "landing" => return kit.surface("riser", Some(z as f64), None),
+                    "step" | "landing" | "walkway" => return kit.surface("riser", Some(z as f64), None),
                     "platform" => return kit.surface("lower", Some(0.0), None),
                     _ => {}
                 }
-                // the strip of its storey (a hall's walls are one storey, plain above its bands)
-                let base = if room.storeys { room.floor + (z - room.floor).div_euclid(STOREY) * STOREY } else { room.floor };
+                // the strip of its storey (a hall's walls are one storey, plain above its bands,
+                // but above a walkway, behind it)
+                let base = room.base(f);
                 let table = crate::kit::scheme(&schemes, room.scheme).or_else(|| crate::kit::scheme(&schemes, "office")).ok_or("no wall scheme 'office'")?;
                 let at = table.iter().map(|(b, _)| *b).filter(|&b| b <= z - base).max().unwrap_or(0);
                 kit.surface(strip(table, at).unwrap_or("plain"), Some((base + at) as f64), None)

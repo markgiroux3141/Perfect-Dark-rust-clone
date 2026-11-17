@@ -75,6 +75,63 @@ const fn frame(along_x: bool, flip_a: bool, flip_b: bool) -> Frame {
 }
 
 impl Frame {
+    /// A room's air `w` x `d` (along x, along y) as its lengths along a and b.
+    pub fn sizes(self, w: i32, d: i32) -> (i32, i32) {
+        if self.along_x {
+            (w, d)
+        } else {
+            (d, w)
+        }
+    }
+
+    /// Local (a, b) as the plan's (x, y), in a room whose air starts at `lo` and is `len` long
+    /// along a and b.
+    pub fn point(self, lo: (i32, i32), len: (i32, i32), a: i32, b: i32) -> (i32, i32) {
+        let (a, b) = (if self.flip_a { len.0 - a } else { a }, if self.flip_b { len.1 - b } else { b });
+        if self.along_x {
+            (lo.0 + a, lo.1 + b)
+        } else {
+            (lo.0 + b, lo.1 + a)
+        }
+    }
+
+    /// The plan's (x, y) as local (a, b): `point`'s inverse.
+    pub fn local(self, lo: (i32, i32), len: (i32, i32), x: i32, y: i32) -> (i32, i32) {
+        let (a, b) = if self.along_x { (x - lo.0, y - lo.1) } else { (y - lo.1, x - lo.0) };
+        (if self.flip_a { len.0 - a } else { a }, if self.flip_b { len.1 - b } else { b })
+    }
+
+    /// A local way (along a, along b) as the plan's.
+    pub fn way(self, da: i32, db: i32) -> (i32, i32, i32) {
+        let (da, db) = (if self.flip_a { -da } else { da }, if self.flip_b { -db } else { db });
+        if self.along_x {
+            (da, db, 0)
+        } else {
+            (db, da, 0)
+        }
+    }
+
+    /// A stretch of a local wall (0: a = 0, 1: a = A, 2: b = 0, 3: b = B; from `s0` to `s1`
+    /// along it) as the plan's wall, at height `z`.
+    pub fn span(self, lo: (i32, i32), len: (i32, i32), (side, s0, s1): (u8, i32, i32), z: i32) -> Span {
+        let x = |a: i32, b: i32| self.point(lo, len, a, b);
+        let (p, q) = match side {
+            0 => (x(0, s0), x(0, s1)),
+            1 => (x(len.0, s0), x(len.0, s1)),
+            2 => (x(s0, 0), x(s1, 0)),
+            _ => (x(s0, len.1), x(s1, len.1)),
+        };
+        // the wall faces out of the room: away from the middle
+        let (w, d) = if self.along_x { len } else { (len.1, len.0) };
+        let (cx, cy) = (lo.0 + w / 2, lo.1 + d / 2);
+        let (wall, along) = if p.0 == q.0 {
+            (if p.0 > cx { 'E' } else { 'W' }, (p.1.min(q.1), p.1.max(q.1)))
+        } else {
+            (if p.1 > cy { 'N' } else { 'S' }, (p.0.min(q.0), p.0.max(q.0)))
+        };
+        Span { side: wall, lo: along.0, hi: along.1, z }
+    }
+
     /// The eight ways a shape may lie.
     pub const ALL: [Frame; 8] = [
         frame(true, false, false),
@@ -135,8 +192,7 @@ pub fn riser(j: i32, rise: i32) -> i32 {
 /// Stairs of `shape` in a room whose air is `lo`..`hi` (x, y), floor `floor`, rising `rise`,
 /// laid by `frame`. Err if they don't fit.
 pub fn fit(shape: Shape, lo: (i32, i32), hi: (i32, i32), floor: i32, rise: i32, frame: Frame) -> Result<Stairs, String> {
-    let (w, d) = (hi.0 - lo.0, hi.1 - lo.1);
-    let (a_len, b_len) = if frame.along_x { (w, d) } else { (d, w) };
+    let (a_len, b_len) = frame.sizes(hi.0 - lo.0, hi.1 - lo.1);
     let half = RISERS / 2;
     let run = |n: i32| n * GOING;
     // the shape in local (a, b, z) boxes, spans, path and rails
@@ -224,22 +280,9 @@ pub fn fit(shape: Shape, lo: (i32, i32), hi: (i32, i32), floor: i32, rise: i32, 
     }
 
     // ---- local to world
-    let x = |a: i32, b: i32| -> (i32, i32) {
-        let (a, b) = (if frame.flip_a { a_len - a } else { a }, if frame.flip_b { b_len - b } else { b });
-        if frame.along_x {
-            (lo.0 + a, lo.1 + b)
-        } else {
-            (lo.0 + b, lo.1 + a)
-        }
-    };
-    let dir = |da: i32, db: i32| -> (i32, i32, i32) {
-        let (da, db) = (if frame.flip_a { -da } else { da }, if frame.flip_b { -db } else { db });
-        if frame.along_x {
-            (da, db, 0)
-        } else {
-            (db, da, 0)
-        }
-    };
+    let len = (a_len, b_len);
+    let x = |a: i32, b: i32| frame.point(lo, len, a, b);
+    let dir = |da: i32, db: i32| frame.way(da, db);
     let solids = steps
         .iter()
         .map(|&((a0, a1), (b0, b1), z, tag)| {
@@ -248,22 +291,7 @@ pub fn fit(shape: Shape, lo: (i32, i32), hi: (i32, i32), floor: i32, rise: i32, 
         })
         .collect();
     // a local side's world wall, and the stretch along it
-    let span = |&(side, s0, s1): &(u8, i32, i32), z: i32| -> Span {
-        let (p, q) = match side {
-            0 => (x(0, s0), x(0, s1)),
-            1 => (x(a_len, s0), x(a_len, s1)),
-            2 => (x(s0, 0), x(s1, 0)),
-            _ => (x(s0, b_len), x(s1, b_len)),
-        };
-        // the wall faces out of the room: away from the middle
-        let (cx, cy) = (lo.0 + w / 2, lo.1 + d / 2);
-        let (wall, along) = if p.0 == q.0 {
-            (if p.0 > cx { 'E' } else { 'W' }, (p.1.min(q.1), p.1.max(q.1)))
-        } else {
-            (if p.1 > cy { 'N' } else { 'S' }, (p.0.min(q.0), p.0.max(q.0)))
-        };
-        Span { side: wall, lo: along.0, hi: along.1, z: floor + z }
-    };
+    let span = |s: &(u8, i32, i32), z: i32| frame.span(lo, len, *s, floor + z);
     let world = |(a, b, z): (i32, i32, i32)| {
         let (px, py) = x(a, b);
         (px, py, floor + z)

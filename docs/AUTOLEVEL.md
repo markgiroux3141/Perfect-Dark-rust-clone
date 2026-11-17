@@ -1071,6 +1071,30 @@ sizes each stair room for its shape and takes the first frame, in a seeded order
 opens on a ground corridor and top on the gallery (above). Seeds 1-40: 29 L, 28 U, 23 straight;
 every walk passes.
 
+**Walkways** (`autolevel::balcony`, 2026-11-17, the handoff brief's first item): every tall
+room (an open room two or three storeys tall, and the hall) gets a balcony a storey up (283)
+along one wall: a slab 24 thick and 160 out from the wall (tag `walkway`, its top a floor, its
+underside open), railed along its edge (Felicity's rail) but where a flight meets it, and across
+its end where something standing in the room stops it short (a pillar, the hall's platform). It is
+reached by a straight flight of twelve risers square to it, rising towards its wall and arriving
+at its edge, solid to the floor as the stairs are: against the wall at the walkway's end if that
+leaves every ground doorway's mouth (120 in) and every solid clear, else out in the room (railed
+both sides), half a cell at a time along the walkway from a place drawn. In a room three storeys
+tall a second walkway runs along the opposite wall two storeys up (566), wall to wall, reached by a
+flight up the far end wall from the first walkway's end that stands on nothing (each step a block
+48 deep, so its underside is stepped), with a landing along that wall where the flight's top falls
+short. The way round, the flight's place: their own stream, `<seed>/felicity/balconies`, so no
+room moves. A walkway passes over ground doorways (its underside at 259, door tops at 212). The
+kit dresses its top as treads, its edge as risers, its underside (and a floating flight's) as the
+plain ceiling panel 024B, and starts the wall strips again at a walkway's top on the wall behind it
+(a hall's walls are otherwise one tall storey); the bake hangs lamps under it (`plan_lights`, as
+under Complex's catwalks). The walk `walkway_<room>` starts at the flight's foot, climbs, goes to
+both ends of the first walkway and, with a second, climbs on and walks it end to end. Seeds 1-40:
+60 of 74 tall rooms have one, 11 of them two; the 14 without are mostly short halls whose pillar
+rows leave no 132-wide gap for the flight. `Balcony::upper` names the walls behind the walkways,
+where a doorway on an upper storey could open onto one (not used yet). Tall plain rooms (15% of
+the big rooms off the circulation) get none: their door-to-door walks are straight lines.
+
 **Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
 corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
 halls and stair rooms (kinds `corridor`, `hub`, `stair`) and how the other rooms hang off them.
@@ -1093,10 +1117,9 @@ and 2. The waypoint maker's (shared with every generated level): not fixed yet.
 
 **Not yet:** Felicity's hall is three bays behind arched walls (here one plain hall); arches
 (the carver makes boxes only); windows, light strips; no outdoor part; the editor can't make or
-edit a Felicity level (a Felicity recipe takes no edits). Of the layout: every level is the
-two-corridor family (ring, H, bend, ladder), the hall always closes one end, the upper storey
-is one gallery (2 to 7 rooms off it on seeds 1-40, about 4), corridors meet through doorways no wider than 212, and nobody
-has played one.
+edit a Felicity level (a Felicity recipe takes no edits). Of the layout: the hall always closes
+one end, the upper storey is one gallery (2 to 7 rooms off it on seeds 1-40, about 4), no doorway
+opens onto a walkway (each is reached by its own flight only), and nobody has played one.
 
 ## Risks
 

@@ -470,7 +470,8 @@ pub fn plan_lights(plan: &Plan, rooms: Option<&[&str]>, spot: f64) -> Vec<Light>
             }
         }
         for (lo, hi, tag) in &r.solids {
-            if *tag == "trim" && lo.2 > r.floor + 100 {
+            // (a Felicity level's walkways: `autolevel::balcony`)
+            if (*tag == "trim" || *tag == "walkway") && lo.2 > r.floor + 100 {
                 // under catwalks and balconies
                 out.extend(lamps(f3(*lo), f3(*hi), lo.2 as f64 - METRE, &Lamps { strength: 150.0, radius: MODULE * 4.0, spot, ..Lamps::default() }));
             }

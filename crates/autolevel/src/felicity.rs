@@ -46,11 +46,12 @@
 //! chosen never moves a room. Units are the plan's (x east, y north, z up; 1 unit = 1 cm at the
 //! importer's scale 1).
 
+use crate::balcony::{self, Balcony};
 use crate::cells::Cells;
 use crate::circulation::{self, TARGETS};
 use crate::level::{DoorKind, Doorway, Level, Options, Step, View};
 use crate::network::Network;
-use crate::plan::{Box3, Plan, Room, MODULE};
+use crate::plan::{Box3, Plan, Room, Solid, MODULE};
 use crate::pyrand::PyRandom;
 use crate::report::Report;
 use crate::route::Grid;
@@ -917,17 +918,130 @@ fn turn(lots: &mut [Lot], flip_x: bool, flip_y: bool, swap: bool) -> char {
     }
 }
 
-/// A layout: the lots, every doorway, each stair room's stairs, and the hall's far wall.
+/// A layout: the lots, every doorway, each stair room's stairs, the walkways in the tall rooms,
+/// and the hall's far wall.
 struct Layout {
     lots: Vec<Lot>,
     gaps: Vec<Gap>,
     flights: Vec<(usize, Stairs)>,
+    balconies: Vec<(usize, Balcony)>,
     far: char,
+}
+
+/// A doorway's box: through its wall, `wide` cells along it, a door's height up from its storey.
+fn gap_box(g: &Gap) -> Box3 {
+    let h = WALL / 2;
+    let (along0, along1) = (g.k * CELL, (g.k + g.wide) * CELL);
+    match g.axis {
+        0 => ((g.line * CELL - h, along0, g.z), (g.line * CELL + h, along1, g.z + DOOR_H)),
+        _ => ((along0, g.line * CELL - h, g.z), (along1, g.line * CELL + h, g.z + DOOR_H)),
+    }
+}
+
+/// How far into a room a doorway's mouth is kept clear (of a flight standing on the floor).
+const MOUTH: i32 = 120;
+
+/// What stands in a hall or an open room: the hall's platform along its far wall with three
+/// steps up its middle third, and its two rows of pillars; an open room 9 cells or more each way
+/// four pillars, a third of the way in each way. Nothing in any other lot.
+fn fixtures(l: &Lot, far: char) -> Vec<Solid> {
+    let mut out: Vec<Solid> = Vec::new();
+    match l.kind {
+        Kind::Hall => {
+            let frame = HallFrame { air: l.air(), far };
+            let (deep, across) = frame.size();
+            let pu = deep - 4 * CELL;
+            let (lo, hi) = frame.solid((pu, deep), (0, across), PLATFORM);
+            out.push((lo, hi, "platform"));
+            let third = across / 3;
+            for j in 0..3 {
+                let top = (((j + 1) * PLATFORM) as f64 / 3.0).round() as i32;
+                let u0 = pu - (3 - j) * GOING;
+                let (lo, hi) = frame.solid((u0, u0 + GOING), (third, across - third), top);
+                out.push((lo, hi, "step"));
+            }
+            // pillars, floor to ceiling, in two rows clear of the middle
+            let cols = 3;
+            for c in 0..cols {
+                for row in [1, 3] {
+                    let (u, v) = (pu * (c + 1) / (cols + 1), across * row / 4);
+                    let h = CELL / 2;
+                    let (lo, hi) = frame.solid((u - h, u + h), (v - h, v + h), HALL_H);
+                    out.push((lo, hi, "pillar"));
+                }
+            }
+        }
+        Kind::Open => {
+            let ((x0, y0, _), (x1, y1, _)) = l.air();
+            if l.x1 - l.x0 >= 9 && l.y1 - l.y0 >= 9 {
+                let h = CELL / 2;
+                for (i, j) in [(1, 1), (1, 2), (2, 1), (2, 2)] {
+                    let (x, y) = (x0 + (x1 - x0) * i / 3, y0 + (y1 - y0) * j / 3);
+                    out.push(((x - h, y - h, l.floor), (x + h, y + h, l.top), "pillar"));
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+/// Walkways up high in each tall room (an open room two or three storeys tall, the hall): the
+/// first of the eight ways round, in an order drawn from `brng`, whose flight keeps clear of the
+/// room's doorways on the floor and of what stands in it (`balcony::fit`). A room three storeys
+/// tall takes a second walkway two storeys up. None where nothing fits.
+fn balconies(brng: &mut PyRandom, lots: &[Lot], gaps: &[Gap], far: char) -> Vec<(usize, Balcony)> {
+    let mut out = Vec::new();
+    for (n, l) in lots.iter().enumerate() {
+        let levels = match l.kind {
+            Kind::Hall => 1,
+            Kind::Open => (l.top - l.floor - ROOM_H) / STOREY,
+            _ => 0,
+        };
+        if levels < 1 {
+            continue;
+        }
+        let standing = fixtures(l, far);
+        let ((x0, y0, _), (x1, y1, _)) = l.air();
+        // each doorway on the floor, and its mouth either side
+        let mouths: Vec<(i32, i32, i32, i32)> = gaps
+            .iter()
+            .filter(|g| (g.a == n || g.b == n) && g.z == l.floor)
+            .map(|g| {
+                let (lo, hi) = gap_box(g);
+                if g.axis == 0 {
+                    (lo.0 - MOUTH, lo.1, hi.0 + MOUTH, hi.1)
+                } else {
+                    (lo.0, lo.1 - MOUTH, hi.0, hi.1 + MOUTH)
+                }
+            })
+            .collect();
+        // the flight against the wall at the walkway's end if it can be, else out in the room
+        // (half a cell at a time along the walkway, from a place drawn)
+        let mut frames = Frame::ALL;
+        brng.shuffle(&mut frames);
+        let fits = |frame: Frame, at: i32| {
+            balcony::fit(((x0, y0), (x1, y1)), l.floor, STOREY, levels, frame, at, &standing)
+                .ok()
+                .filter(|b| !mouths.iter().any(|m| m.0 < b.ground.2 && b.ground.0 < m.2 && m.1 < b.ground.3 && b.ground.1 < m.3))
+        };
+        let mut found = frames.iter().find_map(|&f| fits(f, 0));
+        if found.is_none() {
+            let span = (x1 - x0).max(y1 - y0);
+            let steps = (span / (CELL / 2)) as i64;
+            let first = brng.randint(0, steps);
+            found = frames.iter().find_map(|&f| (0..=steps).find_map(|i| fits(f, ((first + i) % (steps + 1)) as i32 * (CELL / 2))));
+        }
+        if let Some(b) = found {
+            out.push((n, b));
+        }
+    }
+    out
 }
 
 /// Draw a layout: the draft turned, its doorways placed, the stairs fitted, second ways into
 /// rooms, and every room's type.
-fn layout(rng: &mut PyRandom, sprawling: bool) -> Result<Layout, String> {
+fn layout(rng: &mut PyRandom, brng: &mut PyRandom, sprawling: bool) -> Result<Layout, String> {
     let d = draft(rng, sprawling)?;
     let mut lots = d.lots;
     let (flip_x, flip_y, swap) = (rng.random() < 0.5, rng.random() < 0.5, rng.random() < 0.5);
@@ -1038,7 +1152,8 @@ fn layout(rng: &mut PyRandom, sprawling: bool) -> Result<Layout, String> {
             }
         }
     }
-    Ok(Layout { lots, gaps, flights, far })
+    let balconies = balconies(brng, &lots, &gaps, far);
+    Ok(Layout { lots, gaps, flights, balconies, far })
 }
 
 /// The hall's own frame: `u` from the wall the building is on to the far wall, `v` along them.
@@ -1095,7 +1210,9 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
     let sprawling = rng.random() < SPRAWL;
     let mut why = String::new();
     for _ in 0..TRIES {
-        let lv = match layout(&mut rng, sprawling) {
+        // the walkways draw from their own stream, so they never move a room
+        let mut brng = PyRandom::named(&format!("{seed}/felicity/balconies"));
+        let lv = match layout(&mut rng, &mut brng, sprawling) {
             Ok(l) => level(seed, o, l)?,
             Err(e) => {
                 why = e;
@@ -1113,7 +1230,7 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
 
 /// The level of a layout: its doors, plan, walks and views.
 fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
-    let Layout { lots, gaps, flights, far } = layout;
+    let Layout { lots, gaps, flights, balconies, far } = layout;
     let flight_of = |s: usize| flights.iter().find(|f| f.0 == s).map(|f| &f.1);
 
     // ---- doors: their own stream
@@ -1135,12 +1252,7 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
         let swing = drng.random() < 0.63;
         // a doorway wider than two leaves is an open archway
         let door = (roll < p && g.wide <= 2).then_some(DoorKind { swing, leaves: g.wide as u8 });
-        let h = WALL / 2;
-        let (along0, along1) = (g.k * CELL, (g.k + g.wide) * CELL);
-        let (lo, hi) = match g.axis {
-            0 => ((g.line * CELL - h, along0, g.z), (g.line * CELL + h, along1, g.z + DOOR_H)),
-            _ => ((along0, g.line * CELL - h, g.z), (along1, g.line * CELL + h, g.z + DOOR_H)),
-        };
+        let (lo, hi) = gap_box(g);
         doorways.push(Doorway { a: a.key.clone(), b: b.key.clone(), lo, hi, axis: g.axis, door });
     }
 
@@ -1180,7 +1292,14 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
             Kind::Room => "room",
         };
         room.scheme = l.scheme;
-        room.walkable = vec!["step", "landing", "platform"];
+        room.walkable = vec!["step", "landing", "platform", "walkway"];
+        room.solids.extend(fixtures(l, far));
+        if let Some((_, b)) = balconies.iter().find(|b| b.0 == n) {
+            room.solids.extend(b.solids.iter().copied());
+            room.rails.extend(b.rails.iter().copied());
+            ramp_rails.extend(b.sloped.iter().map(|(p, q, f)| (l.key.clone(), *p, *q, *f)));
+            room.note = if b.levels == 2 { "two walkways" } else { "a walkway" }.to_string();
+        }
         match l.kind {
             Kind::Stair => {
                 let st = flight_of(n).expect("a stair room's stairs");
@@ -1188,39 +1307,6 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
                 room.rails.extend(st.rails.iter().copied());
                 ramp_rails.extend(st.sloped_rails(&l.key));
                 room.note = format!("{} stairs", st.shape.name());
-            }
-            Kind::Hall => {
-                // the platform, three steps up to its middle third
-                let (lo, hi) = frame.solid((pu, deep), (0, across), PLATFORM);
-                room.solids.push((lo, hi, "platform"));
-                let third = across / 3;
-                for j in 0..3 {
-                    let top = (((j + 1) * PLATFORM) as f64 / 3.0).round() as i32;
-                    let u0 = pu - (3 - j) * GOING;
-                    let (lo, hi) = frame.solid((u0, u0 + GOING), (third, across - third), top);
-                    room.solids.push((lo, hi, "step"));
-                }
-                // pillars, floor to ceiling, in two rows clear of the middle
-                let cols = 3;
-                for c in 0..cols {
-                    for row in [1, 3] {
-                        let (u, v) = (pu * (c + 1) / (cols + 1), across * row / 4);
-                        let h = CELL / 2;
-                        let (lo, hi) = frame.solid((u - h, u + h), (v - h, v + h), HALL_H);
-                        room.solids.push((lo, hi, "pillar"));
-                    }
-                }
-            }
-            Kind::Open => {
-                // a big open room: pillars a third of the way in each way, floor to ceiling
-                let ((x0, y0, _), (x1, y1, _)) = l.air();
-                if l.x1 - l.x0 >= 9 && l.y1 - l.y0 >= 9 {
-                    let h = CELL / 2;
-                    for (i, j) in [(1, 1), (1, 2), (2, 1), (2, 2)] {
-                        let (x, y) = (x0 + (x1 - x0) * i / 3, y0 + (y1 - y0) * j / 3);
-                        room.solids.push(((x - h, y - h, l.floor), (x + h, y + h, l.top), "pillar"));
-                    }
-                }
             }
             _ => {}
         }
@@ -1285,6 +1371,12 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
         pts.extend(st.path.iter().copied());
         pts.extend([level_with(end, above, last), end]);
         walks.push((format!("stairs_{}", l.key), route(&pts)));
+    }
+    // each tall room's walkways: from the foot of the flight up to the first, along it to its
+    // far end, and on up to the second and along it
+    for (n, b) in &balconies {
+        let pts: Vec<(i32, i32, i32)> = b.paths.iter().flatten().copied().collect();
+        walks.push((format!("walkway_{}", lots[*n].key), route(&pts)));
     }
     // the hall's platform, from a corridor's doorway: along the near wall to the middle (the
     // pillars stand a quarter in), then up the steps
@@ -1528,6 +1620,45 @@ mod tests {
             assert!(lv.doorways.iter().all(|d| lv.walks.iter().any(|(name, _)| *name == format!("door_{}_{}", d.a, d.b))), "seed {seed}");
             assert!(lv.walks.iter().any(|(name, _)| name == "platform"), "seed {seed}");
         }
+    }
+
+    #[test]
+    fn tall_rooms_have_walkways_up_high() {
+        let (mut tall, mut with, mut two) = (0, 0, 0);
+        for seed in 1..=40 {
+            let lv = generate(seed).unwrap();
+            for r in lv.plan.rooms.iter().filter(|r| r.kind == "hub") {
+                let storeys = (r.hi().2 - r.floor - ROOM_H) / STOREY;
+                if storeys < 1 {
+                    continue;
+                }
+                tall += 1;
+                let decks: Vec<&Solid> = r.solids.iter().filter(|s| s.2 == "walkway").collect();
+                if decks.is_empty() {
+                    continue;
+                }
+                with += 1;
+                // a walkway's top is a storey line, its underside a slab below, all in the room's air
+                let (lo, hi) = r.boxes[0];
+                for (a, b, _) in &decks {
+                    assert!([STOREY, 2 * STOREY].contains(&b.2) && b.2 - a.2 == balcony::SLAB, "seed {seed} {}", r.key);
+                    assert!(a.0 >= lo.0 && a.1 >= lo.1 && b.0 <= hi.0 && b.1 <= hi.1, "seed {seed} {}", r.key);
+                }
+                // a room three storeys tall may take two; the hall one
+                let top = decks.iter().map(|d| d.1 .2).max().unwrap();
+                assert!(top <= STOREY * storeys.min(if r.key == "hall" { 1 } else { 2 }), "seed {seed} {}", r.key);
+                two += (top == 2 * STOREY) as usize;
+                // twelve steps a storey up to each, railed, and a walk up and along them
+                let steps = r.solids.iter().filter(|s| s.2 == "step").count() - if r.key == "hall" { 3 } else { 0 };
+                assert_eq!(steps as i32, RISERS * top / STOREY, "seed {seed} {}", r.key);
+                assert!(!r.rails.is_empty() && lv.ramp_rails.iter().any(|rr| rr.0 == r.key), "seed {seed} {}", r.key);
+                let walk = lv.walks.iter().find(|(name, _)| *name == format!("walkway_{}", r.key)).unwrap_or_else(|| panic!("seed {seed} {}: no walk", r.key));
+                assert_eq!(walk.1.last().unwrap().z, top, "seed {seed} {}", r.key);
+            }
+        }
+        println!("{with} of {tall} tall rooms have walkways, {two} of them two");
+        // most tall rooms take one (a short hall's pillars leave no room for the flight)
+        assert!(with * 4 >= tall * 3 && two >= 3, "{with} of {tall}, {two} with two");
     }
 
     #[test]
