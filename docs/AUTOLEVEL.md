@@ -1282,6 +1282,29 @@ floor to 254 at the top, and a 254 pool on the floor under the cross; the ceilin
   2; a minute of six simulants stalls 4 times, all at one door held part open from both sides
   (PD's doors, as before), none by a pilaster.
 
+**Pipes** (2026-11-17, the detail brief's floor-level pieces; the profile **from Felicity**, the
+placement along wall bases from the user's screenshots of `cifelicity`, which may be CI's). Measured
+first: Felicity's pipe (room 39) is a hexagon 53 across, tips 13 deep, shaded by 012A round its
+profile (a dark-to-light gradient, about 127 a repeat: dark below, light on top; not hazard
+stripes), standing up from the floor into a run 287 long 84-137 up. Its grey room (12) has a floor
+raised 54 on a grating with chamfered kerbs along both long walls: not built (yet).
+
+- **Where** (`dress::pipes`, stream `<seed>/felicity/dress/pipes`): `PIPED` (0.6) of the
+  one-storey `industrial` rooms and corridors get a pipe round their walls at the floor, broken at
+  every doorway: its ends keep `PIPE_GAP` (40) beyond the frame, and where a doorway is within a
+  pipe's depth of a corner the pipe on the other wall stops `PIPE_MOUTH` (120) short of the corner,
+  so nothing stands in a doorway's mouth. Runs under two pipes' depth are dropped. Seeds 1-40: 150
+  runs in 80 rooms and corridors (test `pipes_run_round_industrial_rooms_clear_of_every_doorways_mouth`).
+- **Drawn** (`felicity::pipe`): Felicity's hexagon turned to lie on the floor (flat top and
+  bottom, one tip to the wall, one to the room), one sweep a run with the room on its left, mitred
+  round the corners, its ends capped (`Sweep::caps`, new), role `pipe` (012A, v round the profile).
+  The floor under its flat bottom is cleared, so no waypoint is made inside it (test
+  `pipes_lie_along_their_walls_capped_and_the_floor_under_them_cleared`).
+- Seed 15 draws none (its industrial rooms all came out plain), so to see them: **Felicity 5,
+  stage 123** (`autolevel import out/autolevel/felicity5 --code felicity5 --name "Felicity 5"
+  --stagenum 123`), room2 (plan 20-1146 x 2352-3478, a run round three walls), room4, corridor1.
+  A minute of six simulants there: no stalls.
+
 **Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
 corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
 halls and stair rooms (kinds `corridor`, `hub`, `stair`) and how the other rooms hang off them.

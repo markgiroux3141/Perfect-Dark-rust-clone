@@ -1931,6 +1931,7 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
     // ---- dressing: its own streams, so no room moves
     let braces = crate::dress::braces(seed, &plan, &doorways);
     let lamps = crate::dress::lamps(&crate::dress::arms(&braces).0);
+    let pipes = crate::dress::pipes(seed, &plan, &doorways);
 
     // ---- walks and views (cells of the plan's MODULE, as every walk is written)
     let c = |u: i32| u as f64 / MODULE;
@@ -2077,6 +2078,7 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
         doorways,
         arches,
         braces,
+        pipes,
         lamps,
         report,
     })

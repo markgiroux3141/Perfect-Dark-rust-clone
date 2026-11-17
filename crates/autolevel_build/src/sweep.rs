@@ -52,6 +52,9 @@ pub struct Sweep<'a> {
     pub legs: Vec<Leg>,
     /// The last leg ends at `from` and is mitred into the first.
     pub closed: bool,
+    /// An open path's ends are closed by the profile (it must be convex), in the first drawn
+    /// edge's look.
+    pub caps: bool,
     pub zone: &'a str,
 }
 
@@ -178,6 +181,14 @@ pub fn sweep(s: &Sweep) -> Vec<Poly> {
             round += length;
         }
         run += dot(sub(points[i + 1], points[i]), dirs[i]);
+    }
+    if s.caps && !s.closed {
+        if let Some(e) = s.legs[0].edges.iter().flatten().next() {
+            out.push(csg::oriented(&sections[0], mul(dirs[0], -1.0), e.surface, s.zone, None));
+        }
+        if let Some(e) = s.legs[n - 1].edges.iter().flatten().next() {
+            out.push(csg::oriented(&sections[n], dirs[n - 1], e.surface, s.zone, None));
+        }
     }
     out
 }
@@ -311,6 +322,7 @@ mod tests {
                 Leg { to: [400.0, 0.0, 259.0], side: [0.0, 1.0, 0.0], depth: [0.0, 0.0, -1.0], profile: p24, edges: e, along: None },
             ],
             closed: false,
+            caps: false,
             zone: "r",
         };
         let polys = sweep(&s);
@@ -349,6 +361,7 @@ mod tests {
                 leg([0.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
             ],
             closed: true,
+            caps: false,
             zone: "r",
         };
         let polys = sweep(&s);

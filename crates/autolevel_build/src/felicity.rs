@@ -41,7 +41,7 @@
 
 use std::collections::HashMap;
 
-use autolevel::dress::{self, Arm, Crossing, BEAM_D, BEAM_W, LIGHT, PILASTER};
+use autolevel::dress::{self, Arm, Crossing, Pipe, BEAM_D, BEAM_W, LIGHT, PILASTER, PIPE, PIPE_TIP};
 use autolevel::felicity::{DOOR_H, PLATFORM, ROOM_H, STOREY};
 use autolevel::level::{Arch, Doorway, Level};
 
@@ -56,7 +56,7 @@ const fn paint(role: &'static str, preset: &'static str, flags: &'static [&'stat
 }
 
 /// The kit's materials (names: Felicity's Setup Editor export's, where it has the texture).
-const PALETTE: [Paint; 29] = [
+const PALETTE: [Paint; 30] = [
     // office and marble
     paint("floor", "0287", &[], "m2", (128.3, 134.8)),
     paint("lower", "024F", &[], "m0", (89.9, 94.5)),
@@ -75,6 +75,9 @@ const PALETTE: [Paint; 29] = [
     // a ceiling brace's underside (Felicity's 0262: four tiles, the third a light panel; its u
     // repeat is set for each arm, so it holds whole repeats)
     paint("lamp", "0262", &[], "lamp", (180.0, 40.0)),
+    // a pipe along a wall's base (Felicity's 012A, the shading its pipes have round them: dark
+    // below, light on top, about 127 a repeat round the profile)
+    paint("pipe", "012A", &[], "pipe", (128.0, 127.0)),
     // the stairwells' railings: Felicity's see-through rail
     paint("rail", "0710", &["Transparent", "CullBoth", "MirrorS", "ClampT"], "m14TransparentCullBothMirrorSClampT", (49.0, 94.0)),
     // industrial
@@ -259,6 +262,7 @@ fn frame(d: &Doorway, trim: Surface, floors: [Surface; 2]) -> Vec<Poly> {
             from: at(t, s0, z0),
             legs: vec![leg(at(t, s0, zt), axis(o, 1.0)), leg(at(t, s1, zt), axis(2, -1.0)), leg(at(t, s1, z0), axis(o, -1.0))],
             closed: false,
+            caps: false,
             zone,
         };
         out.extend(sweep::sweep(&path));
@@ -412,7 +416,7 @@ fn arm(a: &Arm, side: Surface, lamp: Surface, pilaster: Surface) -> Vec<Poly> {
         legs.push(post(pt(end, a.floor), -dir));
     }
     let from = if walls.0 { pt(start, a.floor) } else { pt(start, a.top) };
-    sweep::sweep(&Sweep { from, legs, closed: false, zone: &a.room })
+    sweep::sweep(&Sweep { from, legs, closed: false, caps: false, zone: &a.room })
 }
 
 /// Where two braces cross: the square of underside under both, a plain tile of the strip.
@@ -422,6 +426,46 @@ fn crossing(c: &Crossing, lamp: Surface) -> Poly {
     let corners = [[x - h, y - h, z], [x + h, y - h, z], [x + h, y + h, z], [x - h, y + h, z]];
     let uvs = [(0.0, 0.0), (LIGHT.0 / 2.0, 0.0), (LIGHT.0 / 2.0, 1.0), (0.0, 1.0)];
     csg::oriented(&corners, [0.0, 0.0, -1.0], lamp, &c.room, Some(&uvs))
+}
+
+/// A pipe along the base of a room's walls (`autolevel::dress::Pipe`): Felicity's hexagon lying on
+/// the floor, swept along the walls and mitred round the corners, its ends capped. Returns its
+/// polygons and what it covers of the floor (under its flat bottom, which is not drawn).
+fn pipe(p: &Pipe, surface: Surface) -> (Vec<Poly>, Vec<Cover>) {
+    let (w, tip) = (PIPE as f64, PIPE_TIP as f64);
+    // (height, out from the wall), the wall's tip first, round under and over
+    let profile = vec![(w / 2.0, 0.0), (0.0, tip), (0.0, w - tip), (w / 2.0, w), (w, w - tip), (w, tip), (w / 2.0, 0.0)];
+    let e = Some(Edge { surface, along_v: false });
+    let edges = vec![e, None, e, e, e, e];
+    let z = p.floor as f64;
+    let at = |(x, y): (i32, i32)| [x as f64, y as f64, z];
+    let mut legs = Vec::new();
+    let mut covers = Vec::new();
+    for pair in p.path.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let d = [(b.0 - a.0).signum(), (b.1 - a.1).signum()];
+        // the room is on the left
+        let left = [-d[1], d[0]];
+        legs.push(Leg {
+            to: at(b),
+            side: [0.0, 0.0, 1.0],
+            depth: [left[0] as f64, left[1] as f64, 0.0],
+            profile: profile.clone(),
+            edges: edges.clone(),
+            along: None,
+        });
+        let (i0, i1) = (PIPE_TIP, PIPE - PIPE_TIP);
+        let xs = [a.0, b.0, a.0 + left[0] * i0, a.0 + left[0] * i1];
+        let ys = [a.1, b.1, a.1 + left[1] * i0, a.1 + left[1] * i1];
+        let (lo, hi) = if d[0] != 0 {
+            ([a.0.min(b.0), ys[2].min(ys[3])], [a.0.max(b.0), ys[2].max(ys[3])])
+        } else {
+            ([xs[2].min(xs[3]), a.1.min(b.1)], [xs[2].max(xs[3]), a.1.max(b.1)])
+        };
+        covers.push(Cover { axis: 2, at: p.floor, sign: 1, lo, hi });
+    }
+    let polys = sweep::sweep(&Sweep { from: at(p.path[0]), legs, closed: false, caps: true, zone: &p.room });
+    (polys, covers)
 }
 
 /// What the style knows of a room.
@@ -542,6 +586,13 @@ pub fn polys(lv: &Level, kit: &Kit) -> Result<(Vec<Poly>, Vec<Lit>), String> {
         sweep::clear(&mut polys, &[Cover { axis: 2, at: c.top, sign: -1, lo: [c.x - h, c.y - h], hi: [c.x + h, c.y + h] }]);
         polys.push(crossing(c, lamp));
     }
+    // the pipes along the industrial rooms' walls
+    let pipe_look = kit.surface("pipe", None, None)?;
+    for p in &lv.pipes {
+        let (faces, covers) = pipe(p, pipe_look);
+        sweep::clear(&mut polys, &covers);
+        polys.extend(faces);
+    }
     csg::fix_t_junctions(&mut polys);
     // the railings down the flights' open sides (the landings' flat ones are the plan's own)
     let height = cx::RAIL_HEIGHT as f64;
@@ -616,6 +667,32 @@ mod tests {
                         wall && p.normal[k].abs() > 0.99 && p.verts.iter().all(|v| v[k] == t) && (a.at - h) as f64 <= mean(o) && mean(o) <= (a.at + h) as f64;
                     assert!(!behind, "{a:?}: a wall face behind its pilaster");
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn pipes_lie_along_their_walls_capped_and_the_floor_under_them_cleared() {
+        let lv = (1..=10).map(|seed| generate(seed, &Options { style: "felicity", ..Options::default() }).unwrap()).find(|lv| !lv.pipes.is_empty()).unwrap();
+        let (polys, _) = polys(&lv, &KIT).unwrap();
+        for p in &lv.pipes {
+            let mine: Vec<&Poly> = polys.iter().filter(|q| q.zone == p.room && q.surface.material == "pipe").collect();
+            // five faces a leg, two caps, for every run in the room
+            let want: usize = lv.pipes.iter().filter(|q| q.room == p.room).map(|q| 5 * (q.path.len() - 1) + 2).sum();
+            assert_eq!(mine.len(), want, "{p:?}");
+            assert!(mine.iter().all(|q| q.verts.iter().all(|v| v[2] >= p.floor && v[2] <= p.floor + PIPE)));
+            // no floor left under the middle of a leg
+            for w in p.path.windows(2) {
+                let d = [(w[1].0 - w[0].0).signum(), (w[1].1 - w[0].1).signum()];
+                let mid = ((w[0].0 + w[1].0) / 2 - d[1] * PIPE / 2, (w[0].1 + w[1].1) / 2 + d[0] * PIPE / 2);
+                let under = polys.iter().any(|q| {
+                    q.zone == p.room && q.normal[2] > 0.99 && q.surface.material != "pipe" && q.verts.iter().all(|v| v[2] == p.floor) && {
+                        let (x0, x1) = (q.verts.iter().map(|v| v[0]).min().unwrap(), q.verts.iter().map(|v| v[0]).max().unwrap());
+                        let (y0, y1) = (q.verts.iter().map(|v| v[1]).min().unwrap(), q.verts.iter().map(|v| v[1]).max().unwrap());
+                        x0 < mid.0 && mid.0 < x1 && y0 < mid.1 && mid.1 < y1
+                    }
+                });
+                assert!(!under, "{p:?}: floor under it at {mid:?}");
             }
         }
     }
