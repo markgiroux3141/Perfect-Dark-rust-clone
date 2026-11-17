@@ -1210,6 +1210,20 @@ Layouts drawn again on seeds 1-60: 129 (79 before this brief's item 1), most for
 with one way in (the round corridor's rooms, the landings' rooms); every seed finds one well within
 `TRIES`.
 
+**Doorway frames** (2026-11-17, the handoff brief's item 2). Felicity measured first (its
+triangles, `probe_stage_triangles`; rooms 24 and 29, texture 00EF): each face of a doorway's wall
+is chamfered at 45 degrees, 13 deep and 13 wide, round both jambs and the lintel, mitred at the
+top corners, so at the face the opening is 132 x 225 and 13 in it is 106 x 212. So every doorway
+with no arch (rooms' doorways, door or none, and the walkway doorways a storey up) gets the same
+(`autolevel_build::felicity`, `TRIM`): `clear_frame` cuts the carver's faces (the wall's faces on
+each side are cut on the frame's edges and the pieces inside it dropped; the jambs and the lintel's
+underside are drawn in to start 13 into the wall) and `frame` puts in six chamfers (role `trim`,
+00EF) and a floor triangle at each jamb's foot in that room's floor; then `fix_t_junctions` as
+ever. A door (13 thick on the middle plane) stands in the 14 left between the bevels. Test: the
+kit's `a_felicity_level_is_dressed_in_felicitys_materials` (six chamfers a framed doorway, no wall
+face in the strip, the jambs from 13 in). Felicity 15, seen with `pd_edit --shot felicity15 out.png
+--item door 3 --solid`: the frame reads as Felicity's.
+
 **Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
 corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
 halls and stair rooms (kinds `corridor`, `hub`, `stair`) and how the other rooms hang off them.
