@@ -1369,6 +1369,42 @@ seen in `cifelicity` is a leaning jamb of one of these.
 - Felicity 15 (stage 127): corridor1 (two, looking along it from its west end) and corridor2.
   Felicity 5 (stage 123): corridor1. A minute of six simulants on each: no stalls.
 
+**Washroom fittings** (2026-11-17, the detail brief's washroom option; **from Felicity**: its
+washroom, room 12, x -1404..-823, z -982..260, floor -480; all BG, no props). Measured first: a row
+of open-fronted stalls at each end of the room, partitions 14 thick, 212 tall and 238 deep, 105
+apart (one cell), in its black wall tile 0274; in each a toilet (0714): a pedestal 47 x 30 rising
+25, the bowl flaring to a rim 71 x 77 at 54 (29 beyond the pedestal at the front, 18 at the back,
+12 at the sides), the rim 14 off the wall, white water (0001) inside; in the middle of the room a
+block floor to ceiling with a sink alcove each side, a basin (0644) in each, 122 wide, hanging 48
+to 63 up and 53 out, a tap to 112. The "raised grating floor" an earlier brief gave room 12 is
+these toilets' rims and sills (0714 at 25-54), not a floor.
+
+- **The option** (the user's call: on by default, a flag turns it off): `Options::washroom`,
+  `washroom` in a recipe (written only when off: `"washroom": false`), `--no-washroom` (or
+  `--washroom false`) on the command line. Off, a level has no fittings and nothing else changes
+  (test: the plan, doorways, braces, pipes, portals and lamps are the same either way).
+- **Where** (`dress::washrooms`, no draw): in each one-storey `washroom` room, along the longest
+  wall with no doorway that takes them, a row of stalls: the whole wall if it fits, else fewer from
+  a corner (a partition closing the open end), the most stalls first, each as deep as fits from
+  `STALL_D` (238) down to `STALL_LEAST` (110) by 20; a toilet in each. Then on the longest other
+  wall with no doorway, as many basins as fit, `BASIN_EVERY` (150) apart at least. Everything keeps
+  off each doorway's mouth (`MOUTH` 120 in front of the opening and its frame) and `FITTING_PAD`
+  (40: a walker's radius and 10) off every walk line (doorway to doorway through points `INSIDE`
+  in, as the walks go). Our washrooms are small (mostly 278 x 278 with a centred doorway on two
+  neighbouring walls), so a row is mostly one stall: seeds 1-40, 52 of 52 washrooms fitted, 58
+  stalls, 6 basin rows. `Fitting` is one shape for all three: its middle on the wall's face, facing
+  out, its width along the wall and depth out of it.
+- **Drawn** (`felicity::fitting`): a partition is a box of the wall's tile (`wc_lower`, banded from
+  the floor); a toilet a closed sweep round its pedestal (each side its own profile: pedestal, the
+  bowl's underside, the rim, the bowl's inside) and its water (role `water`); a basin a U-shaped
+  sweep off the wall with its bowl (white) and underside. Roles `toilet` (0714), `water` (0001),
+  `basin` (0644). The floor under partitions and pedestals is cleared (no waypoint inside them).
+  Test `washroom_fittings_are_drawn_and_the_floor_under_them_cleared`. No tap yet; no vanity block
+  (no washroom is big enough to stand one in).
+- To see them: **Felicity 36, stage 122** (seed 15 and 5 have no washroom), upstairs off the
+  gallery: upper2, upper3 and upper4 (a stall on its south wall, a basin on its north wall; plan
+  1610..1888 x 868..1146, floor 283). A minute of six simulants: no stalls.
+
 **Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
 corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
 halls and stair rooms (kinds `corridor`, `hub`, `stair`) and how the other rooms hang off them.
@@ -1416,7 +1452,7 @@ a few true drops of 577 from its room 14 into 16). It is PD's movement on stairs
 (Felicity's risers are vertical floor tiles flagged `GEOFLAG_STEP`; ours are wall tiles. Not
 tried: whether flagging ours so changes anything; PD's own drops show it doesn't stop these.)
 
-**Not yet:** windows, washroom fittings, raised doorways; no outdoor part; the editor can't make or
+**Not yet:** windows, raised doorways; no outdoor part; the editor can't make or
 edit a Felicity level (a Felicity recipe takes no edits). Nobody has played the layouts of the
 handoff brief's item 1 (upper rooms onto walkways, walkways in tall plain rooms, the block's
 landing, building round the hall).

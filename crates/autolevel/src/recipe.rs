@@ -49,8 +49,9 @@ pub const FORMAT: u32 = 1;
 pub const CEILINGS: [&str; 4] = ["plain", "ceiling_tile", "ceiling_dark", "grille"];
 
 /// The options by name, as the file and a command line spell them, in the file's order.
-pub const OPTIONS: [&str; 23] = [
+pub const OPTIONS: [&str; 24] = [
     "style",
+    "washroom",
     "scale",
     "size",
     "site",
@@ -249,6 +250,8 @@ struct Opts {
     #[serde(skip_serializing_if = "Option::is_none")]
     style: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    washroom: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     scale: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     size: Option<f64>,
@@ -303,6 +306,7 @@ impl Opts {
         let (s, b) = (&o.siting, &base.siting);
         Opts {
             style: pick(all, o.style, base.style).map(str::to_string),
+            washroom: pick(all, o.washroom, base.washroom),
             scale: pick(all, s.scale, b.scale).map(|v| v.name().to_string()),
             size: pick(all, s.size, b.size),
             site: if s.site != b.site || all { s.site } else { None },
@@ -341,6 +345,7 @@ impl Opts {
                 .find(|s| *s == name)
                 .ok_or_else(|| format!("style: one of ({})", crate::level::STYLES.map(py::repr).join(", ")))?;
         }
+        set(&mut o.washroom, self.washroom);
         if let Some(name) = self.scale {
             o.siting.scale = [Scale::Grand, Scale::Standard].into_iter().find(|s| s.name() == name).ok_or("scale: one of ('grand', 'standard')")?;
         }
@@ -745,6 +750,7 @@ mod tests {
         let mut o = Options::default();
         let values = [
             ("style", "felicity"),
+            ("washroom", "false"),
             ("scale", "standard"),
             ("size", "2"),
             ("site", "70x50"),
@@ -808,7 +814,7 @@ mod tests {
         assert!(err("{\"format\": 1, \"seed\": 40, \"edits\": [{\"edit\": \"remove\"}]}").contains("missing field `route`"));
         assert!(err("{\"format\": 1,").starts_with("recipe: EOF"));
         let mut o = Options::default();
-        assert!(set_option(&mut o, "colour", "red").unwrap_err().starts_with("no option colour: one of style, scale, size"));
+        assert!(set_option(&mut o, "colour", "red").unwrap_err().starts_with("no option colour: one of style, washroom, scale, size"));
         assert!(set_option(&mut o, "risers", "many").unwrap_err().starts_with("risers: invalid type"));
         assert_eq!(set_option(&mut o, "site", "wide").unwrap_err(), "site: cells wide by cells deep, as 80x60, not wide");
         assert_eq!(o, Options::default());

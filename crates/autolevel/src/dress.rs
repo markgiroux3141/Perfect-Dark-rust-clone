@@ -333,6 +333,190 @@ pub fn portals(plan: &Plan, doorways: &[Doorway], surrounds: &[Surround]) -> Vec
     out
 }
 
+/// The washrooms' fittings, measured from Felicity's washroom (its room 12): stalls 105 wide
+/// between partitions `PARTITION` thick and 212 tall (`STALL_H`), 238 deep (`STALL_D` at most;
+/// less in a shallow room); in each a toilet, its rim 77 deep and 71 wide (`TOILET`), `TOILET_GAP`
+/// off the wall; basins 122 wide standing `BASIN_D` out of the wall.
+pub const PARTITION: i32 = 14;
+pub const STALL: i32 = 105;
+pub const STALL_H: i32 = 212;
+pub const STALL_D: i32 = 238;
+/// The least a stall may be deep (a toilet, 91 from the wall, and a little more), and the steps
+/// it is made shallower by to fit.
+pub const STALL_LEAST: i32 = 110;
+pub const STALL_STEP: i32 = 20;
+pub const TOILET: (i32, i32) = (71, 77);
+pub const TOILET_GAP: i32 = 14;
+pub const BASIN: i32 = 122;
+pub const BASIN_D: i32 = 53;
+/// How far apart basins are along their wall, middle to middle, at least.
+pub const BASIN_EVERY: i32 = 150;
+/// How far a fitting keeps off a walk's line (a walker's radius, 30, and 10 more).
+pub const FITTING_PAD: f64 = 40.0;
+
+/// A fitting standing against a wall: its middle on the wall's face (`at`, plan x, y), facing
+/// `out` into the room (a unit along x or y), `width` along the wall and `depth` out of it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Fitting {
+    pub room: String,
+    /// "partition", "toilet" or "basin".
+    pub kind: &'static str,
+    pub at: (i32, i32),
+    pub out: (i32, i32),
+    pub width: i32,
+    pub depth: i32,
+    pub floor: i32,
+}
+
+impl Fitting {
+    /// Its footprint on the plan: (x0, y0, x1, y1).
+    pub fn footprint(&self) -> (i32, i32, i32, i32) {
+        let ((x, y), (dx, dy), h) = (self.at, self.out, self.width / 2);
+        let (ax, ay) = (x + dx * self.depth, y + dy * self.depth);
+        if dx != 0 {
+            (x.min(ax), y - h, x.max(ax), y + self.width - h)
+        } else {
+            (x - h, y.min(ay), x + self.width - h, y.max(ay))
+        }
+    }
+}
+
+/// The fittings of a Felicity level's washrooms (one-storey rooms of type `washroom`): along the
+/// longest wall with no doorway that holds two stalls or more, a row of open-fronted stalls (as
+/// many as the wall holds, else two or more from a corner), a toilet in each; along the longest
+/// other wall with no doorway, as many basins as fit. Each keeps off the doorways' mouths and the
+/// room's walks (every doorway to every other, in straight lines). No draw.
+pub fn washrooms(plan: &Plan, doorways: &[Doorway]) -> Vec<Fitting> {
+    use crate::felicity::{crosses, INSIDE, MOUTH};
+    let mut out = Vec::new();
+    for r in plan.rooms.iter().filter(|r| r.scheme == "washroom" && r.kind == "room") {
+        let Some(&(lo, hi)) = r.boxes.first() else { continue };
+        if hi.2 - lo.2 != ROOM_H {
+            continue;
+        }
+        let doors: Vec<&Doorway> = doorways.iter().filter(|d| (d.a == r.key || d.b == r.key) && d.lo.2 == lo.2).collect();
+        // the walks' points (`INSIDE` in from each doorway's middle) and their lines
+        let ends: Vec<(f64, f64)> = doors
+            .iter()
+            .map(|d| {
+                let off = if d.a == r.key { -INSIDE } else { INSIDE };
+                let across = 1 - d.axis;
+                let centre = (at(d.lo, across) + at(d.hi, across)) as f64 / 2.0;
+                let mid = (d.plane() + off) as f64;
+                if d.axis == 0 {
+                    (mid, centre)
+                } else {
+                    (centre, mid)
+                }
+            })
+            .collect();
+        let lines: Vec<((f64, f64), (f64, f64))> =
+            (0..ends.len()).flat_map(|i| (i + 1..ends.len()).map(move |j| (i, j))).map(|(i, j)| (ends[i], ends[j])).collect();
+        // each doorway's mouth: its opening and frame, `MOUTH` into the room
+        let mouths: Vec<(i32, i32, i32, i32)> = doors
+            .iter()
+            .map(|d| {
+                let across = 1 - d.axis;
+                let (s0, s1) = (at(d.lo, across) - 13, at(d.hi, across) + 13);
+                let (t0, t1) = if d.a == r.key { (at(d.lo, d.axis) - MOUTH, at(d.lo, d.axis)) } else { (at(d.hi, d.axis), at(d.hi, d.axis) + MOUTH) };
+                if d.axis == 0 {
+                    (t0, s0, t1, s1)
+                } else {
+                    (s0, t0, s1, t1)
+                }
+            })
+            .collect();
+        let meets = |a: (i32, i32, i32, i32), b: (i32, i32, i32, i32)| a.0 < b.2 && b.0 < a.2 && a.1 < b.3 && b.1 < a.3;
+        let clear = |f: (i32, i32, i32, i32)| !mouths.iter().any(|&m| meets(f, m)) && !lines.iter().any(|&(p, q)| crosses(p, q, f, FITTING_PAD));
+        // the walls: (axis of its normal, its face, out into the room, its span along it)
+        let walls = [(1, lo.1, 1, (lo.0, hi.0)), (0, hi.0, -1, (lo.1, hi.1)), (1, hi.1, -1, (lo.0, hi.0)), (0, lo.0, 1, (lo.1, hi.1))];
+        let free: Vec<usize> = (0..4)
+            .filter(|&w| {
+                let (n, face, _, _) = walls[w];
+                !doors.iter().any(|d| d.axis == n && (at(d.lo, n) == face || at(d.hi, n) == face))
+            })
+            .collect();
+        let mut by_length = free.clone();
+        by_length.sort_by_key(|&w| -(walls[w].3 .1 - walls[w].3 .0));
+        // a fitting on wall `w`, its middle `s` along it
+        let fitting = |w: usize, kind: &'static str, s: i32, width: i32, depth: i32| {
+            let (n, face, o, _) = walls[w];
+            let (at, out) = if n == 1 { ((s, face), (0, o)) } else { ((face, s), (o, 0)) };
+            Fitting { room: r.key.clone(), kind, at, out, width, depth, floor: lo.2 }
+        };
+        let room_depth = |w: usize| if walls[w].0 == 1 { hi.1 - lo.1 } else { hi.0 - lo.0 };
+        // the stalls
+        let mut stall_wall = None;
+        let mut row = Vec::new();
+        for &w in &by_length {
+            let deepest = (STALL_D.min(room_depth(w) - MOUTH) / 10) * 10;
+            if deepest < STALL_LEAST {
+                continue;
+            }
+            let (a, b) = walls[w].3;
+            let most = (b - a + PARTITION) / (STALL + PARTITION);
+            // (from, to, stalls, a partition at the low end, at the high end)
+            let mut tries = vec![(a, b, most, false, false)];
+            for n in (1..most).rev() {
+                let span = n * (STALL + PARTITION);
+                tries.push((a, a + span, n, false, true));
+                tries.push((b - span, b, n, true, false));
+            }
+            // the most stalls first, each as deep as fits
+            let depths: Vec<i32> = (0..).map(|k| deepest - k * STALL_STEP).take_while(|&d| d >= STALL_LEAST).collect();
+            for ((s0, s1, n, low, high), deep) in tries.into_iter().filter(|t| t.2 >= 1).flat_map(|t| depths.iter().map(move |&d| (t, d))) {
+                let mut pieces = Vec::new();
+                // the partitions between stalls (and at an end that is no corner), the stalls' width
+                let inner = (s1 - s0) - PARTITION * (n - 1 + low as i32 + high as i32);
+                let mut s = s0 as f64 + if low { PARTITION as f64 } else { 0.0 };
+                if low {
+                    pieces.push(fitting(w, "partition", s0 + PARTITION / 2, PARTITION, deep));
+                }
+                for k in 0..n {
+                    let width = inner as f64 / n as f64;
+                    pieces.push(fitting(w, "toilet", (s + width / 2.0).round() as i32, TOILET.0, TOILET_GAP + TOILET.1));
+                    s += width;
+                    if k + 1 < n || high {
+                        pieces.push(fitting(w, "partition", (s + PARTITION as f64 / 2.0).round() as i32, PARTITION, deep));
+                        s += PARTITION as f64;
+                    }
+                }
+                let foot = {
+                    let f = fitting(w, "row", (s0 + s1) / 2, s1 - s0, deep);
+                    f.footprint()
+                };
+                if clear(foot) {
+                    row = pieces;
+                    stall_wall = Some((w, foot));
+                    break;
+                }
+            }
+            if stall_wall.is_some() {
+                break;
+            }
+        }
+        out.extend(row);
+        // the basins: on the longest other free wall where any fit
+        for &w in by_length.iter().filter(|&&w| stall_wall.map(|s| s.0) != Some(w)) {
+            let (a, b) = walls[w].3;
+            let most = (b - a) / BASIN_EVERY;
+            let placed = (1..=most).rev().find_map(|k| {
+                let basins: Vec<Fitting> = (0..k).map(|i| fitting(w, "basin", a + (b - a) * (2 * i + 1) / (2 * k), BASIN, BASIN_D)).collect();
+                let ok = basins.iter().all(|f| {
+                    let foot = f.footprint();
+                    clear(foot) && stall_wall.is_none_or(|(_, s)| !meets((foot.0 - 10, foot.1 - 10, foot.2 + 10, foot.3 + 10), s))
+                });
+                ok.then_some(basins)
+            });
+            if let Some(basins) = placed {
+                out.extend(basins);
+                break;
+            }
+        }
+    }
+    out
+}
+
 /// How big a pipe is: Felicity's (room 39), a hexagon 53 across with tips `PIPE_TIP` deep, here
 /// lying on the floor against a wall (flat top and bottom, its tips to the wall and the room).
 pub const PIPE: i32 = 53;
@@ -656,6 +840,64 @@ mod tests {
         assert!(reach + 30.0 <= 80.0, "{reach}");
         println!("seeds 1-40: {portals} portals in {} industrial corridors", corridors.len());
         assert!(portals > 20);
+    }
+
+    #[test]
+    fn washrooms_have_stalls_and_basins_clear_of_their_doorways_and_walks() {
+        use crate::felicity::{crosses, INSIDE, MOUTH};
+        use crate::level::{generate, Options};
+        let (mut rooms, mut fitted, mut stalls, mut basins) = (0, 0, 0, 0);
+        for seed in 1..=40 {
+            let o = Options { style: "felicity", ..Options::default() };
+            let lv = generate(seed, &o).unwrap();
+            // the option off: no fittings and nothing else changed
+            let bare = generate(seed, &Options { washroom: false, ..o.clone() }).unwrap();
+            assert!(bare.fittings.is_empty());
+            assert_eq!((&bare.doorways, &bare.braces, &bare.pipes, &bare.portals, &bare.lamps), (&lv.doorways, &lv.braces, &lv.pipes, &lv.portals, &lv.lamps));
+            assert_eq!(
+                bare.plan.rooms.iter().map(|r| (&r.key, r.boxes.clone())).collect::<Vec<_>>(),
+                lv.plan.rooms.iter().map(|r| (&r.key, r.boxes.clone())).collect::<Vec<_>>()
+            );
+            for r in lv.plan.rooms.iter().filter(|r| r.scheme == "washroom") {
+                rooms += 1;
+                let mine: Vec<&Fitting> = lv.fittings.iter().filter(|f| f.room == r.key).collect();
+                fitted += !mine.is_empty() as usize;
+                stalls += mine.iter().filter(|f| f.kind == "toilet").count();
+                basins += mine.iter().filter(|f| f.kind == "basin").count();
+                let (lo, hi) = r.boxes[0];
+                let doors: Vec<&Doorway> = lv.doorways.iter().filter(|d| (d.a == r.key || d.b == r.key) && d.lo.2 == lo.2).collect();
+                for f in &mine {
+                    let (x0, y0, x1, y1) = f.footprint();
+                    assert!(lo.0 <= x0 && x1 <= hi.0 && lo.1 <= y0 && y1 <= hi.1, "seed {seed}: {f:?} outside {}", r.key);
+                    for d in &doors {
+                        // not in a doorway's mouth
+                        let across = 1 - d.axis;
+                        let (s0, s1) = (at(d.lo, across) - 13, at(d.hi, across) + 13);
+                        let (t0, t1) = if d.a == r.key { (at(d.lo, d.axis) - MOUTH, at(d.lo, d.axis)) } else { (at(d.hi, d.axis), at(d.hi, d.axis) + MOUTH) };
+                        let m = if d.axis == 0 { (t0, s0, t1, s1) } else { (s0, t0, s1, t1) };
+                        assert!(!(x0 < m.2 && m.0 < x1 && y0 < m.3 && m.1 < y1), "seed {seed}: {f:?} in the mouth of {} {}", d.a, d.b);
+                    }
+                    // off every walk between two of its doorways
+                    let end = |d: &Doorway| {
+                        let off = if d.a == r.key { -INSIDE } else { INSIDE };
+                        let c = (at(d.lo, 1 - d.axis) + at(d.hi, 1 - d.axis)) as f64 / 2.0;
+                        let m = (d.plane() + off) as f64;
+                        if d.axis == 0 {
+                            (m, c)
+                        } else {
+                            (c, m)
+                        }
+                    };
+                    for i in 0..doors.len() {
+                        for j in i + 1..doors.len() {
+                            assert!(!crosses(end(doors[i]), end(doors[j]), (x0, y0, x1, y1), FITTING_PAD), "seed {seed}: {f:?} on a walk");
+                        }
+                    }
+                }
+            }
+        }
+        println!("seeds 1-40: {fitted} of {rooms} washrooms fitted, {stalls} stalls, {basins} basins");
+        assert!(fitted * 2 > rooms, "{fitted} of {rooms}");
     }
 
     #[test]

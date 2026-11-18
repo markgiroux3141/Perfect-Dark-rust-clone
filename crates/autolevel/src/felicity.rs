@@ -87,7 +87,7 @@ const SIDE_ARCH: i32 = 400;
 const SIDE_SPRING: i32 = 400;
 const PIER: i32 = CELL;
 /// How far inside a room a walk starts and ends from a doorway's middle plane.
-const INSIDE: i32 = 100;
+pub(crate) const INSIDE: i32 = 100;
 /// How many layouts a seed may draw before one meets the targets.
 const TRIES: usize = 40;
 /// The share of layouts that sprawl (`sprawl`); the rest are the two-corridor block (`block`).
@@ -1295,7 +1295,7 @@ fn gap_box(g: &Gap) -> Box3 {
 }
 
 /// How far into a room a doorway's mouth is kept clear (of a flight standing on the floor).
-const MOUTH: i32 = 120;
+pub(crate) const MOUTH: i32 = 120;
 
 /// What stands in a hall or an open room: the hall's platform along its far wall with three
 /// steps up its middle third (its screens are `screens`'); an open room 9 cells or more each way
@@ -1448,7 +1448,7 @@ fn levels(l: &Lot) -> i32 {
 const LINE: f64 = 60.0;
 
 /// Whether the segment `p`-`q` passes within `pad` of the rectangle `r` (x0, y0, x1, y1).
-fn crosses(p: (f64, f64), q: (f64, f64), r: (i32, i32, i32, i32), pad: f64) -> bool {
+pub(crate) fn crosses(p: (f64, f64), q: (f64, f64), r: (i32, i32, i32, i32), pad: f64) -> bool {
     let (x0, y0, x1, y1) = (r.0 as f64 - pad, r.1 as f64 - pad, r.2 as f64 + pad, r.3 as f64 + pad);
     // the segment clipped to the rectangle, one axis at a time (Liang-Barsky)
     let (mut t0, mut t1) = (0.0f64, 1.0f64);
@@ -1935,6 +1935,7 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
     let surrounds = crate::dress::surrounds(&plan, &doorways, &arched);
     let portals = crate::dress::portals(&plan, &doorways, &surrounds);
     let pipes = crate::dress::pipes(seed, &plan, &doorways, &surrounds, &portals);
+    let fittings = if o.washroom { crate::dress::washrooms(&plan, &doorways) } else { Vec::new() };
     // the portals' lights join the braces' (a room with lamps of its own has them for its grid)
     let lamps: Vec<(String, (i32, i32, i32))> = lamps.into_iter().chain(portals.iter().map(|p| p.lamp())).collect();
 
@@ -2086,6 +2087,7 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
         pipes,
         surrounds,
         portals,
+        fittings,
         lamps,
         report,
     })

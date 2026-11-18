@@ -46,8 +46,8 @@
 use std::collections::HashMap;
 
 use autolevel::dress::{
-    self, Arm, Crossing, Pipe, Portal, Surround, BEAM_D, BEAM_W, BEVEL, FLARE, JAMB, LEAN, LIGHT, LINTEL, PILASTER, PIPE, PIPE_TIP, PORTAL_D, POST, SPLAY,
-    SURROUND,
+    self, Arm, Crossing, Fitting, Pipe, Portal, Surround, BEAM_D, BEAM_W, BEVEL, FLARE, JAMB, LEAN, LIGHT, LINTEL, PILASTER, PIPE, PIPE_TIP, PORTAL_D, POST,
+    SPLAY, STALL_H, SURROUND, TOILET_GAP,
 };
 use autolevel::felicity::{DOOR_H, PLATFORM, ROOM_H, STOREY};
 use autolevel::level::{Arch, Doorway, Level};
@@ -63,7 +63,7 @@ const fn paint(role: &'static str, preset: &'static str, flags: &'static [&'stat
 }
 
 /// The kit's materials (names: Felicity's Setup Editor export's, where it has the texture).
-const PALETTE: [Paint; 34] = [
+const PALETTE: [Paint; 37] = [
     // office and marble
     paint("floor", "0287", &[], "m2", (128.3, 134.8)),
     paint("lower", "024F", &[], "m0", (89.9, 94.5)),
@@ -95,6 +95,11 @@ const PALETTE: [Paint; 34] = [
     // white)
     paint("portal", "027D", &[], "portal", (79.0, 47.5)),
     paint("glow", "071F", &[], "glow", (211.0, 79.0)),
+    // the washrooms' fittings (Felicity's room 12): toilets in the blue-grey 0714, their water and
+    // the basins' bowls white 0001, the basins 0644
+    paint("toilet", "0714", &[], "toilet", (64.0, 64.0)),
+    paint("water", "0001", &[], "water", (64.0, 64.0)),
+    paint("basin", "0644", &[], "basin", (64.0, 64.0)),
     // the stairwells' railings: Felicity's see-through rail
     paint("rail", "0710", &["Transparent", "CullBoth", "MirrorS", "ClampT"], "m14TransparentCullBothMirrorSClampT", (49.0, 94.0)),
     // industrial: Felicity's grey concrete bays (rooms 26-32)
@@ -454,6 +459,89 @@ fn portal(p: &Portal, look: PortalLook) -> (Vec<Poly>, Vec<Cover>) {
     (polys, covers)
 }
 
+/// The looks of the washrooms' fittings.
+#[derive(Clone, Copy)]
+struct FittingLook {
+    tile: Surface,
+    toilet: Surface,
+    water: Surface,
+    basin: Surface,
+}
+
+/// A washroom's fitting (`autolevel::dress::Fitting`) as polygons, and what it covers of the
+/// carver's floor. A partition is a box of the wall's tile, `STALL_H` tall; a toilet (Felicity's,
+/// measured from its room 12) a pedestal 47 x 30 rising 25, its bowl flaring to the rim 71 x 77 at
+/// 54, the bowl's inside falling to the water; a basin hangs on the wall, its rim at 63, its front
+/// down to 56 and its underside back to the wall at 48, its bowl 11 deep.
+fn fitting(f: &Fitting, look: FittingLook) -> (Vec<Poly>, Vec<Cover>) {
+    let (out, along) = ([f.out.0 as f64, f.out.1 as f64, 0.0], [-f.out.1 as f64, f.out.0 as f64, 0.0]);
+    let base = [f.at.0 as f64, f.at.1 as f64, f.floor as f64];
+    // a point `s` along the wall, `d` out of it, `h` up
+    let pt = |s: f64, d: f64, h: f64| [base[0] + along[0] * s + out[0] * d, base[1] + along[1] * s + out[1] * d, base[2] + h];
+    let neg = |v: P3| v.map(|c| -c);
+    let (x0, y0, x1, y1) = f.footprint();
+    let floor_under = |lo: [i32; 2], hi: [i32; 2]| Cover { axis: 2, at: f.floor, sign: 1, lo, hi };
+    match f.kind {
+        "partition" => {
+            let (h, d, w) = (STALL_H as f64, f.depth as f64, f.width as f64 / 2.0);
+            let mut polys = Vec::new();
+            for (sign, n) in [(-1.0, neg(along)), (1.0, along)] {
+                let quad = [pt(sign * w, 0.0, 0.0), pt(sign * w, d, 0.0), pt(sign * w, d, h), pt(sign * w, 0.0, h)];
+                polys.push(csg::oriented(&quad, n, look.tile, &f.room, None));
+            }
+            polys.push(csg::oriented(&[pt(-w, d, 0.0), pt(w, d, 0.0), pt(w, d, h), pt(-w, d, h)], out, look.tile, &f.room, None));
+            polys.push(csg::oriented(&[pt(-w, 0.0, h), pt(w, 0.0, h), pt(w, d, h), pt(-w, d, h)], [0.0, 0.0, 1.0], look.tile, &f.room, None));
+            (polys, vec![floor_under([x0, y0], [x1, y1])])
+        }
+        "toilet" => {
+            // the pedestal's outline (the path), 32 to 62 out from the wall, 47 wide; the rim flares
+            // beyond it 29 at the front, 18 at the back, 12 at the sides
+            let (back, front, half) = (TOILET_GAP as f64 + 18.0, TOILET_GAP as f64 + 48.0, 23.5);
+            let corners = [pt(-half, back, 0.0), pt(-half, front, 0.0), pt(half, front, 0.0), pt(half, back, 0.0)];
+            let sides = [neg(along), out, along, neg(out)];
+            let flares = [12.0, 29.0, 12.0, 18.0];
+            let e = Some(Edge { surface: look.toilet, along_v: false });
+            let legs = (0..4)
+                .map(|i| {
+                    let f = flares[i];
+                    // the bowl's inside, the rim, the bowl's underside, the pedestal (each facing out)
+                    Leg {
+                        to: corners[(i + 1) % 4],
+                        side: sides[i],
+                        depth: [0.0, 0.0, 1.0],
+                        profile: vec![(2.0, 32.0), (f - 10.0, 54.0), (f, 54.0), (0.0, 25.0), (0.0, 0.0)],
+                        edges: vec![e, e, e, e],
+                        along: None,
+                    }
+                })
+                .collect();
+            let mut polys = sweep::sweep(&Sweep { from: corners[0], legs, closed: true, caps: false, zone: &f.room });
+            let water =
+                [pt(-half - 2.0, back - 2.0, 32.0), pt(half + 2.0, back - 2.0, 32.0), pt(half + 2.0, front + 2.0, 32.0), pt(-half - 2.0, front + 2.0, 32.0)];
+            polys.push(csg::oriented(&water, [0.0, 0.0, 1.0], look.water, &f.room, None));
+            let xs = corners.map(|c| c[0].round() as i32);
+            let ys = corners.map(|c| c[1].round() as i32);
+            let lo = [*xs.iter().min().unwrap_or(&x0), *ys.iter().min().unwrap_or(&y0)];
+            let hi = [*xs.iter().max().unwrap_or(&x1), *ys.iter().max().unwrap_or(&y1)];
+            (polys, vec![floor_under(lo, hi)])
+        }
+        _ => {
+            // a basin: along one side out from the wall, across the front, back to the wall
+            let (w, d) = (f.width as f64 / 2.0, f.depth as f64);
+            let e = Some(Edge { surface: look.basin, along_v: false });
+            let profile = vec![(-16.0, 52.0), (-4.0, 63.0), (0.0, 63.0), (0.0, 56.0), (-21.0, 48.0)];
+            let leg = |to: P3, side: P3| Leg { to, side, depth: [0.0, 0.0, 1.0], profile: profile.clone(), edges: vec![e, e, e, e], along: None };
+            let legs = vec![leg(pt(-w, d, 0.0), neg(along)), leg(pt(w, d, 0.0), out), leg(pt(w, 0.0, 0.0), along)];
+            let mut polys = sweep::sweep(&Sweep { from: pt(-w, 0.0, 0.0), legs, closed: false, caps: false, zone: &f.room });
+            let bowl = [pt(-w + 16.0, 0.0, 52.0), pt(w - 16.0, 0.0, 52.0), pt(w - 16.0, d - 16.0, 52.0), pt(-w + 16.0, d - 16.0, 52.0)];
+            polys.push(csg::oriented(&bowl, [0.0, 0.0, 1.0], look.water, &f.room, None));
+            let under = [pt(-w + 21.0, 0.0, 48.0), pt(w - 21.0, 0.0, 48.0), pt(w - 21.0, d - 21.0, 48.0), pt(-w + 21.0, d - 21.0, 48.0)];
+            polys.push(csg::oriented(&under, [0.0, 0.0, -1.0], look.basin, &f.room, None));
+            (polys, Vec::new())
+        }
+    }
+}
+
 /// An arch's polygons: the soffit along its curve across the wall (each room's half in it), and
 /// on each face of the wall the two corners above the curve filled in, cut at the `cuts` (the
 /// wall's strip lines) so that each piece takes `face`'s surface for the wall there.
@@ -792,6 +880,18 @@ pub fn polys(lv: &Level, kit: &Kit) -> Result<(Vec<Poly>, Vec<Lit>), String> {
         sweep::clear(&mut polys, &covers);
         polys.extend(faces);
     }
+    // the washrooms' fittings
+    for f in &lv.fittings {
+        let look = FittingLook {
+            tile: kit.surface("wc_lower", Some(f.floor as f64), None)?,
+            toilet: kit.surface("toilet", None, None)?,
+            water: kit.surface("water", None, None)?,
+            basin: kit.surface("basin", None, None)?,
+        };
+        let (faces, covers) = fitting(f, look);
+        sweep::clear(&mut polys, &covers);
+        polys.extend(faces);
+    }
     // the pipes along the industrial rooms' walls
     let pipe_look = kit.surface("pipe", None, None)?;
     for p in &lv.pipes {
@@ -972,6 +1072,38 @@ mod tests {
                 }
             });
             assert!(floored, "{p:?}: no floor through it");
+        }
+    }
+
+    #[test]
+    fn washroom_fittings_are_drawn_and_the_floor_under_them_cleared() {
+        let lv = generate(36, &Options { style: "felicity", ..Options::default() }).unwrap();
+        assert!(lv.fittings.iter().any(|f| f.kind == "toilet") && lv.fittings.iter().any(|f| f.kind == "basin"));
+        let (polys, _) = polys(&lv, &KIT).unwrap();
+        let count = |room: &str, role: &str| polys.iter().filter(|p| p.zone == room && p.surface.material == role).count();
+        let mut rooms: Vec<&str> = lv.fittings.iter().map(|f| f.room.as_str()).collect();
+        rooms.dedup();
+        for room in rooms {
+            let of = |kind: &str| lv.fittings.iter().filter(|f| f.room == room && f.kind == kind).count();
+            // a toilet: four sides of four faces each, its water; a basin: three sides of four, its bowl and underside
+            assert_eq!(count(room, "toilet"), 16 * of("toilet"), "{room}");
+            assert_eq!(count(room, "water"), of("toilet") + of("basin"), "{room}");
+            assert_eq!(count(room, "basin"), 13 * of("basin"), "{room}");
+        }
+        // no floor left under a partition or a toilet's pedestal
+        for f in lv.fittings.iter().filter(|f| f.kind != "basin") {
+            let (x0, y0, x1, y1) = f.footprint();
+            let (cx, cy) = (f.at.0 + f.out.0 * (f.depth / 2), f.at.1 + f.out.1 * (f.depth / 2));
+            let (cx, cy) = if f.kind == "toilet" { (f.at.0 + f.out.0 * 47, f.at.1 + f.out.1 * 47) } else { (cx, cy) };
+            assert!(x0 <= cx && cx <= x1 && y0 <= cy && cy <= y1);
+            let under = polys.iter().any(|p| {
+                p.zone == f.room && p.normal[2] > 0.99 && p.verts.iter().all(|v| v[2] == f.floor) && p.surface.material == "wc_floor" && {
+                    let span = |c: usize| (p.verts.iter().map(|v| v[c]).min().unwrap(), p.verts.iter().map(|v| v[c]).max().unwrap());
+                    let ((a0, a1), (b0, b1)) = (span(0), span(1));
+                    a0 < cx && cx < a1 && b0 < cy && cy < b1
+                }
+            });
+            assert!(!under, "{f:?}: floor under it");
         }
     }
 

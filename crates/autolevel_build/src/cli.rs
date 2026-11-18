@@ -63,6 +63,7 @@ What kind of level (sweep, plan, build, batch and deadends all take these):
   --walkway 1|2              catwalks, bridges and open ramps this many cells wide: 1 (default) is the
                              doorways' 118, 2 the first version's
   --no-shapes                keep every room a plain rectangle (no L-shapes or cross walls)
+  --no-washroom              a Felicity level's washrooms bare: no stalls, toilets or basins (on by default)
   --risers N                 enclosed ramp corridors between rooms two storeys apart (switchbacks), default 2
   --vents N                  crawl ducts, first for rooms left with one door (default 4); they slope
                              between storeys
@@ -139,7 +140,7 @@ pub struct Args {
 }
 
 /// The options that are yes or no: named alone, they are yes.
-const FLAGS: [&str; 3] = ["crates", "shapes", "dead_ends"];
+const FLAGS: [&str; 4] = ["crates", "shapes", "dead_ends", "washroom"];
 
 /// Does the command `cmd` take the flag `name` (underscores for its hyphens)?
 fn takes(cmd: &str, name: &str) -> bool {
@@ -152,7 +153,7 @@ fn takes(cmd: &str, name: &str) -> bool {
         "shots" => cmd == "batch",
         "recipe" => matches!(cmd, "plan" | "build" | "deadends"),
         "pd_walk" => builds || matches!(cmd, "walk" | "shots"),
-        _ => !matches!(cmd, "walk" | "shots") && (matches!(name, "no_shapes" | "keep_dead_ends") || recipe::OPTIONS.contains(&name)),
+        _ => !matches!(cmd, "walk" | "shots") && (matches!(name, "no_shapes" | "keep_dead_ends" | "no_washroom") || recipe::OPTIONS.contains(&name)),
     }
 }
 
@@ -222,6 +223,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
             "no_bake" => (out.bake, took) = (false, 1),
             "shots" => (shots, took) = (true, 1),
             "no_shapes" => (out.recipe.options.shapes, took) = (false, 1),
+            "no_washroom" => (out.recipe.options.washroom, took) = (false, 1),
             "keep_dead_ends" => (out.recipe.options.dead_ends, took) = (false, 1),
             _ if FLAGS.contains(&name.as_str()) && !matches!(args.get(n + 1).map(String::as_str), Some("true" | "false")) => {
                 recipe::set_option(&mut out.recipe.options, &name, "true")?;

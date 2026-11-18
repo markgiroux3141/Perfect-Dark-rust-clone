@@ -40,6 +40,9 @@ pub struct Options {
     /// Whose levels: "complex" (the default: everything below) or "felicity" (`felicity`: a
     /// building cut into rooms; it takes none of the options below).
     pub style: &'static str,
+    /// A Felicity level's washrooms have their fittings (stalls, toilets, basins): on unless told
+    /// otherwise; off leaves them bare and changes nothing else.
+    pub washroom: bool,
     /// Which rooms are scattered, how many, and where they may fall.
     pub siting: Siting,
     /// What stands on the floors: "pillars" (floor to ceiling), "crates" (low housings), "none",
@@ -92,6 +95,7 @@ impl Default for Options {
     fn default() -> Self {
         Options {
             style: "complex",
+            washroom: true,
             siting: Siting::default(),
             cover: "mixed",
             clutter: 0.5,
@@ -439,6 +443,9 @@ pub struct Level {
     pub surrounds: Vec<crate::dress::Surround>,
     /// Portals across industrial corridors (a Felicity level's dressing, `dress`; none in Complex's).
     pub portals: Vec<crate::dress::Portal>,
+    /// The washrooms' fittings: stalls' partitions, toilets, basins (a Felicity level's dressing,
+    /// `dress::washrooms`, unless `Options::washroom` is off; none in Complex's).
+    pub fittings: Vec<crate::dress::Fitting>,
     /// Lamps a room is lit by in place of its lamp grid: (room, point). A braced room's, one under
     /// each light panel; none in Complex's.
     pub lamps: Vec<(String, (i32, i32, i32))>,
@@ -518,6 +525,7 @@ pub fn stage_level(mut b: Build, dropped: Vec<String>) -> Result<Level, String> 
         pipes: Vec::new(),
         surrounds: Vec::new(),
         portals: Vec::new(),
+        fittings: Vec::new(),
         lamps: Vec::new(),
         report: Report::default(),
     };
