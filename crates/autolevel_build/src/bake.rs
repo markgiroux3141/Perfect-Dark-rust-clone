@@ -117,8 +117,8 @@ pub fn light(lv: &Level, rooms: &mut [Room], lit: &[Lit], kit: &Kit, set: &Setti
             scene.glow(&mut rooms[at], at, (*x as f64, *y as f64), set.glow, set.glow_radius, &reader);
         }
     }
-    // a kit's light panels glow: full white (Felicity's braces, 254)
-    if let Ok(m) = kit.index("lamp") {
+    // a kit's light panels glow: full white (Felicity's braces and portals, 254)
+    for m in ["lamp", "glow"].into_iter().filter_map(|role| kit.index(role).ok()) {
         for f in rooms.iter_mut().flat_map(|r| r.faces.iter_mut()).filter(|f| f.material == m) {
             f.colors.fill([254; 3]);
         }

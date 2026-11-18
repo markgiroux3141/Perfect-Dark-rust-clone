@@ -251,6 +251,88 @@ pub fn surrounds(plan: &Plan, doorways: &[Doorway], arched: &dyn Fn(&Doorway) ->
     out
 }
 
+/// A portal across an industrial corridor (Felicity's grey bays, rooms 29-32: the openings between
+/// its bays). How deep it is along the corridor: Felicity's passage 79 and a bevel 13 each side.
+pub const PORTAL_D: i32 = 105;
+pub const BEVEL: i32 = 13;
+/// Its opening: `POST` in from each wall at the floor, straight up `JAMB`, then leaning in `LEAN`
+/// up to its lintel at `LINTEL` (Felicity's: 47 straight, 53 in over 188, the lintel at 235, in a
+/// bay 529 wide). Narrower here, so that a walker (radius 30, 185 tall) on a door-to-door line 80
+/// off the wall clears it: 42 in at 185.
+pub const POST: i32 = 13;
+pub const JAMB: i32 = 47;
+pub const LEAN: i32 = 40;
+pub const LINTEL: i32 = 235;
+/// About how far apart along a corridor (Felicity's bays: 475; here 4 cells).
+pub const BAY: f64 = 424.0;
+/// How far a portal keeps off the corridor's ends, and off the frame of any doorway in its walls.
+pub const PORTAL_END: i32 = 106;
+pub const PORTAL_MARGIN: i32 = 40;
+
+/// A portal across a corridor: a frame `PORTAL_D` deep with a leaning opening under a glowing
+/// lintel.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Portal {
+    pub room: String,
+    /// The axis the corridor runs along, and the portal's middle along it.
+    pub axis: usize,
+    pub at: i32,
+    /// Wall to wall across the corridor.
+    pub across: (i32, i32),
+    pub floor: i32,
+    pub top: i32,
+}
+
+impl Portal {
+    /// The light under its lintel: (room, the point).
+    pub fn lamp(&self) -> (String, (i32, i32, i32)) {
+        let (m, z) = ((self.across.0 + self.across.1) / 2, self.floor + LINTEL - 10);
+        (self.room.clone(), if self.axis == 0 { (self.at, m, z) } else { (m, self.at, z) })
+    }
+}
+
+/// The portals of a Felicity level: across every one-storey industrial corridor, one every `BAY`
+/// or so along it (`round(length / BAY) - 1`, evenly), each slid up to `SLIDE` to keep
+/// `PORTAL_MARGIN` off the frames of the doorways in its walls and `PORTAL_END` off its ends, or
+/// left out. No draw.
+pub fn portals(plan: &Plan, doorways: &[Doorway], surrounds: &[Surround]) -> Vec<Portal> {
+    let mut out = Vec::new();
+    for r in plan.rooms.iter().filter(|r| r.kind == "corridor" && r.scheme == "industrial") {
+        let Some(&(lo, hi)) = r.boxes.first() else { continue };
+        if hi.2 - lo.2 != ROOM_H {
+            continue;
+        }
+        let (lo, hi) = ([lo.0, lo.1, lo.2], [hi.0, hi.1, hi.2]);
+        let k = if hi[0] - lo[0] >= hi[1] - lo[1] { 0 } else { 1 };
+        let o = 1 - k;
+        // the doorways in its side walls, with their frames, along it
+        let openings: Vec<(i32, i32)> = doorways
+            .iter()
+            .filter(|d| d.axis == o && (at(d.lo, o) == hi[o] || at(d.hi, o) == lo[o]) && (d.a == r.key || d.b == r.key))
+            .map(|d| {
+                let w = frame_width(surrounds, d, &r.key);
+                (at(d.lo, k) - w, at(d.hi, k) + w)
+            })
+            .collect();
+        let half = PORTAL_D / 2;
+        let clear = |c: i32| {
+            c - half >= lo[k] + PORTAL_END
+                && c + half <= hi[k] - PORTAL_END
+                && openings.iter().all(|&(s0, s1)| c + half <= s0 - PORTAL_MARGIN || c - half >= s1 + PORTAL_MARGIN)
+        };
+        let span = hi[k] - lo[k];
+        let n = ((span as f64 / BAY).round() as i32) - 1;
+        for i in 0..n {
+            let even = lo[k] + span * (i + 1) / (n + 1);
+            let slides = (0..=SLIDE / 20).flat_map(|s| [s * 20, -s * 20]);
+            if let Some(c) = slides.map(|s| even + s).find(|&c| clear(c)) {
+                out.push(Portal { room: r.key.clone(), axis: k, at: c, across: (lo[o], hi[o]), floor: lo[2], top: hi[2] });
+            }
+        }
+    }
+    out
+}
+
 /// How big a pipe is: Felicity's (room 39), a hexagon 53 across with tips `PIPE_TIP` deep, here
 /// lying on the floor against a wall (flat top and bottom, its tips to the wall and the room).
 pub const PIPE: i32 = 53;
@@ -273,8 +355,9 @@ pub struct Pipe {
 }
 
 /// The pipes of a Felicity level: round the walls of `PIPED` of its one-storey industrial rooms
-/// and corridors, broken at every doorway (beyond its frame: a hazard surround's splay, if any).
-pub fn pipes(seed: u64, plan: &Plan, doorways: &[Doorway], surrounds: &[Surround]) -> Vec<Pipe> {
+/// and corridors, broken at every doorway (beyond its frame: a hazard surround's splay, if any) and
+/// at every portal.
+pub fn pipes(seed: u64, plan: &Plan, doorways: &[Doorway], surrounds: &[Surround], portals: &[Portal]) -> Vec<Pipe> {
     let mut rng = PyRandom::named(&format!("{seed}/felicity/dress/pipes"));
     let mut out = Vec::new();
     for r in &plan.rooms {
@@ -318,6 +401,15 @@ pub fn pipes(seed: u64, plan: &Plan, doorways: &[Doorway], surrounds: &[Surround
                 b = starts[wall] + lengths[wall] + PIPE_MOUTH;
             }
             blocked.push((a, b));
+        }
+        // each portal: both side walls, along its depth
+        for p in portals.iter().filter(|p| p.room == r.key) {
+            let (s0, s1) = (p.at - PORTAL_D / 2 - PIPE_GAP, p.at + PORTAL_D / 2 + PIPE_GAP);
+            let sides =
+                if p.axis == 0 { [(0, s0 - lo.0, s1 - lo.0), (2, hi.0 - s1, hi.0 - s0)] } else { [(1, s0 - lo.1, s1 - lo.1), (3, hi.1 - s1, hi.1 - s0)] };
+            for (wall, a, b) in sides {
+                blocked.push((starts[wall] + a, starts[wall] + b));
+            }
         }
         if blocked.is_empty() {
             continue;
@@ -433,7 +525,9 @@ mod tests {
                     }
                 }
             }
-            assert_eq!(lamps(&arms(&lv.braces).0), lv.lamps);
+            let mut want = lamps(&arms(&lv.braces).0);
+            want.extend(lv.portals.iter().map(|p| p.lamp()));
+            assert_eq!(want, lv.lamps);
         }
         println!("seeds 1-40: {braced} of {could} rooms that could be are braced, {beams} beams; {ribs} ribs in {corridors} corridors");
         assert!(braced * 2 > could);
@@ -518,6 +612,50 @@ mod tests {
         }
         println!("seeds 1-40: {faces} hazard surrounds of {could} industrial doorway faces");
         assert!(faces * 2 > could, "{faces} of {could}");
+    }
+
+    #[test]
+    fn portals_stand_across_industrial_corridors_clear_of_their_doorways_and_pipes() {
+        use crate::level::{generate, Options};
+        let (mut portals, mut corridors) = (0, std::collections::BTreeSet::new());
+        for seed in 1..=40 {
+            let lv = generate(seed, &Options { style: "felicity", ..Options::default() }).unwrap();
+            for p in &lv.portals {
+                portals += 1;
+                corridors.insert((seed, p.room.clone()));
+                let r = lv.plan.get(&p.room).unwrap();
+                assert!(r.kind == "corridor" && r.scheme == "industrial", "seed {seed}: a portal in {}", p.room);
+                let (lo, hi) = r.boxes[0];
+                let (lo, hi) = ([lo.0, lo.1, lo.2], [hi.0, hi.1, hi.2]);
+                let (k, o) = (p.axis, 1 - p.axis);
+                // across the corridor's short span, inside its ends
+                assert!(hi[k] - lo[k] >= hi[o] - lo[o]);
+                assert_eq!(p.across, (lo[o], hi[o]));
+                let (t0, t1) = (p.at - PORTAL_D / 2, p.at + PORTAL_D / 2);
+                assert!(t0 >= lo[k] + PORTAL_END && t1 <= hi[k] - PORTAL_END, "seed {seed}: {p:?}");
+                // its opening wide enough to walk through under the lintel
+                assert!(hi[o] - lo[o] - 2 * (POST + LEAN) >= 100, "seed {seed}: {p:?}");
+                // clear of every doorway's frame in its walls (every doorway of the corridor)
+                for d in lv.doorways.iter().filter(|d| (d.a == p.room || d.b == p.room) && d.axis == o) {
+                    let w = frame_width(&lv.surrounds, d, &p.room);
+                    let (s0, s1) = (at(d.lo, k) - w, at(d.hi, k) + w);
+                    assert!(t1 <= s0 - PORTAL_MARGIN || t0 >= s1 + PORTAL_MARGIN, "seed {seed}: {p:?} meets {} {}", d.a, d.b);
+                }
+                // no pipe under it
+                for pipe in lv.pipes.iter().filter(|q| q.room == p.room) {
+                    for w in pipe.path.windows(2) {
+                        let (a0, a1) = if k == 0 { (w[0].0.min(w[1].0), w[0].0.max(w[1].0)) } else { (w[0].1.min(w[1].1), w[0].1.max(w[1].1)) };
+                        let along = if k == 0 { w[0].1 == w[1].1 } else { w[0].0 == w[1].0 };
+                        assert!(!along || a1 <= t0 || a0 >= t1, "seed {seed}: a pipe through {p:?}");
+                    }
+                }
+            }
+        }
+        // a walker (radius 30, 185 tall) on a door-to-door line, 80 off the wall's face, clears the posts
+        let reach = POST as f64 + LEAN as f64 * (185 - JAMB) as f64 / (LINTEL - JAMB) as f64;
+        assert!(reach + 30.0 <= 80.0, "{reach}");
+        println!("seeds 1-40: {portals} portals in {} industrial corridors", corridors.len());
+        assert!(portals > 20);
     }
 
     #[test]

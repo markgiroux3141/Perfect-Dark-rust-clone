@@ -1933,7 +1933,10 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
     let lamps = crate::dress::lamps(&crate::dress::arms(&braces).0);
     let arched = |d: &Doorway| arches.iter().any(|a| a.kind == "doorway" && a.a == d.a && a.b == d.b);
     let surrounds = crate::dress::surrounds(&plan, &doorways, &arched);
-    let pipes = crate::dress::pipes(seed, &plan, &doorways, &surrounds);
+    let portals = crate::dress::portals(&plan, &doorways, &surrounds);
+    let pipes = crate::dress::pipes(seed, &plan, &doorways, &surrounds, &portals);
+    // the portals' lights join the braces' (a room with lamps of its own has them for its grid)
+    let lamps: Vec<(String, (i32, i32, i32))> = lamps.into_iter().chain(portals.iter().map(|p| p.lamp())).collect();
 
     // ---- walks and views (cells of the plan's MODULE, as every walk is written)
     let c = |u: i32| u as f64 / MODULE;
@@ -2082,6 +2085,7 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
         braces,
         pipes,
         surrounds,
+        portals,
         lamps,
         report,
     })

@@ -45,7 +45,10 @@
 
 use std::collections::HashMap;
 
-use autolevel::dress::{self, Arm, Crossing, Pipe, Surround, BEAM_D, BEAM_W, FLARE, LIGHT, PILASTER, PIPE, PIPE_TIP, SPLAY, SURROUND};
+use autolevel::dress::{
+    self, Arm, Crossing, Pipe, Portal, Surround, BEAM_D, BEAM_W, BEVEL, FLARE, JAMB, LEAN, LIGHT, LINTEL, PILASTER, PIPE, PIPE_TIP, PORTAL_D, POST, SPLAY,
+    SURROUND,
+};
 use autolevel::felicity::{DOOR_H, PLATFORM, ROOM_H, STOREY};
 use autolevel::level::{Arch, Doorway, Level};
 
@@ -60,7 +63,7 @@ const fn paint(role: &'static str, preset: &'static str, flags: &'static [&'stat
 }
 
 /// The kit's materials (names: Felicity's Setup Editor export's, where it has the texture).
-const PALETTE: [Paint; 32] = [
+const PALETTE: [Paint; 34] = [
     // office and marble
     paint("floor", "0287", &[], "m2", (128.3, 134.8)),
     paint("lower", "024F", &[], "m0", (89.9, 94.5)),
@@ -87,6 +90,11 @@ const PALETTE: [Paint; 32] = [
     // along the wall)
     paint("hazard", "071E", &[], "hazard", (41.4, 35.0)),
     paint("grating", "01B2", &[], "grating", (64.0, 66.5)),
+    // a portal across an industrial corridor (Felicity's grey bays): its passage 027D (79 a repeat
+    // along its depth, 47.5 up), its lintel's light strip 071F (once across, once along: baked full
+    // white)
+    paint("portal", "027D", &[], "portal", (79.0, 47.5)),
+    paint("glow", "071F", &[], "glow", (211.0, 79.0)),
     // the stairwells' railings: Felicity's see-through rail
     paint("rail", "0710", &["Transparent", "CullBoth", "MirrorS", "ClampT"], "m14TransparentCullBothMirrorSClampT", (49.0, 94.0)),
     // industrial: Felicity's grey concrete bays (rooms 26-32)
@@ -367,6 +375,83 @@ fn surround(d: &Doorway, s: &Surround, look: SurroundLook) -> (Vec<Poly>, Vec<Co
     let (f0, f1) = (t.min(front), t.max(front));
     let (flo, fhi) = if a == 0 { ([f0, w0], [f1, w1]) } else { ([w0, f0], [w1, f1]) };
     (polys, vec![wall, Cover { axis: 2, at: z0, sign: 1, lo: flo, hi: fhi }])
+}
+
+/// The looks of a portal: its bevels (the wall's upper tile, banded as the wall), its passage, the
+/// light strip under its lintel, and the corridor's floor.
+#[derive(Clone, Copy)]
+struct PortalLook {
+    bevel: Surface,
+    passage: Surface,
+    glow: Surface,
+    floor: Surface,
+}
+
+/// A portal across a corridor (`autolevel::dress::Portal`, the openings between Felicity's grey
+/// bays): on each face, a bevel `BEVEL` deep from the corridor's outline (wall, ceiling, wall) in to
+/// the opening, `POST` in from each wall at the floor, straight up `JAMB`, leaning in `LEAN` to the
+/// lintel at `LINTEL`; through it the passage (its sides `passage`, its lintel's underside the light
+/// strip). Returns its polygons and what it covers of the carver's: the walls and the ceiling it
+/// stands against, and the floor under its posts (the floor in front of each bevel's foot is put
+/// back).
+fn portal(p: &Portal, look: PortalLook) -> (Vec<Poly>, Vec<Cover>) {
+    let (k, o) = (p.axis, 1 - p.axis);
+    let pt = |t: i32, (s, h): (i32, i32)| -> P3 {
+        let mut v = [0.0; 3];
+        (v[k], v[o], v[2]) = (t as f64, s as f64, (p.floor + h) as f64);
+        v
+    };
+    let (w0, w1, high) = (p.across.0, p.across.1, p.top - p.floor);
+    let hole = [(w0 + POST, 0), (w0 + POST, JAMB), (w0 + POST + LEAN, LINTEL), (w1 - POST - LEAN, LINTEL), (w1 - POST, JAMB), (w1 - POST, 0)];
+    let (a, b, c, d) = ((w0, 0), (w0, high), (w1, high), (w1, 0));
+    let (t0, t1) = (p.at - PORTAL_D / 2, p.at + PORTAL_D / 2);
+    let (i0, i1) = (t0 + BEVEL, t1 - BEVEL);
+    let mut polys = Vec::new();
+    // the bevels, the corridor's outline to the opening, as triangles
+    for (face, inner, sign) in [(t0, i0, -1.0), (t1, i1, 1.0)] {
+        let [a, b, c, d] = [a, b, c, d].map(|q| pt(face, q));
+        let h = hole.map(|q| pt(inner, q));
+        let tris = [[a, h[0], h[1]], [a, h[1], b], [b, h[1], h[2]], [b, h[2], h[3]], [b, h[3], c], [c, h[3], h[4]], [c, h[4], d], [d, h[4], h[5]]];
+        for tri in tris {
+            polys.push(csg::oriented(&tri, unit_along(k, sign), look.bevel, &p.room, None));
+        }
+    }
+    // the passage: each edge of the opening from one bevel to the other, facing in; v up the
+    // outline from the floor on each side, the lintel's strip once across and once along
+    let rise = (LEAN as f64).hypot((LINTEL - JAMB) as f64);
+    let up = [0.0, JAMB as f64, JAMB as f64 + rise, JAMB as f64 + rise, JAMB as f64, 0.0];
+    let depth = (i1 - i0) as f64;
+    for e in 0..5 {
+        let (h, n) = (hole[e], hole[e + 1]);
+        let mut normal = [0.0; 3];
+        (normal[o], normal[2]) = ((n.1 - h.1) as f64, -(n.0 - h.0) as f64);
+        let quad = [pt(i0, h), pt(i1, h), pt(i1, n), pt(i0, n)];
+        if e == 2 {
+            let uvs = [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)];
+            polys.push(csg::oriented(&quad, normal, look.glow, &p.room, Some(&uvs)));
+        } else {
+            let (sc, (vh, vn)) = (look.passage.scale, (up[e], up[e + 1]));
+            let uvs = [(0.0, vh / sc.1), (depth / sc.0, vh / sc.1), (depth / sc.0, vn / sc.1), (0.0, vn / sc.1)];
+            polys.push(csg::oriented(&quad, normal, look.passage, &p.room, Some(&uvs)));
+        }
+    }
+    // the floor in front of each bevel's foot, beside each post
+    for (face, inner) in [(t0, i0), (t1, i1)] {
+        for (wall, post) in [(w0, w0 + POST), (w1, w1 - POST)] {
+            let tri = [pt(face, (wall, 0)), pt(face, (post, 0)), pt(inner, (post, 0))];
+            polys.push(csg::oriented(&tri, [0.0, 0.0, 1.0], look.floor, &p.room, None));
+        }
+    }
+    let flat = |s0: i32, s1: i32| if k == 0 { ([t0, s0], [t1, s1]) } else { ([s0, t0], [s1, t1]) };
+    let mut covers =
+        vec![Cover { axis: o, at: w0, sign: 1, lo: [t0, p.floor], hi: [t1, p.top] }, Cover { axis: o, at: w1, sign: -1, lo: [t0, p.floor], hi: [t1, p.top] }];
+    let (lo, hi) = flat(w0, w1);
+    covers.push(Cover { axis: 2, at: p.top, sign: -1, lo, hi });
+    for (s0, s1) in [(w0, w0 + POST), (w1 - POST, w1)] {
+        let (lo, hi) = flat(s0, s1);
+        covers.push(Cover { axis: 2, at: p.floor, sign: 1, lo, hi });
+    }
+    (polys, covers)
 }
 
 /// An arch's polygons: the soffit along its curve across the wall (each room's half in it), and
@@ -695,6 +780,18 @@ pub fn polys(lv: &Level, kit: &Kit) -> Result<(Vec<Poly>, Vec<Lit>), String> {
         sweep::clear(&mut polys, &[Cover { axis: 2, at: c.top, sign: -1, lo: [c.x - h, c.y - h], hi: [c.x + h, c.y + h] }]);
         polys.push(crossing(c, lamp));
     }
+    // the portals across the industrial corridors
+    for p in &lv.portals {
+        let look = PortalLook {
+            bevel: kit.surface("bay_upper", Some((p.floor + 141) as f64), None)?,
+            passage: kit.surface("portal", None, None)?,
+            glow: kit.surface("glow", None, None)?,
+            floor: kit.surface("bay_floor", None, None)?,
+        };
+        let (faces, covers) = portal(p, look);
+        sweep::clear(&mut polys, &covers);
+        polys.extend(faces);
+    }
     // the pipes along the industrial rooms' walls
     let pipe_look = kit.surface("pipe", None, None)?;
     for p in &lv.pipes {
@@ -836,6 +933,45 @@ mod tests {
             // the jambs reach the wall's face on this side
             let jamb_reaches = polys.iter().any(|p| p.surface.material == "jamb" && p.verts.iter().any(|v| v[a] == t) && p.normal[o].abs() > 0.99);
             assert!(jamb_reaches, "{s:?}: the jambs stop short of the face");
+        }
+    }
+
+    #[test]
+    fn portals_stand_across_their_corridors_with_nothing_of_the_carvers_inside_them() {
+        let lv = (1..=10).map(|seed| generate(seed, &Options { style: "felicity", ..Options::default() }).unwrap()).find(|lv| !lv.portals.is_empty()).unwrap();
+        let (polys, _) = polys(&lv, &KIT).unwrap();
+        for p in &lv.portals {
+            let (k, o) = (p.axis, 1 - p.axis);
+            let (t0, t1) = (p.at - PORTAL_D / 2, p.at + PORTAL_D / 2);
+            let inside = |q: &Poly| q.zone == p.room && q.verts.iter().all(|v| t0 <= v[k] && v[k] <= t1);
+            let count = |role: &str| polys.iter().filter(|q| q.surface.material == role && inside(q)).count();
+            // its light strip, the passage's four sides, sixteen bevel triangles
+            assert_eq!(count("glow"), 1, "{p:?}");
+            assert_eq!(count("portal"), 4, "{p:?}");
+            assert!(polys.iter().filter(|q| inside(q) && q.surface.material == "bay_upper" && q.normal[k].abs() > 0.6).count() >= 16, "{p:?}");
+            // the glow is the lintel's underside
+            let glow = polys.iter().find(|q| q.surface.material == "glow" && inside(q)).unwrap();
+            assert!(glow.verts.iter().all(|v| v[2] == p.floor + LINTEL) && glow.normal[2] < -0.99);
+            // nothing of the carver's ceiling over it, nor walls behind it, strictly within its depth
+            for q in polys.iter().filter(|q| inside(q) && !matches!(q.surface.material, "glow" | "portal" | "bay_upper" | "bay_floor")) {
+                let m = |c: usize| q.verts.iter().map(|v| v[c] as f64).sum::<f64>() / q.verts.len() as f64;
+                let within = (t0 as f64) < m(k) && m(k) < t1 as f64;
+                assert!(!(within && q.normal[2] < -0.99 && q.verts.iter().all(|v| v[2] == p.top)), "{p:?}: a ceiling face in it");
+                assert!(
+                    !(within && q.normal[o].abs() > 0.99 && q.verts.iter().all(|v| v[o] == p.across.0 || v[o] == p.across.1)),
+                    "{p:?}: a wall face behind it"
+                );
+            }
+            // the floor between the posts is still there
+            let mid = (p.across.0 + p.across.1) / 2;
+            let floored = polys.iter().any(|q| {
+                q.zone == p.room && q.normal[2] > 0.99 && q.verts.iter().all(|v| v[2] == p.floor) && {
+                    let span = |c: usize| (q.verts.iter().map(|v| v[c]).min().unwrap(), q.verts.iter().map(|v| v[c]).max().unwrap());
+                    let ((a0, a1), (b0, b1)) = (span(k), span(o));
+                    a0 <= p.at && p.at <= a1 && b0 <= mid && mid <= b1
+                }
+            });
+            assert!(floored, "{p:?}: no floor through it");
         }
     }
 

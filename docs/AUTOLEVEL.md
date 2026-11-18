@@ -1340,6 +1340,35 @@ portals between its bays (next, below). The stripes along its bays' wall base ar
   x 1146). Felicity 15 (stage 127): corridor1 (onto the hall and room7), corridor2 and room1. A
   minute of six simulants on each: no stalls.
 
+**Portals** (2026-11-17, the detail brief's "leaning strut" and "deep angled frames repeated along
+a corridor"; **from Felicity**: the openings between its grey bays, rooms 29-32, x 1806-1912).
+Measured first: each bay's end is bevelled 13 deep (071D) from the bay's own outline in to an
+opening 79 deep: straight jambs to 47, then leaning in 53 to a lintel at 235 (317 wide at the floor,
+211 under the lintel, in a bay 529 wide), its sides 027D (79 a repeat along the depth, 47.5 up), the
+lintel's underside the light strip 071F (once across, once along) baked full white. The "strut"
+seen in `cifelicity` is a leaning jamb of one of these.
+
+- **Where** (`dress::portals`, no draw): across every one-storey `industrial` corridor, one every
+  `BAY` (424) or so along it (`round(length / BAY) - 1`, evenly), each slid up to 160 to keep
+  `PORTAL_MARGIN` (40) off the frames of the doorways in its walls (a surround's splay included) and
+  `PORTAL_END` (106) off the corridor's ends, or left out. Pipes break round them. A lamp under each
+  lintel (`Portal::lamp`, in `Level::lamps`), so a corridor with portals is lit by them in place of
+  its grid. Seeds 1-40: 88 portals in 51 corridors (test
+  `portals_stand_across_industrial_corridors_clear_of_their_doorways_and_pipes`).
+- **Drawn** (`felicity::portal`): `PORTAL_D` (105) deep along the corridor; on each face eight bevel
+  triangles (the wall's upper tile, banded as the wall) from the corridor's outline (wall, ceiling,
+  wall) to the opening 13 in; through it the passage's four sides (role `portal`, 027D) and the
+  lintel's light strip (role `glow`, 071F; the bake makes `glow` faces 254 as it does `lamp`).
+  `sweep::clear` takes out the walls and ceiling it stands against and the floor under its posts;
+  the floor in front of each bevel's foot is put back. Test
+  `portals_stand_across_their_corridors_with_nothing_of_the_carvers_inside_them`.
+- **Narrower than Felicity's**: posts `POST` 13 in at the floor (Felicity's 106 in a 529 bay; ours
+  are 278-384 wide), leaning `LEAN` 40 (Felicity's 53). Felicity's lean broke 17 door-to-door walks
+  on 10 seeds: those lines run 80 off the wall's face (`INSIDE` 100 from the doorway's middle plane),
+  and a walker is radius 30 and 185 tall, so a portal may reach at most 50 in below 185 (now 42).
+- Felicity 15 (stage 127): corridor1 (two, looking along it from its west end) and corridor2.
+  Felicity 5 (stage 123): corridor1. A minute of six simulants on each: no stalls.
+
 **Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
 corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
 halls and stair rooms (kinds `corridor`, `hub`, `stair`) and how the other rooms hang off them.
@@ -1387,7 +1416,7 @@ a few true drops of 577 from its room 14 into 16). It is PD's movement on stairs
 (Felicity's risers are vertical floor tiles flagged `GEOFLAG_STEP`; ours are wall tiles. Not
 tried: whether flagging ours so changes anything; PD's own drops show it doesn't stop these.)
 
-**Not yet:** windows, the grey bays' portals, washroom fittings, raised doorways; no outdoor part; the editor can't make or
+**Not yet:** windows, washroom fittings, raised doorways; no outdoor part; the editor can't make or
 edit a Felicity level (a Felicity recipe takes no edits). Nobody has played the layouts of the
 handoff brief's item 1 (upper rooms onto walkways, walkways in tall plain rooms, the block's
 landing, building round the hall).
