@@ -182,6 +182,75 @@ pub fn braces(seed: u64, plan: &Plan, doorways: &[Doorway]) -> Vec<Brace> {
     out
 }
 
+/// How far a hazard surround stands out of its wall (Felicity's room 29: its stripes run 39 deep).
+pub const SURROUND: i32 = 39;
+/// How far its stripes flare beside the opening, and above it, over that depth (14 and 12).
+pub const FLARE: (i32, i32) = (14, 12);
+/// How far beside the opening, and above it, its splay meets the wall again (the wall's tile).
+pub const SPLAY: (i32, i32) = (54, 35);
+/// How far a surround keeps off the room's corners and any other doorway's frame in its wall.
+pub const SURROUND_GAP: i32 = 6;
+
+/// A hazard surround (Felicity's grey bays, its rooms 29 and 32): on one face of a doorway, its
+/// opening flares in yellow and black stripes `SURROUND` out of the wall, `FLARE` wider and taller,
+/// and the wall's tile splays back from there to the wall `SPLAY` beside and above the opening.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Surround {
+    /// The doorway (its two rooms) and the room whose face it is on.
+    pub a: String,
+    pub b: String,
+    pub room: String,
+}
+
+impl Surround {
+    /// Whether it stands on the doorway's low face (room `a`'s).
+    pub fn low(&self) -> bool {
+        self.room == self.a
+    }
+}
+
+/// How far a doorway's frame reaches beside its opening on `room`'s face: the surround's splay,
+/// or the chamfer's 13.
+pub fn frame_width(surrounds: &[Surround], d: &Doorway, room: &str) -> i32 {
+    if surrounds.iter().any(|s| s.a == d.a && s.b == d.b && s.room == room) {
+        SPLAY.0
+    } else {
+        13
+    }
+}
+
+/// The hazard surrounds of a Felicity level: on every face of a doorway with no arch that is in a
+/// one-storey industrial room or corridor (Felicity's grey bays), where it fits on the wall: clear
+/// of the room's corners and of the frames of the other doorways in that wall. No draw.
+pub fn surrounds(plan: &Plan, doorways: &[Doorway], arched: &dyn Fn(&Doorway) -> bool) -> Vec<Surround> {
+    let mut out = Vec::new();
+    for d in doorways.iter().filter(|d| !arched(d)) {
+        for room in [&d.a, &d.b] {
+            let Some(r) = plan.get(room) else { continue };
+            let Some(&(lo, hi)) = r.boxes.first() else { continue };
+            let one = hi.2 - lo.2 == ROOM_H && d.lo.2 == lo.2;
+            if !(matches!(r.kind, "room" | "corridor") && r.scheme == "industrial" && one) {
+                continue;
+            }
+            // along the wall: the room's span, and every other doorway's opening in the same wall
+            let along = 1 - d.axis;
+            let (lo, hi) = ([lo.0, lo.1], [hi.0, hi.1]);
+            let (s0, s1) = (at(d.lo, along), at(d.hi, along));
+            let mut fits = s0 - SPLAY.0 - SURROUND_GAP >= lo[along] && s1 + SPLAY.0 + SURROUND_GAP <= hi[along];
+            for e in doorways.iter().filter(|e| *e != d && e.axis == d.axis && at(e.lo, d.axis) == at(d.lo, d.axis) && (e.a == *room || e.b == *room)) {
+                let (e0, e1) = (at(e.lo, along), at(e.hi, along));
+                // the other's frame may be a surround too: room for both
+                let gap = SPLAY.0 * 2 + SURROUND_GAP;
+                fits &= e1 + gap <= s0 || e0 >= s1 + gap;
+            }
+            if fits {
+                out.push(Surround { a: d.a.clone(), b: d.b.clone(), room: room.clone() });
+            }
+        }
+    }
+    out
+}
+
 /// How big a pipe is: Felicity's (room 39), a hexagon 53 across with tips `PIPE_TIP` deep, here
 /// lying on the floor against a wall (flat top and bottom, its tips to the wall and the room).
 pub const PIPE: i32 = 53;
@@ -204,8 +273,8 @@ pub struct Pipe {
 }
 
 /// The pipes of a Felicity level: round the walls of `PIPED` of its one-storey industrial rooms
-/// and corridors, broken at every doorway.
-pub fn pipes(seed: u64, plan: &Plan, doorways: &[Doorway]) -> Vec<Pipe> {
+/// and corridors, broken at every doorway (beyond its frame: a hazard surround's splay, if any).
+pub fn pipes(seed: u64, plan: &Plan, doorways: &[Doorway], surrounds: &[Surround]) -> Vec<Pipe> {
     let mut rng = PyRandom::named(&format!("{seed}/felicity/dress/pipes"));
     let mut out = Vec::new();
     for r in &plan.rooms {
@@ -239,7 +308,8 @@ pub fn pipes(seed: u64, plan: &Plan, doorways: &[Doorway]) -> Vec<Pipe> {
                 2 => (hi.0 - s1, hi.0 - s0),
                 _ => (hi.1 - s1, hi.1 - s0),
             };
-            let (mut a, mut b) = (starts[wall] + a - PIPE_GAP - 13, starts[wall] + b + PIPE_GAP + 13);
+            let frame = frame_width(surrounds, d, &r.key);
+            let (mut a, mut b) = (starts[wall] + a - PIPE_GAP - frame, starts[wall] + b + PIPE_GAP + frame);
             // a doorway near a corner: the pipe on the other wall stops short of its mouth
             if a - starts[wall] < PIPE + PIPE_GAP {
                 a = starts[wall] - PIPE_MOUTH;
@@ -390,7 +460,8 @@ mod tests {
                 // nothing of it in a doorway's mouth: 120 in front of the opening, frame and gap
                 for d in lv.doorways.iter().filter(|d| d.a == p.room || d.b == p.room) {
                     let o = 1 - d.axis;
-                    let (s0, s1) = (at(d.lo, o) - 13 - PIPE_GAP + 1, at(d.hi, o) + 13 + PIPE_GAP - 1);
+                    let frame = frame_width(&lv.surrounds, d, &p.room);
+                    let (s0, s1) = (at(d.lo, o) - frame - PIPE_GAP + 1, at(d.hi, o) + frame + PIPE_GAP - 1);
                     let (m0, m1) = (at(d.lo, d.axis) - 120, at(d.hi, d.axis) + 120);
                     for w in p.path.windows(2) {
                         // the leg's footprint: PIPE out from its wall
@@ -409,6 +480,44 @@ mod tests {
         }
         println!("seeds 1-40: {runs} pipe runs in {} industrial rooms and corridors", rooms.len());
         assert!(runs > 20);
+    }
+
+    #[test]
+    fn hazard_surrounds_stand_on_industrial_faces_clear_of_corners_and_other_frames() {
+        use crate::level::{generate, Options};
+        let (mut faces, mut could) = (0, 0);
+        for seed in 1..=40 {
+            let lv = generate(seed, &Options { style: "felicity", ..Options::default() }).unwrap();
+            let arched = |d: &Doorway| lv.arches.iter().any(|a| a.kind == "doorway" && a.a == d.a && a.b == d.b);
+            for d in lv.doorways.iter().filter(|d| !arched(d)) {
+                for room in [&d.a, &d.b] {
+                    let r = lv.plan.get(room).unwrap();
+                    let (lo, hi) = r.boxes[0];
+                    could += (r.scheme == "industrial" && matches!(r.kind, "room" | "corridor") && hi.2 - lo.2 == ROOM_H) as usize;
+                }
+            }
+            for s in &lv.surrounds {
+                faces += 1;
+                let d = lv.doorways.iter().find(|d| d.a == s.a && d.b == s.b).unwrap();
+                assert!(!arched(d), "seed {seed}: a surround on an arched doorway");
+                let r = lv.plan.get(&s.room).unwrap();
+                assert_eq!(r.scheme, "industrial");
+                let (lo, hi) = r.boxes[0];
+                assert_eq!(hi.2 - lo.2, ROOM_H);
+                // on the room's wall, its splay inside the wall's span and clear of every other frame
+                let o = 1 - d.axis;
+                let (s0, s1) = (at(d.lo, o) - SPLAY.0, at(d.hi, o) + SPLAY.0);
+                let (w0, w1) = if o == 0 { (lo.0, hi.0) } else { (lo.1, hi.1) };
+                assert!(s0 >= w0 + SURROUND_GAP && s1 <= w1 - SURROUND_GAP, "seed {seed}: {s:?} past its wall's end");
+                for e in lv.doorways.iter().filter(|e| *e != d && e.axis == d.axis && at(e.lo, d.axis) == at(d.lo, d.axis) && (e.a == s.room || e.b == s.room))
+                {
+                    let w = frame_width(&lv.surrounds, e, &s.room);
+                    assert!(at(e.hi, o) + w <= s0 || at(e.lo, o) - w >= s1, "seed {seed}: {s:?} meets {} {}'s frame", e.a, e.b);
+                }
+            }
+        }
+        println!("seeds 1-40: {faces} hazard surrounds of {could} industrial doorway faces");
+        assert!(faces * 2 > could, "{faces} of {could}");
     }
 
     #[test]

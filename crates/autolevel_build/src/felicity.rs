@@ -45,7 +45,7 @@
 
 use std::collections::HashMap;
 
-use autolevel::dress::{self, Arm, Crossing, Pipe, BEAM_D, BEAM_W, LIGHT, PILASTER, PIPE, PIPE_TIP};
+use autolevel::dress::{self, Arm, Crossing, Pipe, Surround, BEAM_D, BEAM_W, FLARE, LIGHT, PILASTER, PIPE, PIPE_TIP, SPLAY, SURROUND};
 use autolevel::felicity::{DOOR_H, PLATFORM, ROOM_H, STOREY};
 use autolevel::level::{Arch, Doorway, Level};
 
@@ -60,7 +60,7 @@ const fn paint(role: &'static str, preset: &'static str, flags: &'static [&'stat
 }
 
 /// The kit's materials (names: Felicity's Setup Editor export's, where it has the texture).
-const PALETTE: [Paint; 30] = [
+const PALETTE: [Paint; 32] = [
     // office and marble
     paint("floor", "0287", &[], "m2", (128.3, 134.8)),
     paint("lower", "024F", &[], "m0", (89.9, 94.5)),
@@ -82,6 +82,11 @@ const PALETTE: [Paint; 30] = [
     // a pipe along a wall's base (Felicity's 012A, the shading its pipes have round them: dark
     // below, light on top, about 127 a repeat round the profile)
     paint("pipe", "012A", &[], "pipe", (128.0, 127.0)),
+    // a hazard surround's stripes (Felicity's 071E round its grey bays' doorways: one repeat across
+    // the flare, about 35 along it) and the grating under them (01B2: 64 across the depth, 66.5
+    // along the wall)
+    paint("hazard", "071E", &[], "hazard", (41.4, 35.0)),
+    paint("grating", "01B2", &[], "grating", (64.0, 66.5)),
     // the stairwells' railings: Felicity's see-through rail
     paint("rail", "0710", &["Transparent", "CullBoth", "MirrorS", "ClampT"], "m14TransparentCullBothMirrorSClampT", (49.0, 94.0)),
     // industrial: Felicity's grey concrete bays (rooms 26-32)
@@ -208,21 +213,26 @@ fn slice(poly: &[(f64, f64)], z: f64) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
 /// How deep and how wide a doorway's chamfered frame is (Felicity's: 13, at 45 degrees).
 pub const TRIM: i32 = 13;
 
-/// Cut a doorway's frame out of the carver's faces: on each face of the wall, its faces lose the
-/// strip `TRIM` wide round the opening (beside the jambs and over the lintel), and the faces inside
-/// the opening (the jambs, the lintel's underside; not its floor) start `TRIM` into the wall.
-fn clear_frame(polys: &mut Vec<Poly>, d: &Doorway) {
+/// Cut a doorway's frame out of the carver's faces: on each face of the wall that is `chamfered`
+/// (room `a`'s, room `b`'s), its faces lose the strip `TRIM` wide round the opening (beside the
+/// jambs and over the lintel), and the faces inside the opening (the jambs, the lintel's
+/// underside; not its floor) start `TRIM` into the wall from it. (A face with a hazard surround
+/// instead clears its own wall: `surround`.)
+fn clear_frame(polys: &mut Vec<Poly>, d: &Doorway, chamfered: [bool; 2]) {
     let (a, o) = (d.axis, 1 - d.axis);
     let (lo, hi) = ([d.lo.0, d.lo.1, d.lo.2], [d.hi.0, d.hi.1, d.hi.2]);
     // the wall's face round the opening, on each side
     let (rlo, rhi) = ([lo[o] - TRIM, lo[2]], [hi[o] + TRIM, hi[2] + TRIM]);
-    sweep::clear(polys, &[Cover { axis: a, at: lo[a], sign: -1, lo: rlo, hi: rhi }, Cover { axis: a, at: hi[a], sign: 1, lo: rlo, hi: rhi }]);
+    let faces = [Cover { axis: a, at: lo[a], sign: -1, lo: rlo, hi: rhi }, Cover { axis: a, at: hi[a], sign: 1, lo: rlo, hi: rhi }];
+    let covers: Vec<Cover> = faces.into_iter().zip(chamfered).filter(|(_, c)| *c).map(|(f, _)| f).collect();
+    sweep::clear(polys, &covers);
+    let (t0, t1) = (lo[a] + if chamfered[0] { TRIM } else { 0 }, hi[a] - if chamfered[1] { TRIM } else { 0 });
     polys.retain_mut(|p| {
         let inside = p.verts.iter().all(|v| lo[a] <= v[a] && v[a] <= hi[a] && lo[o] <= v[o] && v[o] <= hi[o] && lo[2] <= v[2] && v[2] <= hi[2]);
         if inside && p.normal[a].abs() < 0.5 && p.normal[2] < 0.5 {
             // a jamb or the lintel's underside: from `TRIM` into the wall to `TRIM` short of its far face
             for v in p.verts.iter_mut() {
-                v[a] = v[a].clamp(lo[a] + TRIM, hi[a] - TRIM);
+                v[a] = v[a].clamp(t0, t1);
             }
             p.verts.dedup();
             if p.verts.len() > 1 && p.verts.first() == p.verts.last() {
@@ -234,10 +244,10 @@ fn clear_frame(polys: &mut Vec<Poly>, d: &Doorway) {
     });
 }
 
-/// A doorway's chamfered frame: on each face of the wall (room `a`'s on the low side, `b`'s on the
-/// high), the two jambs and the lintel bevelled at 45 degrees, `TRIM` deep, mitred at the top
-/// corners, and a floor triangle at each jamb's foot in that room's floor.
-fn frame(d: &Doorway, trim: Surface, floors: [Surface; 2]) -> Vec<Poly> {
+/// A doorway's chamfered frame: on each face of the wall that is `chamfered` (room `a`'s on the low
+/// side, `b`'s on the high), the two jambs and the lintel bevelled at 45 degrees, `TRIM` deep,
+/// mitred at the top corners, and a floor triangle at each jamb's foot in that room's floor.
+fn frame(d: &Doorway, trim: Surface, floors: [Surface; 2], chamfered: [bool; 2]) -> Vec<Poly> {
     let (a, o) = (d.axis, 1 - d.axis);
     let (lo, hi) = ([d.lo.0, d.lo.1, d.lo.2], [d.hi.0, d.hi.1, d.hi.2]);
     let (s0, s1, z0, zt) = (lo[o] as f64, hi[o] as f64, lo[2] as f64, hi[2] as f64);
@@ -258,7 +268,8 @@ fn frame(d: &Doorway, trim: Surface, floors: [Surface; 2]) -> Vec<Poly> {
     // (u across it from the opening, as Felicity's 00EF is laid)
     let edge = Some(Edge { surface: trim, along_v: true });
     let mut out = Vec::new();
-    for (zone, t, into, floor) in [(d.a.as_str(), lo[a] as f64, 1.0, floors[0]), (d.b.as_str(), hi[a] as f64, -1.0, floors[1])] {
+    let faces = [(d.a.as_str(), lo[a] as f64, 1.0, floors[0]), (d.b.as_str(), hi[a] as f64, -1.0, floors[1])];
+    for (zone, t, into, floor) in faces.into_iter().zip(chamfered).filter(|(_, c)| *c).map(|(f, _)| f) {
         let depth = axis(a, into);
         // up the near jamb, across the lintel, down the far jamb: `side` towards the opening
         let leg = |to: P3, side: P3| Leg { to, side, depth, profile: vec![(0.0, tr), (-tr, 0.0)], edges: vec![edge], along: None };
@@ -276,6 +287,86 @@ fn frame(d: &Doorway, trim: Surface, floors: [Surface; 2]) -> Vec<Poly> {
         }
     }
     out
+}
+
+/// The looks of a hazard surround: its stripes, the wall's tile on its splay, the grating under
+/// the stripes, and the room's floor.
+#[derive(Clone, Copy)]
+struct SurroundLook {
+    hazard: Surface,
+    splay: Surface,
+    grating: Surface,
+    floor: Surface,
+}
+
+/// A hazard surround (`autolevel::dress::Surround`, Felicity's grey bays' doorways) on one face of
+/// a doorway: from the opening's edge at the wall's face its stripes flare out `SURROUND` into the
+/// room, `FLARE` wider beside the opening and taller over it, and the wall's tile splays back from
+/// there to the wall, `SPLAY` beside and above the opening. Two sweeps, each from a jamb's foot up
+/// and along the lintel to its middle (the stripes meet there in a chevron), the grating under the
+/// stripes and the room's floor in front of each splay. Returns its polygons and what it covers of
+/// the carver's: the wall behind it and the floor under it.
+fn surround(d: &Doorway, s: &Surround, look: SurroundLook) -> (Vec<Poly>, Vec<Cover>) {
+    let (a, o) = (d.axis, 1 - d.axis);
+    let (lo, hi) = ([d.lo.0, d.lo.1, d.lo.2], [d.hi.0, d.hi.1, d.hi.2]);
+    // the wall's face, and out of it into the room
+    let (t, out) = if s.low() { (lo[a], -1) } else { (hi[a], 1) };
+    let (s0, s1, z0, zt) = (lo[o], hi[o], lo[2], hi[2]);
+    let at = |t: f64, s: f64, z: f64| -> P3 {
+        let mut p = [0.0; 3];
+        (p[a], p[o], p[2]) = (t, s, z);
+        p
+    };
+    let (tf, depth) = (t as f64, unit_along(a, out as f64));
+    let (dz, f) = (SURROUND as f64, (FLARE.0 as f64, FLARE.1 as f64));
+    let profile = |flare: f64, splay: f64| vec![(0.0, 0.0), (flare, dz), (splay, 0.0)];
+    let mid = (s0 + s1) as f64 / 2.0;
+    let mut polys = Vec::new();
+    for (edge, outward) in [(s0 as f64, -1.0), (s1 as f64, 1.0)] {
+        let hazard = Some(Edge { surface: look.hazard, along_v: true });
+        let path = Sweep {
+            from: at(tf, edge, z0 as f64),
+            legs: vec![
+                // up the jamb: the splay's v as the wall's upper strip's (from 141 up)
+                Leg {
+                    to: at(tf, edge, zt as f64),
+                    side: unit_along(o, outward),
+                    depth,
+                    profile: profile(f.0, SPLAY.0 as f64),
+                    edges: vec![hazard, Some(Edge { surface: look.splay, along_v: true })],
+                    along: Some(-141.0),
+                },
+                // along the lintel to its middle
+                Leg {
+                    to: at(tf, mid, zt as f64),
+                    side: [0.0, 0.0, 1.0],
+                    depth,
+                    profile: profile(f.1, SPLAY.1 as f64),
+                    edges: vec![hazard, Some(Edge { surface: look.splay, along_v: false })],
+                    along: None,
+                },
+            ],
+            closed: false,
+            caps: false,
+            zone: &s.room,
+        };
+        polys.extend(sweep::sweep(&path));
+    }
+    // the floor: the grating between the stripes' feet, the room's in front of each splay
+    let fl = |t: i32, s: i32| at(t as f64, s as f64, z0 as f64);
+    let front = t + out * SURROUND;
+    let gr = [fl(t, s0), fl(t, s1), fl(front, s1 + FLARE.0), fl(front, s0 - FLARE.0)];
+    let uvs: Vec<(f64, f64)> = gr.iter().map(|p| ((p[a] - tf).abs() / look.grating.scale.0, (p[o] - s0 as f64) / look.grating.scale.1)).collect();
+    polys.push(csg::oriented(&gr, [0.0, 0.0, 1.0], look.grating, &s.room, Some(&uvs)));
+    for (edge, w) in [(s0, -1), (s1, 1)] {
+        let tri = [fl(t, edge + w * SPLAY.0), fl(front, edge + w * SPLAY.0), fl(front, edge + w * FLARE.0)];
+        polys.push(csg::oriented(&tri, [0.0, 0.0, 1.0], look.floor, &s.room, None));
+    }
+    let (w0, w1) = (s0 - SPLAY.0, s1 + SPLAY.0);
+    let wall = Cover { axis: a, at: t, sign: out, lo: [w0, z0], hi: [w1, zt + SPLAY.1] };
+    let (f0, f1) = (t.min(front), t.max(front));
+    let (flo, fhi) = if a == 0 { ([f0, w0], [f1, w1]) } else { ([w0, f0], [w1, f1]) };
+    (polys, vec![wall, Cover { axis: 2, at: z0, sign: 1, lo: flo, hi: fhi }])
 }
 
 /// An arch's polygons: the soffit along its curve across the wall (each room's half in it), and
@@ -575,8 +666,22 @@ pub fn polys(lv: &Level, kit: &Kit) -> Result<(Vec<Poly>, Vec<Lit>), String> {
             let room = rooms.get(zone).ok_or_else(|| format!("a doorway into {zone}, which is no room"))?;
             kit.surface(type_of(room.scheme).0, None, None)
         };
-        clear_frame(&mut polys, d);
-        polys.extend(frame(d, trim, [floor(&d.a)?, floor(&d.b)?]));
+        // a face with a hazard surround has it in place of the chamfer
+        let mine: Vec<&Surround> = lv.surrounds.iter().filter(|s| s.a == d.a && s.b == d.b).collect();
+        let chamfered = [!mine.iter().any(|s| s.low()), !mine.iter().any(|s| !s.low())];
+        clear_frame(&mut polys, d, chamfered);
+        polys.extend(frame(d, trim, [floor(&d.a)?, floor(&d.b)?], chamfered));
+        for s in mine {
+            let look = SurroundLook {
+                hazard: kit.surface("hazard", None, None)?,
+                splay: kit.surface("bay_upper", None, None)?,
+                grating: kit.surface("grating", None, None)?,
+                floor: floor(&s.room)?,
+            };
+            let (faces, covers) = surround(d, s, look);
+            sweep::clear(&mut polys, &covers);
+            polys.extend(faces);
+        }
     }
     // the ceiling braces: each arm's faces in, and what they cover of the carver's out
     let (arms, crossings) = dress::arms(&lv.braces);
@@ -702,12 +807,45 @@ mod tests {
     }
 
     #[test]
+    fn hazard_surrounds_stand_out_of_their_walls_with_nothing_of_the_carvers_behind_them() {
+        let lv =
+            (1..=10).map(|seed| generate(seed, &Options { style: "felicity", ..Options::default() }).unwrap()).find(|lv| !lv.surrounds.is_empty()).unwrap();
+        let (polys, _) = polys(&lv, &KIT).unwrap();
+        for s in &lv.surrounds {
+            let d = lv.doorways.iter().find(|d| d.a == s.a && d.b == s.b).unwrap();
+            let (a, o) = (d.axis, 1 - d.axis);
+            let (lo, hi) = ([d.lo.0, d.lo.1, d.lo.2], [d.hi.0, d.hi.1, d.hi.2]);
+            let (t, out) = if s.low() { (lo[a], -1) } else { (hi[a], 1) };
+            let (w0, w1, top) = (lo[o] - SPLAY.0, hi[o] + SPLAY.0, hi[2] + SPLAY.1);
+            let within = |p: &Poly| {
+                p.zone == s.room
+                    && p.verts.iter().all(|v| w0 <= v[o] && v[o] <= w1 && lo[2] <= v[2] && v[2] <= top && (v[a] - t) * out >= 0 && (v[a] - t) * out <= SURROUND)
+            };
+            // the stripes: two jambs and two halves of the lintel, facing the opening; the splay
+            let stripes = polys.iter().filter(|p| p.surface.material == "hazard" && within(p)).count();
+            assert_eq!(stripes, 4, "{s:?}");
+            assert!(polys.iter().filter(|p| p.surface.material == "bay_upper" && within(p) && p.normal[a] * out as f64 > 0.5).count() >= 4, "{s:?}: no splay");
+            assert_eq!(polys.iter().filter(|p| p.surface.material == "grating" && within(p)).count(), 1, "{s:?}");
+            // nothing of the wall left behind it, and no chamfer on this face
+            for p in polys.iter().filter(|p| p.zone == s.room && p.normal[a] * out as f64 > 0.99 && p.verts.iter().all(|v| v[a] == t)) {
+                let m = |k: usize| p.verts.iter().map(|v| v[k] as f64).sum::<f64>() / p.verts.len() as f64;
+                let behind = (w0 as f64) < m(o) && m(o) < w1 as f64 && (lo[2] as f64) < m(2) && m(2) < top as f64;
+                assert!(!behind, "{s:?}: a wall face behind it");
+            }
+            assert!(!polys.iter().any(|p| p.surface.material == "trim" && within(p)), "{s:?}: a chamfer under it");
+            // the jambs reach the wall's face on this side
+            let jamb_reaches = polys.iter().any(|p| p.surface.material == "jamb" && p.verts.iter().any(|v| v[a] == t) && p.normal[o].abs() > 0.99);
+            assert!(jamb_reaches, "{s:?}: the jambs stop short of the face");
+        }
+    }
+
+    #[test]
     fn the_swept_frames_are_the_frames_built_by_hand() {
         let lv = generate(3, &Options { style: "felicity", ..Options::default() }).unwrap();
         let trim = KIT.surface("trim", None, None).unwrap();
         let floor = KIT.surface("floor", None, None).unwrap();
         for d in &lv.doorways {
-            let swept: Vec<Poly> = frame(d, trim, [floor, floor]).into_iter().filter(|p| p.surface.material == "trim").collect();
+            let swept: Vec<Poly> = frame(d, trim, [floor, floor], [true, true]).into_iter().filter(|p| p.surface.material == "trim").collect();
             let mut got: Vec<Vec<V3>> = swept.iter().map(|p| cycle(&p.verts)).collect();
             let mut want: Vec<Vec<V3>> = frame_by_hand(d).iter().map(|v| cycle(v)).collect();
             got.sort();

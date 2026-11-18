@@ -1312,6 +1312,34 @@ raised 54 on a grating with chamfered kerbs along both long walls: not built (ye
   --stagenum 123`), room2 (plan 20-1146 x 2352-3478, a run round three walls), room4, corridor1.
   A minute of six simulants there: no stalls.
 
+**Hazard surrounds** (2026-11-17, the detail brief's "hazard stripes" and "deep angled frames on
+the grey room's doorways"; **from Felicity**, not CI Training: its grey bays, rooms 29 and 32).
+Measured first: no strut or stripe piece of its own exists in Felicity. Its stripes are 071E (32 x 32,
+yellow and black), the reveal of the doorways into its grey bays: past a jamb 13 deep the opening
+flares 39 deep from 105 x 212 to 133 x 224, over a grating floor (01B2, 64 a repeat across the depth,
+66.5 along the wall), and the bay's wall tile (071D) splays back from there to the wall face, which
+is 92 from the opening's plane (its walls are that thick). Its "leaning struts" are the jambs of the
+portals between its bays (next, below). The stripes along its bays' wall base are the hall's base
+0276, already ours.
+
+- **Where** (`dress::surrounds`, no draw): every face of a doorway with no arch in a one-storey
+  `industrial` room or corridor, where it fits: its splay `SURROUND_GAP` (6) clear of the room's
+  corners and room for a surround beside every other doorway in that wall. Seeds 1-40: all 245 such
+  faces. Pipes now stop `PIPE_GAP` beyond a surround's splay (`dress::frame_width`): 135 runs (150).
+- **Drawn** (`felicity::surround`): our walls are 40 thick, so the surround stands out of the wall
+  into the room instead of into it: from the opening's edge at the wall's face the stripes (role
+  `hazard`, u across the flare, v along) flare `SURROUND` (39) out, `FLARE` (14, 12) wider and
+  taller, and the splay (the wall's upper tile `bay_upper`, its v as the wall's so the blue lines
+  meet) runs back to the wall `SPLAY` (54, 35) beside and above the opening. Two sweeps a face, each
+  from a jamb's foot up and along the lintel to its middle (the stripes meet there in a chevron);
+  the grating (role `grating`) between the stripes' feet, the room's floor in front of each splay;
+  `sweep::clear` takes out the wall behind and the floor under it. That face gets no chamfer
+  (`clear_frame` and `frame` take which faces are chamfered) and its jambs run to the wall's face.
+  Test `hazard_surrounds_stand_out_of_their_walls_with_nothing_of_the_carvers_behind_them`.
+- Felicity 5 (stage 123): every doorway of corridor1 and rooms 1-4 (room2's double doorway at plan
+  x 1146). Felicity 15 (stage 127): corridor1 (onto the hall and room7), corridor2 and room1. A
+  minute of six simulants on each: no stalls.
+
 **Circulation targets** (`autolevel::circulation`, the user's call 2026-11-17: "more like
 corridors with rooms as offshoots, not a complex web of rooms nested deep"): the corridors,
 halls and stair rooms (kinds `corridor`, `hub`, `stair`) and how the other rooms hang off them.
@@ -1359,7 +1387,7 @@ a few true drops of 577 from its room 14 into 16). It is PD's movement on stairs
 (Felicity's risers are vertical floor tiles flagged `GEOFLAG_STEP`; ours are wall tiles. Not
 tried: whether flagging ours so changes anything; PD's own drops show it doesn't stop these.)
 
-**Not yet:** windows, the floor-level pieces (pipes, struts, deep frames), washroom fittings, raised doorways; no outdoor part; the editor can't make or
+**Not yet:** windows, the grey bays' portals, washroom fittings, raised doorways; no outdoor part; the editor can't make or
 edit a Felicity level (a Felicity recipe takes no edits). Nobody has played the layouts of the
 handoff brief's item 1 (upper rooms onto walkways, walkways in tall plain rooms, the block's
 landing, building round the hall).
