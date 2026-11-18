@@ -1,0 +1,22 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "sculpt1",
+  "name": "Sculpt 1",
+  "group": "Autolevel",
+  "stagenum": 101,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 1,
+      "options": {
+        "style": "sculpt"
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

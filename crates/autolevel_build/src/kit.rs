@@ -117,7 +117,7 @@ impl Kit {
 }
 
 /// Every kit, by the style it dresses (`Options::style`).
-pub const KITS: [&Kit; 2] = [&complex::KIT, &felicity::KIT];
+pub const KITS: [&Kit; 3] = [&complex::KIT, &felicity::KIT, &crate::sculpt::KIT];
 
 /// The kit of this name.
 pub fn named(name: &str) -> Result<&'static Kit, String> {
@@ -135,7 +135,7 @@ mod tests {
     fn kits_by_name_and_roles_by_place() {
         let cx = named("complex").unwrap();
         assert_eq!((cx.tag, cx.stage, cx.palette.len()), ("cx", "ref", 19));
-        assert_eq!(named("moss").unwrap_err(), "no kit 'moss' (there are complex, felicity)");
+        assert_eq!(named("moss").unwrap_err(), "no kit 'moss' (there are complex, felicity, sculpt)");
         assert_eq!(named("felicity").unwrap().stage, "mp11");
         assert_eq!((cx.index("floor"), cx.index("rail")), (Ok(0), Ok(18)));
         assert_eq!(cx.paint("moss").unwrap_err(), "the palette has no 'moss'");

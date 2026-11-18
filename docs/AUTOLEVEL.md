@@ -55,6 +55,7 @@ or `addon/` are that repo's.
 | As an arena | new | `autolevel import`: `pd_import::autolevel` (a source of its own: the level made again from its recipe, its rooms and openings as PD's rooms and portals, Complex's materials on the pool's textures) and `pd_import::autonav` (the generator's ways put into the waypoints) | tests in `pd_import` (rooms, portals, textures, tiles, sight, the repair); `pd_snapshot stage autolevel40`; `autolevel shots` | done (2026-11-17); nobody has played one |
 | Kits (what a level is dressed in) | new | `autolevel_build/kit.rs` (`Kit`: palette, schemes, solid tags, tints, brightness targets, the arena whose material rows the import uses); Complex is `complex::KIT`, passed to `geometry`, `mesh`, `bake`, `obj`, `glb`, `Built` and `pd_import::autolevel` | the keys; seed 40's build byte for byte the same as before | Complex only (2026-11-17). A level's shape (storeys, doors, ramps, the module) is still the planner's and Complex's; `built::make` always takes `complex::KIT` until a recipe names its kit |
 | Felicity-style levels | new (not a port) | `autolevel/felicity.rs` (the planner), `autolevel_build/felicity.rs` (the kit and its polygons), `pd_import::autolevel::doors` | `felicity` unit tests (40 seeds: plan check, the same twice, one piece, door shares, stairs, types; 60 seeds: the circulation targets); `autolevel build N --style felicity` walks every route of seeds 1-40 | second planner (2026-11-17): corridors first, rooms as offshoots; nobody has played one. See "Felicity" |
+| Sculpted levels | new (not a port) | `autolevel/sculpt/` (`vox`, `shape`, `layout`, `nav`, `repair`, `mod`), `autolevel_build/sculpt.rs` (Complex's kit under its own name) | `sculpt` unit tests (the grid, a room the same twice and one piece, a platform dropped from and not climbed, ramps and a switchback joining floors, a corridor climbing between two rooms, seeds 1-4 plan-checked); `autolevel build N --style sculpt` walks | first version (2026-11-18): rooms sculpted from boxes, repaired with ramps and catwalks; seeds 1 and 2 imported (`sculpt1`, `sculpt2`, stages 101 and 102); nobody has played one. See "Sculpt" |
 | Recipe (seed + options + edits) | new | `autolevel/recipe.rs` | unit tests | format 1; all fourteen edits apply |
 | Editor | new | `autolevel_edit`, `autolevel/candidates.rs`, `boxes.rs`, `choices.rs` | `--shot`, tests | milestones 1 to 5 done (2026-11-17); nobody has looked at a window |
 
@@ -1488,6 +1489,83 @@ tried: whether flagging ours so changes anything; PD's own drops show it doesn't
 edit a Felicity level (a Felicity recipe takes no edits). Nobody has played the layouts of the
 handoff brief's item 1 (upper rooms onto walkways, walkways in tall plain rooms, the block's
 landing, building round the hall).
+
+## Sculpt
+
+`--style sculpt` (2026-11-18, the user's idea; not a port of anything). Each room starts as a box;
+its faces are split into a lattice (2 x 2, then 4 x 4, then 8 x 8) and at each level some patches
+are extruded out (an alcove, a pit, a high bay) or in (a buttress, a platform, a soffit; pushed in
+high on a wall, a ledge). The rooms are placed beside each other, an overlapping one cut back a
+wall's thickness, and joined by doorways through shared walls or corridors routed through the
+solid (with ramps where they climb). Then every doorway and every floor of 6 cells or more in a
+room is joined to the rest, both ways, by ramps, switchbacks and catwalks: **sculpt, then repair**.
+
+```
+autolevel build 2 --style sculpt --out out/autolevel/sculpt2           # plan, polygons, bake, walks
+autolevel import out/autolevel/sculpt2 --code sculpt2 --stagenum 102    # the arena
+SCULPT_DEBUG=1 autolevel plan 2 --style sculpt --out DIR                # what the repair joined and left out, by room
+```
+
+**The user's decisions (2026-11-18):** rooms of every proportion (very wide, very tall, both); drops
+are fine (one way); sculpt and repair (not a walkable skeleton first); Complex's look. Later: when a
+catwalk, ramp or pillar is in the way of a new join, a rule to divert round it or to consolidate.
+After seeing version 1 in `pd_edit` ("like a creeper blew up here"): **no patch smaller than eight
+times the smallest feature**, so shapes read as built. Now 8 cells across (944) and 4 up (236, a
+storey: 8 up would leave a plain room's walls whole), each patch moved as one flat face.
+
+**How it is built** (`autolevel/src/sculpt/`):
+
+- `vox`: one grid for the level, cells 118 across and **59 up** (a quarter of 236), each solid or the
+  air of a zone (a room or a corridor). The plan's rooms are their zones' air cut into boxes
+  (columns first, so a box reaches its ceiling); whatever is left solid inside a room (a platform, a
+  ledge, a catwalk's slab) is not carved, so Complex's polygon stage draws it as it is. Six rooms
+  (`KINDS`: wide, tall, both, three plain) and `LOOPS` 0.35.
+- `shape`: one room. The lattice stops dividing at `MIN_ACROSS` 8 cells and `MIN_UP` 4; a patch is
+  one lattice part or a strip of up to three, and moves as **one flat face** (out: every column's air
+  carried to one plane past the outermost; in: everything beyond a plane that far inside it filled;
+  version 1 moved each column on its own, which over earlier steps made the jagged 1-cell blocks).
+  Depths: platforms 2, 4, 6 or 8 cells up, pits 2 or 4 down, alcoves 2 to 6 deep, buttresses 2 or 4,
+  none under 2; pushing in stops at 4 cells of air up or 4 across. Rooms: plain 14-20 x 12-18 x 6-9,
+  wide 28-36 x 22-30 x 7-10, tall 14-18 square x 20-28, both 24-32 x 20-28 x 14-20. 55% are mirrored
+  across one axis; a tall room raises its floor less (12% of extrusions against 35%).
+- `layout`: placing (a gap of up to 9 cells or an overlap of up to 3 beside a room already placed; no
+  more than a fifth of either overlapping), stamping (a later room's air within a cell of an earlier
+  room's stays solid; only its largest part is kept), a spanning tree plus loops over the rooms'
+  boxes, doorways (2 cells wide, 236 tall, through a one-cell wall with floor at one height both
+  sides) and corridors (2 x 4 cells, weighted A*: moves 1 or 2 cells flat, or 2 cells and 1 or 2 up
+  or down in a straight line; a ramp ends flat before it turns; nothing but its own two rooms within
+  a cell of it).
+- `nav`: walkable = air, solid under it, **4 cells (236) of air over it** (with 3, 177, the game's
+  player stopped short of places a 172 player fits), no ramp sheet over it. Regions are one zone's
+  walkable cells at one height; ways are walking across, **drops** (one way; not onto a sheet) and
+  **sheets** (ramps, both ways). Components are strongly connected (Tarjan's).
+- `repair`: greedy. Of every join between two regions in different components (a straight ramp, a
+  switchback for 4 cells or more, a catwalk across a drop at one height), the cheapest that leaves
+  the targets in fewer pieces is made, and again; joins between two pieces with targets first. A
+  ramp needs air from its sheet up, not from its foot's floor (it may pass over lower clutter); a
+  catwalk is railed only where its side is open to a drop (a rail beside a floor at its height stood
+  across the way on: room 4 of seed 1).
+- `mod`: the level. Links are every pair of zones whose air touches (the plan check passes on every
+  seed tried). Walks: each room doorway to doorway and doorway to each floor, each corridor end to
+  end; a target with no path is written as a straight two-point walk **on purpose**, so it fails in
+  the walker. A drop's landing is a stop (passed through, the walker counted the cell past an edge
+  as reached while still on the edge) unless it is beside a ramp's end, where a standing player is
+  on the slope and can't be held to a floor's height.
+
+**Where it stands (seeds 1-8, 2026-11-18, version 2: the coarse patches):** each plans in 0.4 to 1.6
+s. 286 of 378 walks pass (version 1: 247 of 373); of the failures all but 7 are the two-point walks
+of floors the repair left out (122 over 48 rooms). The 7 others fail part-way on paths the nav
+believes. Seeds 1 and 2 are imported (`sculpt1`, `sculpt2`); six simulants for a minute: 0 and 1
+kills (version 1: 3 and 4; the rooms are bigger, and some now read as plain halls).
+
+**Next:**
+- More of each room reached: an L-shaped flight; ramps up onto a catwalk; rails at the open sides of
+  landings; a floor no join reaches made part of a neighbour (lowered, or its ledge removed) rather
+  than left out.
+- The user's diverting rule, for a join with an existing ramp, catwalk or pillar in its way.
+- The 4 part-way failures (seed 1 r3, seed 8 r6: read them with the walker's trace).
+- L and U rooms (footprint first: a corner, an edge or the middle cut from the box); angled walls.
+- The views: some stand against a wall (a doorway's cell, facing the room's middle).
 
 ## Risks
 

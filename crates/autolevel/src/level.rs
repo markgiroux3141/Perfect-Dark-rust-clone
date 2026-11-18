@@ -86,7 +86,7 @@ pub struct Options {
 }
 
 /// What `Options::style` may be.
-pub const STYLES: [&str; 2] = ["complex", "felicity"];
+pub const STYLES: [&str; 3] = ["complex", "felicity", "sculpt"];
 
 /// What `Options::cover` may be.
 pub const COVER: [&str; 4] = ["mixed", "pillars", "crates", "none"];
@@ -472,6 +472,9 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
     o.check()?;
     if o.style == "felicity" {
         return crate::felicity::generate(seed, o);
+    }
+    if o.style == "sculpt" {
+        return crate::sculpt::generate(seed, o);
     }
     let rooms = stage_spaces(seed, o)?;
     let net = stage_network(seed, o, &rooms.sp)?;

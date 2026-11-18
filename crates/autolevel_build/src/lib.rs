@@ -26,6 +26,7 @@ pub mod kit;
 pub mod mesh;
 pub mod obj;
 pub mod openings;
+pub mod sculpt;
 pub mod sunbeam;
 pub mod svg;
 pub mod sweep;

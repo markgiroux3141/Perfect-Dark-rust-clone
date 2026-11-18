@@ -52,6 +52,7 @@ pub mod recipe;
 pub mod report;
 pub mod route;
 pub mod scatter;
+pub mod sculpt;
 pub mod sha512;
 pub mod space;
 pub mod spiral;

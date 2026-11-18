@@ -80,7 +80,7 @@ const fn paint(role: &'static str, preset: &'static str, flags: &'static [&'stat
 const SEE_THROUGH: &[&str] = &["Transparent", "CullBoth", "ClampT"];
 
 /// The kit's materials, in the Python's order.
-const PALETTE: [Paint; 19] = [
+pub const PALETTE: [Paint; 19] = [
     paint("floor", "073E", &[], "m0", 39.37),
     paint("grate", "073E", &["CullBoth"], "m14CullBoth", 39.37),
     paint("base_pipe", "0740", &["ClampT"], "m8ClampT", 118.11),
