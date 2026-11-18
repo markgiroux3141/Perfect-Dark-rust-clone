@@ -41,6 +41,7 @@
 //! changed. If the recipe then makes no level, "undo that" by the reason takes the choice back.
 
 use crate::cli::Args;
+use crate::controls::{self, Control};
 use crate::deadlist::{Kind, Made, Row};
 use crate::doc::Doc;
 use crate::jobs::{Job, Search};
@@ -49,8 +50,8 @@ use crate::raster::Fit;
 use crate::{routes, shot};
 use autolevel::boxes::{self, Change, Part, Trial};
 use autolevel::candidates::Removal;
-use autolevel::level::COVER;
-use autolevel::place::Placed;
+use autolevel::level::{Options, COVER};
+use autolevel::place::{self, Placed};
 use autolevel::recipe::{self, Edit, Recipe};
 use autolevel::scatter::Lot;
 use autolevel::storeys::{snap_top, LEVELS};
@@ -167,7 +168,8 @@ pub struct Editor {
     /// The plan's middle in cells and pixels to a cell (None: fit the level when it arrives).
     look: Option<(P, f32)>,
     seed_text: String,
-    /// The option being typed into, and its text.
+    /// The option whose slider is held, and the value it is at (as `recipe::set_option` takes
+    /// it): set when the slider is let go.
     typing: Option<(&'static str, String)>,
     /// What the last thing done came to, and how long the level then took to make.
     status: String,
@@ -696,30 +698,139 @@ impl Editor {
         });
     }
 
+    /// The level's options, each with its control (`controls`): a list, a switch or a slider. A
+    /// slider makes its one edit when it is let go, as the brightness slider does.
     fn options(&mut self, ui: &mut egui::Ui) {
-        egui::CollapsingHeader::new("Options").show(ui, |ui| {
-            egui::Grid::new("options").num_columns(2).show(ui, |ui| {
+        let header = egui::CollapsingHeader::new("Options").show(ui, |ui| {
+            let style = self.doc.recipe.options.style;
+            if style != "complex" {
+                ui.weak(format!("a {style} level reads only the options not greyed out"));
+            }
+            ui.spacing_mut().slider_width = 130.0;
+            let base = Options::default();
+            egui::Grid::new("options").num_columns(3).show(ui, |ui| {
                 for name in recipe::OPTIONS {
-                    ui.label(name);
+                    let (control, help) = controls::control(name);
                     let now = recipe::option(&self.doc.recipe.options, name).unwrap_or_default();
-                    let mut text = match &self.typing {
-                        Some((typed, text)) if *typed == name => text.clone(),
-                        _ => now.clone(),
-                    };
-                    let field = ui.add(egui::TextEdit::singleline(&mut text).desired_width(110.0));
-                    if field.changed() {
-                        self.typing = Some((name, text.clone()));
-                    }
-                    if field.lost_focus() && text != now {
-                        if let Err(why) = self.doc.set_option(name, &text) {
-                            self.status = why;
+                    let usual = recipe::option(&base, name).unwrap_or_default();
+                    let read = controls::read_by(name, style);
+                    let label = ui.add_enabled(read, egui::Label::new(name.replace('_', " ")));
+                    label.on_hover_text(help).on_disabled_hover_text(format!("{help} (a {style} level does not read it)"));
+                    let mut set = None;
+                    ui.add_enabled_ui(read, |ui| set = self.option_control(ui, name, control, &now));
+                    if now == usual {
+                        ui.label("");
+                    } else {
+                        let reset = ui.small_button("reset").on_hover_text(format!("back to the default: {usual}"));
+                        self.spots.push((format!("reset {name}"), reset.rect));
+                        if reset.clicked() {
+                            set = Some(usual);
                         }
-                        self.typing = None;
                     }
                     ui.end_row();
+                    if let Some(value) = set.filter(|v| *v != now) {
+                        if let Err(why) = self.doc.set_option(name, &value) {
+                            self.status = why;
+                        }
+                    }
                 }
             });
         });
+        self.spots.push(("options".to_string(), header.header_response.rect));
+    }
+
+    /// One option's control. Returns the value to set it to (as `recipe::set_option` takes it),
+    /// if it was changed this frame: a list or a switch at once, a slider once it is let go.
+    fn option_control(&mut self, ui: &mut egui::Ui, name: &'static str, control: Control, now: &str) -> Option<String> {
+        // the value a slider of this option is moving through, until it is let go
+        let held = self.typing.as_ref().filter(|(n, _)| *n == name).map(|(_, t)| t.clone());
+        let let_go = |s: &egui::Response| !s.dragged() && !s.is_pointer_button_down_on();
+        match control {
+            Control::Choice(words) => {
+                let mut pick = now.to_string();
+                let combo = egui::ComboBox::from_id_salt(("option", name)).selected_text(&pick).width(130.0).show_ui(ui, |ui| {
+                    for w in words {
+                        let row = ui.selectable_value(&mut pick, w.to_string(), *w);
+                        self.spots.push((format!("option {name} {w}"), row.rect));
+                    }
+                });
+                self.spots.push((format!("option {name}"), combo.response.rect));
+                (pick != now).then_some(pick)
+            }
+            Control::Switch => {
+                let mut on = now == "true";
+                let tick = ui.checkbox(&mut on, "");
+                self.spots.push((format!("option {name}"), tick.rect));
+                tick.changed().then(|| on.to_string())
+            }
+            Control::Whole { lo, hi, off } => {
+                let mut v: i64 = held.as_deref().unwrap_or(now).parse().unwrap_or(lo);
+                ui.horizontal(|ui| {
+                    // (Never: a recipe's value outside the editor's range is shown at the end, not changed)
+                    let s = ui.add(egui::Slider::new(&mut v, lo..=hi).show_value(false).clamping(egui::SliderClamping::Never));
+                    self.spots.push((format!("option {name}"), s.rect));
+                    if s.changed() {
+                        self.typing = Some((name, v.to_string()));
+                    }
+                    ui.label(if off && v == 0 { "off".to_string() } else { v.to_string() });
+                    let_go(&s).then(|| self.typing.take_if(|(n, _)| *n == name)).flatten().map(|(_, t)| t)
+                })
+                .inner
+            }
+            Control::Share { lo, hi, step } => {
+                let mut v: f64 = held.as_deref().unwrap_or(now).parse().unwrap_or(lo);
+                ui.horizontal(|ui| {
+                    let s = ui.add(egui::Slider::new(&mut v, lo..=hi).step_by(step).show_value(false).clamping(egui::SliderClamping::Never));
+                    self.spots.push((format!("option {name}"), s.rect));
+                    if s.changed() {
+                        self.typing = Some((name, controls::number(v)));
+                    }
+                    ui.label(controls::number(v));
+                    let_go(&s).then(|| self.typing.take_if(|(n, _)| *n == name)).flatten().map(|(_, t)| t)
+                })
+                .inner
+            }
+            Control::Site => {
+                // the scale's own (grown with the size) until one is given
+                let own = now == "default";
+                let size = |t: &str| -> Option<(i32, i32)> {
+                    let (w, h) = t.split_once('x')?;
+                    Some((w.parse().ok()?, h.parse().ok()?))
+                };
+                let (mut w, mut h) = held.as_deref().and_then(size).or(size(now)).unwrap_or_else(|| place::kinds_and_site(&self.doc.recipe.options.siting).1);
+                ui.vertical(|ui| {
+                    let mut mine = !own;
+                    let flip = ui.checkbox(&mut mine, if own { format!("the scale's own: {w} x {h}") } else { "my own".to_string() });
+                    self.spots.push((format!("option {name}"), flip.rect));
+                    if flip.changed() {
+                        // (made one's own at the size it has, so the level stays as it was until a slider moves)
+                        return Some(if mine { format!("{w}x{h}") } else { "default".to_string() });
+                    }
+                    if own {
+                        return None;
+                    }
+                    let (wide, deep) = (controls::SITE_WIDE, controls::SITE_DEEP);
+                    let a = ui.horizontal(|ui| {
+                        let s = ui.add(egui::Slider::new(&mut w, wide.0..=wide.1).show_value(false).clamping(egui::SliderClamping::Never));
+                        ui.label(format!("{w} wide"));
+                        s
+                    });
+                    let b = ui.horizontal(|ui| {
+                        let s = ui.add(egui::Slider::new(&mut h, deep.0..=deep.1).show_value(false).clamping(egui::SliderClamping::Never));
+                        ui.label(format!("{h} deep"));
+                        s
+                    });
+                    let (a, b) = (a.inner, b.inner);
+                    self.spots.push(("option site wide".to_string(), a.rect));
+                    self.spots.push(("option site deep".to_string(), b.rect));
+                    if a.changed() || b.changed() {
+                        self.typing = Some((name, format!("{w}x{h}")));
+                    }
+                    (let_go(&a) && let_go(&b)).then(|| self.typing.take_if(|(n, _)| *n == name)).flatten().map(|(_, t)| t)
+                })
+                .inner
+            }
+        }
     }
 
     fn edits(&mut self, ui: &mut egui::Ui) {
@@ -2297,6 +2408,83 @@ mod tests {
         ed.select(Some("tower"));
         let said = frame(&mut ed, &egui, Vec::new());
         assert!(said.iter().any(|t| t == "198") && ed.doc.choices("tower").unwrap().brightness == Some(198), "{said:?}");
+    }
+
+    #[test]
+    fn the_options_are_lists_switches_and_sliders_and_a_slider_is_one_edit_when_let_go() {
+        let (mut ed, egui) = (editor("--seed 40"), egui::Context::default());
+        pass(&mut ed, &egui, Vec::new());
+        press(&mut ed, &egui, "options");
+        for _ in 0..10 {
+            frame(&mut ed, &egui, Vec::new()); // (the header opens over a few frames)
+        }
+        // vents: pressed a quarter of the way along, dragged to three quarters; nothing changes while it is held
+        let bar = ed.spots.iter().find(|(name, _)| name == "option vents").expect("the vents slider").1;
+        let at = |f: f32| egui::pos2(bar.left() + bar.width() * f, bar.center().y);
+        frame(&mut ed, &egui, vec![egui::Event::PointerMoved(at(0.25))]);
+        frame(&mut ed, &egui, vec![button(at(0.25), true)]);
+        frame(&mut ed, &egui, vec![egui::Event::PointerMoved(at(0.5))]);
+        frame(&mut ed, &egui, vec![egui::Event::PointerMoved(at(0.75))]);
+        let said = frame(&mut ed, &egui, Vec::new());
+        let held: usize = ed.typing.clone().filter(|(n, _)| *n == "vents").expect("the slider is held").1.parse().unwrap();
+        assert!((8..=10).contains(&held) && said.iter().any(|t| *t == held.to_string()), "{held} {said:?}");
+        assert!(ed.doc.recipe.options.vents == 4 && !ed.doc.can_undo());
+        // let go: the option set, one step to undo
+        frame(&mut ed, &egui, vec![button(at(0.75), false)]);
+        frame(&mut ed, &egui, Vec::new());
+        assert_eq!((ed.doc.recipe.options.vents, ed.typing.clone()), (held, None));
+        assert!(ed.doc.undo() && !ed.doc.can_undo() && ed.doc.redo());
+        settle(&mut ed);
+        // "reset" puts the default back, and the recipe is the seed's own again
+        press(&mut ed, &egui, "reset vents");
+        assert_eq!(ed.doc.recipe.options, Options::default());
+        settle(&mut ed);
+        // a switch
+        press(&mut ed, &egui, "option shapes");
+        assert!(!ed.doc.recipe.options.shapes);
+        settle(&mut ed);
+        // a list: opened, and a word chosen from it
+        press(&mut ed, &egui, "option cover");
+        press(&mut ed, &egui, "option cover pillars");
+        assert_eq!(ed.doc.recipe.options.cover, "pillars");
+        settle(&mut ed);
+        // Felicity: the options it does not read are greyed, and their sliders do nothing
+        press(&mut ed, &egui, "option style");
+        let said = press(&mut ed, &egui, "option style felicity");
+        assert!(ed.doc.recipe.options.style == "felicity" && has(&said, "reads only the options not greyed out"), "{said:?}");
+        settle(&mut ed);
+        frame(&mut ed, &egui, Vec::new());
+        let bar = ed.spots.iter().find(|(name, _)| name == "option vents").unwrap().1;
+        click(&mut ed, &egui, egui::pos2(bar.left() + bar.width() * 0.9, bar.center().y));
+        frame(&mut ed, &egui, Vec::new());
+        assert!(ed.doc.recipe.options.vents == 4 && ed.typing.is_none());
+    }
+
+    #[test]
+    fn the_site_is_the_scales_own_until_made_ones_own_and_then_two_sliders() {
+        let (mut ed, egui) = (editor("--seed 40"), egui::Context::default());
+        pass(&mut ed, &egui, Vec::new());
+        press(&mut ed, &egui, "options");
+        for _ in 0..10 {
+            frame(&mut ed, &egui, Vec::new());
+        }
+        let said = frame(&mut ed, &egui, Vec::new());
+        assert!(has(&said, "the scale's own: 80 x 60") && !ed.spots.iter().any(|(n, _)| n == "option site wide"), "{said:?}");
+        // made one's own at the size it was: the same level, and two sliders
+        press(&mut ed, &egui, "option site");
+        assert_eq!(ed.doc.recipe.options.siting.site, Some((80, 60)));
+        settle(&mut ed);
+        let said = frame(&mut ed, &egui, Vec::new());
+        assert!(has(&said, "80 wide") && has(&said, "60 deep"), "{said:?}");
+        let bar = ed.spots.iter().find(|(name, _)| name == "option site wide").expect("the width slider").1;
+        click(&mut ed, &egui, egui::pos2(bar.right() - 1.0, bar.center().y));
+        frame(&mut ed, &egui, Vec::new());
+        let (w, h) = ed.doc.recipe.options.siting.site.expect("a site of its own");
+        assert!(w > 190 && h == 60, "{w} x {h}");
+        settle(&mut ed);
+        // and the scale's own again
+        press(&mut ed, &egui, "option site");
+        assert_eq!(ed.doc.recipe.options.siting.site, None);
     }
 
     #[test]

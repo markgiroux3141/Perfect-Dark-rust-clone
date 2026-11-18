@@ -37,6 +37,7 @@
 
 pub mod chosen;
 pub mod cli;
+pub mod controls;
 pub mod deadlist;
 pub mod doc;
 pub mod font;

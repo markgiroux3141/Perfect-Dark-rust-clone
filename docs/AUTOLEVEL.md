@@ -708,6 +708,22 @@ In `pd_edit`'s generator mode a strip over the middle of the window switches it:
   checked for standing room. The generator's own keys (Delete on a selected room) still act
   with the 3D view on show. There is no key for Plan | 3D.
 
+### As built (the options' controls, 2026-11-17)
+
+The Options section offered a text field per option. Each now has a control
+(`autolevel_edit::controls`: headless, its lists the generator's own `STYLES`, `COVER` and
+scales): a list for `style`, `scale`, `cover` and `walkway`; a switch for `washroom`, `crates`,
+`shapes` and `dead_ends`; a slider over a range worth trying for the numbers (the ranges are the
+editor's alone: a recipe's value outside one is shown at the end, not changed); and for `site`
+"the scale's own: W x H" or, ticked off, two sliders (made one's own at the size it had, so the
+level stays as it was). A slider makes one edit when it is let go, as the brightness slider
+does; "reset" beside an option not at its default puts it back; a label's hover text says what
+it does. A Felicity level reads only `washroom`, so the rest are greyed (`controls::read_by`)
+and a Complex level greys `washroom`. Checked: 5 tests in `controls` (every word offered is
+taken, every default lies in its range, a slider's float steps come back as the number) and 2
+in the window's (a slider held is no edit and let go is one, reset, a switch, a word from a
+list, Felicity's greyed sliders; the site made one's own and back). Nobody has looked at it.
+
 ### Editor milestones
 
 1. Plan view of a generated level, with `--shot`. The dead-end list beside it. **Done.**
