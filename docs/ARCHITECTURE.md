@@ -151,7 +151,12 @@ Levels converted from other games (`crates/pd_import`, run by hand: `pd_import <
 
 ```
 custom/
-  levels.json                the custom arenas: code, stage number (0x60-0x7f, CUSTOM_STAGENUMS), menu name
+  levels.json                the custom arenas: code, stage number (0x60-0x7f, CUSTOM_STAGENUMS), menu name.
+                             Only 32 numbers fit (an MP setup keeps the stage in 7 bits), so a recipe can be
+                             shelved: moved into crates/pd_import/levels/shelved/ (the Jedi Academy maps are,
+                             since 2026-11-17), where nothing counts its number, and its row taken out of
+                             levels.json; its stage files stay. To bring one back, move it up a folder (or
+                             `pd_import crates/pd_import/levels/shelved/<code>.json`) and import it
   stages/<code>/             the four stage files, in pd_stage.py's formats, plus
                              tex/<n>.png  the level's own textures (ids 0x10000 | material in bg.json); none for a generated level, which draws the pool's
                              report.txt   the import's report

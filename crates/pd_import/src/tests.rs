@@ -569,7 +569,7 @@ fn ci_felicity_is_two_stages_fused() {
 #[test]
 fn catacombs_is_a_jedi_academy_map() {
     let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let r = Recipe::load(&manifest.join("levels").join("catacombs.json")).unwrap();
+    let r = Recipe::load(&manifest.join("levels").join("shelved").join("catacombs.json")).unwrap();
     let Source::Jka(j) = &r.source else { panic!("catacombs.json is not a Jedi Academy map") };
     if !std::path::Path::new(&j.bsp).is_file() || !std::path::Path::new(&j.base).join("assets1.pk3").is_file() {
         eprintln!("skipped: no map at {} or no game at {}", j.bsp, j.base);
