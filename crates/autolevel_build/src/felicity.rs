@@ -11,8 +11,12 @@
 //! |---|---|---|---|---|
 //! | `office` | blue marble 0287 | tan band 024F to 141, tile 0256 to 259, panel 024B | timber beams 01EC | most of the building, the hallway |
 //! | `marble` | blue marble 0287 | pink marble 0872 to 141, tile 0256, panel 024B | panel 024B | the marble rooms |
-//! | `industrial` | grey plate 070F | grey 0274 to 141, 0872 above | grey plate 070F | 12, 13, 15 |
-//! | `washroom` | mirrored tile 0271 | tile 071B to 141, tile 071D to 259, 0281 above | 0281 | 26-28 (the toilets) |
+//! | `industrial` | grey 0271 | grey panels 071B to 141, 071D (blue lines) to 259, rock 0281 above | rock 0281 | the grey bays 26-32 |
+//! | `washroom` | white tile 070F | black tile 0274 to 141, marble 0872 above | 070F | 12 (the toilets) |
+//!
+//! (Until 2026-11-17 these two were the wrong way round: the washroom's tiles were on the
+//! industrial rooms. `--at` views of `mp11` in `pd_snapshot` take the dump's coordinates as they
+//! are, and show which room is which.)
 //! | `hall` | mirrored tile 0271 | base 0276 to 118, 027D to 236, band 0288 to 310, 0281 above | 0281 | the three-bay hall |
 //! | `hallside` | 0288 | 0273 full height, 0281 above | 0281 | 23-25, off the hall |
 //!
@@ -80,17 +84,17 @@ const PALETTE: [Paint; 30] = [
     paint("pipe", "012A", &[], "pipe", (128.0, 127.0)),
     // the stairwells' railings: Felicity's see-through rail
     paint("rail", "0710", &["Transparent", "CullBoth", "MirrorS", "ClampT"], "m14TransparentCullBothMirrorSClampT", (49.0, 94.0)),
-    // industrial
-    paint("ind_floor", "070F", &[], "m15", (64.2, 63.9)),
-    paint("ind_lower", "0274", &[], "m18", (94.6, 92.2)),
-    paint("ind_upper", "0872", &[], "m10", (162.9, 142.1)),
-    paint("ind_ceiling", "070F", &[], "m15", (64.2, 63.9)),
-    // washroom
-    paint("wc_floor", "0271", &["MirrorS", "MirrorT"], "m12MirrorSMirrorT", (184.2, 141.1)),
-    paint("wc_lower", "071B", &[], "m28", (150.0, 140.1)),
-    paint("wc_upper", "071D", &[], "m27", (127.2, 129.9)),
-    paint("wc_plain", "0281", &[], "m22", (255.1, 506.9)),
-    paint("wc_ceiling", "0281", &[], "m22", (255.1, 506.9)),
+    // industrial: Felicity's grey concrete bays (rooms 26-32)
+    paint("bay_floor", "0271", &["MirrorS", "MirrorT"], "m12MirrorSMirrorT", (184.2, 141.1)),
+    paint("bay_lower", "071B", &[], "m28", (150.0, 140.1)),
+    paint("bay_upper", "071D", &[], "m27", (127.2, 129.9)),
+    paint("bay_plain", "0281", &[], "m22", (255.1, 506.9)),
+    paint("bay_ceiling", "0281", &[], "m22", (255.1, 506.9)),
+    // washroom: Felicity's washroom (room 12: black tile, marble above, white floor tile)
+    paint("wc_floor", "070F", &[], "m15", (64.2, 63.9)),
+    paint("wc_lower", "0274", &[], "m18", (94.6, 92.2)),
+    paint("wc_upper", "0872", &[], "m10", (162.9, 142.1)),
+    paint("wc_ceiling", "070F", &[], "m15", (64.2, 63.9)),
     // the hall, and the rooms off it
     paint("hall_floor", "0271", &["MirrorS", "MirrorT"], "m12MirrorSMirrorT", (243.5, 173.5)),
     paint("hall_base", "0276", &["ClampT"], "m29ClampT", (92.6, 143.3)),
@@ -105,10 +109,10 @@ const PALETTE: [Paint; 30] = [
 pub const TYPES: [(&str, &str, &str); 6] = [
     ("office", "floor", "beams"),
     ("marble", "floor", "ceiling"),
-    ("industrial", "ind_floor", "ind_ceiling"),
+    ("industrial", "bay_floor", "bay_ceiling"),
     ("washroom", "wc_floor", "wc_ceiling"),
     ("hall", "hall_floor", "hall_upper"),
-    ("hallside", "side_floor", "wc_ceiling"),
+    ("hallside", "side_floor", "bay_ceiling"),
 ];
 
 /// Each room type's wall strips above a storey's floor, bottom-up (above the last, it goes on).
@@ -116,8 +120,8 @@ pub fn schemes() -> Schemes {
     vec![
         ("office", vec![(0, "lower"), (141, "upper"), (259, "plain")]),
         ("marble", vec![(0, "marble"), (141, "upper"), (259, "plain")]),
-        ("industrial", vec![(0, "ind_lower"), (141, "ind_upper")]),
-        ("washroom", vec![(0, "wc_lower"), (141, "wc_upper"), (259, "wc_plain")]),
+        ("industrial", vec![(0, "bay_lower"), (141, "bay_upper"), (259, "bay_plain")]),
+        ("washroom", vec![(0, "wc_lower"), (141, "wc_upper")]),
         ("hall", vec![(0, "hall_base"), (118, "hall_mid"), (236, "hall_band"), (310, "hall_upper")]),
         ("hallside", vec![(0, "side_wall"), (259, "hall_upper")]),
     ]

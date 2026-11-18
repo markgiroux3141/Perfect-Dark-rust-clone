@@ -1057,9 +1057,16 @@ Felicity's own triangles (`PD_PROBE_STAGE=mp11 PD_PROBE_OUT=tris.json cargo test
 --release probe_stage_triangles -- --ignored`: every BG triangle with its room, texture and UVs;
 units per repeat from each triangle's UV gradient, which agrees with the procgen theme to 0.1).
 `office` (tan bands, timber-beam ceiling 01EC, its v repeat 424 so the 212 lattice never reaches
-the clamp), `marble`, `industrial` (grey 0274 / 0872, plate floor and ceiling 070F), `washroom`
-(tiles 071B / 071D, mirrored tile floor 0271), `hall` (0276 / 027D / 0288 / 0281 bands) and
-`hallside` (0273). The planner gives them by where a room is (above); the hall is `hall`.
+the clamp), `marble`, `industrial` (Felicity's grey concrete bays, its rooms 26-32: panels 071B /
+071D with blue lines, floor 0271, rock ceiling 0281), `washroom` (Felicity's washroom, room 12:
+black tile 0274 to 141, marble 0872 above, white tile floor and ceiling 070F), `hall` (0276 / 027D
+/ 0288 / 0281 bands) and `hallside` (0273). The planner gives them by where a room is (above); the
+hall is `hall`. **Until 2026-11-17 `industrial` and `washroom` wore each other's materials** (the
+washroom's tiles were on the industrial rooms): found by looking at Felicity itself, since swapped
+(the user's call). Looking at Felicity: `pd_snapshot <dir> stage mp11 --at X,Y,Z,THETA` (or
+`--views file.json`, many at once) takes the triangle dump's coordinates as they are (an earlier
+brief said x was negated: it isn't), feet on a real floor (under a raised floor the view is of
+somewhere else), theta 0 facing +z, 90 facing -x.
 
 **Stairs** (`autolevel::stairs`): `fit(shape, air, floor, rise, frame)` lays a straight flight
 (132 wide against a wall, a gallery at the top), an L (two half flights round a corner landing)
