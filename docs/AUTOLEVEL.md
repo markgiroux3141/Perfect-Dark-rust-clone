@@ -1289,28 +1289,13 @@ floor to 254 at the top, and a 254 pool on the floor under the cross; the ceilin
   2; a minute of six simulants stalls 4 times, all at one door held part open from both sides
   (PD's doors, as before), none by a pilaster.
 
-**Pipes** (2026-11-17, the detail brief's floor-level pieces; the profile **from Felicity**, the
-placement along wall bases from the user's screenshots of `cifelicity`, which may be CI's). Measured
-first: Felicity's pipe (room 39) is a hexagon 53 across, tips 13 deep, shaded by 012A round its
-profile (a dark-to-light gradient, about 127 a repeat: dark below, light on top; not hazard
-stripes), standing up from the floor into a run 287 long 84-137 up. Its grey room (12) has a floor
-raised 54 on a grating with chamfered kerbs along both long walls: not built (yet).
-
-- **Where** (`dress::pipes`, stream `<seed>/felicity/dress/pipes`): `PIPED` (0.6) of the
-  one-storey `industrial` rooms and corridors get a pipe round their walls at the floor, broken at
-  every doorway: its ends keep `PIPE_GAP` (40) beyond the frame, and where a doorway is within a
-  pipe's depth of a corner the pipe on the other wall stops `PIPE_MOUTH` (120) short of the corner,
-  so nothing stands in a doorway's mouth. Runs under two pipes' depth are dropped. Seeds 1-40: 150
-  runs in 80 rooms and corridors (test `pipes_run_round_industrial_rooms_clear_of_every_doorways_mouth`).
-- **Drawn** (`felicity::pipe`): Felicity's hexagon turned to lie on the floor (flat top and
-  bottom, one tip to the wall, one to the room), one sweep a run with the room on its left, mitred
-  round the corners, its ends capped (`Sweep::caps`, new), role `pipe` (012A, v round the profile).
-  The floor under its flat bottom is cleared, so no waypoint is made inside it (test
-  `pipes_lie_along_their_walls_capped_and_the_floor_under_them_cleared`).
-- Seed 15 draws none (its industrial rooms all came out plain), so to see them: **Felicity 5,
-  stage 123** (`autolevel import out/autolevel/felicity5 --code felicity5 --name "Felicity 5"
-  --stagenum 123`), room2 (plan 20-1146 x 2352-3478, a run round three walls), room4, corridor1.
-  A minute of six simulants there: no stalls.
+**Pipes: removed** (2026-11-17, the user's call: "strange and don't really work"). `7d7d002` ran
+Felicity's hexagonal pipe (room 39: 53 across, tips 13 deep, shaded by 012A) along the base of
+the walls of 60% of the one-storey `industrial` rooms and corridors; on the grey bays they read as
+brown and out of place. `dress::pipes`, `Level::pipes`, `felicity::pipe`, the `pipe` role and
+their tests are gone (the commit that removed them has them, should they come back in another
+form). Nothing else moved: they had their own stream (`<seed>/felicity/dress/pipes`), drawn last.
+`Sweep::caps` (capped open sweeps), added for them, stays in the shape tool.
 
 **Hazard surrounds** (2026-11-17, the detail brief's "hazard stripes" and "deep angled frames on
 the grey room's doorways"; **from Felicity**, not CI Training: its grey bays, rooms 29 and 32).
@@ -1325,7 +1310,7 @@ portals between its bays (next, below). The stripes along its bays' wall base ar
 - **Where** (`dress::surrounds`, no draw): every face of a doorway with no arch in a one-storey
   `industrial` room or corridor, where it fits: its splay `SURROUND_GAP` (6) clear of the room's
   corners and room for a surround beside every other doorway in that wall. Seeds 1-40: all 245 such
-  faces. Pipes now stop `PIPE_GAP` beyond a surround's splay (`dress::frame_width`): 135 runs (150).
+  faces.
 - **Drawn** (`felicity::surround`): our walls are 40 thick, so the surround stands out of the wall
   into the room instead of into it: from the opening's edge at the wall's face the stripes (role
   `hazard`, u across the flare, v along) flare `SURROUND` (39) out, `FLARE` (14, 12) wider and
@@ -1351,10 +1336,10 @@ seen in `cifelicity` is a leaning jamb of one of these.
 - **Where** (`dress::portals`, no draw): across every one-storey `industrial` corridor, one every
   `BAY` (424) or so along it (`round(length / BAY) - 1`, evenly), each slid up to 160 to keep
   `PORTAL_MARGIN` (40) off the frames of the doorways in its walls (a surround's splay included) and
-  `PORTAL_END` (106) off the corridor's ends, or left out. Pipes break round them. A lamp under each
+  `PORTAL_END` (106) off the corridor's ends, or left out. A lamp under each
   lintel (`Portal::lamp`, in `Level::lamps`), so a corridor with portals is lit by them in place of
   its grid. Seeds 1-40: 88 portals in 51 corridors (test
-  `portals_stand_across_industrial_corridors_clear_of_their_doorways_and_pipes`).
+  `portals_stand_across_industrial_corridors_clear_of_their_doorways`).
 - **Drawn** (`felicity::portal`): `PORTAL_D` (105) deep along the corridor; on each face eight bevel
   triangles (the wall's upper tile, banded as the wall) from the corridor's outline (wall, ceiling,
   wall) to the opening 13 in; through it the passage's four sides (role `portal`, 027D) and the
@@ -1382,7 +1367,7 @@ these toilets' rims and sills (0714 at 25-54), not a floor.
 - **The option** (the user's call: on by default, a flag turns it off): `Options::washroom`,
   `washroom` in a recipe (written only when off: `"washroom": false`), `--no-washroom` (or
   `--washroom false`) on the command line. Off, a level has no fittings and nothing else changes
-  (test: the plan, doorways, braces, pipes, portals and lamps are the same either way).
+  (test: the plan, doorways, braces, portals and lamps are the same either way).
 - **Where** (`dress::washrooms`, no draw): in each one-storey `washroom` room, along the longest
   wall with no doorway that takes them, a row of stalls: the whole wall if it fits, else fewer from
   a corner (a partition closing the open end), the most stalls first, each as deep as fits from

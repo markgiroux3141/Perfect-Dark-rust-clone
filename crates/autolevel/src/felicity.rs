@@ -1934,7 +1934,6 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
     let arched = |d: &Doorway| arches.iter().any(|a| a.kind == "doorway" && a.a == d.a && a.b == d.b);
     let surrounds = crate::dress::surrounds(&plan, &doorways, &arched);
     let portals = crate::dress::portals(&plan, &doorways, &surrounds);
-    let pipes = crate::dress::pipes(seed, &plan, &doorways, &surrounds, &portals);
     let fittings = if o.washroom { crate::dress::washrooms(&plan, &doorways) } else { Vec::new() };
     // the portals' lights join the braces' (a room with lamps of its own has them for its grid)
     let lamps: Vec<(String, (i32, i32, i32))> = lamps.into_iter().chain(portals.iter().map(|p| p.lamp())).collect();
@@ -2084,7 +2083,6 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
         doorways,
         arches,
         braces,
-        pipes,
         surrounds,
         portals,
         fittings,

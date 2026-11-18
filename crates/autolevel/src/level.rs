@@ -437,8 +437,6 @@ pub struct Level {
     pub arches: Vec<Arch>,
     /// Ceiling braces (a Felicity level's dressing, `dress`; none in Complex's).
     pub braces: Vec<crate::dress::Brace>,
-    /// Pipes along the base of walls (a Felicity level's dressing, `dress`; none in Complex's).
-    pub pipes: Vec<crate::dress::Pipe>,
     /// Hazard surrounds on doorways' faces (a Felicity level's dressing, `dress`; none in Complex's).
     pub surrounds: Vec<crate::dress::Surround>,
     /// Portals across industrial corridors (a Felicity level's dressing, `dress`; none in Complex's).
@@ -522,7 +520,6 @@ pub fn stage_level(mut b: Build, dropped: Vec<String>) -> Result<Level, String> 
         doorways: Vec::new(),
         arches: Vec::new(),
         braces: Vec::new(),
-        pipes: Vec::new(),
         surrounds: Vec::new(),
         portals: Vec::new(),
         fittings: Vec::new(),

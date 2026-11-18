@@ -517,134 +517,6 @@ pub fn washrooms(plan: &Plan, doorways: &[Doorway]) -> Vec<Fitting> {
     out
 }
 
-/// How big a pipe is: Felicity's (room 39), a hexagon 53 across with tips `PIPE_TIP` deep, here
-/// lying on the floor against a wall (flat top and bottom, its tips to the wall and the room).
-pub const PIPE: i32 = 53;
-pub const PIPE_TIP: i32 = 13;
-/// The share of the industrial rooms and corridors with pipes round their walls.
-pub const PIPED: f64 = 0.6;
-/// How far a pipe's end keeps from a doorway's opening along its wall (the frame's 13 and more).
-pub const PIPE_GAP: i32 = 40;
-/// How far from a corner a pipe on the next wall stops, when a doorway is within a pipe's depth
-/// of that corner (the doorway's mouth: `felicity::MOUTH`).
-pub const PIPE_MOUTH: i32 = 120;
-
-/// A pipe along the base of a room's walls: the points it runs through along the walls' faces
-/// (plan x, y), the room's inside on its left, round the room's corners.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Pipe {
-    pub room: String,
-    pub path: Vec<(i32, i32)>,
-    pub floor: i32,
-}
-
-/// The pipes of a Felicity level: round the walls of `PIPED` of its one-storey industrial rooms
-/// and corridors, broken at every doorway (beyond its frame: a hazard surround's splay, if any) and
-/// at every portal.
-pub fn pipes(seed: u64, plan: &Plan, doorways: &[Doorway], surrounds: &[Surround], portals: &[Portal]) -> Vec<Pipe> {
-    let mut rng = PyRandom::named(&format!("{seed}/felicity/dress/pipes"));
-    let mut out = Vec::new();
-    for r in &plan.rooms {
-        let Some(&(lo, hi)) = r.boxes.first() else { continue };
-        let may = matches!(r.kind, "room" | "corridor") && r.scheme == "industrial" && hi.2 - lo.2 == ROOM_H;
-        if !may || rng.random() >= PIPED {
-            continue;
-        }
-        // the walls anticlockwise from the low corner, the inside on the left
-        let corners = [(lo.0, lo.1), (hi.0, lo.1), (hi.0, hi.1), (lo.0, hi.1)];
-        let lengths: Vec<i32> = (0..4).map(|i| (corners[(i + 1) % 4].0 - corners[i].0).abs() + (corners[(i + 1) % 4].1 - corners[i].1).abs()).collect();
-        let starts: Vec<i32> = (0..4).map(|i| lengths[..i].iter().sum()).collect();
-        let round: i32 = lengths.iter().sum();
-        // each doorway of the room: the stretch of the way round it blocks
-        let mut blocked: Vec<(i32, i32)> = Vec::new();
-        for d in doorways.iter().filter(|d| (d.a == r.key || d.b == r.key) && d.lo.2 < hi.2 && d.hi.2 > lo.2) {
-            let along = 1 - d.axis;
-            let (s0, s1) = (at(d.lo, along), at(d.hi, along));
-            // which wall: the one whose line the doorway's box meets
-            let wall = match d.axis {
-                1 if d.hi.1 == lo.1 => 0,
-                0 if d.lo.0 == hi.0 => 1,
-                1 if d.lo.1 == hi.1 => 2,
-                0 if d.hi.0 == lo.0 => 3,
-                _ => continue,
-            };
-            // along the way round: walls 0 and 1 run up their axis, 2 and 3 down it
-            let (a, b) = match wall {
-                0 => (s0 - lo.0, s1 - lo.0),
-                1 => (s0 - lo.1, s1 - lo.1),
-                2 => (hi.0 - s1, hi.0 - s0),
-                _ => (hi.1 - s1, hi.1 - s0),
-            };
-            let frame = frame_width(surrounds, d, &r.key);
-            let (mut a, mut b) = (starts[wall] + a - PIPE_GAP - frame, starts[wall] + b + PIPE_GAP + frame);
-            // a doorway near a corner: the pipe on the other wall stops short of its mouth
-            if a - starts[wall] < PIPE + PIPE_GAP {
-                a = starts[wall] - PIPE_MOUTH;
-            }
-            if starts[wall] + lengths[wall] - b < PIPE + PIPE_GAP {
-                b = starts[wall] + lengths[wall] + PIPE_MOUTH;
-            }
-            blocked.push((a, b));
-        }
-        // each portal: both side walls, along its depth
-        for p in portals.iter().filter(|p| p.room == r.key) {
-            let (s0, s1) = (p.at - PORTAL_D / 2 - PIPE_GAP, p.at + PORTAL_D / 2 + PIPE_GAP);
-            let sides =
-                if p.axis == 0 { [(0, s0 - lo.0, s1 - lo.0), (2, hi.0 - s1, hi.0 - s0)] } else { [(1, s0 - lo.1, s1 - lo.1), (3, hi.1 - s1, hi.1 - s0)] };
-            for (wall, a, b) in sides {
-                blocked.push((starts[wall] + a, starts[wall] + b));
-            }
-        }
-        if blocked.is_empty() {
-            continue;
-        }
-        // the free stretches of the way round, between the blocked ones (it wraps)
-        let mut marks = vec![false; round as usize];
-        for &(a, b) in &blocked {
-            for s in a..b {
-                marks[s.rem_euclid(round) as usize] = true;
-            }
-        }
-        let Some(first) = (0..round).find(|&s| marks[s as usize]) else { continue };
-        let point = |s: i32| -> (i32, i32) {
-            let s = s.rem_euclid(round);
-            let w = (0..4).rev().find(|&w| starts[w] <= s).unwrap_or(0);
-            let (c, t) = (corners[w], s - starts[w]);
-            match w {
-                0 => (c.0 + t, c.1),
-                1 => (c.0, c.1 + t),
-                2 => (c.0 - t, c.1),
-                _ => (c.0, c.1 - t),
-            }
-        };
-        let mut s = first;
-        while s < first + round {
-            if marks[s.rem_euclid(round) as usize] {
-                s += 1;
-                continue;
-            }
-            let start = s;
-            while s < first + round && !marks[s.rem_euclid(round) as usize] {
-                s += 1;
-            }
-            if s - start < 2 * PIPE {
-                continue;
-            }
-            let mut path = vec![point(start)];
-            // the corners passed on the way (the way round counted twice, as the run may wrap)
-            for k in 0..8 {
-                let c = starts[k % 4] + (k / 4) as i32 * round;
-                if start < c && c < s {
-                    path.push(point(c));
-                }
-            }
-            path.push(point(s));
-            out.push(Pipe { room: r.key.clone(), path, floor: lo.2 });
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -718,49 +590,6 @@ mod tests {
     }
 
     #[test]
-    fn pipes_run_round_industrial_rooms_clear_of_every_doorways_mouth() {
-        use crate::level::{generate, Options};
-        let (mut rooms, mut runs) = (std::collections::BTreeSet::new(), 0);
-        for seed in 1..=40 {
-            let lv = generate(seed, &Options { style: "felicity", ..Options::default() }).unwrap();
-            for p in &lv.pipes {
-                let r = lv.plan.get(&p.room).unwrap();
-                assert_eq!(r.scheme, "industrial");
-                let (lo, hi) = r.boxes[0];
-                rooms.insert((seed, p.room.clone()));
-                runs += 1;
-                // every point on the room's walls, every leg along one
-                assert!(p
-                    .path
-                    .iter()
-                    .all(|&(x, y)| (x == lo.0 || x == hi.0 || y == lo.1 || y == hi.1) && (lo.0..=hi.0).contains(&x) && (lo.1..=hi.1).contains(&y)));
-                assert!(p.path.windows(2).all(|w| w[0].0 == w[1].0 || w[0].1 == w[1].1));
-                // nothing of it in a doorway's mouth: 120 in front of the opening, frame and gap
-                for d in lv.doorways.iter().filter(|d| d.a == p.room || d.b == p.room) {
-                    let o = 1 - d.axis;
-                    let frame = frame_width(&lv.surrounds, d, &p.room);
-                    let (s0, s1) = (at(d.lo, o) - frame - PIPE_GAP + 1, at(d.hi, o) + frame + PIPE_GAP - 1);
-                    let (m0, m1) = (at(d.lo, d.axis) - 120, at(d.hi, d.axis) + 120);
-                    for w in p.path.windows(2) {
-                        // the leg's footprint: PIPE out from its wall
-                        let (x0, x1) = (w[0].0.min(w[1].0), w[0].0.max(w[1].0));
-                        let (y0, y1) = (w[0].1.min(w[1].1), w[0].1.max(w[1].1));
-                        let (fx0, fx1, fy0, fy1) = if y0 == y1 {
-                            (x0, x1, if y0 == lo.1 { y0 } else { y0 - PIPE }, if y0 == lo.1 { y0 + PIPE } else { y0 })
-                        } else {
-                            (if x0 == lo.0 { x0 } else { x0 - PIPE }, if x0 == lo.0 { x0 + PIPE } else { x0 }, y0, y1)
-                        };
-                        let (a0, a1, b0, b1) = if d.axis == 0 { (fx0, fx1, fy0, fy1) } else { (fy0, fy1, fx0, fx1) };
-                        assert!(a1 <= m0 || a0 >= m1 || b1 <= s0 || b0 >= s1, "seed {seed}: a pipe in {} meets the mouth of {} {}", p.room, d.a, d.b);
-                    }
-                }
-            }
-        }
-        println!("seeds 1-40: {runs} pipe runs in {} industrial rooms and corridors", rooms.len());
-        assert!(runs > 20);
-    }
-
-    #[test]
     fn hazard_surrounds_stand_on_industrial_faces_clear_of_corners_and_other_frames() {
         use crate::level::{generate, Options};
         let (mut faces, mut could) = (0, 0);
@@ -799,7 +628,7 @@ mod tests {
     }
 
     #[test]
-    fn portals_stand_across_industrial_corridors_clear_of_their_doorways_and_pipes() {
+    fn portals_stand_across_industrial_corridors_clear_of_their_doorways() {
         use crate::level::{generate, Options};
         let (mut portals, mut corridors) = (0, std::collections::BTreeSet::new());
         for seed in 1..=40 {
@@ -825,14 +654,6 @@ mod tests {
                     let (s0, s1) = (at(d.lo, k) - w, at(d.hi, k) + w);
                     assert!(t1 <= s0 - PORTAL_MARGIN || t0 >= s1 + PORTAL_MARGIN, "seed {seed}: {p:?} meets {} {}", d.a, d.b);
                 }
-                // no pipe under it
-                for pipe in lv.pipes.iter().filter(|q| q.room == p.room) {
-                    for w in pipe.path.windows(2) {
-                        let (a0, a1) = if k == 0 { (w[0].0.min(w[1].0), w[0].0.max(w[1].0)) } else { (w[0].1.min(w[1].1), w[0].1.max(w[1].1)) };
-                        let along = if k == 0 { w[0].1 == w[1].1 } else { w[0].0 == w[1].0 };
-                        assert!(!along || a1 <= t0 || a0 >= t1, "seed {seed}: a pipe through {p:?}");
-                    }
-                }
             }
         }
         // a walker (radius 30, 185 tall) on a door-to-door line, 80 off the wall's face, clears the posts
@@ -853,7 +674,7 @@ mod tests {
             // the option off: no fittings and nothing else changed
             let bare = generate(seed, &Options { washroom: false, ..o.clone() }).unwrap();
             assert!(bare.fittings.is_empty());
-            assert_eq!((&bare.doorways, &bare.braces, &bare.pipes, &bare.portals, &bare.lamps), (&lv.doorways, &lv.braces, &lv.pipes, &lv.portals, &lv.lamps));
+            assert_eq!((&bare.doorways, &bare.braces, &bare.portals, &bare.lamps), (&lv.doorways, &lv.braces, &lv.portals, &lv.lamps));
             assert_eq!(
                 bare.plan.rooms.iter().map(|r| (&r.key, r.boxes.clone())).collect::<Vec<_>>(),
                 lv.plan.rooms.iter().map(|r| (&r.key, r.boxes.clone())).collect::<Vec<_>>()
