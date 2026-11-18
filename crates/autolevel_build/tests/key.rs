@@ -1,6 +1,8 @@
 //! The polygon stage against its answer key: for the key's seeds and options, `geometry::polys`
 //! and `complex::plan_lights` must give exactly what the Python gave (`tests/key/polys.json` and
-//! `lights.json`, from `python scripts/autolevel_key.py polys lights`).
+//! `lights.json`, from `python scripts/autolevel_key.py polys lights`), or, where a rule has been
+//! changed on purpose since, what the Rust gave when it was (the layout's `keyfile`: the key
+//! re-written with `AUTOLEVEL_KEY_REWRITE=1`).
 //!
 //! A polygon is a row `[zone, material, verts, normal, scale, band, slope, offset, uvs, beam]`
 //! with every float as its 64 bits (and -0.0 as 0.0: see `fbits` in the key script). A room's
@@ -21,12 +23,13 @@ use serde_json::{json, Value};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
+#[path = "../../autolevel/tests/keyfile/mod.rs"]
+mod keyfile;
+
 /// Where a stage's key is (`AUTOLEVEL_KEY_DIR` names another folder of keys written the same way).
-fn key(name: &str) -> Value {
+fn key(name: &str) -> &'static Value {
     let dir = std::env::var("AUTOLEVEL_KEY_DIR").unwrap_or_else(|_| format!("{}/tests/key", env!("CARGO_MANIFEST_DIR")));
-    let path = format!("{dir}/{name}.json");
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e} (run python scripts/autolevel_key.py polys lights)"));
-    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{path}: {e}"))
+    keyfile::read(&format!("{dir}/{name}.json"), "run python scripts/autolevel_key.py polys lights")
 }
 
 /// A case's `"options"` as the level's options (as the layout's own key test reads them).
@@ -185,6 +188,22 @@ fn check(n: usize, case: &Value, seed: u64, o: &Value, lv: &Level) -> Result<(),
         let text = serde_json::to_string(&json!({"lit": lit_rows, "planned": planned_rows, "rows": rows, "projected": projected, "intensity": shine})).unwrap();
         std::fs::write(format!("{dir}/case{n}.json"), text).map_err(|e| format!("{dir}: {e}"))?;
     }
+    // re-writing the key: whatever differs takes ours (the rows whole, as their number may change)
+    let take = |mine: &Value, theirs: &Value| mine != theirs && keyfile::take(theirs, mine);
+    let planned_digests = zone_digests(&planned_rows);
+    let digests = zone_digests(&rows);
+    let triangles: usize = polys.iter().map(|p| p.verts.len() - 2).sum();
+    if keyfile::rewriting() {
+        if let Some(theirs) = case.get("rows") {
+            take(&Value::Array(rows.clone()), theirs);
+        }
+        take(&planned_digests, &case["planned"]);
+        take(&digests, &case["zones"]);
+        take(&json!(rows.len()), &case["count"]);
+        take(&json!(triangles), &case["triangles"]);
+        take(&lit_rows, &case["lit"]);
+        return Ok(());
+    }
     if let Some(theirs) = case.get("rows") {
         let theirs = theirs.as_array().unwrap();
         for (i, (a, b)) in rows.iter().zip(theirs).enumerate() {
@@ -200,15 +219,12 @@ fn check(n: usize, case: &Value, seed: u64, o: &Value, lv: &Level) -> Result<(),
             }
         }
     }
-    let planned_digests = zone_digests(&planned_rows);
     if planned_digests != case["planned"] {
         return Err(format!("{at}: after plan_polys, {}", first_zone(&planned_digests, &case["planned"])));
     }
-    let digests = zone_digests(&rows);
     if digests != case["zones"] {
         return Err(format!("{at}: at the end, {}", first_zone(&digests, &case["zones"])));
     }
-    let triangles: usize = polys.iter().map(|p| p.verts.len() - 2).sum();
     if json!([rows.len(), triangles, lit_rows]) != json!([case["count"], case["triangles"], case["lit"]]) {
         return Err(format!(
             "{at}: {} polygons, {triangles} triangles, lit {lit_rows}; the key has {}, {}, {}",
@@ -230,6 +246,7 @@ fn polygons_are_the_pythons() {
     assert!(cases.len() >= 20 && cases[0].get("rows").is_some(), "the key has {} cases", cases.len());
     let wrong: Vec<String> = par(levels, |n, (seed, o, lv)| check(n, &cases[n], *seed, o, lv)).into_iter().filter_map(Result::err).collect();
     assert!(wrong.is_empty(), "{} of {} cases differ:\n{}", wrong.len(), cases.len(), wrong.join("\n"));
+    keyfile::finish(key);
 }
 
 #[test]
@@ -244,6 +261,11 @@ fn lights_are_the_pythons() {
                 json!([fbits(l.pos[0]), fbits(l.pos[1]), fbits(l.pos[2]), fbits(l.color[0]), fbits(l.radius), fbits(l.size), fbits(l.spot)])
             })
             .collect();
+        let all = Value::Array(ours.clone());
+        if all != case["lights"] && keyfile::take(&case["lights"], &all) {
+            lamps += ours.len();
+            continue;
+        }
         let theirs = case["lights"].as_array().unwrap();
         for (i, (a, b)) in ours.iter().zip(theirs).enumerate() {
             let f = |v: &Value| v.as_array().unwrap().iter().map(|x| f64::from_bits(x.as_u64().unwrap())).collect::<Vec<_>>();
@@ -253,4 +275,5 @@ fn lights_are_the_pythons() {
         lamps += ours.len();
     }
     assert!(lamps > 5000, "the key has {lamps} lights");
+    keyfile::finish(key);
 }

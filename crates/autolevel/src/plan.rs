@@ -18,6 +18,11 @@ use std::collections::BTreeSet;
 /// One cell of the grid, in game units.
 pub const MODULE: f64 = 118.11;
 
+/// The least clear height between a walkable top and an open ramp over or under it, units: under
+/// any storey's own (235 or 236: floors 275 or 276 apart, less a deck's slab), and over the 172
+/// that `pd_import` makes a wall of (its `low_ceilings` rule). Not the Python's (`Plan::headroom`).
+pub const HEADROOM: i32 = 200;
+
 /// (x, y, z) in units.
 pub type Point3 = (i32, i32, i32);
 /// An axis-aligned box: its low corner and its high corner, in units.
@@ -387,6 +392,64 @@ impl Plan {
                 problems.push(format!("floor/ceiling hole between {} and {}", c.a, c.b));
             }
         }
+        problems.extend(self.headroom());
+        problems
+    }
+
+    /// Not the Python's (a rule of the Rust's own, 2026-11-18): every walkable top (a solid
+    /// whose tag is in its room's `walkable`) that an open or floor ramp passes over or under in
+    /// plan, with less than `HEADROOM` between the two. A catwalk running on under a ramp's side
+    /// was one (`Interior::clear_under_ramps`); this keeps any other from reaching a level.
+    fn headroom(&self) -> Vec<String> {
+        let mut problems = Vec::new();
+        for room in &self.rooms {
+            for (i, rp) in room.ramps.iter().enumerate() {
+                if rp.kind != "open" && rp.kind != "plate" {
+                    continue; // an enclosed ramp or a duct is a room of its own, with its own ceiling
+                }
+                let (s, e, h) = (rp.start, rp.end, rp.width / 2);
+                let (x0, x1, y0, y1) = (s.0.min(e.0), s.0.max(e.0), s.1.min(e.1), s.1.max(e.1));
+                let foot = if s.0 == e.0 { (x0 - h, y0, x1 + h, y1) } else { (x0, y0 - h, x1, y1 + h) };
+                // the ramp's surface over a point of its run, which goes along x or along y
+                let z_at = |x: i32, y: i32| {
+                    let t = if s.0 != e.0 {
+                        (x - s.0) as f64 / (e.0 - s.0) as f64
+                    } else if s.1 != e.1 {
+                        (y - s.1) as f64 / (e.1 - s.1) as f64
+                    } else {
+                        0.0
+                    };
+                    s.2 as f64 + t.clamp(0.0, 1.0) * (e.2 - s.2) as f64
+                };
+                for other in &self.rooms {
+                    for &(lo, hi, tag) in &other.solids {
+                        if !other.walkable.contains(&tag) {
+                            continue;
+                        }
+                        let (ox0, oy0, ox1, oy1) = (foot.0.max(lo.0), foot.1.max(lo.1), foot.2.min(hi.0), foot.3.min(hi.1));
+                        if ox0 >= ox1 || oy0 >= oy1 {
+                            continue;
+                        }
+                        let (za, zb) = (z_at(ox0, oy0), z_at(ox1, oy1));
+                        let (low, high) = (za.min(zb), za.max(zb));
+                        if low >= (hi.2 + HEADROOM) as f64 || high + HEADROOM as f64 <= lo.2 as f64 {
+                            continue;
+                        }
+                        problems.push(format!(
+                            "no headroom: {}'s ramp {i} ({:.0}..{:.0}) and {}'s {tag} ({}..{}) at {}..{}",
+                            room.key,
+                            low,
+                            high,
+                            other.key,
+                            lo.2,
+                            hi.2,
+                            tuple((ox0, oy0, lo.2)),
+                            tuple((ox1, oy1, hi.2))
+                        ));
+                    }
+                }
+            }
+        }
         problems
     }
 
@@ -505,6 +568,28 @@ mod tests {
         }
         // a hole that misses leaves the box as it was
         assert_eq!(subtract(hall, &[((2000, 0, 0), (2100, 100, 100))]), [hall]);
+    }
+
+    #[test]
+    fn a_walkable_top_under_an_open_ramp_needs_headroom() {
+        // an open ramp along y in a hall, from 276 at y 472 up to 551 at y 0
+        let ramp = Ramp { start: (59, 472, 276), end: (59, 0, 551), width: 118, kind: "open", open_sides: vec![-1, 1] };
+        let with = |solid: Solid| {
+            let mut hall = Room::new("h", "H", 0, vec![((0, 0, 0), (1000, 1000, 1063))]);
+            hall.ramps.push(ramp.clone());
+            hall.solids.push(solid);
+            let mut p = Plan::new("t");
+            p.room(hall).unwrap();
+            p.check()
+        };
+        // a catwalk at 276 running in under the ramp's side: 90 to 158 over it
+        let problems = with(((0, 200, 236), (1000, 318, 276), "trim"));
+        assert_eq!(problems, ["no headroom: h's ramp 0 (366..434) and h's trim (236..276) at (0, 200, 236)..(118, 318, 276)"]);
+        // the same ramp over a floor a storey below the catwalk, or over something nobody stands on
+        assert!(with(((0, 200, -40), (1000, 318, 0), "trim")).is_empty());
+        assert!(with(((0, 200, 236), (1000, 318, 276), "column")).is_empty());
+        // and a deck beside it, not under it
+        assert!(with(((118, 200, 236), (1000, 318, 276), "trim")).is_empty());
     }
 
     /// Two rooms side by side on the ground: `b` against `a`'s east wall.

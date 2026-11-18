@@ -33,6 +33,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 mod cover;
 mod decks;
+mod mend;
 mod nav;
 mod plans;
 mod pod;
@@ -466,6 +467,7 @@ impl Interior {
         if !self.connected() {
             return Err(format!("{}: doors don't all join", self.s.key));
         }
+        self.clear_under_ramps();
         self.lay_cover();
         self.rails = self.lay_rails();
         Ok(self)

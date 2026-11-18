@@ -1,5 +1,7 @@
 //! The port against its answer key: every stage must reproduce what the Python wrote for the
-//! same seeds and options (`tests/key/*.json`, from `python scripts/autolevel_key.py`).
+//! same seeds and options (`tests/key/*.json`, from `python scripts/autolevel_key.py`), or, where
+//! a rule has been changed on purpose since, what the Rust gave when it was (`keyfile`: the key
+//! re-written with `AUTOLEVEL_KEY_REWRITE=1`).
 
 use autolevel::build::{Build, Fix};
 use autolevel::deadends::{self, DeadEnd};
@@ -14,7 +16,10 @@ use autolevel::scatter::Lot;
 use autolevel::sha512::sha512;
 use autolevel::space::Door;
 use autolevel::{cells, spiral};
+use keyfile::Tree;
 use serde_json::Value;
+
+mod keyfile;
 
 /// Where a stage's key is. (`AUTOLEVEL_KEY_DIR` names another folder of keys, written the same
 /// way: for holding one stage to more levels than the key has, with the test's name as a filter.)
@@ -23,10 +28,8 @@ fn key_path(name: &str) -> String {
     format!("{dir}/{name}.json")
 }
 
-fn key(name: &str) -> Value {
-    let path = key_path(name);
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e} (run python scripts/autolevel_key.py)"));
-    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{path}: {e}"))
+fn key(name: &str) -> &'static Value {
+    keyfile::read(&key_path(name), "run python scripts/autolevel_key.py")
 }
 
 fn ints(v: &Value) -> Vec<i64> {
@@ -459,7 +462,7 @@ fn assert_interior(at: &str, it: &Interior, want: &Value) {
     let w = want.as_object().unwrap();
     let mine = interior_json(it);
     for (name, v) in &mine {
-        assert_eq!(Some(v), w.get(*name), "{at}: {name}");
+        keyfile::agree(v, w.get(*name), |a, b| a == b, || format!("{at}: {name}"));
     }
     assert_eq!(mine.len(), w.len(), "{at}: fields");
 }
@@ -476,7 +479,8 @@ fn assert_openings(at: &str, b: &Build, case: &Value) {
 fn rooms_are_furnished_as_in_python() {
     let (mut cases, mut rooms, mut pods, mut ramps, mut cover, mut rails, mut drops, mut grates) = (0, 0, 0, 0, 0, 0, 0, 0);
     let (mut pools, mut shaped, mut bridges) = (0, 0, 0);
-    for case in key("interiors").as_array().unwrap() {
+    let cases_key = key("interiors");
+    for case in cases_key.as_array().unwrap() {
         let seed = case["seed"].as_u64().unwrap();
         let at = format!("seed {seed}, options {}", case["options"]);
         let o = options(&case["options"]);
@@ -537,6 +541,7 @@ fn rooms_are_furnished_as_in_python() {
         cases >= 20 && rooms > 500 && pods > 40 && ramps > 400 && cover > 300 && rails > 1000 && drops >= 15 && grates >= 15 && pools >= 10 && shaped >= 20 && bridges >= 5,
         "{cases} levels, {rooms} rooms, {pods} pods, {ramps} ramps, {cover} cover, {rails} rails, {drops} drops, {grates} grates, {pools} pools, {shaped} shaped, {bridges} bridges in the key"
     );
+    keyfile::finish(cases_key);
 }
 
 /// A dead end as the key writes it, the fields in the order the finder works them out.
@@ -571,7 +576,7 @@ fn assert_dead_ends(at: &str, ends: &[DeadEnd], want: &Value) {
         let w = w.as_object().unwrap();
         let mine = dead_end_json(e);
         for (name, v) in &mine {
-            assert_eq!(Some(floats(v)), w.get(*name).map(floats), "{at}, dead end {n} (off {}): {name}", e.root);
+            keyfile::agree(v, w.get(*name), |a, b| floats(a) == floats(b), || format!("{at}, dead end {n} (off {}): {name}", e.root));
         }
         assert_eq!(mine.len(), w.len(), "{at}, dead end {n}: fields");
     }
@@ -595,7 +600,8 @@ fn dead_ends_are_found_and_put_right_as_in_python() {
     use serde_json::json;
     let (mut cases, mut places, mut ways, mut found, mut bad, mut listed) = (0, 0, 0, 0, 0, 0);
     let (mut joined, mut cut, mut dropped, mut again, mut left) = (0, 0, 0, 0, 0);
-    for case in key("deadends").as_array().unwrap() {
+    let cases_key = key("deadends");
+    for case in cases_key.as_array().unwrap() {
         let seed = case["seed"].as_u64().unwrap();
         let at = format!("seed {seed}, options {}", case["options"]);
         let o = options(&case["options"]);
@@ -690,107 +696,7 @@ fn dead_ends_are_found_and_put_right_as_in_python() {
         cases >= 20 && places > 900 && ways > 1100 && found > 130 && bad >= 70 && listed > 300 && joined >= 70 && cut >= 9 && dropped >= 10 && again > 100 && left > 100,
         "{cases} levels, {places} places, {ways} ways, {found} dead ends ({bad} too long, {listed} joins listed), {joined} joined, {cut} cut, {dropped} dropped, {again} rooms furnished again, {left} dead ends left in the key"
     );
-}
-
-/// The key's objects with their names in the order the file has them (serde_json's `Value`
-/// sorts them, and the order of a level's rooms, walks and views is part of the key).
-enum Tree {
-    Leaf,
-    Arr(Vec<Tree>),
-    Obj(Vec<(String, Tree)>),
-}
-
-impl Tree {
-    /// Read one JSON value from `text` at `at`, leaving `at` just past it.
-    fn read(text: &str, at: &mut usize) -> Tree {
-        let b = text.as_bytes();
-        let skip = |at: &mut usize| {
-            while b[*at].is_ascii_whitespace() {
-                *at += 1;
-            }
-        };
-        // a string's text, quotes and all
-        let string = |at: &mut usize| {
-            let start = *at;
-            *at += 1;
-            while b[*at] != b'"' {
-                *at += if b[*at] == b'\\' { 2 } else { 1 };
-            }
-            *at += 1;
-            &text[start..*at]
-        };
-        skip(at);
-        match b[*at] {
-            b'{' => {
-                let mut out = Vec::new();
-                *at += 1;
-                loop {
-                    skip(at);
-                    if b[*at] == b'}' {
-                        *at += 1;
-                        return Tree::Obj(out);
-                    }
-                    if b[*at] == b',' {
-                        *at += 1;
-                        continue;
-                    }
-                    let name: String = serde_json::from_str(string(at)).unwrap();
-                    skip(at);
-                    assert_eq!(b[*at], b':', "a name with no value at byte {at}");
-                    *at += 1;
-                    out.push((name, Tree::read(text, at)));
-                }
-            }
-            b'[' => {
-                let mut out = Vec::new();
-                *at += 1;
-                loop {
-                    skip(at);
-                    if b[*at] == b']' {
-                        *at += 1;
-                        return Tree::Arr(out);
-                    }
-                    if b[*at] == b',' {
-                        *at += 1;
-                        continue;
-                    }
-                    out.push(Tree::read(text, at));
-                }
-            }
-            b'"' => {
-                string(at);
-                Tree::Leaf
-            }
-            _ => {
-                while !matches!(b[*at], b',' | b']' | b'}') && !b[*at].is_ascii_whitespace() {
-                    *at += 1;
-                }
-                Tree::Leaf
-            }
-        }
-    }
-
-    fn items(&self) -> &[Tree] {
-        match self {
-            Tree::Arr(items) => items,
-            _ => panic!("not a list"),
-        }
-    }
-
-    fn get(&self, name: &str) -> &Tree {
-        match self {
-            Tree::Obj(fields) => fields.iter().find(|(k, _)| k == name).map_or_else(|| panic!("no {name} in the key"), |(_, v)| v),
-            _ => panic!("not an object"),
-        }
-    }
-
-    /// An object's names, in the file's order.
-    fn names(&self) -> Vec<&str> {
-        match self {
-            Tree::Obj(fields) => fields.iter().map(|(k, _)| k.as_str()).collect(),
-            _ => panic!("not an object"),
-        }
-    }
+    keyfile::finish(cases_key);
 }
 
 /// The key's objects in the file's order, beside the key itself.
@@ -913,7 +819,7 @@ fn assert_dict(at: &str, what: &str, mine: &[(String, Value)], want: &Value, ord
     }
     assert_eq!(names.len(), order.names().len(), "{at}: {what}");
     for (name, v) in mine {
-        assert_eq!(floats(v), floats(&want[name]), "{at}: {what} {name}");
+        keyfile::agree(v, want.get(name), |a, b| floats(a) == floats(b), || format!("{at}: {what} {name}"));
     }
 }
 
@@ -926,6 +832,11 @@ fn assert_level(at: &str, lv: &Level, case: &Value, order: &Tree) {
     let pair = |p: (f64, f64)| json!([p.0, p.1]);
     let dict = |items: Vec<(String, Value)>, name: &str| assert_dict(at, name, &items, &case[name], order.get(name));
     let list = |items: Vec<Value>, name: &str| {
+        // (re-writing the key, a list that differs is taken whole: its length may have changed)
+        let all = Value::Array(items.clone());
+        if keyfile::rewriting() && floats(&all) != floats(&case[name]) && keyfile::take(&case[name], &all) {
+            return;
+        }
         let want = case[name].as_array().unwrap();
         for (n, (mine, w)) in items.iter().zip(want).enumerate() {
             assert_eq!(floats(mine), floats(w), "{at}: {name} {n}");
@@ -952,7 +863,7 @@ fn assert_level(at: &str, lv: &Level, case: &Value, order: &Tree) {
         let w = want[&r.key].as_object().unwrap();
         let mine = room_json(r);
         for (name, v) in &mine {
-            assert_eq!(Some(v), w.get(*name), "{at}, {}: {name}", r.key);
+            keyfile::agree(v, w.get(*name), |a, b| a == b, || format!("{at}, {}: {name}", r.key));
         }
         assert_eq!(mine.len(), w.len(), "{at}, {}: fields", r.key);
     }
@@ -979,7 +890,8 @@ fn levels_are_finished_as_in_python() {
     let (mut cases, mut rooms, mut links, mut walks, mut views, mut windows, mut glass, mut glows) = (0, 0, 0, 0, 0, 0, 0, 0);
     let (mut fails, mut rails, mut vents, mut pools, mut climbs, mut drops) = (0, 0, 0, 0, 0, 0);
     let order = key_in_order("level");
-    for (case, order) in key("level").as_array().unwrap().iter().zip(order.items()) {
+    let cases_key = key("level");
+    for (case, order) in cases_key.as_array().unwrap().iter().zip(order.items()) {
         let seed = case["seed"].as_u64().unwrap();
         let at = format!("seed {seed}, options {}", case["options"]);
         let lv = match level::generate(seed, &options(&case["options"])) {
@@ -1016,4 +928,5 @@ fn levels_are_finished_as_in_python() {
         fails >= 20 && rails >= 2 && vents >= 40 && pools >= 10 && climbs >= 20 && drops >= 10,
         "{fails} walks that must fail, {rails} railed windows, {vents} vents, {pools} pools, {climbs} climbs, {drops} drops in the key"
     );
+    keyfile::finish(cases_key);
 }

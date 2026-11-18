@@ -149,6 +149,104 @@ fn a_deck_that_ends_under_a_ramp_puts_no_rail_across_it() {
     }
 }
 
+/// A hall with a ramp from 276 to 551 by its west wall (climbing south, its foot landing to the
+/// north), a catwalk down that wall, and one crossing the hall at `y` 14..16 that runs in under
+/// the ramp's side, as the Python laid them.
+fn hall_with_a_ramp_over_a_catwalk() -> (Interior, RampIn, Cells) {
+    let s = space("h", (0, 0, 16, 12), 0, 1063, "vast");
+    let mut it = Interior::new(&s, &[door("h", 'S', 3, 0)], &[], rng(1), &[], Setup::default());
+    let ramp = RampIn { lo: 276, hi: 551, rect: (2, 8, 4, 16), d: 3, top: rect_cells((0, 4, 4, 8)), foot: rect_cells((0, 16, 4, 20)) };
+    let mut deck = rect_cells((0, 0, 2, 24));
+    deck.extend(ramp.foot.iter().copied());
+    deck.extend(rect_cells((0, 14, 32, 16)));
+    it.deck.insert(276, deck.clone());
+    it.deck.insert(551, ramp.top.clone());
+    it.ramps.push(ramp.clone());
+    (it, ramp, deck)
+}
+
+#[test]
+fn a_catwalk_cut_by_a_ramp_is_run_round_it_to_the_foot_landing() {
+    let (mut it, ramp, deck) = hall_with_a_ramp_over_a_catwalk();
+    it.clear_under_ramps();
+    let left = &it.deck[&276];
+    assert!(!meets(left, &ramp.cells()), "deck left under the ramp");
+    // the storey it climbs to is not touched, and nothing of the catwalks goes but what was under it
+    assert_eq!(it.deck[&551], ramp.top);
+    assert!(deck.difference(&ramp.cells()).all(|c| left.contains(c)));
+    // what is new is the way round: a catwalk wide, beside the ramp, from the cut end to its foot
+    // landing (the fewest cells: the shortest way, up its side)
+    let way: Cells = left.difference(&deck).copied().collect();
+    assert_eq!(way, rect_cells((4, 16, 6, 18)));
+    assert!(!meets(&way, &ramp.cells()));
+    // and a player gets from the end of the crossing catwalk to the ramp's foot on it
+    let foot = ramp.node(false);
+    assert!(Interior::path_in(&it.nav(), (4, 14, 276), (foot.0, foot.1, 276)).is_some());
+}
+
+#[test]
+fn a_short_spur_that_cannot_be_run_round_is_taken_back_to_where_it_joins() {
+    let (mut it, ramp, mut deck) = hall_with_a_ramp_over_a_catwalk();
+    // ramps up from the floor either side of the crossing catwalk, so there is no way round, and
+    // a catwalk across the hall at x 12..14 that it joins
+    for rect in [(4, 16, 12, 18), (4, 10, 12, 14)] {
+        it.ramps.push(RampIn { lo: 0, hi: 276, rect, d: 0, top: Cells::new(), foot: Cells::new() });
+    }
+    deck.extend(rect_cells((12, 0, 14, 24)));
+    it.deck.insert(276, deck.clone());
+    it.clear_under_ramps();
+    let left = &it.deck[&276];
+    // the spur from the ramp to the catwalk it joins is gone, and nothing else
+    let spur = rect_cells((4, 14, 12, 16));
+    assert!(!meets(left, &spur) && !meets(left, &ramp.cells()));
+    assert_eq!(*left, deck.difference(&spur).copied().filter(|c| !ramp.cells().contains(c)).collect::<Cells>());
+}
+
+/// The dead ends a cut left at a room's ramps (a catwalk's end at a ramp that is no landing).
+fn dead_ends_at_ramps(it: &Interior) -> Vec<(Rect, Cells)> {
+    let mut out = Vec::new();
+    for r in it.ramps.iter().filter(|r| r.lo != it.levels[0]) {
+        let z = r.lo;
+        let mut into: BTreeMap<Cell, usize> = BTreeMap::new();
+        for c in r.cells() {
+            for (d, (dx, dy)) in DIRS.iter().enumerate() {
+                let n = (c.0 - dx, c.1 - dy);
+                if it.deck[&z].contains(&n) && !r.foot.contains(&n) {
+                    into.entry(n).or_insert(d);
+                }
+            }
+        }
+        let ends: Cells = into.keys().copied().collect();
+        for tip in components(&ends) {
+            let d = into[tip.first().unwrap()];
+            let landing = it.ramps.iter().any(|q| (q.hi == z && tip.is_subset(&q.top)) || (q.lo == z && tip.is_subset(&q.foot)))
+                || it.doors.iter().any(|door| door.level == z && tip.is_subset(&door_pad(&it.s, door, it.band, 0)));
+            if tip.iter().all(|c| into[c] == d) && it.dead_end(z, &tip, d) && !landing {
+                out.push((r.rect, tip));
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn no_deck_is_left_under_a_ramp_and_no_catwalk_ends_at_one() {
+    // seeds whose halls had a catwalk running on under a ramp, each mended one way or another
+    // (run round the ramp, or taken back), at the defaults and twice the size
+    let cases: [(u64, f64); 9] = [(7, 1.0), (89, 1.0), (90, 1.0), (114, 1.0), (120, 1.0), (128, 1.0), (170, 1.0), (16, 2.0), (37, 2.0)];
+    for (seed, size) in cases {
+        let mut o = crate::level::Options::default();
+        o.siting.size = size;
+        let lv = crate::level::generate(seed, &o).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
+        for (key, it) in &lv.interiors {
+            for r in it.ramps.iter().filter(|r| r.lo != it.levels[0]) {
+                assert!(!meets(&it.deck[&r.lo], &r.cells()), "seed {seed}, {key}: deck under the ramp {:?}", r.rect);
+            }
+            assert_eq!(dead_ends_at_ramps(it), [], "seed {seed} x{size}, {key}");
+        }
+    }
+}
+
 #[test]
 fn an_upstairs_door_opens_onto_deck_and_no_rail_crosses_a_ramp() {
     let it = tower(&[door("t", 'S', 3, 0), door("t", 'E', 2, 276)], "ends", 2);

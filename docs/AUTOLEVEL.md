@@ -381,8 +381,39 @@ Nothing a level needs. The Blender repo's `scripts/autolevel.py` and
 `scripts/autolevel_build.py` still work and are what the reference builds in its
 `work/autolevel/ref/` were made with. The Python generator stays there as the answer key's
 source until the user decides to retire it: a new rule goes into the Rust, and the keys become
-a record of what the levels were (re-written from the Rust's own output when a rule changes on
-purpose; there is no tool for that yet, because nothing has needed it).
+a record of what the levels were, re-written from the Rust's own output when a rule changes on
+purpose: `AUTOLEVEL_KEY_REWRITE=1 cargo test --release -p autolevel -p autolevel_build --test
+key` (`crates/autolevel/tests/keyfile/`, which both key tests share). It puts in only the values
+the Rust no longer gives, in the file's own text, so every other byte and the order of every
+object's names stay as the Python wrote them; run the tests again without it to see them pass,
+and look at the diff under `tests/key/`. Since a key was re-written, `autolevel_key.py` no
+longer writes it byte for byte; it still writes every case a later rule did not move.
+
+**Rules of the Rust's own** (each moved the keys when it came in):
+
+- **No deck under a ramp** (2026-11-18, the user's call). A big hall's open ramp could lie
+  across the catwalk on the storey it rises from: `ramp_options` keeps a ramp off the deck it
+  climbs to, but only scores against the deck it starts on. The plan knew nobody could stand
+  there (`stand` takes a ramp's cells out of its own storey), but the Python built the deck on
+  underneath, so a catwalk ran into a ramp's underside, or lay under its whole run with a wedge
+  of no headroom below its high end (`autolevel1x4`, seed 1 `--size 4`: colossal3's catwalk
+  under its ramp 1). `Interior::clear_under_ramps` (`furnish/mend.rs`) cuts that deck away once
+  the ramps are placed, so where they go and every random draw before are as they were. A cut
+  can leave a catwalk ending at the ramp (a strip a catwalk wide with nothing beside it; a ring
+  or landing the ramp only clips keeps its rail), and each such dead end is mended, in order:
+  **run round the ramp** (`way_round`: the fewest new cells, a catwalk wide, through cells free
+  for deck, to any other deck within two ramp runs: usually its foot landing, so the catwalk
+  leads onto the ramp, or the deck past its far side or end); else **taken back** (`take_back`:
+  a straight spur, up to two ramp runs long, back to where it joins other deck or to whatever
+  needs it, a door's or pod's way in or a ramp's landing); else left with its rail. Across
+  seeds 1-200 at the defaults, `--size 2` (1-40), `--size 4` (1-10), `--walkway 2` and
+  `--scale standard` (1-60), no finished level has a catwalk dead-ending at a ramp, and the
+  same seeds fail as before. And `Plan::check` (so every level, Complex and Felicity) refuses a
+  walkable top that an open or floor ramp passes over or under with less than `HEADROOM` (200)
+  between them. It changed 45 of the 182 levels seeds 1-200 make at the defaults (21 of 38 at
+  `--size 2`, 7 of 9 at `--size 4`), only in their decks, rails and what follows (lamps,
+  polygons, `catwalk_cells`); 9 of the key's 20 levels, re-written; `autolevel7` and
+  `autolevel1x4` imported again. Seeds 1 and 40 are the same as before.
 
 ## Track B: the editor
 
@@ -1450,9 +1481,10 @@ landing, building round the hall).
   `uniform` draws that are rounded straight away. The polygon stage uses more, and may
   need the key compared with a tiny tolerance, or the Python changed to whole units.
 - **The bake's look.** There is no exact key. Agree the tolerance and look at frames.
-- **Two generators.** The Rust now does everything the Python did, and one thing better (the
-  dead-end measure, above). Do not let both drift: new rules go into the Rust only, and the
-  user decides when the Python is retired.
+- **Two generators.** The Rust now does everything the Python did, and some things better (the
+  dead-end measure, above; no deck under a ramp, in "What is left of Blender and the Python").
+  Do not let both drift: new rules go into the Rust only, and the user decides when the Python
+  is retired.
 - **Two repos.** The keys are written by a script in the Blender repo into this one. A change
   here that moves a key must be seen as a diff under `tests/key/` and never be made by hand.
 - **The bake follows Blender's arithmetic** (single-precision rays, a byte read back through
