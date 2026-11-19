@@ -2052,6 +2052,7 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
                 decks: None,
                 clear: Cells::default(),
                 preset: Vec::new(),
+                high: Vec::new(),
             }
         })
         .collect();

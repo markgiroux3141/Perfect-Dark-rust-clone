@@ -224,8 +224,8 @@ pub fn dress(s: &Space, o: &Options, rng: &mut PyRandom) -> Dress {
             &[("none", 0.7), ("crates", 0.3)]
         } else if matches!(s.kind, "tower" | "spire") {
             &[("none", 0.6), ("crates", 0.25), ("pillars", 0.15)]
-        } else if s.kind == crate::place::ATRIUM.name {
-            // (pillars run floor to ceiling: fifteen storeys of them would hide the atrium)
+        } else if s.towers() {
+            // (pillars run floor to ceiling: a towering hall's would be a forest of them)
             &[("none", 0.7), ("crates", 0.3)]
         } else if big {
             &[("pillars", 0.6), ("none", 0.25), ("crates", 0.15)]
@@ -244,7 +244,8 @@ pub fn dress(s: &Space, o: &Options, rng: &mut PyRandom) -> Dress {
         }
     }
     if o.cover == "mixed" && cover == "crates" && !o.crates {
-        cover = "lanes";
+        // (lanes are pillars too: a towering hall's floor is left bare instead)
+        cover = if s.towers() { "none" } else { "lanes" };
     }
     let mut shape = None;
     if o.shapes && !s.tall() && s.host.is_empty() && s.pool.is_none() && s.area() >= 20 {
@@ -620,6 +621,9 @@ impl Build {
                 }
                 let done = match done {
                     Some(rooms) => Some(rooms),
+                    // a towering hall's high pod is the end of its climb: joined if it can be,
+                    // never taken away
+                    None if self.holds_high_pod(e) => None,
                     None => self.shorten(e)?,
                 };
                 touched.extend(done.unwrap_or_default());
@@ -629,6 +633,14 @@ impl Build {
             }
         }
         Ok(())
+    }
+
+    /// Does this dead end hold a pod on a towering hall's high storey (`Space::high`)?
+    fn holds_high_pod(&self, e: &DeadEnd) -> bool {
+        e.rooms.iter().any(|k| {
+            let s = self.net.grid.space(k);
+            !s.host.is_empty() && self.net.grid.space(&s.host).high.contains(&s.floor)
+        })
     }
 
     /// Is this a dead end the pass was told to leave (one of its places is in a room of `keep`)?

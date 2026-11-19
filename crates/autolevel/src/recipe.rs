@@ -350,7 +350,10 @@ impl Opts {
         }
         set(&mut o.washroom, self.washroom);
         if let Some(name) = self.scale {
-            o.siting.scale = [Scale::Grand, Scale::Standard].into_iter().find(|s| s.name() == name).ok_or("scale: one of ('grand', 'standard')")?;
+            o.siting.scale = [Scale::Grand, Scale::Standard, Scale::Towering]
+                .into_iter()
+                .find(|s| s.name() == name)
+                .ok_or("scale: one of ('grand', 'standard', 'towering')")?;
         }
         if let Some(name) = self.cover {
             o.cover = COVER.into_iter().find(|c| *c == name).ok_or_else(|| format!("cover: one of ({})", COVER.map(py::repr).join(", ")))?;

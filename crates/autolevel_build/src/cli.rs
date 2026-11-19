@@ -57,8 +57,10 @@ pub const USAGE: &str = "autolevel: Complex-style levels from a seed, with no mo
                                                         stage 124 unless named) and custom/stages/<code>
 
 What kind of level (sweep, plan, build, batch and deadends all take these):
-  --scale grand|standard     grand (default): a colossal hall, spiral towers six or seven storeys tall and rooms
-                             on the high storeys; standard: the first version's rooms
+  --scale grand|standard|towering
+                             grand (default): a colossal hall, spiral towers six or seven storeys tall and rooms
+                             on the high storeys; standard: the first version's rooms; towering: halls up to
+                             fifteen storeys whose high bases are reached only from outside, through other rooms
   --size N                   how big: N times the rooms, on a site N times the area (default 1: 29 rooms)
   --cover mixed|pillars|crates|none    what stands on the floors. pillars run floor to ceiling, crates are
                              low housings, none leaves the floors bare; mixed (default) gives each room
@@ -1125,7 +1127,7 @@ mod tests {
         assert_eq!(args("sweep --jobs 0").unwrap_err(), "--jobs: at least one thread");
         assert_eq!(args("sweep --jobs").unwrap_err(), "--jobs needs a value");
         assert_eq!(args("plan 4 --cover hedges").unwrap_err(), "cover: one of ('mixed', 'pillars', 'crates', 'none')");
-        assert_eq!(args("plan 4 --scale huge").unwrap_err(), "scale: one of ('grand', 'standard')");
+        assert_eq!(args("plan 4 --scale huge").unwrap_err(), "scale: one of ('grand', 'standard', 'towering')");
         assert_eq!(args("plan 4 --walkway 3").unwrap_err(), "walkway: 1 or 2 cells");
         assert_eq!(args("plan 4 --site wide").unwrap_err(), "site: cells wide by cells deep, as 80x60, not wide");
     }

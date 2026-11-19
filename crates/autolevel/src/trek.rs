@@ -19,7 +19,6 @@ use crate::pyrand::PyRandom;
 use crate::recipe::{set_option, Edit, Recipe};
 use crate::scatter::Rect;
 use crate::storeys::{CEILINGS, LEVELS};
-use std::collections::{BTreeMap, VecDeque};
 
 /// The atrium's key, and its base's.
 pub const ATRIUM_KEY: &str = "atrium";
@@ -95,43 +94,10 @@ pub fn lay(seed: u64, o: &TrekOptions) -> Result<(Trek, Level), String> {
     Err(format!("no trek for seed {seed} in {ATTEMPTS} tries (the last: {last})"))
 }
 
-/// The shortest way up from the atrium's floor to the base, by the fewest rooms: the rooms passed
-/// through in order, from the atrium to the base. A room is one place but the atrium, whose floor
-/// and top storey are two (nothing joins them inside); a join is a route (corridor, stub, vent)
-/// or a pod's door. Drops are left out: they only go down. None if there is no way up.
+/// The shortest way up from the atrium's floor to the base (`climbs::climbs`): the rooms passed
+/// through in order, from the atrium to the base. None if there is no way up.
 pub fn climb(lv: &Level) -> Option<Vec<String>> {
-    let top = lv.space(ATRIUM_KEY).storeys().last().copied()?;
-    let place = |room: &str, level: i32| if room == ATRIUM_KEY && level == top { format!("{ATRIUM_KEY}@top") } else { room.to_string() };
-    let mut next: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut join = |a: String, b: String| {
-        next.entry(a.clone()).or_default().push(b.clone());
-        next.entry(b).or_default().push(a);
-    };
-    for r in lv.net.routes() {
-        join(place(&r.a.room, r.a.level), place(&r.b.room, r.b.level));
-    }
-    for s in lv.spaces().iter().filter(|s| !s.host.is_empty()) {
-        join(s.key.clone(), place(&s.host, s.floor));
-    }
-    let mut from: BTreeMap<String, String> = BTreeMap::from([(ATRIUM_KEY.to_string(), String::new())]);
-    let mut todo = VecDeque::from([ATRIUM_KEY.to_string()]);
-    while let Some(at) = todo.pop_front() {
-        if at == BASE_KEY {
-            let mut way = vec![at];
-            while let Some(back) = from.get(way.last()?).filter(|b| !b.is_empty()) {
-                way.push(back.clone());
-            }
-            way.reverse();
-            return Some(way.into_iter().map(|p| p.trim_end_matches("@top").to_string()).collect());
-        }
-        for n in next.get(&at).into_iter().flatten() {
-            if !from.contains_key(n) {
-                from.insert(n.clone(), at.clone());
-                todo.push_back(n.clone());
-            }
-        }
-    }
-    None
+    crate::climbs::climbs(lv).into_iter().find(|c| c.pod == BASE_KEY).map(|c| c.way)
 }
 
 /// The edits of one layout and the trek's rooms, top down; None if the rings run out.

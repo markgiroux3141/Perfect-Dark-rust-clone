@@ -25,6 +25,10 @@ pub enum Scale {
     Grand,
     /// The first version's rooms: one vast hall, two towers.
     Standard,
+    /// Grand's rooms reaching much higher: a colossal hall ten to fifteen storeys tall, spires and
+    /// lofts up its height, and pods lifted to any of a towering hall's high storeys, which are
+    /// reached only from outside (`space::towers`). New in the Rust (docs/AUTOLEVEL.md, "Atriums").
+    Towering,
 }
 
 impl Scale {
@@ -33,6 +37,7 @@ impl Scale {
         match self {
             Scale::Grand => "grand",
             Scale::Standard => "standard",
+            Scale::Towering => "towering",
         }
     }
 }
@@ -70,6 +75,21 @@ pub const GRAND: [Kind; 10] = [
 /// New in the Rust (docs/AUTOLEVEL.md, "Atriums").
 pub const ATRIUM: Kind = Kind::new("atrium", 0, (8, 40), (8, 40), &[0], &[]).host();
 
+/// Grand's kinds reaching up to fifteen storeys. Floors and ceilings by `storeys::LEVELS` and
+/// `CEILINGS` (a height is floor to ceiling: 4094 from the ground is fifteen storeys).
+pub const TOWERING_KINDS: [Kind; 10] = [
+    Kind::new("colossal", 1, (24, 30), (16, 22), &[0], &[2716, 3267, 4094]).host(),
+    Kind::new("spire", 3, (9, 12), (9, 11), &[0, 0, -276], &[1890, 2716, 3543]),
+    Kind::new("vast", 1, (15, 19), (10, 13), &[0], &[1338, 2165, 2716]).host(),
+    Kind::new("tower", 2, (8, 10), (7, 9), &[0, -276], &[1063, 1338, 2165]).host(),
+    Kind::new("long", 1, (18, 26), (4, 5), &[0, 276, 1654], &[236, 512]),
+    Kind::new("basin", 1, (10, 13), (8, 10), &[0], &[512, 787]).host(),
+    Kind::new("medium", 6, (6, 9), (5, 7), &[-276, 0, 0, 276, 1102, 1929, 2756], &[236, 512]),
+    Kind::new("loft", 8, (5, 9), (4, 6), &[551, 827, 1102, 1654, 2205, 2756, 3307], &[236, 236, 512]),
+    Kind::new("small", 10, (3, 5), (3, 4), &[-276, 0, 0, 276, 276], &[236]).pod(),
+    Kind::new("tiny", 6, (2, 3), (2, 2), &[0, 276, 276], &[236]).pod(),
+];
+
 /// The part of a level's options that decides where its rooms fall. (`level.Options` in the
 /// Python; the rest of its fields arrive with the stages that read them.)
 #[derive(Clone, Debug, PartialEq)]
@@ -94,6 +114,7 @@ pub fn kinds_and_site(o: &Siting) -> (Vec<Kind>, (i32, i32)) {
     let (mut kinds, own) = match o.scale {
         Scale::Grand => (GRAND.to_vec(), (80, 60)),
         Scale::Standard => (STANDARD.to_vec(), (64, 48)),
+        Scale::Towering => (TOWERING_KINDS.to_vec(), (88, 66)),
     };
     let mut site = o.site.unwrap_or(own);
     if o.size != 1.0 {

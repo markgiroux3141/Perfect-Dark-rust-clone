@@ -59,8 +59,10 @@ impl Interior {
     }
 
     /// Perimeter positions to deck: every needed one, joined the short way round (the longest
-    /// gap between them stays open, and so does any gap a pod blocks).
-    pub fn arc(&self, need: &BTreeSet<i32>, blocked: &BTreeSet<i32>, ring: bool) -> BTreeSet<i32> {
+    /// gap between them stays open, and so does any gap a pod blocks). `whole`: the deck must be
+    /// one piece (a towering hall's high storey, which no ramp joins to anything): where a pod
+    /// blocks a gap, the longest is decked instead, if nothing blocks that.
+    pub fn arc(&self, need: &BTreeSet<i32>, blocked: &BTreeSet<i32>, ring: bool, whole: bool) -> BTreeSet<i32> {
         let p = 2 * (self.w + self.d);
         if ring {
             return (0..p).filter(|t| !blocked.contains(t)).collect();
@@ -78,12 +80,21 @@ impl Interior {
             }
         }
         if let Some(longest) = py::first_max(gaps.iter().copied(), |g| *g) {
+            let span = |g: &(i32, i32, i32)| -> BTreeSet<i32> { (g.1 + 1..g.2).map(|t| t.rem_euclid(p)).collect() };
+            let mut cut = false;
             for g in &gaps {
-                let span: BTreeSet<i32> = (g.1 + 1..g.2).map(|t| t.rem_euclid(p)).collect();
-                if *g == longest || !span.is_disjoint(blocked) {
+                let span = span(g);
+                if *g == longest {
+                    continue;
+                }
+                if !span.is_disjoint(blocked) {
+                    cut = true;
                     continue;
                 }
                 out.extend(span);
+            }
+            if whole && cut && span(&longest).is_disjoint(blocked) {
+                out.extend(span(&longest));
             }
         }
         // an arc that stops just short of a corner runs on to it
@@ -184,7 +195,7 @@ impl Interior {
                 // (not on a first upper storey laid out by hand: that is as the person chose)
                 ring = own && !(self.fixed && n == 0);
             }
-            let slots = self.arc(&need, &blocked, ring);
+            let slots = self.arc(&need, &blocked, ring, self.s.high.contains(&z));
             let wanted = cells.clone(); // doors' pads and pods' gangways
             for t in slots {
                 cells.extend(self.slot_cells(t));

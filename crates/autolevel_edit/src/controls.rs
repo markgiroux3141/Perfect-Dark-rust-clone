@@ -23,7 +23,7 @@ pub enum Control {
 }
 
 /// The scales by name (`place::Scale::name`), in the order offered.
-pub const SCALES: [&str; 2] = ["grand", "standard"];
+pub const SCALES: [&str; 3] = ["grand", "standard", "towering"];
 
 /// A catwalk's widths, in cells.
 pub const WALKWAYS: [&str; 2] = ["1", "2"];
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn the_scales_offered_are_the_generators() {
         use autolevel::place::Scale;
-        assert_eq!(SCALES, [Scale::Grand.name(), Scale::Standard.name()]);
+        assert_eq!(SCALES, [Scale::Grand.name(), Scale::Standard.name(), Scale::Towering.name()]);
     }
 
     #[test]

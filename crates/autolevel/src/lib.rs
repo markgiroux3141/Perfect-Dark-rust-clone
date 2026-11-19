@@ -35,6 +35,7 @@ pub mod candidates;
 pub mod cells;
 pub mod choices;
 pub mod circulation;
+pub mod climbs;
 pub mod deadends;
 pub mod deadlist;
 pub mod dress;

@@ -96,15 +96,28 @@ pub fn walks(lv: &mut Level) -> Result<(), String> {
             continue;
         }
         let g = it.nav();
-        let mut pts: Vec<(f64, f64, i32)> = Vec::new();
-        for w in nodes.windows(2) {
-            let (Some(a), Some(b)) = (w[0], w[1]) else { continue };
-            let Some(path) = Interior::path_in(&g, a, b) else { continue };
-            let wp = it.waypoints(&path);
-            pts.extend_from_slice(if pts.is_empty() { &wp } else { &wp[1..] });
+        // a towering hall's high storeys are walked each on its own: nothing joins them to the
+        // rest of it inside (`Space::high`). Every other room is one band, walked as ever.
+        let mut bands: Vec<(i32, Vec<Option<Node>>)> = Vec::new();
+        for n in nodes {
+            let band = n.map_or(i32::MIN, |n| it.band_of(n.2));
+            match bands.iter_mut().find(|(b, _)| *b == band) {
+                Some((_, v)) => v.push(n),
+                None => bands.push((band, vec![n])),
+            }
         }
-        if pts.len() >= 2 {
-            set(&mut walks, format!("room_{key}"), passing(&pts));
+        for (band, nodes) in bands {
+            let mut pts: Vec<(f64, f64, i32)> = Vec::new();
+            for w in nodes.windows(2) {
+                let (Some(a), Some(b)) = (w[0], w[1]) else { continue };
+                let Some(path) = Interior::path_in(&g, a, b) else { continue };
+                let wp = it.waypoints(&path);
+                pts.extend_from_slice(if pts.is_empty() { &wp } else { &wp[1..] });
+            }
+            if pts.len() >= 2 {
+                let name = if band == i32::MIN { format!("room_{key}") } else { format!("room_{key}_{band}") };
+                set(&mut walks, name, passing(&pts));
+            }
         }
     }
     // a spiral is climbed from the floor to the top of its last ramp

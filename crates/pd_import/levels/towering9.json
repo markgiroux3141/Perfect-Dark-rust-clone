@@ -1,0 +1,22 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "towering9",
+  "name": "Towering 9",
+  "group": "Autolevel",
+  "stagenum": 105,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 9,
+      "options": {
+        "scale": "towering"
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

@@ -220,17 +220,49 @@ pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
             }
         }
     }
+    // a towering hall's high storeys are its pods' (`Space::high`): none where a pod was left out
+    let held: Vec<(String, i32)> = sp.iter().filter(|s| !s.host.is_empty()).map(|s| (s.host.clone(), s.floor)).collect();
+    for s in sp.iter_mut() {
+        s.high.retain(|z| held.iter().any(|(h, f)| *h == s.key && f == z));
+    }
     Spaces { sp, spin, access, dropped }
 }
 
 /// Every corridor, stub and vent between the rooms. Err if a room is cut off.
 pub fn stage_network(seed: u64, o: &Options, sp: &[Space]) -> Result<Network, String> {
     let how = Connect { loops: o.loops, level_change: o.level_change, risers: o.risers, second: o.second, vents: o.vents, ..Connect::default() };
-    let net = connect(sp.to_vec(), o.band(), &how);
+    let mut net = connect(sp.to_vec(), o.band(), &how);
+    // a towering hall's high storey that no route reached (nothing stands that high near enough):
+    // its pods are left out, and the level is routed again without them
+    let cut = unreached(&net);
+    if !cut.is_empty() {
+        let mut sp = sp.to_vec();
+        sp.retain(|s| !cut.contains(&(s.host.clone(), s.floor)));
+        for s in sp.iter_mut() {
+            s.high.retain(|z| !cut.contains(&(s.key.clone(), *z)));
+        }
+        net = connect(sp, o.band(), &how);
+    }
     if components(&net) != 1 {
         return Err(format!("seed {seed}: rooms cut off ({} links found no corridor)", net.failed.len()));
     }
     Ok(net)
+}
+
+/// The high storeys (`Space::high`) no route arrives on, as (hall, storey): neither the hall nor a
+/// pod on that storey has a door there.
+fn unreached(net: &Network) -> Vec<(String, i32)> {
+    let at = |room: &str, z: i32| net.routes().iter().any(|r| [&r.a, &r.b].iter().any(|d| d.room == room && d.level == z));
+    let mut out = Vec::new();
+    for s in net.spaces().iter().filter(|s| !s.high.is_empty()) {
+        for &z in &s.high {
+            let pods = net.spaces().iter().filter(|p| p.host == s.key && p.floor == z);
+            if !at(&s.key, z) && !pods.clone().any(|p| net.routes().iter().any(|r| r.a.room == p.key || r.b.room == p.key)) {
+                out.push((s.key.clone(), z));
+            }
+        }
+    }
+    out
 }
 
 /// Openings (drops and grates) and every room's inside, before anything is done about dead ends:

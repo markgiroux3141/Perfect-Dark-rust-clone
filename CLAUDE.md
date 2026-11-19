@@ -52,7 +52,9 @@ cargo build --release -p pd_import          # also builds target/release/autolev
                                             #   its recipe kept in levels/autolevel40.json (`--gltf`: as any glTF instead);
                                             #   `autolevel shots out/autolevel/seed40` then draws its views with the game (DIR/shots/*.png);
                                             #   `autolevel trek 1`: an atrium 15 storeys tall whose base is reached only
-                                            #   through a helix of rooms round it (docs/AUTOLEVEL.md, "Atriums")
+                                            #   through a helix of rooms round it; `--scale towering` (any command): halls up
+                                            #   to 15 storeys whose high bases are reached only from outside (docs/AUTOLEVEL.md,
+                                            #   "Atriums"; `cargo run --release -p autolevel --example climbs -- 1 40` lists the climbs)
                                             #   also `sweep`, `plan`, `batch`, `walk`, `deadends`, `--recipe FILE`; `autolevel --help`
 cargo run --release -p autolevel_edit -- --seed 40 --shot out.png [--empty] [--storey Z] [--pick ROOM@STOREY [--join N]] [--remove KEY]
                                             #   the generator's editor: its plan view as a PNG with no window (how to look at a

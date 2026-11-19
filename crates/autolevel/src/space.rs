@@ -44,6 +44,10 @@ pub struct Space {
     pub clear: Cells,
     /// Its fixed ramps.
     pub preset: Vec<spiral::Ramp>,
+    /// A towering hall's high storeys (`towers`): those over the storeys ramped inside it
+    /// (`ramped`) that hold a pod, lowest first. Each is a place of its own, reached by a door
+    /// from outside and never ramped down. Empty for every other room.
+    pub high: Vec<i32>,
 }
 
 impl Space {
@@ -73,6 +77,11 @@ impl Space {
         self.storeys().len() > 1
     }
 
+    /// Is it a towering hall (`towers`)?
+    pub fn towers(&self) -> bool {
+        towers(self.kind, self.top)
+    }
+
     /// Storeys a vent may open on: the floor (and a spiral's decks).
     pub fn vent_levels(&self) -> Vec<i32> {
         if self.decks.is_some() {
@@ -100,10 +109,42 @@ impl Space {
         let (w, d) = self.size();
         let (short, long) = (w.min(d), w.max(d));
         // (a pool leaves little floor for ramps)
-        if !self.host.is_empty() || self.pool.is_some() || !(short >= 6 && long >= 8) {
-            return storeys.into_iter().take(1).collect();
+        // (an atrium: its first upper storey let the router climb into the middle of a trek)
+        let low = if !self.host.is_empty() || self.pool.is_some() || !(short >= 6 && long >= 8) || self.kind == crate::place::ATRIUM.name {
+            1
+        } else {
+            ramped(self.kind, self.area())
+        };
+        let mut out: Vec<i32> = storeys.into_iter().take(low).collect();
+        for &z in &self.high {
+            if !out.contains(&z) {
+                out.push(z);
+            }
         }
-        storeys.into_iter().take(if self.area() >= 300 { 4 } else { 3 }).collect()
+        out
+    }
+}
+
+/// Over this ceiling a hall towers: the storeys ramped inside it are only its lowest (`ramped`),
+/// and a pod above them is reached from outside (`Space::high`). No room the Python scatters
+/// reaches over it, so every seed's level is as it was.
+pub const TOWERING: i32 = 1890;
+
+/// Does a room of this kind with this top tower? An atrium always does; a spire never (its
+/// spiral climbs every storey).
+pub fn towers(kind: &str, top: i32) -> bool {
+    kind == crate::place::ATRIUM.name || (top > TOWERING && kind != "spire")
+}
+
+/// How many of a hall's lowest storeys are joined by ramps inside it, and take doors: those a
+/// corridor may arrive on in any tall room. A towering hall's others are reached from outside.
+pub fn ramped(kind: &str, area: i32) -> usize {
+    if kind == crate::place::ATRIUM.name {
+        2
+    } else if area >= 300 {
+        4
+    } else {
+        3
     }
 }
 
@@ -202,8 +243,20 @@ pub fn spaces(lots: &[Lot]) -> Vec<Space> {
             decks: None,
             clear: Cells::new(),
             preset: Vec::new(),
+            high: Vec::new(),
         })
         .collect();
+    // a towering hall's high storeys: the ones of its pods over the storeys ramped inside it
+    for (n, a) in lots.iter().enumerate() {
+        if !towers(a.kind, snap_top(a.top)) {
+            continue;
+        }
+        let first = crate::storeys::index(a.floor) + ramped(a.kind, a.area());
+        let mut high: Vec<i32> = lots.iter().filter(|p| p.host == a.key && crate::storeys::index(p.floor) >= first).map(|p| p.floor).collect();
+        high.sort();
+        high.dedup();
+        out[n].high = high;
+    }
     for (n, a) in lots.iter().enumerate() {
         let pods: Vec<&Lot> = lots.iter().filter(|b| b.host == a.key).collect();
         let Some(p) = pool_rect(a, &pods) else { continue };

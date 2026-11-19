@@ -69,7 +69,9 @@ Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
 - **Atriums and the trek** (the user's, 2026-11-18; started 2026-11-19): a hall fifteen storeys
   tall whose top walkway and base are reached through a sequence of other rooms, planned
   goal-first. Storeys to 4134, the atrium's rules, and the planner (`autolevel trek SEED`) are
-  built; arenas `atrium1` and `trek1`. Next: a trek inside a full level, a second way down.
+  built; arenas `atrium1` and `trek1`. Then (the user's direction) made general: `--scale
+  towering`, whose tall halls' high pods are reached only from outside, through whatever rooms
+  the scatter put at that height (arena `towering9`). Next: climbs in the score, longer climbs.
   AUTOLEVEL.md, "Atriums". Angled catwalks were discussed with it and left for later (a feature
   of their own).
 

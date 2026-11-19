@@ -376,6 +376,7 @@ fn finish(
                 decks: None,
                 clear: Cells::default(),
                 preset: Vec::new(),
+                high: Vec::new(),
             })
         })
         .collect();

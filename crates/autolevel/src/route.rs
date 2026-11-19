@@ -1011,7 +1011,22 @@ pub(crate) mod tests {
     /// A room for a test: a storey high on the ground floor, unless said otherwise.
     pub(crate) fn space(key: &str, rect: Rect, floor: i32, top: i32, kind: &'static str) -> Space {
         let (x0, y0, x1, y1) = rect;
-        Space { key: key.into(), kind, x0, y0, x1, y1, floor, top, host: String::new(), pool: None, decks: None, clear: Cells::new(), preset: Vec::new() }
+        Space {
+            key: key.into(),
+            kind,
+            x0,
+            y0,
+            x1,
+            y1,
+            floor,
+            top,
+            host: String::new(),
+            pool: None,
+            decks: None,
+            clear: Cells::new(),
+            preset: Vec::new(),
+            high: Vec::new(),
+        }
     }
 
     pub(crate) fn room(key: &str, rect: Rect) -> Space {

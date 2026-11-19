@@ -6,7 +6,6 @@
 //! least three doors apart, a second door for rooms left with one, and vents. Each link has to
 //! find an actual corridor on the grid, and rooms on a common storey come first.
 
-use crate::place::ATRIUM;
 use crate::py;
 use crate::route::{Grid, Route, Terms, VentTerms, RAMP, WIDE};
 use crate::scatter::{hops, rect_gap};
@@ -150,18 +149,21 @@ pub fn connect(sp: Vec<Space>, band: i32, c: &Connect) -> Network {
     let mut g = Grid::new(sp, band);
     let at = |g: &Grid, key: &str| g.sp.iter().position(|s| s.key == key).unwrap_or_else(|| panic!("no room {key}"));
     let pods: Vec<(usize, usize)> = (0..n).filter(|&i| !g.sp[i].host.is_empty()).map(|i| (i, at(&g, &g.sp[i].host))).collect();
-    // An atrium is two places: its floor and its top storey, which nothing joins inside it
-    // (`place::ATRIUM`). Its top is a node of the tree's own, past the rooms' (`n + k`), and a
-    // join to it is tried for each, the route held to that one's storeys. A level with no atrium
-    // has no such node and the same joins in the same order as ever.
-    let tops: Vec<(usize, i32)> =
-        (0..n).filter(|&i| g.sp[i].kind == ATRIUM.name && g.sp[i].tall()).map(|i| (i, *g.sp[i].storeys().last().expect("a tall room has storeys"))).collect();
+    // A towering hall's high storeys are places of their own, which nothing joins to the rest of
+    // it inside (`Space::high`). Each is a node of the tree's own, past the rooms' (`n + k`), and
+    // a join to the hall is tried for each of its places, the route held to that one's storeys.
+    // A level with no towering hall has no such node and the same joins in the same order as ever.
+    let tops: Vec<(usize, i32)> = (0..n).flat_map(|i| g.sp[i].high.iter().map(move |&z| (i, z))).collect();
     let node = |i: usize, level: i32| tops.iter().position(|&(a, z)| a == i && z == level).map_or(i, |k| n + k);
     // the storeys of each place of a room: None for a room that is one place
     let bands: Vec<Vec<Option<Vec<i32>>>> = (0..n)
-        .map(|i| match tops.iter().find(|&&(a, _)| a == i) {
-            Some(&(_, top)) => vec![Some(g.sp[i].door_levels().into_iter().filter(|&z| z != top).collect()), Some(vec![top])],
-            None => vec![None],
+        .map(|i| {
+            let high = &g.sp[i].high;
+            if high.is_empty() {
+                return vec![None];
+            }
+            let low: Vec<i32> = g.sp[i].door_levels().into_iter().filter(|z| !high.contains(z)).collect();
+            std::iter::once(Some(low)).chain(high.iter().map(|&z| Some(vec![z]))).collect()
         })
         .collect();
     let band_node = |i: usize, band: &Option<Vec<i32>>| match band.as_deref() {

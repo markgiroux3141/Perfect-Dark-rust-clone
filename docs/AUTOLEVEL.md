@@ -1874,6 +1874,63 @@ trek's length measured, (4) a searched trek, a second way down (a drop from the 
 - Nothing yet chooses a second way down (a drop from the gangway into the atrium, a vent).
 - The rooms are all `tower` or `medium`, so a trek's names run out (then a room is named by its key).
 
+### As built (the towering scale: high bases in the main generator, 2026-11-19)
+
+**The user's direction (2026-11-19):** the trek is "a big room, a high base and one way down,
+with uniform rooms whose only purpose is the path"; the goal was never that, but a system in
+which such constructions fall out of the procedural code with the variety the Complex
+generator already has. So the atrium's rules were made general and given to the scatter.
+
+- **Towering halls** (`space::towers`, `TOWERING` = 1890): an atrium, or any room but a spire
+  whose ceiling is over 1890 (nothing the Python scatters is). Only its lowest storeys are ramped
+  inside it (`space::ramped`: 4 for a hall of 300 cells or more, else 3; an atrium 2) and take
+  doors as before. **`Space::high`**: the storeys over those that hold a pod (worked out in
+  `spaces()` from the lots, and again after pods without a way in are left out). Each is a place
+  of its own: a door on it from outside (`door_levels`), a band of its own in the furnisher (no
+  ramp down; its doors and pod joined by deck on that storey), a node of its own in the router's
+  spanning tree. The atrium kind is now one case of this: its high storey is its base's.
+- **Pods** (`scatter::pod_levels`): a towering hall takes them on its first two upper storeys
+  (as every hall) and on every high storey, so the scatter lifts them up its whole height.
+- **The scale** (`--scale towering`, `place::TOWERING_KINDS`, site 88 x 66): grand's kinds
+  reaching higher. A colossal hall 10, 12 or 15 storeys, a vast one 5 to 10, three spires up to
+  12 storeys, towers to 8, the long gallery also at 1654, mediums also at 1102 to 2756, eight
+  lofts from 551 to 3307, ten smalls and six tinies (the pods). Seeds 1-60: 54 make a level (grand
+  makes 56 of the same seeds).
+- **Climbs** (`autolevel::climbs`, `climbs(lv)`): for every pod on a high storey, the way up from
+  its hall's floor by the fewest rooms, over routes and pods' doors (drops left out). The trek's
+  `climb` is now this. `cargo run --release -p autolevel --example climbs -- 1 40` lists them.
+  **Seeds 1-40: 38 levels, 88 high pods, every one climbed to**, through 1 room out (28), 2 (12),
+  3 (29), 4 (11), 5 to 7 (7). Seed 9: two pods at 1654 and 1929 in the colossal hall, each six
+  rooms out (spire, the vast hall, the basin, another spire, a loft, the long gallery). Some pods
+  have a back door of their own and are climbed to without going back into the hall.
+- **What it took** (each only where a towering hall is, so every key passes):
+  - a high storey's catwalk is one piece: where a pod blocks the short way round, it goes the long
+    way (`Interior::arc`, `whole`). Before, 22 of 60 seeds failed with "no set of ramps".
+  - the dead-end pass never takes a high pod away: it is joined if it can be, else kept
+    (`Build::holds_high_pod`).
+  - a high storey no route reached (nothing stands that high near enough) loses its pods and the
+    level is routed again (`level::unreached`).
+  - a towering hall's ramps keep clear of piers on every storey they cross, not only from the floor.
+  - a room's walk is made for each of its bands (`room_<key>` and `room_<key>_<storey>`). It strung
+    every door together and jumped between bands. Seed 9: 101 of 101 walks.
+  - no pillars or lanes in a towering hall (they run floor to ceiling).
+- **Tests:** `climbs::tests` (towering seeds 1-10: every high storey holds a pod, every pod is
+  climbed to from its hall, at least five climbs through three rooms or more; a grand level has no
+  high storey), with all the trek's and the atrium's.
+- **Arena:** `towering9` (stage 105, `autolevel build 9 --scale towering`): 89 rooms, 1445
+  waypoints all reachable.
+
+**Rough, and next:**
+- Nothing scores the climbs yet: the sweep ranks towering seeds by the old score. A climb's
+  length (rooms out, storeys) belongs in the report and the score, so `sweep` and `batch` pick
+  the levels where good ones fell out.
+- Most climbs are short (one room out: a spire beside the hall). Longer ones need fewer rooms at
+  the high storeys near the hall, or a preference for joining a high storey from further away.
+- The six failures in 60 seeds are the generator's old kinds (a basin's ramps, a colossal hall's,
+  rooms cut off): not looked at.
+- In the import's one-minute check six simulants on `towering9` met almost never (0 kills): 89
+  rooms over fifteen storeys is a lot of level for six.
+
 ## Risks
 
 - **A missed order dependence** shows up as a key mismatch deep in furnish. The cure is in

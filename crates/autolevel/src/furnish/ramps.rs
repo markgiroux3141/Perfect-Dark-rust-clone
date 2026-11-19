@@ -208,6 +208,13 @@ impl Interior {
             for q in &self.piers {
                 out.extend(rect_cells((q.0, q.1, q.2, q.3)));
             }
+        } else if self.s.towers() {
+            // a towering hall's high pods stand on piers through its ramped storeys: no ramp
+            // between two of them goes through one (in the Python's levels a pier stops under
+            // the first upper storeys, and only a ramp from the floor is kept clear of it)
+            for q in self.piers.iter().filter(|q| q.4 < hi && lo < q.5) {
+                out.extend(rect_cells((q.0, q.1, q.2, q.3)));
+            }
         }
         out
     }
