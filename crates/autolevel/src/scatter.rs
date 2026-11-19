@@ -121,7 +121,13 @@ pub fn hosts(kinds: &[Kind], name: &str) -> bool {
 
 /// The storeys of a hall a pod may be on: its first two upper ones.
 pub fn pod_levels(host: &Lot) -> Vec<i32> {
-    POD_LEVELS.iter().copied().filter(|&z| host.floor < z && z + STOREY <= host.top).take(2).collect()
+    let mut out: Vec<i32> = POD_LEVELS.iter().copied().filter(|&z| host.floor < z && z + STOREY <= host.top).take(2).collect();
+    if host.kind == crate::place::ATRIUM.name {
+        // and an atrium's top storey, where its door from outside is
+        let top = crate::storeys::LEVELS.iter().copied().rev().find(|&z| host.floor < z && z + STOREY <= host.top);
+        out.extend(top.filter(|z| !out.contains(z)));
+    }
+    out
 }
 
 /// Why a pod may not poke into its hall where it overlaps it (`ov`), if it may not: it reaches

@@ -256,21 +256,21 @@ fn a_room_is_added_of_one_of_the_scales_kinds() {
     }
     assert_eq!(
         why(add("annexe", "attic", (62, 30, 69, 36), 0, 512)),
-        "add: no kind attic at this scale: one of colossal, spire, vast, tower, long, basin, medium, loft, small, tiny"
+        "add: no kind attic at this scale: one of colossal, spire, vast, tower, long, basin, medium, loft, small, tiny, atrium"
     );
     let standard = Recipe {
         options: Options { siting: Siting { scale: Scale::Standard, ..Siting::default() }, ..Options::default() },
         ..recipe(40, vec![add("annexe", "loft", (2, 2, 8, 8), 551, 787)])
     };
-    assert_eq!(standard.placed().unwrap_err(), "add: no kind loft at this scale: one of vast, tower, long, basin, medium, small, tiny");
+    assert_eq!(standard.placed().unwrap_err(), "add: no kind loft at this scale: one of vast, tower, long, basin, medium, small, tiny, atrium");
     assert_eq!(why(add("annexe", "medium", (62, 30, 63, 36), 0, 512)), "add: a room is at least 2 x 2 cells, not 1 x 6");
     assert_eq!(
         why(add("annexe", "medium", (62, 30, 69, 36), 0, 500)),
-        "add: annexe's top would be at 500: ceilings are at -39, 236, 512, 787, 1063, 1338, 1614, 1890"
+        "add: annexe's top would be at 500: ceilings are at -39, 236, 512, 787, 1063, 1338, 1614, 1890, 2165, 2441, 2716, 2992, 3267, 3543, 3819, 4094, 4370"
     );
     assert_eq!(
         why(add("annexe", "medium", (62, 30, 69, 36), 100, 512)),
-        "add: annexe's floor would be at 100: floors are at -276, 0, 276, 551, 827, 1102, 1378, 1654"
+        "add: annexe's floor would be at 100: floors are at -276, 0, 276, 551, 827, 1102, 1378, 1654, 1929, 2205, 2480, 2756, 3031, 3307, 3583, 3858, 4134"
     );
     assert_eq!(why(add("annexe", "medium", (62, 30, 69, 36), 276, 236)), "add: annexe would be under a storey tall (276 to 236)");
     assert!(why(add("annexe", "medium", (60, 20, 67, 26), 0, 512)).starts_with("long and annexe overlap: "));
@@ -348,8 +348,11 @@ fn a_rooms_floor_is_pinned_to_a_storey() {
     assert_eq!((lot(&p, "small3").floor, lot(&p, "small3").top, lot(&p, "small3").host.as_str()), (1378, 1614, ""));
 
     let why = |edits: Vec<Edit>| lots(40, edits).unwrap_err();
-    assert_eq!(why(vec![pin("loft2", 300)]), "pin: loft2's floor would be at 300: floors are at -276, 0, 276, 551, 827, 1102, 1378, 1654");
-    assert_eq!(why(vec![pin("loft2", 1654)]), "pin: loft2 would stand from 1654 to 2166, above the highest ceiling (1890)");
+    assert_eq!(
+        why(vec![pin("loft2", 300)]),
+        "pin: loft2's floor would be at 300: floors are at -276, 0, 276, 551, 827, 1102, 1378, 1654, 1929, 2205, 2480, 2756, 3031, 3307, 3583, 3858, 4134"
+    );
+    assert_eq!(why(vec![pin("loft2", 4134)]), "pin: loft2 would stand from 4134 to 4646, above the highest ceiling (4370)");
     assert_eq!(
         why(vec![pin("tiny2", 0)]),
         "tiny2 lands in vast, so it is its pod, and a pod's floor is one of its hall's first two upper storeys: 276, 551, not 0"
@@ -357,7 +360,11 @@ fn a_rooms_floor_is_pinned_to_a_storey() {
     assert!(why(vec![pin("small8", 827)]).starts_with("loft2 and small8 overlap: ")); // over the hall, where a loft already is
     assert!(why(vec![pin("vast", 276)]).starts_with("vast and loft1 overlap: ")); // 1063 to 1102 is a slab of 39
                                                                                   // (only lots that are no lawful pods can be carried off the top: here one over the basin)
-    assert_eq!(why(vec![mv("small8", (33, 42)), pin("basin", 1378)]), "pin: with basin on 1378, its pod small8 would have no storey to be on");
+                                                                                  // (with the atrium's storeys a pod carried this high has a storey, but none a pod may be on)
+    assert_eq!(
+        why(vec![mv("small8", (33, 42)), pin("basin", 1378)]),
+        "small8 lands in basin, so it is its pod, and a pod's floor is one of its hall's first two upper storeys: basin has none a pod fits"
+    );
     assert_eq!(
         why(vec![delete("loft1"), pin("basin", 827), mv("tiny3", (33, 42)), pin("tiny3", 1102)]),
         "tiny3 lands in basin, so it is its pod, and a pod's floor is one of its hall's first two upper storeys: basin has none a pod fits"
@@ -740,4 +747,46 @@ fn in_an_empty_start_a_drop_stays_where_it_was_when_a_room_is_added_elsewhere() 
     edits.push(add("room4", "small", (8, 44, 13, 49), 0, 236));
     let after = empty(40, edits).generate().unwrap();
     assert_eq!(after.drops, before.drops);
+}
+
+// ---- an atrium (`place::ATRIUM`; docs/AUTOLEVEL.md, "Atriums") ----
+
+/// An atrium fifteen storeys tall (room1), a base on its top storey, and seven rooms round it,
+/// each two storeys lower than the one before: the trek from its top down to its floor. The
+/// prototype the trek planner is to write edits like.
+fn atrium_trek() -> Vec<Edit> {
+    vec![
+        add("room1", "atrium", (30, 22, 48, 36), 0, 4094),
+        add("room2", "tower", (30, 14, 38, 21), 3307, 4094),
+        add("room3", "tower", (40, 14, 48, 21), 2756, 3543),
+        add("room4", "tower", (50, 22, 57, 30), 2205, 2992),
+        add("room5", "tower", (50, 32, 57, 40), 1654, 2441),
+        add("room6", "tower", (40, 38, 48, 45), 1102, 1890),
+        add("room7", "tower", (30, 38, 38, 45), 551, 1338),
+        add("room8", "tower", (22, 28, 28, 36), 0, 787),
+        add("base", "small", (37, 27, 41, 31), 3858, 4094),
+        Edit::Keep { room: "room2".into() },
+    ]
+}
+
+#[test]
+fn an_atriums_top_is_reached_through_other_rooms_and_never_ramped_down() {
+    let lv = empty(1, atrium_trek()).generate().unwrap();
+    let atrium = lv.space("room1");
+    assert_eq!(atrium.door_levels(), [0, 276, 3858], "its two lowest storeys and its top one");
+    assert_eq!(lv.space("base").host, "room1", "the base is the atrium's pod, on its top storey");
+    // the top storey's door comes from room2, the top of the trek
+    let top: Vec<&str> = lv.net.routes().iter().filter(|r| [&r.a, &r.b].iter().any(|d| d.room == "room1" && d.level == 3858)).map(|r| r.key()).collect();
+    assert!(!top.is_empty() && lv.net.routes().iter().filter(|r| top.contains(&r.key())).all(|r| r.a.room == "room2" || r.b.room == "room2"), "{top:?}");
+    // inside: a walkway on the top storey, ramps only between the two lowest, and no pillars
+    let it = lv.interior("room1");
+    assert!(decked(it, 3858) > 0.0, "a walkway on the top storey");
+    assert!(it.ramps.iter().all(|r| r.hi <= 276), "ramps: {:?}", it.ramps.iter().map(|r| (r.lo, r.hi)).collect::<Vec<_>>());
+    assert!(it.deck.iter().all(|(z, d)| !(276 < *z && *z < 3858) || d.is_empty()), "nothing between");
+    assert_ne!(it.cover_mode, "pillars");
+    // the trek is what hangs off the rest: its tip the base, ten storeys and more up
+    let trek = lv.dead_ends.iter().find(|d| d.tip == "base").expect("the trek ends at the base");
+    assert!(trek.storeys >= 10 && trek.rooms.len() >= 4, "{trek:?}");
+    // the same twice
+    assert!(same(&lv, &empty(1, atrium_trek()).generate().unwrap()));
 }

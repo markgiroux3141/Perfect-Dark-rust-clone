@@ -793,7 +793,7 @@ field, option or edit is an error that says which. With no edits a recipe gives 
 
 **Which lots may overlap** (`place::Placed::check`, held to after all the lot edits, not after
 each). Every lot is on the site, at least 2 by 2 cells, with its floor on a storey
-(`storeys::LEVELS`), a storey or more tall and its top at or under 1890. A spire must take a
+(`storeys::LEVELS`), a storey or more tall and its top at or under 4370 (1890 before the atrium's storeys). A spire must take a
 spiral (both walls at least 8 cells, two storeys or more). Every pair that is not a hall and
 its pod has a cell between them along x or along y, or one is over the other with a 40-unit
 slab between (`scatter::clear`, `apart`). A pod is one storey tall, on one of its hall's first
@@ -1761,6 +1761,78 @@ hang offered, both walk clean); choose carve (windows in the shared wall; `room2
 small plans or one at a time with numbers (as the Join tool's are); what a room the generator adds
 looks like (its kind, and so its dress); whether a seeded level can be switched to "your edit
 wins" (its rooms all made the person's) or only an empty one.
+
+## Atriums: a base fifteen storeys up, reached through other rooms
+
+**The user's idea (2026-11-18).** A hall that goes up fifteen storeys: from its floor you see a
+walkway at the very top that goes out to a base, and you have to work out how to get up there.
+Not a zigzag of ramps inside the hall: the top walkway is a door into another room on that
+storey, from which a corridor goes down a storey into another room, then two more, and so on,
+until a sequence of rooms comes back into the hall at its floor. The hall is connected through
+the level, not inside itself. Later: more bases scattered through a huge hall, and catwalks at
+any angle (a feature of its own: everything inside a room is on the half-cell grid; the user
+was told it is a few sessions' work and is not sure it is worth it).
+
+**The approach agreed:** goal-first. The Complex generator scatters and repairs, and the
+router takes the shortest join, so a long trek never happens by chance. Instead a small
+planner lays **only the trek**, backwards from the goal (the base and its door on the top
+storey), a room at a time, each 1 to 3 storeys lower, checking at every step that it can still
+get home (storeys left over what a room may descend, and the distance back to the atrium's
+floor door), and backtracking where nothing fits. The trek is written as recipe edits (`add`,
+`keep`; `join ... on` where the router would not join by itself), and the existing pipeline
+fills the rest around it, as the blank-levels work does round a person's rooms. First as a
+fixed helix (rooms stacked in a ring round the atrium, each 2 to 3 storeys, entered high at one
+end and left low at the other), later searched. Order: (1) storeys and atrium rules, (2) the
+trek by hand as a recipe, (3) a helix trek planner that writes those edits from a seed, with the
+trek's length measured, (4) a searched trek, a second way down (a drop from the gangway).
+
+### As built (steps 1 and 2, 2026-11-19)
+
+- **Storeys** (`storeys::LEVELS`, `CEILINGS`): 17 floors, -276 to 4134 (7 m apart, rounded as
+  the Python's are), the highest ceiling 4370. The ones over 1654 are new; nothing the Python
+  scatters reaches them, and **every key passes unchanged** (the router's grid is one layer a
+  storey: the extra layers change no seed). The editor's storey colours (`planview::colour::
+  STOREY`) gained nine paler ones; a room may be added or pinned up to 4370.
+- **The atrium kind** (`place::ATRIUM`): one of `Placed`'s kinds (so `add` takes it at any scale),
+  never one of `kinds_and_site`'s (the scatter's list is the Python's: the lots key checks it).
+  Its rules: doors on its two lowest storeys and its top one (`Space::door_levels`); pods on its
+  first two upper storeys and its top one (`scatter::pod_levels`); in the furnisher each storey
+  over the two lowest is a band of its own (`Interior::band_of`): `place_ramps` never ramps a
+  band down, and `connected` asks that each band's doors reach one another, not every door every
+  other. Its dress never takes pillars (they run floor to ceiling: fifteen storeys of them hid
+  everything); its names are `level::ATRIUM_NAMES`, drawn from a stream of the room's own (not
+  `NAMES`, which a seed's level shuffles kind by kind); a hub; schemes as the colossal's.
+- **Walls** (`autolevel_build::geometry::FLOORS` is now `storeys::LEVELS`): the strip lines and
+  the schemes' second strips go on up every storey. Before, walls over 1890 were one stretched
+  strip. The polygons key passes.
+- **The prototype** (test `an_atriums_top_is_reached_through_other_rooms_and_never_ramped_down`
+  in `tests/recipe.rs`, `atrium_trek()`): an empty start, seed 1; the atrium 18 x 14 cells from 0
+  to 4094; seven `tower` rooms in a helix round it, each two storeys lower than the last (3307 to
+  4094 on the south-west, down to 0 to 787 on the west); a `small` base, 4 x 4 cells, in the
+  middle of the atrium's top storey; `keep` on the top room. **The router made the whole helix
+  by itself** (one join a step, at the storey the two rooms share) and opened the top door
+  (room2 to the atrium on 3858) with no `join`. The atrium's top storey is a catwalk from that
+  door round two walls and a gangway out to the base, which stands on a pier from the floor (a
+  base on a fourteen-storey column: it looks right). The dead end listed is the trek: room6 to
+  the base through rooms 5 to 2, 164 cells' walk, 10 storeys. `autolevel build --recipe`: 14
+  rooms, 9104 triangles, 17 of 17 walks. Views: `pd_edit --shot-generated out.png --recipe R
+  --at 3600,160,-4130,45,58` (up the shaft from the floor), `--view room1_deck3858` (the top).
+- **Checked:** all the layout, build, editor and import tests and every key, clippy, fmt.
+
+**Rough, and next:**
+- **A shortcut:** the router joined the atrium's first upper storey (276) to room6 (1102). It
+  makes a loop, not a spoiler (five rooms still to climb), but the trek planner should decide
+  which of the atrium's low storeys take doors.
+- **`keep` stands in for a goal.** Without it the dead-end pass joins the trek's rooms to each
+  other on other storeys (four corridors), cutting the climb short. The planner wants a "this is
+  the goal" mark the pass leaves alone, or a second way out (a drop from the gangway).
+- **The walks** go door to door in each room, so nothing walks the atrium's top catwalk out to
+  the base (each piece of the trek is walked; the whole trek is not one walk).
+- **Messages** still say a pod is on one of "its hall's first two upper storeys", an atrium's top
+  one aside. The editor's floor buttons are now 17.
+- **Not imported as an arena** yet, and nobody has played one. The stage numbers are the limit
+  (124 to 127; see AUTOLEVEL_BACKLOG.md).
+- Next is step 3, the helix trek planner (above).
 
 ## Risks
 

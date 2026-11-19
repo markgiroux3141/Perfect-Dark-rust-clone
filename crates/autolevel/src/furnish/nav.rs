@@ -117,16 +117,23 @@ impl Interior {
             return true;
         }
         let g = self.nav_over(&blocks);
-        let mut seen: HashSet<Node> = HashSet::from([nodes[0]]);
-        let mut todo = VecDeque::from([nodes[0]]);
-        while let Some(at) = todo.pop_front() {
-            for &n in &g[&at] {
-                if seen.insert(n) {
-                    todo.push_back(n);
+        // each band's doors reach one another (a room is one band but an atrium)
+        let mut bands: BTreeMap<i32, Vec<Node>> = BTreeMap::new();
+        for &n in &nodes {
+            bands.entry(self.band_of(n.2)).or_default().push(n);
+        }
+        bands.values().all(|nodes| {
+            let mut seen: HashSet<Node> = HashSet::from([nodes[0]]);
+            let mut todo = VecDeque::from([nodes[0]]);
+            while let Some(at) = todo.pop_front() {
+                for &n in &g[&at] {
+                    if seen.insert(n) {
+                        todo.push_back(n);
+                    }
                 }
             }
-        }
-        nodes.iter().all(|n| seen.contains(n))
+            nodes.iter().all(|n| seen.contains(n))
+        })
     }
 
     /// Nav nodes from a to b, the fewest there can be, or None.

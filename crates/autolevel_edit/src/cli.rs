@@ -411,7 +411,10 @@ mod tests {
         assert!(!plain.changes() && !plain.routes && !plain.all && plain.join.is_none());
         assert_eq!(args("--join 2").unwrap_err(), "--join: of what? Name the room and storey with --pick");
         assert_eq!(args("--pick tower --join 0").unwrap_err(), "--join: a number of the --pick list, from 1");
-        assert_eq!(args("--pick tower@550").unwrap_err(), "--pick: a room, then @ and a floor (-276 0 276 551 827 1102 1378 1654), not 550");
+        assert_eq!(
+            args("--pick tower@550").unwrap_err(),
+            "--pick: a room, then @ and a floor (-276 0 276 551 827 1102 1378 1654 1929 2205 2480 2756 3031 3307 3583 3858 4134), not 550"
+        );
         assert_eq!(args("--pick @551").unwrap_err(), "--pick: a room's key and a storey, as tower@551, not @551");
         assert_eq!(args("--remove").unwrap_err(), "--remove needs a value");
     }
@@ -452,12 +455,24 @@ mod tests {
             "--rect: a room, then @ and its box, low corner then high, as tower@12,30,20,38, not medium1@4,5,six,7"
         );
         assert_eq!(args("--pin tower").unwrap_err(), "--pin: a room's key and a floor, as tower@276, not tower");
-        assert_eq!(args("--pin tower@100").unwrap_err(), "--pin: a room, then @ and a floor (-276 0 276 551 827 1102 1378 1654), not 100");
+        assert_eq!(
+            args("--pin tower@100").unwrap_err(),
+            "--pin: a room, then @ and a floor (-276 0 276 551 827 1102 1378 1654 1929 2205 2480 2756 3031 3307 3583 3858 4134), not 100"
+        );
         assert_eq!(args("--add small@2,3,6,7@0").unwrap_err(), "--add: a kind, a box, a floor and a top, as medium@3,4,9,8@0@236, not small@2,3,6,7@0");
         assert_eq!(args("--add @2,3,6,7@0@236").unwrap_err(), "--add: a kind, a box, a floor and a top, as medium@3,4,9,8@0@236, not @2,3,6,7@0@236");
-        assert_eq!(args("--add small@2,3,6,7@10@236").unwrap_err(), "--add: its floor (-276 0 276 551 827 1102 1378 1654), not 10");
-        assert_eq!(args("--add small@2,3,6,7@276@300").unwrap_err(), "--add: its top, a ceiling over its floor (512 787 1063 1338 1614 1890), not 300");
-        assert_eq!(args("--add small@2,3,6,7@276@236").unwrap_err(), "--add: its top, a ceiling over its floor (512 787 1063 1338 1614 1890), not 236");
+        assert_eq!(
+            args("--add small@2,3,6,7@10@236").unwrap_err(),
+            "--add: its floor (-276 0 276 551 827 1102 1378 1654 1929 2205 2480 2756 3031 3307 3583 3858 4134), not 10"
+        );
+        assert_eq!(
+            args("--add small@2,3,6,7@276@300").unwrap_err(),
+            "--add: its top, a ceiling over its floor (512 787 1063 1338 1614 1890 2165 2441 2716 2992 3267 3543 3819 4094 4370), not 300"
+        );
+        assert_eq!(
+            args("--add small@2,3,6,7@276@236").unwrap_err(),
+            "--add: its top, a ceiling over its floor (512 787 1063 1338 1614 1890 2165 2441 2716 2992 3267 3543 3819 4094 4370), not 236"
+        );
         assert_eq!(args("--try --rooms").unwrap_err(), "--try: of what? Name a change with --move, --rect, --pin, --delete or --add");
         assert_eq!(args("--delete").unwrap_err(), "--delete needs a value");
         assert_eq!(args("--select").unwrap_err(), "--select needs a value");
@@ -522,7 +537,10 @@ mod tests {
         assert_eq!(args("plan.png").unwrap_err(), "plan.png: not an option (see --help)");
         assert_eq!(args("--seed").unwrap_err(), "--seed needs a value");
         assert_eq!(args("--seed forty").unwrap_err(), "--seed: a whole number, not forty");
-        assert_eq!(args("--storey 100").unwrap_err(), "--storey: all, or a floor (-276 0 276 551 827 1102 1378 1654), not 100");
+        assert_eq!(
+            args("--storey 100").unwrap_err(),
+            "--storey: all, or a floor (-276 0 276 551 827 1102 1378 1654 1929 2205 2480 2756 3031 3307 3583 3858 4134), not 100"
+        );
         assert_eq!(args("--cover hedges").unwrap_err(), "cover: one of ('mixed', 'pillars', 'crates', 'none')");
     }
 }

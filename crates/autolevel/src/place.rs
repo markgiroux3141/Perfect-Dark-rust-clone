@@ -62,6 +62,14 @@ pub const GRAND: [Kind; 10] = [
     Kind::new("tiny", 5, (2, 3), (2, 2), &[0, 276, 276], &[236]).pod(),
 ];
 
+/// An atrium: a hall up to fifteen storeys tall, made by hand or by the trek planner, never
+/// scattered (it is one of `Placed`'s kinds, not `kinds_and_site`'s, so every seed keeps its
+/// level). Doors open on its two lowest storeys and its top one only (`Space::door_levels`), it
+/// takes pods on its top storey too (`scatter::pod_levels`), and its top storey is not ramped
+/// down to the rest: it is reached from outside, through other rooms (the furnisher's `bands`).
+/// New in the Rust (docs/AUTOLEVEL.md, "Atriums").
+pub const ATRIUM: Kind = Kind::new("atrium", 0, (8, 40), (8, 40), &[0], &[]).host();
+
 /// The part of a level's options that decides where its rooms fall. (`level.Options` in the
 /// Python; the rest of its fields arrive with the stages that read them.)
 #[derive(Clone, Debug, PartialEq)]
@@ -311,7 +319,8 @@ fn stands(key: &str, floor: i32, top: i32) -> Result<(), String> {
 impl Placed {
     /// The lots as they were placed for these options, nothing changed yet.
     pub fn new(lots: Vec<Lot>, o: &Siting) -> Placed {
-        let (kinds, site) = kinds_and_site(o);
+        let (mut kinds, site) = kinds_and_site(o);
+        kinds.push(ATRIUM); // never scattered: only an edit adds one
         Placed { lots, site, kinds, gone: Vec::new(), touched: BTreeSet::new(), blank: false }
     }
 

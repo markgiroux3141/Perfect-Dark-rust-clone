@@ -1,10 +1,14 @@
-//! The level's storeys: a floor every 276 from -276 to 1654, each 236 high (the low road's
-//! ceiling is the slab under the ground floor). From `autolevel/route.py`.
+//! The level's storeys: a floor every 7 m (275.59 units, rounded) from -276, each 236 high
+//! (the low road's ceiling is the slab under the ground floor). From `autolevel/route.py`, whose
+//! table stops at 1654 (seven storeys over the low road).
+//!
+//! New in the Rust: the storeys above 1654, for an atrium fifteen storeys tall. Nothing the
+//! Python scatters reaches them, so a seed's level is the same with them as without.
 
 /// Floor levels, lowest first.
-pub const LEVELS: [i32; 8] = [-276, 0, 276, 551, 827, 1102, 1378, 1654];
+pub const LEVELS: [i32; 17] = [-276, 0, 276, 551, 827, 1102, 1378, 1654, 1929, 2205, 2480, 2756, 3031, 3307, 3583, 3858, 4134];
 /// The ceiling over each floor level.
-pub const CEILINGS: [i32; 8] = [-39, 236, 512, 787, 1063, 1338, 1614, 1890];
+pub const CEILINGS: [i32; 17] = [-39, 236, 512, 787, 1063, 1338, 1614, 1890, 2165, 2441, 2716, 2992, 3267, 3543, 3819, 4094, 4370];
 
 /// (floor, ceiling) of the storey whose floor is `z`.
 pub fn storey(z: i32) -> (i32, i32) {

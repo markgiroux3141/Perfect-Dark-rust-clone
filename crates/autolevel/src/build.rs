@@ -217,13 +217,16 @@ pub struct Dress {
 
 /// A room's dress, by its kind and the level's options.
 pub fn dress(s: &Space, o: &Options, rng: &mut PyRandom) -> Dress {
-    let big = matches!(s.kind, "colossal" | "vast" | "basin" | "long");
+    let big = matches!(s.kind, "colossal" | "vast" | "basin" | "long" | "atrium");
     let mut cover = o.cover;
     if cover == "mixed" {
         let w: &[(&'static str, f64)] = if s.area() < 16 {
             &[("none", 0.7), ("crates", 0.3)]
         } else if matches!(s.kind, "tower" | "spire") {
             &[("none", 0.6), ("crates", 0.25), ("pillars", 0.15)]
+        } else if s.kind == crate::place::ATRIUM.name {
+            // (pillars run floor to ceiling: fifteen storeys of them would hide the atrium)
+            &[("none", 0.7), ("crates", 0.3)]
         } else if big {
             &[("pillars", 0.6), ("none", 0.25), ("crates", 0.15)]
         } else {

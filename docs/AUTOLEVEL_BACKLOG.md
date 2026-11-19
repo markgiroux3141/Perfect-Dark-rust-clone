@@ -65,6 +65,12 @@ Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
 
 ## 3. Bigger directions (not started; the user chooses)
 
+- **Atriums and the trek** (the user's, 2026-11-18; started 2026-11-19): a hall fifteen storeys
+  tall whose top walkway and base are reached through a sequence of other rooms, planned
+  goal-first. Storeys to 4134 and the atrium's rules are built, and a trek laid by hand works;
+  next is the planner that lays the trek from a seed. AUTOLEVEL.md, "Atriums". Angled catwalks
+  were discussed with it and left for later (a feature of their own).
+
 - **Blank levels: your edit wins** (the user's, 2026-11-18; designed, chosen as the next step):
   start empty, draw rooms, and the generator remakes the rest round each edit, offering
   alternatives where an edit can be met in several ways; a side view for heights. Design, the

@@ -32,6 +32,9 @@ impl Interior {
             return self.connected(); // a ramp laid over a catwalk can cut it in two
         }
         let (hi, lo) = (self.levels[hi_i], self.levels[hi_i - 1]);
+        if self.band_of(hi) != self.band_of(lo) {
+            return self.solve(hi_i - 1, left); // an atrium's upper band is not ramped down
+        }
         let mut served = Cells::new();
         for r in self.ramps.iter().filter(|r| r.hi == hi) {
             served.extend(r.top.iter().copied());

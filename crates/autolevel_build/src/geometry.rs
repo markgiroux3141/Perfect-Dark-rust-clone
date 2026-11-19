@@ -22,9 +22,10 @@ use autolevel::plan::cells as C;
 use autolevel::py;
 use std::collections::HashMap;
 
-/// Storey lines: a floor every 276 from -276 to 1654, each with a strip line 118 up and its
-/// ceiling 236 up.
-pub const FLOORS: [i32; 8] = [-276, 0, 276, 551, 827, 1102, 1378, 1654];
+/// Storey lines: every floor of `storeys::LEVELS`, each with a strip line 118 up and its ceiling
+/// 236 up. (The Python's stop at 1654; the storeys over it are an atrium's, and no wall of a
+/// seed's own level reaches them, so they split and dress nothing there.)
+pub const FLOORS: [i32; 17] = autolevel::storeys::LEVELS;
 
 /// The heights walls are split on, and strips anchored on (`LINES`).
 pub fn lines() -> Vec<i32> {
@@ -292,7 +293,7 @@ mod tests {
     #[test]
     fn the_levels_lines_and_schemes() {
         let l = lines();
-        assert_eq!((l.len(), &l[..6], l[l.len() - 1]), (24, &[-276, -157, -39, 0, 118, 236][..], 1890));
+        assert_eq!((l.len(), &l[..6], l[l.len() - 1]), (51, &[-276, -157, -39, 0, 118, 236][..], 4370));
         let table = schemes();
         assert_eq!(
             table.iter().map(|(k, _)| *k).collect::<Vec<_>>(),

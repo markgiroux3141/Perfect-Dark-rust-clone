@@ -91,7 +91,7 @@ pub mod colour {
     pub const GRID: Rgba = [255, 255, 255, 10];
     pub const GRID_FOURTH: Rgba = [255, 255, 255, 26];
     /// A floor on each storey, lowest first (`storeys::LEVELS`).
-    pub const STOREY: [Rgba; 8] = [
+    pub const STOREY: [Rgba; 17] = [
         [66, 84, 176, 255],   // -276: the low road
         [34, 140, 132, 255],  // 0
         [104, 160, 66, 255],  // 276
@@ -100,6 +100,16 @@ pub mod colour {
         [200, 92, 132, 255],  // 1102
         [164, 104, 200, 255], // 1378
         [208, 212, 224, 255], // 1654
+        // an atrium's storeys: the same round of hues again, paler
+        [120, 210, 204, 255], // 1929
+        [168, 214, 130, 255], // 2205
+        [232, 214, 120, 255], // 2480
+        [240, 170, 120, 255], // 2756
+        [236, 146, 182, 255], // 3031
+        [200, 160, 240, 255], // 3307
+        [130, 150, 236, 255], // 3583
+        [150, 240, 170, 255], // 3858
+        [255, 248, 200, 255], // 4134
     ];
     /// A room that is only air on the storey shown.
     pub const VOID: Rgba = [30, 33, 42, 255];
@@ -156,7 +166,7 @@ pub mod colour {
 
     /// The colour of the storey whose floor is `z`.
     pub fn storey(z: i32) -> Rgba {
-        let i = autolevel::storeys::LEVELS.iter().position(|&l| l >= z).unwrap_or(7);
+        let i = autolevel::storeys::LEVELS.iter().position(|&l| l >= z).unwrap_or(STOREY.len() - 1);
         STOREY[i]
     }
 
@@ -1519,8 +1529,8 @@ mod tests {
     #[test]
     fn every_storey_has_its_own_colour() {
         let all: std::collections::BTreeSet<Rgba> = LEVELS.iter().map(|&z| colour::storey(z)).collect();
-        assert_eq!(all.len(), 8);
-        assert_eq!((colour::storey(-276), colour::storey(1654)), (colour::STOREY[0], colour::STOREY[7]));
+        assert_eq!(all.len(), LEVELS.len());
+        assert_eq!((colour::storey(-276), colour::storey(4134)), (colour::STOREY[0], colour::STOREY[16]));
         assert_eq!(colour::mix([0, 0, 0, 255], [200, 100, 50, 255], 0.5), [100, 50, 25, 255]);
         assert_eq!(colour::lit([100, 100, 100, 255], 1.0), [255, 255, 255, 255]);
     }

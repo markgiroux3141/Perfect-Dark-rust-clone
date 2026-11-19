@@ -422,6 +422,18 @@ impl Interior {
         }
     }
 
+    /// Which band of the room storey `z` is in: storeys joined by ramps inside the room are one
+    /// band. Every room is one band but an atrium: its two lowest storeys are one, and each
+    /// storey over them is a band of its own, reached from outside and never ramped down
+    /// (`place::ATRIUM`). The band is that storey's floor; the room's own is `i32::MIN`.
+    pub(crate) fn band_of(&self, z: i32) -> i32 {
+        if self.s.kind == crate::place::ATRIUM.name && self.levels.len() > 2 && z > self.levels[1] {
+            z
+        } else {
+            i32::MIN
+        }
+    }
+
     /// Where one of its pods opens into it.
     pub(crate) fn access_of(&self, pod: &str) -> Option<&Access> {
         self.access.iter().find(|(k, _)| k == pod).map(|(_, a)| a)

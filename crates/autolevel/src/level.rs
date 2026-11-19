@@ -255,7 +255,7 @@ pub fn stage_dead_ends(mut b: Build) -> Result<Build, String> {
 /// Solid tags whose tops players stand on, in every room of a level's plan.
 pub const WALKABLE: [&str; 4] = ["trim", "grate", "core", "ledge"];
 /// The kinds of room that are landmarks (hubs in the plan).
-pub const HUBS: [&str; 6] = ["colossal", "vast", "spire", "tower", "basin", "long"];
+pub const HUBS: [&str; 7] = ["colossal", "vast", "spire", "tower", "basin", "long", "atrium"];
 /// Names for the rooms of each kind, dealt out at random (in this order of kinds).
 pub const NAMES: [(&str, &[&str]); 10] = [
     ("colossal", &["The Drydock", "The Foundry", "The Assembly Hall", "The Turbine Hall"]),
@@ -269,9 +269,13 @@ pub const NAMES: [(&str, &[&str]); 10] = [
     ("small", &["Relay", "Control Room", "Gauge Room", "Monitor Room", "Valve Room", "Cellar", "Booth", "Store", "Meter Room", "Lock-up"]),
     ("tiny", &["Lobby", "Closet", "Locker", "Gantry", "Switch Closet", "Nook", "Cupboard"]),
 ];
+/// An atrium's names. Not in `NAMES`, which a seed's level shuffles kind by kind from its own
+/// stream: an atrium draws its name from a stream of its own, as every room of an empty start does.
+pub const ATRIUM_NAMES: [&str; 5] = ["The Atrium", "The Light Well", "The Vault", "The Abyss", "The Stairwell"];
 /// The wall schemes a room of each kind may be built in.
-pub const SCHEMES: [(&str, &[&str]); 10] = [
+pub const SCHEMES: [(&str, &[&str]); 11] = [
     ("colossal", &["standard", "striped", "pipework"]),
+    ("atrium", &["standard", "striped", "pipework"]),
     ("spire", &["chimney", "shaft", "flue"]),
     ("loft", &["striped", "plain", "pipework"]),
     ("vast", &["standard", "striped"]),

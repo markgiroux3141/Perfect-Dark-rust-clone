@@ -86,6 +86,12 @@ impl Space {
     /// only rooms with the floor for that offer them.
     pub fn door_levels(&self) -> Vec<i32> {
         let storeys = self.storeys();
+        if self.kind == crate::place::ATRIUM.name {
+            // its two lowest storeys and its top one: the storeys between are reached by nobody
+            let mut out: Vec<i32> = storeys.iter().copied().take(2).collect();
+            out.extend(storeys.last().filter(|z| !out.contains(z)));
+            return out;
+        }
         if let Some(decks) = &self.decks {
             // a spiral: every storey it reaches
             return storeys.into_iter().filter(|z| *z == self.floor || decks.get(z).is_some_and(|c| !c.is_empty())).collect();

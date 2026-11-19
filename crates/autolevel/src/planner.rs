@@ -7,7 +7,7 @@
 
 use crate::cells::Cells;
 use crate::furnish::{rectangles, Interior};
-use crate::level::{Level, Pane, Start, HUBS, NAMES, SCHEMES, WALKABLE};
+use crate::level::{Level, Pane, Start, ATRIUM_NAMES, HUBS, NAMES, SCHEMES, WALKABLE};
 use crate::plan::{box3, cells as units, Box3, Plan, Rail, Ramp, Room};
 use crate::py;
 use crate::pyrand::PyRandom;
@@ -102,7 +102,11 @@ pub fn plan(lv: &mut Level, rng: &mut PyRandom) -> Result<(), String> {
         let key = s.key.as_str();
         // a name of its kind's while they last, then its key. (The Python would title-case the
         // key if its list of names came back empty, which the list it falls back on never is.)
-        let name = if empty {
+        let name = if s.kind == crate::place::ATRIUM.name {
+            let mut pool = ATRIUM_NAMES.to_vec();
+            PyRandom::named(&format!("{seed}/{key}/name")).shuffle(&mut pool);
+            pool.into_iter().find(|n| !named.contains(*n)).map_or_else(|| s.key.clone(), str::to_string)
+        } else if empty {
             // (an empty start: the room's own draw of its kind's names, the first one no earlier
             // room has, so a room added later never renames one before it)
             let mut pool = names.iter().find(|(k, _)| *k == s.kind).map_or(Vec::new(), |(_, pool)| pool.clone());
