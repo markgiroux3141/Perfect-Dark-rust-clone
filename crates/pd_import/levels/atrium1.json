@@ -1,0 +1,143 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "atrium1",
+  "name": "Atrium 1",
+  "group": "Autolevel",
+  "stagenum": 103,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 1,
+      "start": "empty",
+      "options": {},
+      "edits": [
+        {
+          "edit": "add",
+          "key": "room1",
+          "kind": "atrium",
+          "rect": [
+            30,
+            22,
+            48,
+            36
+          ],
+          "floor": 0,
+          "top": 4094
+        },
+        {
+          "edit": "add",
+          "key": "room2",
+          "kind": "tower",
+          "rect": [
+            30,
+            14,
+            38,
+            21
+          ],
+          "floor": 3307,
+          "top": 4094
+        },
+        {
+          "edit": "add",
+          "key": "room3",
+          "kind": "tower",
+          "rect": [
+            40,
+            14,
+            48,
+            21
+          ],
+          "floor": 2756,
+          "top": 3543
+        },
+        {
+          "edit": "add",
+          "key": "room4",
+          "kind": "tower",
+          "rect": [
+            50,
+            22,
+            57,
+            30
+          ],
+          "floor": 2205,
+          "top": 2992
+        },
+        {
+          "edit": "add",
+          "key": "room5",
+          "kind": "tower",
+          "rect": [
+            50,
+            32,
+            57,
+            40
+          ],
+          "floor": 1654,
+          "top": 2441
+        },
+        {
+          "edit": "add",
+          "key": "room6",
+          "kind": "tower",
+          "rect": [
+            40,
+            38,
+            48,
+            45
+          ],
+          "floor": 1102,
+          "top": 1890
+        },
+        {
+          "edit": "add",
+          "key": "room7",
+          "kind": "tower",
+          "rect": [
+            30,
+            38,
+            38,
+            45
+          ],
+          "floor": 551,
+          "top": 1338
+        },
+        {
+          "edit": "add",
+          "key": "room8",
+          "kind": "tower",
+          "rect": [
+            22,
+            28,
+            28,
+            36
+          ],
+          "floor": 0,
+          "top": 787
+        },
+        {
+          "edit": "add",
+          "key": "base",
+          "kind": "small",
+          "rect": [
+            37,
+            27,
+            41,
+            31
+          ],
+          "floor": 3858,
+          "top": 4094
+        },
+        {
+          "edit": "keep",
+          "room": "room2"
+        }
+      ]
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}
