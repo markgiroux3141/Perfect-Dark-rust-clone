@@ -31,7 +31,7 @@ fn tiles(space: &Space) -> usize {
 }
 
 fn seed(n: u64) -> gen::Recipe {
-    gen::Recipe::new(n)
+    gen::Recipe::python(n)
 }
 
 fn with(edit: Edit) -> gen::Recipe {

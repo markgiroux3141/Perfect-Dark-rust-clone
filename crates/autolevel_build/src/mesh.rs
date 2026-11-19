@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn a_level_becomes_its_rooms() {
-        let lv = generate(40, &Options::default()).unwrap();
+        let lv = generate(40, &Options::python()).unwrap();
         let (polys, _) = geometry::polys(&lv, &crate::complex::KIT).unwrap();
         let rooms = emit(&lv, &polys, &crate::complex::KIT).unwrap();
         // as the Blender build of seed 40 reports: 61 rooms, 15,303 triangles

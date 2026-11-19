@@ -1570,9 +1570,10 @@ mod tests {
     use super::*;
     use crate::cli;
 
-    /// An editor on a command line, its level made.
+    /// An editor on a command line, its level made (by `Options::python`: the Rust's own rooms on by
+    /// default left out, so a seed's level is the one these tests pin).
     fn editor(line: &str) -> Editor {
-        let words: Vec<String> = line.split_whitespace().map(str::to_string).collect();
+        let words: Vec<String> = format!("{line} --flooded 0 --shaped 0").split_whitespace().map(str::to_string).collect();
         let mut ed = Editor::new(cli::parse(&words, &|path| Err(format!("{path}: no files here"))).unwrap());
         ed.tick(); // (starts the job)
         while !ed.settled() {
@@ -2497,9 +2498,9 @@ mod tests {
         assert_eq!((ed.doc.recipe.options.vents, ed.typing.clone()), (held, None));
         assert!(ed.doc.undo() && !ed.doc.can_undo() && ed.doc.redo());
         settle(&mut ed);
-        // "reset" puts the default back, and the recipe is the seed's own again
+        // "reset" puts the default back, and the recipe is the seed's own again (as `editor` made it)
         press(&mut ed, &egui, "reset vents");
-        assert_eq!(ed.doc.recipe.options, Options::default());
+        assert_eq!(ed.doc.recipe.options, Options::python());
         settle(&mut ed);
         // a switch
         press(&mut ed, &egui, "option shapes");

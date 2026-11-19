@@ -88,6 +88,9 @@ pub struct Options {
     /// The chance a room's floor is water under railed walkways that join its doors, with
     /// platforms and angled catwalks over it (`floods`, `furnish::flood`). New in the Rust.
     pub flooded: f64,
+    /// The chance each room where it fits is shaped: an L or a U cut from its rectangle
+    /// (`shapes`; `SHAPED` by default; 0: none, as the Python). New in the Rust.
+    pub shaped: f64,
     /// Join up, or cut short, every dead end longer than these (false: leave them):
     pub dead_ends: bool,
     /// cells of corridor to a room that goes nowhere (a camping spot may be that far off),
@@ -149,6 +152,7 @@ impl Default for Options {
             cellars: 0.0,
             angled: 0.0,
             flooded: FLOODED,
+            shaped: SHAPED,
             dead_ends: true,
             dead_corridor: 8,
             dead_walk: 20,
@@ -162,6 +166,13 @@ impl Default for Options {
 }
 
 impl Options {
+    /// The defaults with the Rust's own rooms that are on by default left out (flooded and shaped:
+    /// `FLOODED`, `SHAPED`): a seed's level by the Python's rules, and the Rust's own that are
+    /// always on. What a test pins a seed's level by, so that a feature on by default moves no pin.
+    pub fn python() -> Options {
+        Options { flooded: 0.0, shaped: 0.0, ..Options::default() }
+    }
+
     /// A catwalk's depth from its wall, in half cells.
     pub fn band(&self) -> i32 {
         2 * self.walkway
@@ -261,6 +272,7 @@ pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
         s.high.retain(|z| held.iter().any(|(h, f)| *h == s.key && f == z));
     }
     galleries(seed, o, &mut sp);
+    shapes(seed, o, &mut sp, &access);
     floods(seed, o, &mut sp);
     Spaces { sp, spin, access, dropped }
 }
@@ -268,6 +280,86 @@ pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
 /// The chance a room is flooded unless told otherwise (`Options::flooded`; the user's call,
 /// 2026-11-19: on by default, low).
 pub const FLOODED: f64 = 0.1;
+
+/// The chance a room where a cut fits is shaped unless told otherwise (`Options::shaped`; the
+/// user's call, 2026-11-19: on by default, low, and only in rooms big enough for it).
+pub const SHAPED: f64 = 0.1;
+/// The least a shaped room's arms are across, cells: a hall's (its catwalks run round the cut) and a
+/// room of one storey's; how far across a room of one storey is at least (a hall: twice its arms);
+/// and how much of each side a cut may take.
+pub const ARM: i32 = 5;
+pub const ARM_LOW: i32 = 3;
+pub const LOW_LEAST: i32 = 8;
+const CUT: (f64, f64) = (0.3, 0.45);
+
+/// Shaped rooms (`Options::shaped`): each room where a cut fits, with that chance from its own
+/// stream ("{seed}/{key}/shape"), has a rectangle cut from it: a corner (an L) or the middle of a
+/// side (a U), 30 to 45% of the room each way, its arms `ARM` cells across or more, two cells clear
+/// of its pods' blocks and their ways in (`ARM_LOW` in a room of one storey). Not a pod, spire,
+/// basin, atrium, cellar or cellar's hall, nor a hall under twice its arms across or a room of one
+/// storey under `LOW_LEAST`. Ten tries, then it stays a rectangle. New in the Rust.
+pub fn shapes(seed: u64, o: &Options, sp: &mut [Space], access: &[(String, Access)]) {
+    // (an empty start's rooms are drawn by hand: each is as it was drawn)
+    if o.shaped <= 0.0 || o.start == Start::Empty {
+        return;
+    }
+    let halls: Vec<String> = sp.iter().filter_map(|s| s.cellar.as_ref().map(|c| c.hall.clone())).collect();
+    for n in 0..sp.len() {
+        let s = sp[n].clone();
+        let (w, d) = (s.x1 - s.x0, s.y1 - s.y0);
+        let (arm, least) = if s.tall() { (ARM, 2 * ARM) } else { (ARM_LOW, LOW_LEAST) };
+        let fits = s.host.is_empty()
+            && s.decks.is_none()
+            && s.pool.is_none()
+            && s.cellar.is_none()
+            && !halls.contains(&s.key)
+            && !matches!(s.kind, "spire" | "basin")
+            && s.kind != crate::place::ATRIUM.name
+            && w.min(d) >= least;
+        if !fits {
+            continue;
+        }
+        let mut rng = PyRandom::named(&format!("{seed}/{}/shape", s.key));
+        if rng.random() >= o.shaped {
+            continue;
+        }
+        // what the cut keeps clear of: its pods' blocks and their ways in (half cells)
+        let mut keep = crate::cells::Cells::new();
+        for p in sp.iter().filter(|p| p.host == s.key) {
+            keep.extend(crate::cells::rect_cells(crate::furnish::grow(crate::space::shell_rect(p, &s), 4)));
+        }
+        for (_, a) in access.iter().filter(|(k, _)| sp.iter().any(|p| p.key == *k && p.host == s.key)) {
+            keep.extend(a.pad.iter().flat_map(|c| crate::cells::rect_cells((c.0 - 4, c.1 - 4, c.0 + 5, c.1 + 5))));
+        }
+        for _ in 0..10 {
+            let cw = py::round(w as f64 * rng.uniform(CUT.0, CUT.1)) as i32;
+            let cd = py::round(d as f64 * rng.uniform(CUT.0, CUT.1)) as i32;
+            let cut = if rng.random() < 0.5 {
+                // an L: a corner
+                let x = if rng.random() < 0.5 { s.x0 } else { s.x1 - cw };
+                let y = if rng.random() < 0.5 { s.y0 } else { s.y1 - cd };
+                (x, y, x + cw, y + cd)
+            } else {
+                // a U: the middle of a side
+                let (mx, my) = ((s.x0 + s.x1 - cw).div_euclid(2), (s.y0 + s.y1 - cd).div_euclid(2));
+                match rng.below(4) {
+                    0 => (mx, s.y0, mx + cw, s.y0 + cd),
+                    1 => (mx, s.y1 - cd, mx + cw, s.y1),
+                    2 => (s.x0, my, s.x0 + cw, my + cd),
+                    _ => (s.x1 - cw, my, s.x1, my + cd),
+                }
+            };
+            let (x0, y0, x1, y1) = cut;
+            // the arms left either side of it, and past it
+            let arms = [x0 - s.x0, s.x1 - x1, y0 - s.y0, s.y1 - y1].into_iter().filter(|&a| a > 0).all(|a| a >= arm);
+            let clear = crate::cells::rect_cells(crate::furnish::grow((2 * x0, 2 * y0, 2 * x1, 2 * y1), 4)).is_disjoint(&keep);
+            if cw >= 2 && cd >= 2 && arms && clear {
+                sp[n].cuts.push(cut);
+                break;
+            }
+        }
+    }
+}
 
 /// How far a flooded room's water lies under its floor, units (half a cell: under the walkways'
 /// slabs, 40 deep).
@@ -287,7 +379,14 @@ pub fn floods(seed: u64, o: &Options, sp: &mut [Space]) {
     let all: Vec<Space> = sp.to_vec();
     for s in sp.iter_mut() {
         let (w, d) = (s.x1 - s.x0, s.y1 - s.y0);
-        if !s.host.is_empty() || s.decks.is_some() || s.pool.is_some() || s.cellar.is_some() || halls.contains(&s.key) || w.min(d) < FLOOD_NARROWEST {
+        if !s.host.is_empty()
+            || s.decks.is_some()
+            || s.pool.is_some()
+            || s.cellar.is_some()
+            || !s.cuts.is_empty()
+            || halls.contains(&s.key)
+            || w.min(d) < FLOOD_NARROWEST
+        {
             continue;
         }
         if matches!(s.kind, "spire" | "basin") || s.kind == crate::place::ATRIUM.name {

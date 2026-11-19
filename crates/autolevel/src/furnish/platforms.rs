@@ -156,6 +156,7 @@ impl Interior {
             hard.extend(rect_cells(*k));
         }
         hard.extend(self.hole.iter().copied());
+        hard.extend(self.cut.iter().copied()); // (a shaped room's: solid)
         (soft, hard)
     }
 

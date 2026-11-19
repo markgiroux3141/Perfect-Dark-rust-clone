@@ -84,7 +84,9 @@ Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
   `angled9`); AUTOLEVEL.md, "Angled catwalks". Next: angled ramps between storeys, platforms left
   floating for them. Then flooded rooms (`--flooded P`, on by default at 0.1, the user's call): the
   floor water under railed walkways joining the doors, rafts, angled catwalks and tanks (arena
-  `flooded13`); AUTOLEVEL.md, "Flooded rooms".
+  `flooded13`); AUTOLEVEL.md, "Flooded rooms". Then a first try at shaped rooms (`--shaped P`,
+  0.1 by default, the user's call): any room big enough an L or a U cut from its lot, its catwalks
+  round the cut (arena `shaped1`); AUTOLEVEL.md, "Shaped rooms".
 
 - **Blank levels: your edit wins** (the user's, 2026-11-18; designed, chosen as the next step):
   start empty, draw rooms, and the generator remakes the rest round each edit, offering

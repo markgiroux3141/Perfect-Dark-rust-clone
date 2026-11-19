@@ -25,10 +25,10 @@ fn assets() -> PathBuf {
 /// Seed 40, made once for every test here.
 fn seed40() -> &'static Built {
     static BUILT: OnceLock<Built> = OnceLock::new();
-    BUILT.get_or_init(|| built::make(&Seed::new(40), true).unwrap())
+    BUILT.get_or_init(|| built::make(&Seed::python(40), true).unwrap())
 }
 
-const RECIPE_40: &str = "{\n  \"format\": 1,\n  \"seed\": 40\n}";
+const RECIPE_40: &str = "{\n  \"format\": 1,\n  \"seed\": 40,\n  \"options\": {\n    \"flooded\": 0.0,\n    \"shaped\": 0.0\n  }\n}";
 
 /// The level's recipe, as `autolevel import` writes it.
 fn recipe40() -> Recipe {

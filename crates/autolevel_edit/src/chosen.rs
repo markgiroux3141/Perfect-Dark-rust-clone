@@ -88,7 +88,7 @@ mod tests {
     fn a_rooms_choices_are_listed_with_whose_they_are_and_the_layouts_it_could_take() {
         let made = fixture::seed40();
         let lv = &made.level;
-        let recipe = Recipe::new(40);
+        let recipe = Recipe::python(40);
         let of = |r: &Recipe, room: &str| text(&choices::of(r, lv, room).unwrap(), lv.space(room));
         // a hall: every layout, everything the seed's own
         let said = of(&recipe, "colossal");
@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn a_choice_is_said_in_the_edit_lists_words() {
-        let mut d = Doc::new(Recipe::new(40), true);
+        let mut d = Doc::new(Recipe::python(40), true);
         d.regenerate().unwrap();
         let make = |d: &mut Doc, e: Edit| {
             let before = d.recipe.clone();

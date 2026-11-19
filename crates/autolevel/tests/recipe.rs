@@ -46,7 +46,7 @@ fn reroll(room: &str, n: u32) -> Edit {
 }
 
 fn recipe(seed: u64, edits: Vec<Edit>) -> Recipe {
-    Recipe { seed, options: Options::default(), edits }
+    Recipe { seed, options: Options::python(), edits }
 }
 
 fn made(seed: u64, edits: Vec<Edit>) -> Level {
@@ -532,7 +532,7 @@ fn a_recipe_comes_back_from_its_file_and_makes_the_same_level_twice() {
     assert!(lv.dead_ends.iter().all(|e| e.allowed));
     // and with no edits the level is the seed's own, for each seed used here
     for seed in [40, 7, 1] {
-        let own = autolevel::level::generate(seed, &Options::default()).unwrap();
+        let own = autolevel::level::generate(seed, &Options::python()).unwrap();
         assert!(same(&made(seed, vec![]), &own), "seed {seed}");
         assert_eq!(recipe(seed, vec![]).placed().unwrap().lots, place::lots(seed, &Siting::default()).unwrap().placed);
     }

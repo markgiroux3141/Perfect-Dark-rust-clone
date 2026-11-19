@@ -56,6 +56,10 @@ pub struct Space {
     /// A flooded room's water: its height (`level::floods`, `furnish::flood`). Its whole floor is
     /// water under railed walkways that join its doors. None for every other room. New in the Rust.
     pub flood: Option<i32>,
+    /// What is cut out of a shaped room's rectangle (`level::shapes`): (x0, y0, x1, y1) in cells,
+    /// solid on every storey. Its footprint is the rest (an L, a U). Empty for every other room.
+    /// New in the Rust.
+    pub cuts: Vec<crate::cells::Rect>,
 }
 
 /// A cellar: a room a storey under a hall, inside its footprint, joined to it by a hatch in the
@@ -292,6 +296,7 @@ pub fn spaces(lots: &[Lot]) -> Vec<Space> {
             galleries: Vec::new(),
             cellar: None,
             flood: None,
+            cuts: Vec::new(),
         })
         .collect();
     // a towering hall's high storeys: the ones of its pods over the storeys ramped inside it

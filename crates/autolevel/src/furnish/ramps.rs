@@ -250,9 +250,13 @@ impl Interior {
         let mut no_ramp = deck_hi.clone();
         no_ramp.extend(same_cells.iter().copied());
         no_ramp.extend(fixed.iter().copied());
-        let no_top: Cells = self.shell[&hi].union(&same_cells).copied().collect();
+        let mut no_top: Cells = self.shell[&hi].union(&same_cells).copied().collect();
         let mut no_foot: Cells = self.shell[&lo].union(&same_cells).copied().collect();
         no_foot.extend(below_cells.iter().copied());
+        // (a shaped room's cut is solid)
+        no_ramp.extend(self.cut.iter().copied());
+        no_top.extend(self.cut.iter().copied());
+        no_foot.extend(self.cut.iter().copied());
         if floor {
             no_foot.extend(self.pool.iter().copied());
             no_foot.extend(self.bridge.iter().copied());

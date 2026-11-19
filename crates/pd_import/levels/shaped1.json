@@ -1,0 +1,25 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "shaped1",
+  "name": "Grand 1 Shaped",
+  "group": "Autolevel",
+  "stagenum": 112,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 1,
+      "options": {
+        "shaped": 1.0,
+        "platforms": 1.0,
+        "angled": 1.0,
+        "holes": 0.5
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

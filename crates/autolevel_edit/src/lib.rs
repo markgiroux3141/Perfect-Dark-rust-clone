@@ -62,22 +62,23 @@ pub(crate) mod fixture {
     use autolevel::recipe::Recipe;
     use std::sync::OnceLock;
 
-    /// Seed 40 as it falls out of the generator.
+    /// Seed 40 as it falls out of the generator (`Options::python`: none of the Rust's own rooms
+    /// that are on by default, so its numbers are the ones pinned here).
     pub fn seed40() -> &'static Made {
         static MADE: OnceLock<Made> = OnceLock::new();
-        MADE.get_or_init(|| make(&Recipe::new(40)).expect("seed 40 makes a level"))
+        MADE.get_or_init(|| make(&Recipe::python(40)).expect("seed 40 makes a level"))
     }
 
     /// Seed 40 with its dead ends left in.
     pub fn seed40_kept() -> &'static Made {
         static MADE: OnceLock<Made> = OnceLock::new();
-        let recipe = Recipe { seed: 40, options: Options { dead_ends: false, ..Options::default() }, edits: Vec::new() };
+        let recipe = Recipe { seed: 40, options: Options { dead_ends: false, ..Options::python() }, edits: Vec::new() };
         MADE.get_or_init(|| make(&recipe).expect("seed 40 makes a level"))
     }
 
     /// What seed 40's tower could be joined to by a door on its storey at 551.
     pub fn tower_joins() -> &'static Candidates {
         static FOUND: OnceLock<Candidates> = OnceLock::new();
-        FOUND.get_or_init(|| candidates(&Recipe::new(40), "tower", 551).expect("the tower takes doors on 551"))
+        FOUND.get_or_init(|| candidates(&Recipe::python(40), "tower", 551).expect("the tower takes doors on 551"))
     }
 }

@@ -90,6 +90,8 @@ What kind of level (sweep, plan, build, batch and deadends all take these):
                              air, to a platform or another catwalk (default 0)
   --flooded P                the chance a room's floor is water, under railed walkways that join its
                              doors, with platforms and angled catwalks over it
+  --shaped P                 the chance each room big enough for it is an L or a U: a rectangle cut from
+                             it (default 0.1; 0: none)
   --site WxH                 cells; default 80x60 for grand, 64x48 for standard
   --dead-corridor N          a room that goes nowhere may be this many cells of corridor off a main area (8);
   --dead-walk N              and this many cells' walk in all, ramps and decks too (20);
@@ -615,6 +617,7 @@ pub fn report_json(r: &Report) -> Json {
         ("angled", json!(r.angled)),
         ("flooded", json!(r.flooded)),
         ("rafts", json!(r.rafts)),
+        ("shaped_rooms", json!(r.shaped_rooms)),
         ("empty_air", json!(r.empty_air)),
         ("largest_void", json!(r.largest_void)),
     ]) else {
@@ -632,7 +635,8 @@ pub fn report_json(r: &Report) -> Json {
 }
 
 /// The report's keys that are the Rust's own, after the Python's (which end with the score).
-pub const RUSTS_OWN: [&str; 11] = ["platforms", "galleries", "holes", "spans", "cellars", "islands", "angled", "flooded", "rafts", "empty_air", "largest_void"];
+pub const RUSTS_OWN: [&str; 12] =
+    ["platforms", "galleries", "holes", "spans", "cellars", "islands", "angled", "flooded", "rafts", "shaped_rooms", "empty_air", "largest_void"];
 
 /// A level's walks as walks.json holds them: name -> `[[x, y, z], [x, y, z, flags], ...]`.
 pub fn walks_json(lv: &Level) -> Json {
@@ -1307,7 +1311,7 @@ mod tests {
     /// wrote for the same seed (work/autolevel/ref/seed40, which is not kept in the repo).
     #[test]
     fn a_plans_files_hold_the_level() {
-        let recipe = Recipe::new(40);
+        let recipe = Recipe::python(40);
         let lv = recipe.generate().unwrap();
         let dir = std::env::temp_dir().join(format!("autolevel_cli_plan_{}", std::process::id()));
         let plan = write_plan(&lv, &recipe, &dir).unwrap();

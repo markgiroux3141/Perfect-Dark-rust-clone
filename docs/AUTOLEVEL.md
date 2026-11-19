@@ -390,7 +390,12 @@ object's names stay as the Python wrote them; run the tests again without it to 
 and look at the diff under `tests/key/`. Since a key was re-written, `autolevel_key.py` no
 longer writes it byte for byte; it still writes every case a later rule did not move.
 
-**Rules of the Rust's own** (each moved the keys when it came in, but the last):
+**Rules of the Rust's own** (each moved the keys when it came in, but floods and shapes):
+
+- **Shaped rooms are on by default** (2026-11-19, the user's call): `Options::shaped` is 0.1
+  (`level::SHAPED`), in rooms big enough (see "Shaped rooms"). As for floods, the keys did not move:
+  both key tests read their cases with `shaped: 0`, and every test that pins a seed's level uses
+  `Options::python`.
 
 - **Flooded rooms are on by default** (2026-11-19, the user's call): `Options::flooded` is 0.1
   (`level::FLOODED`), so a seed's level now has a flooded room where one falls (see "Flooded
@@ -2256,6 +2261,53 @@ down, and **on by default** (`level::FLOODED`, 0.1).
   player can), and it is drawn as the basins' water.
 - The walkways are a tree: a second way round (a loop over the water) comes only from the shortcut.
 - A flooded room's floor has no cover but its tanks.
+
+### Shaped rooms: a first try (2026-11-19)
+
+**The user's question (2026-11-19):** rooms that are not rectangles (an L, a U, any shape with
+square corners), carefully, as a test of whether it is worth it. The design talked through: the
+shape lives inside the lot (subtractive), so the scatter, the router and the Python's deck code
+are as they were; a union of lots in the scatter would change everything from seed 1 on.
+
+- **`--shaped P`** (the recipe's `shaped`, the editor's slider; **0.1 by default**, `level::SHAPED`,
+  the user's call: low, and only in rooms big enough): **each room where a cut fits**, with chance P
+  (its own stream "{seed}/{key}/shape"), has a rectangle cut from it (`level::shapes`,
+  `Space::cuts`): a corner (an L) or the middle of a side (a U), 30 to 45% of the room each way, its
+  arms `ARM` (5) cells across or more in a hall, `ARM_LOW` (3) in a room of one storey, two cells
+  clear of its pods' blocks and their ways in. Not a pod, spire, basin, atrium, cellar or cellar's
+  hall, nor a hall under 10 cells across or a room of one storey under `LOW_LEAST` (8), nor any room
+  of an empty start (drawn by hand: each is as it was drawn). (At first only the biggest hall
+  was shaped; the user liked `shaped1` and asked for it wherever it fits, 2026-11-19.) A shaped room
+  of one storey takes no notch or partition (`build::dress`).
+- **The cut is solid on every storey**: nobody's in the router (`route`: an id of its own, so no
+  door, stub, vent or corridor reaches it), not the room's (`Interior::cut`, `inside`, `holds`,
+  `built`, the ramps' `no_ramp`, `no_top`, `no_foot`), and out of the room's air in the plan
+  (`plans::boxes` subtracts it as a pod's block is: the walls round it are the carver's, the lamps
+  are per box). No window, drop or grate goes into or out of a shaped hall, and none is flooded.
+- **Decks** (`furnish::shape`, `shape_decks`, after `lay_decks`): laid along the rectangle's walls as
+  the Python lays them (inside the room only), then wherever a storey's deck touches the cut a
+  catwalk's depth of deck runs round the cut's inner walls, so a ring follows the L or the U round
+  its inner corners. Everything else works on the room's cells as it is. No grate's beam falls into
+  a shaped room (`build::openings`).
+- **A shape that can't be furnished** (towering seed 5: no set of ramps joined the colossal hall's
+  storeys round its cut) is furnished as its rectangle instead (`Build::furnish`'s caller): the cut
+  was nobody's, so no door or corridor minds. Report: `shaped_rooms`.
+- **Seeds 1-20 with `--shaped 1 --platforms 1 --angled 1`** (every room that fits, before the 8-cell
+  least for a room of one storey): grand, the same 20 levels, 91 shaped rooms; towering the same 18,
+  83; every walk passes. **By default (0.1):** grand 20 levels, 3 shaped rooms; towering 18, 3; every
+  walk passes.
+- **The tests pin `Options::python`** (`Recipe::python`): a seed's level with the Rust's own rooms
+  that are on by default (flooded, shaped) left out, so such a feature moves no pinned count. The
+  key tests, the Python's dead-end list, seed 40's counts in `autolevel_build`, `pd_import` and
+  `pd_edit`, the editor's fixture and its command-line tests (`--flooded 0 --shaped 0`) all use it.
+- **Test:** `shape::tests::a_shaped_room_is_an_l_or_a_u_and_nothing_stands_in_its_cut`.
+- **Arena:** `shaped1` (stage 112): seed 1 grand, shaped 1 (its colossal hall a U, its vast hall and
+  medium4 Ls), platforms 1, angled 1, holes 0.5.
+
+**Rough, and next:** the cut is dead solid (corridors and small rooms could use it, with doors on its
+inner walls); one cut a room (a T, a cross, a Z would take two); the layouts that assume a rectangle
+(galleries, a mezzanine) are clipped, not reshaped; the editor's plan view draws the lot's whole
+rectangle (the cut shows as air) and its room tool draws rectangles only.
 
 ## Risks
 

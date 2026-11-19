@@ -320,6 +320,13 @@ impl Grid {
                     g.mark((p.0, p.1, p.2, p.3), below, i);
                 }
             }
+            for (k, &cut) in s.cuts.iter().enumerate() {
+                // (cut from a shaped room: solid, nobody's, no door onto it)
+                let c = g.id(&format!("{}/cut{k}", s.key));
+                for z in LEVELS.iter().copied().filter(|&z| occupies(&s, z)) {
+                    g.mark(cut, z, c);
+                }
+            }
             if s.flood.is_some() {
                 // (a flooded room's, all of it)
                 if let Some(&below) = LEVELS.iter().rfind(|&&z| z < s.floor) {
@@ -1035,6 +1042,7 @@ pub(crate) mod tests {
             galleries: Vec::new(),
             cellar: None,
             flood: None,
+            cuts: Vec::new(),
         }
     }
 

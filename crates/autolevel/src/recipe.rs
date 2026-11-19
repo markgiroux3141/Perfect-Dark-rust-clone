@@ -52,7 +52,7 @@ pub const FORMAT: u32 = 1;
 pub const CEILINGS: [&str; 4] = ["plain", "ceiling_tile", "ceiling_dark", "grille"];
 
 /// The options by name, as the file and a command line spell them, in the file's order.
-pub const OPTIONS: [&str; 30] = [
+pub const OPTIONS: [&str; 31] = [
     "style",
     "washroom",
     "scale",
@@ -75,6 +75,7 @@ pub const OPTIONS: [&str; 30] = [
     "cellars",
     "angled",
     "flooded",
+    "shaped",
     "dead_ends",
     "dead_corridor",
     "dead_walk",
@@ -301,6 +302,8 @@ struct Opts {
     #[serde(skip_serializing_if = "Option::is_none")]
     flooded: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    shaped: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     dead_ends: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     dead_corridor: Option<i32>,
@@ -348,6 +351,7 @@ impl Opts {
             cellars: pick(all, o.cellars, base.cellars),
             angled: pick(all, o.angled, base.angled),
             flooded: pick(all, o.flooded, base.flooded),
+            shaped: pick(all, o.shaped, base.shaped),
             dead_ends: pick(all, o.dead_ends, base.dead_ends),
             dead_corridor: pick(all, o.dead_corridor, base.dead_corridor),
             dead_walk: pick(all, o.dead_walk, base.dead_walk),
@@ -403,6 +407,7 @@ impl Opts {
         set(&mut o.cellars, self.cellars);
         set(&mut o.angled, self.angled);
         set(&mut o.flooded, self.flooded);
+        set(&mut o.shaped, self.shaped);
         set(&mut o.dead_ends, self.dead_ends);
         set(&mut o.dead_corridor, self.dead_corridor);
         set(&mut o.dead_walk, self.dead_walk);
@@ -501,6 +506,11 @@ impl Recipe {
     /// A seed's level as it falls: the default options and no edits.
     pub fn new(seed: u64) -> Recipe {
         Recipe { seed, options: Options::default(), edits: Vec::new() }
+    }
+
+    /// A seed's level by `Options::python`: what a test pins.
+    pub fn python(seed: u64) -> Recipe {
+        Recipe { seed, options: Options::python(), edits: Vec::new() }
     }
 
     /// An empty start: no rooms until they are added, the seed only for how they are decorated.
@@ -825,6 +835,7 @@ mod tests {
             ("cellars", "0.5"),
             ("angled", "0.75"),
             ("flooded", "0.3"),
+            ("shaped", "0.5"),
             ("dead-ends", "false"),
             ("dead-corridor", "6"),
             ("dead_walk", "14"),

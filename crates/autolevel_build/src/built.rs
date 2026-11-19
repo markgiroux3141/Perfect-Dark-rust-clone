@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn a_recipe_is_built_with_its_rooms_and_openings() {
-        let b = make(&Recipe::new(40), true).unwrap();
+        let b = make(&Recipe::python(40), true).unwrap();
         // as the Blender build of seed 40: 61 rooms, 15,303 triangles
         assert_eq!((b.rooms.len(), b.rooms.iter().map(Room::triangles).sum::<usize>()), (61, 15303));
         assert!(b.baked && b.rooms.iter().any(|r| r.faces.iter().any(|f| f.colors.iter().any(|c| *c != [255; 3]))), "baked colours");
@@ -82,7 +82,7 @@ mod tests {
             assert!(b.rooms.iter().any(|r| r.key == o.low) && b.rooms.iter().any(|r| r.key == o.high), "{o:?}");
         }
         // and unbaked, the colours are white
-        let plain = make(&Recipe::new(40), false).unwrap();
+        let plain = make(&Recipe::python(40), false).unwrap();
         assert!(plain.rooms.iter().all(|r| r.faces.iter().all(|f| f.colors.iter().all(|c| *c == [255; 3]))));
     }
 }

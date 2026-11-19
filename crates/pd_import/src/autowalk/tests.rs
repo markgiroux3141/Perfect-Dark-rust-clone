@@ -39,7 +39,7 @@ fn seed_40_is_built_and_every_route_walks_in_this_process() {
     let res = SimWalk::res(&assets).expect("assets/");
 
     // `autolevel build 40`, walking with this walker as the program does.
-    let words: Vec<String> = ["build", "40", "--out", &dir.to_string_lossy(), "--root", &root.to_string_lossy(), "--jobs", "4"].map(str::to_owned).to_vec();
+    let words: Vec<String> = ["build", "40", "--flooded", "0", "--shaped", "0", "--out", &dir.to_string_lossy(), "--root", &root.to_string_lossy(), "--jobs", "4"].map(str::to_owned).to_vec();
     let args = cli::parse(&words, &|path| Err(format!("{path}: no recipes here"))).unwrap();
     let env = cli::Env { cwd: root.clone(), pd_walk: None };
     let open = |d: &Path| -> Result<Box<dyn Walker>, String> { Ok(Box::new(SimWalk::open(d, &assets, res.clone())?)) };

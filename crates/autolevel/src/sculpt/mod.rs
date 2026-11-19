@@ -380,6 +380,7 @@ fn finish(
                 galleries: Vec::new(),
                 cellar: None,
                 flood: None,
+                cuts: Vec::new(),
             })
         })
         .collect();

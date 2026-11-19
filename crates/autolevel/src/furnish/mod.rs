@@ -52,6 +52,7 @@ mod platforms;
 mod pod;
 mod rails;
 mod ramps;
+mod shape;
 #[cfg(test)]
 mod tests;
 
@@ -410,6 +411,10 @@ pub struct Interior {
     /// the floor; `flood`).
     pub flood: Option<i32>,
     pub rafts: Vec<Rect>,
+    /// A shaped room's cuts (`Space::cuts`) in half cells, and their cells: not the room's
+    /// (`shape`).
+    pub cuts: Vec<Rect>,
+    pub cut: Cells,
 }
 
 impl std::fmt::Debug for Interior {
@@ -423,7 +428,9 @@ impl Interior {
     /// pods are left out).
     pub fn new(s: &Space, doors: &[Door], pods: &[Space], rng: PyRandom, access: &[(String, Access)], how: Setup) -> Interior {
         let (x0, y0, x1, y1) = s.rect_h();
-        let room = rect_cells((x0, y0, x1, y1));
+        let cuts: Vec<Rect> = s.cuts.iter().map(|c| (2 * c.0, 2 * c.1, 2 * c.2, 2 * c.3)).collect();
+        let cut: Cells = cuts.iter().flat_map(|&c| rect_cells(c)).collect();
+        let room: Cells = rect_cells((x0, y0, x1, y1)).into_iter().filter(|c| !cut.contains(c)).collect();
         let levels = s.storeys();
         let upper = levels[1..].to_vec();
         let empty = || levels.iter().map(|&z| (z, Cells::new())).collect::<BTreeMap<i32, Cells>>();
@@ -500,6 +507,8 @@ impl Interior {
             forced_side: how.hole_side,
             flood: s.flood,
             rafts: Vec::new(),
+            cuts,
+            cut,
         }
     }
 
@@ -519,14 +528,14 @@ impl Interior {
         self.access.iter().find(|(k, _)| k == pod).map(|(_, a)| a)
     }
 
-    /// Is a half cell inside the room's walls?
+    /// Is a half cell inside the room's walls? (Not in a shaped room's cut.)
     pub(crate) fn inside(&self, c: Cell) -> bool {
-        self.x0 <= c.0 && c.0 < self.x1 && self.y0 <= c.1 && c.1 < self.y1
+        self.x0 <= c.0 && c.0 < self.x1 && self.y0 <= c.1 && c.1 < self.y1 && !self.cut.contains(&c)
     }
 
     /// Is a rectangle of half cells (not an empty one) all inside the room's walls?
     pub(crate) fn holds(&self, r: Rect) -> bool {
-        self.x0 <= r.0 && r.2 <= self.x1 && self.y0 <= r.1 && r.3 <= self.y1
+        self.x0 <= r.0 && r.2 <= self.x1 && self.y0 <= r.1 && r.3 <= self.y1 && !self.cuts.iter().any(|&c| overlap(c, r))
     }
 
     /// The floor just inside each door on storey `z`, `depth` deep and a half cell wider each side.
@@ -556,6 +565,7 @@ impl Interior {
         }
         self.lay_pool()?;
         self.lay_decks();
+        self.shape_decks();
         self.place_ramps(40)?;
         if !self.connected() {
             return Err(format!("{}: doors don't all join", self.s.key));

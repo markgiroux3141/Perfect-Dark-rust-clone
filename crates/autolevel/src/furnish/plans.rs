@@ -16,7 +16,7 @@ impl Interior {
     pub fn boxes(&self) -> Vec<Box3> {
         let s = &self.s;
         let main = box3(s.x0 as f64, s.y0 as f64, s.x1 as f64, s.y1 as f64, s.floor, s.top);
-        let shells: Vec<Box3> = self
+        let mut shells: Vec<Box3> = self
             .pods
             .iter()
             .map(|p| {
@@ -24,6 +24,8 @@ impl Interior {
                 box_h(shell_rect(p, s), lo, hi)
             })
             .collect();
+        // a shaped room's cuts: solid from its floor to its top
+        shells.extend(s.cuts.iter().map(|c| box3(c.0 as f64, c.1 as f64, c.2 as f64, c.3 as f64, s.floor, s.top)));
         let mut out = if shells.is_empty() { vec![main] } else { subtract(main, &shells) };
         if let Some(p) = s.pool {
             out.push(box3(p.0 as f64, p.1 as f64, p.2 as f64, p.3 as f64, p.4, s.floor));

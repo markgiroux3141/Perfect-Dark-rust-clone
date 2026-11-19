@@ -798,7 +798,7 @@ mod tests {
     #[test]
     fn a_whole_level_is_written() {
         use autolevel::level::{generate, Options};
-        let lv = generate(40, &Options::default()).unwrap();
+        let lv = generate(40, &Options::python()).unwrap();
         let (polys, _) = crate::geometry::polys(&lv, &KIT).unwrap();
         let rooms = crate::mesh::emit(&lv, &polys, &KIT).unwrap();
         // the textures are the ROM's, and not this crate's: the game's pool, dumped into a folder as a

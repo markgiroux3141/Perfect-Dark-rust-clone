@@ -28,7 +28,7 @@ pub fn windows(lv: &Level) -> Vec<Window> {
             for (z, cells) in &pc.cells {
                 let z = *z;
                 for hall in sp {
-                    if !hall.host.is_empty() || hall.area() < 30 || !(hall.floor <= z && storey(z).1 <= hall.top) {
+                    if !hall.host.is_empty() || !hall.cuts.is_empty() || hall.area() < 30 || !(hall.floor <= z && storey(z).1 <= hall.top) {
                         continue;
                     }
                     let it = lv.interior(&hall.key);

@@ -127,8 +127,12 @@ mod tests {
 
     #[test]
     fn the_list_is_the_pythons_line_for_line() {
-        assert_eq!(fixture::seed40().dead.text(), python(include_str!("../../autolevel/tests/deadlist/deadends_seed40.txt")));
-        let seven = make(&Recipe::new(7)).unwrap();
+        // (the Python's levels: none of the Rust's own rooms that are on by default, flooded or shaped)
+        let python_level = |seed: u64| {
+            make(&Recipe { seed, options: autolevel::level::Options { flooded: 0.0, shaped: 0.0, ..Default::default() }, edits: Vec::new() }).unwrap()
+        };
+        assert_eq!(python_level(40).dead.text(), python(include_str!("../../autolevel/tests/deadlist/deadends_seed40.txt")));
+        let seven = python_level(7);
         assert_eq!(seven.dead.text(), python(include_str!("../../autolevel/tests/deadlist/deadends_seed7.txt")));
         // a room left out by the pass is in the list as the rooms fell, and not in the level
         assert!(seven.dead.before.iter().any(|e| e.end.rooms.contains(&"small2".to_string())));

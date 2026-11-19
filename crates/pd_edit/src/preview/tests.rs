@@ -25,7 +25,7 @@ fn root(name: &str) -> PathBuf {
 }
 
 fn seed40(root: &Path) -> Preview {
-    Preview::make(&gen::Recipe::new(40), &assets(), root).expect("seed 40 makes a level")
+    Preview::make(&gen::Recipe::python(40), &assets(), root).expect("seed 40 makes a level")
 }
 
 fn res() -> Arc<WorldRes> {
@@ -135,7 +135,7 @@ fn a_preview_leaves_custom_and_the_levels_folder_as_they_were() {
     let root = root("untouched");
     let pv = seed40(&root);
     // made again after an edit, and through the thread the window uses
-    let mut edited = gen::Recipe::new(40);
+    let mut edited = gen::Recipe::python(40);
     edited.edits.push(Edit::Layout { room: "colossal".into(), layout: "ring".into() });
     let job = Job::spawn(edited, assets(), root.clone());
     let ring = loop {
@@ -270,7 +270,7 @@ fn an_edit_gives_another_preview_and_a_walker_is_put_back_on_a_floor() {
     let root = root("edit");
     let (pv, res) = (seed40(&root), res());
     // medium1 moved ten cells east (the edit a drag of its box makes)
-    let mut moved = gen::Recipe::new(40);
+    let mut moved = gen::Recipe::python(40);
     moved.edits.push(Edit::Move { room: "medium1".into(), to: (60, 29) });
     let pv2 = Preview::make(&moved, &assets(), &root).unwrap();
     let was = pv.rooms.iter().find(|r| r.key == "medium1").unwrap();
