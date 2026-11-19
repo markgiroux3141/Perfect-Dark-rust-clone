@@ -98,7 +98,7 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
         }
     }
     for up in &rooms {
-        if up.decks.is_some() || up.pool.is_some() || o.drops == 0 {
+        if up.decks.is_some() || up.pool.is_some() || up.flood.is_some() || o.drops == 0 {
             continue;
         }
         let mut aprons = Cells::new();
@@ -107,7 +107,13 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
         }
         for low in &rooms {
             // (at most one empty storey between them: a shaft, not a chute)
-            if low.key == up.key || low.tall() || low.pool.is_some() || low.decks.is_some() || !(0 < up.floor - low.top && up.floor - low.top <= 320) {
+            if low.key == up.key
+                || low.tall()
+                || low.pool.is_some()
+                || low.flood.is_some()
+                || low.decks.is_some()
+                || !(0 < up.floor - low.top && up.floor - low.top <= 320)
+            {
                 continue;
             }
             let (x0, y0) = (up.x0.max(low.x0) + 1, up.y0.max(low.y0) + 1);
@@ -240,7 +246,7 @@ fn more_drops<'a>(
     use crate::storeys::index;
     let grid = &net.grid;
     for up in rooms {
-        if up.decks.is_some() || up.pool.is_some() || holed.contains(up.key.as_str()) || lit.contains(up.key.as_str()) {
+        if up.decks.is_some() || up.pool.is_some() || up.flood.is_some() || holed.contains(up.key.as_str()) || lit.contains(up.key.as_str()) {
             continue;
         }
         let mut aprons = Cells::new();
@@ -251,7 +257,13 @@ fn more_drops<'a>(
             if holed.contains(up.key.as_str()) {
                 break;
             }
-            if low.key == up.key || low.pool.is_some() || low.decks.is_some() || lit.contains(low.key.as_str()) || holed.contains(low.key.as_str()) {
+            if low.key == up.key
+                || low.pool.is_some()
+                || low.flood.is_some()
+                || low.decks.is_some()
+                || lit.contains(low.key.as_str())
+                || holed.contains(low.key.as_str())
+            {
                 continue;
             }
             if up.floor - low.top <= 0 || index(up.floor) - index(low.floor) > crate::furnish::MAX_FALL {
@@ -366,7 +378,7 @@ pub fn dress(s: &Space, o: &Options, rng: &mut PyRandom) -> Dress {
         cover = if s.towers() { "none" } else { "lanes" };
     }
     let mut shape = None;
-    if o.shapes && !s.tall() && s.host.is_empty() && s.pool.is_none() && s.area() >= 20 {
+    if o.shapes && !s.tall() && s.host.is_empty() && s.pool.is_none() && s.flood.is_none() && s.area() >= 20 {
         let x = rng.random();
         shape = if x < 0.3 {
             Some("notch")

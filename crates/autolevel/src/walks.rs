@@ -202,6 +202,7 @@ pub fn walks(lv: &mut Level) -> Result<(), String> {
         let below = rect_cells((2 * (wx + dx), 2 * (wy + dy), 2 * (wx + dx) + 2, 2 * (wy + dy) + 2));
         // (only where stepping through would land on the hall's floor)
         if s.pool.is_some()
+            || it.flood.is_some()
             || it.upper.iter().any(|q| meets(&below, &it.deck[q]) || meets(&below, &it.roof[q]) || meets(&below, &it.shell[q]))
             || it.ramps.iter().any(|r| meets(&r.cells(), &below))
             || it.cover.iter().any(|c| meets(&rect_cells((c.0, c.1, c.2, c.3)), &below))
@@ -216,6 +217,9 @@ pub fn walks(lv: &mut Level) -> Result<(), String> {
     // water is not a floor
     for (key, z) in &lv.pools {
         let s = lv.space(key);
+        if lv.interior(key).flood.is_some() {
+            continue; // (a flooded room's: `!flood_`, below)
+        }
         let pool = s.pool.unwrap_or_else(|| panic!("{key} has no pool"));
         let (px0, py0, px1, py1) = (pool.0 as f64, pool.1 as f64, pool.2 as f64, pool.3 as f64);
         let bx = bounds(&lv.interior(key).bridge);
@@ -230,6 +234,35 @@ pub fn walks(lv: &mut Level) -> Result<(), String> {
             vec![Step::at((xa, py0 - 1.0, s.floor)), Step::at((xa, (py0 + py1) / 2.0, *z))]
         };
         set(&mut walks, format!("!pool_{key}"), out);
+    }
+    // nor is a flooded room's: from a walkway over its rail into the water, where it is widest
+    for (key, it) in &lv.interiors {
+        let Some(water) = it.flood else { continue };
+        let z0 = it.levels[0];
+        let wet = |c: Cell| it.pool.contains(&c) && !it.extra_solids.iter().any(|t| rect_cells((t.0, t.1, t.2, t.3)).contains(&c));
+        let mut best: Option<(i32, Node, (f64, f64))> = None;
+        for b in it.blocks(z0) {
+            for &(dx, dy) in &DIRS {
+                // the two cells beyond the block's side, and how much water lies past them
+                let first = |k: i32| {
+                    [(0, 1), (1, 1)].map(|(i, _)| {
+                        if dx != 0 {
+                            (if dx > 0 { b.0 + 1 + k } else { b.0 - k }, b.1 + i)
+                        } else {
+                            (b.0 + i, if dy > 0 { b.1 + 1 + k } else { b.1 - k })
+                        }
+                    })
+                };
+                let deep = (1..=8).take_while(|&k| first(k).iter().all(|c| wet(*c))).count() as i32;
+                if deep >= 3 && best.as_ref().is_none_or(|(d, _, _)| deep > *d) {
+                    let (mx, my, _) = middle((b.0, b.1, z0));
+                    best = Some((deep, (b.0, b.1, z0), (mx + dx as f64 * 1.5, my + dy as f64 * 1.5)));
+                }
+            }
+        }
+        if let Some((_, from, to)) = best {
+            set(&mut walks, format!("!flood_{key}"), vec![Step::at(middle(from)), Step::at((to.0, to.1, water))]);
+        }
     }
     lv.walks = walks;
     Ok(())

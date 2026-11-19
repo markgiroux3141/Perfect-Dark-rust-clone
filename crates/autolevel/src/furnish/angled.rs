@@ -326,7 +326,7 @@ impl Interior {
 
     /// Every angled catwalk on storey `z` from the edges of `from`, at every angle of `ANGLES`.
     fn casts(&self, z: i32, from: &Cells, kind: &'static str) -> Vec<Angled> {
-        let (deck, blocked, blocks) = (&self.deck[&z], self.blocked(z), self.blocks(z));
+        let (deck, blocked, blocks) = (self.decked(z), self.blocked(z), self.blocks(z));
         let mut out = Vec::new();
         for e in self.edges(from, deck, &blocked) {
             for deg in ANGLES {
@@ -346,29 +346,31 @@ impl Interior {
         let isle = rng.random() < self.angled_share;
         let short: Vec<(i32, bool)> = self.upper.iter().map(|&z| (z, rng.random() < self.angled_share)).collect();
         if isle {
-            self.lay_island();
+            let up = self.upper.clone();
+            self.lay_island(&up);
         }
         for (z, go) in short {
-            if go && !self.deck[&z].is_empty() {
+            if go && !self.decked(z).is_empty() {
                 self.lay_shortcut(z);
             }
         }
     }
 
-    /// An island at the emptiest spot that takes `FEWEST` spokes or more (see the module).
-    fn lay_island(&mut self) {
+    /// An island on one of `storeys` at the emptiest spot that takes `FEWEST` spokes or more (see
+    /// the module).
+    pub(super) fn lay_island(&mut self, storeys: &[i32]) {
         let band = self.band;
         // (clear air round it on its storey, emptiness, storey, rectangle), the emptiest first
         let mut isles: Vec<(i32, f64, i32, Rect)> = Vec::new();
-        for &z in &self.upper {
-            if self.deck[&z].is_empty() {
+        for &z in storeys {
+            if self.decked(z).is_empty() {
                 continue;
             }
             // nothing built over or under it within two storeys (it floats), nothing at its
             // height within `CLEAR` (nobody steps onto it), and the more air round it the better
             let (soft, hard) = self.built(Some(z));
             let near = Sums::new(self, &soft.union(&hard).copied().collect());
-            let level: Cells = self.deck[&z].union(&self.blocked(z)).copied().collect();
+            let level: Cells = self.decked(z).union(&self.blocked(z)).copied().collect();
             let t = Sums::new(self, &level);
             for (a, b) in ISLANDS.map(|(a, b)| (a * band, b * band)) {
                 let (lo_x, lo_y, hi_x, hi_y) = (self.x0 + band + CLEAR, self.y0 + band + CLEAR, self.x1 - band - CLEAR - a, self.y1 - band - CLEAR - b);
@@ -401,14 +403,16 @@ impl Interior {
             }
             tried.push((z, r));
             let isle = rect_cells(r);
-            self.deck.get_mut(&z).expect("a storey of the room").extend(isle.iter().copied());
+            self.decked_mut(z).extend(isle.iter().copied());
+            self.reflood();
             let spokes = self.spokes(z, &isle);
             if spokes.len() >= FEWEST {
                 self.islands.push((z, r));
                 self.angled.extend(spokes);
                 return;
             }
-            self.deck.get_mut(&z).expect("a storey of the room").retain(|c| !isle.contains(c));
+            self.decked_mut(z).retain(|c| !isle.contains(c));
+            self.reflood();
         }
     }
 
@@ -431,11 +435,11 @@ impl Interior {
     }
 
     /// The angled catwalk on storey `z` that saves the most walking, if it saves `SAVES` or more.
-    fn lay_shortcut(&mut self, z: i32) {
+    pub(super) fn lay_shortcut(&mut self, z: i32) {
         let g = self.nav();
         let mut from: HashMap<Node, HashMap<Node, u32>> = HashMap::new();
         let mut best: Option<(f64, Angled)> = None;
-        for s in self.casts(z, &self.deck[&z].clone(), "shortcut") {
+        for s in self.casts(z, &self.decked(z).clone(), "shortcut") {
             let (a, b) = (s.ends[0].node, s.ends[1].node);
             let d = from.entry(a).or_insert_with(|| steps(&g, a));
             let saved = d.get(&b).map_or(JOINS, |&k| k as f64 / 2.0 - s.cells());
@@ -539,7 +543,7 @@ mod tests {
     /// pillar, another angled catwalk, a pit's landing.
     fn in_the_way(it: &Interior, s: &Angled) -> Option<&'static str> {
         let (z, f) = (s.z, &s.footprint);
-        if !(f.is_disjoint(&it.deck[&z]) && f.is_disjoint(&it.shell[&z]) && f.is_disjoint(&it.roof[&z])) {
+        if !(f.is_disjoint(it.decked(z)) && f.is_disjoint(&it.shell[&z]) && f.is_disjoint(&it.roof[&z])) {
             return Some("deck or a pod");
         }
         if it.ramps.iter().filter(|rp| rp.lo == z || rp.hi == z).any(|rp| !f.is_disjoint(&rp.cells()) || !f.is_disjoint(&rp.top) || !f.is_disjoint(&rp.foot)) {
@@ -605,9 +609,9 @@ mod tests {
                         let at = format!("seed {seed}: {key}@{z} {r:?}");
                         assert!((FEWEST..=MOST).contains(&here.len()), "{at}: {} spokes", here.len());
                         assert!(here.iter().all(|s| isle.contains(&(s.ends[0].node.0, s.ends[0].node.1))), "{at}: a spoke's first end is off the island");
-                        assert!(isle.is_subset(&it.deck[&z]), "{at}: the island is not deck");
+                        assert!(isle.is_subset(it.decked(z)), "{at}: the island is not deck");
                         // no other deck of its storey near enough to step onto
-                        let rest: Cells = it.deck[&z].difference(&isle).copied().collect();
+                        let rest: Cells = it.decked(z).difference(&isle).copied().collect();
                         assert!(rect_cells(grow(r, CLEAR)).is_disjoint(&rest), "{at}: deck within a step of the island");
                         // on the grid alone the island is a piece of its own; with its spokes a door reaches it
                         let mut grid = it.nav();

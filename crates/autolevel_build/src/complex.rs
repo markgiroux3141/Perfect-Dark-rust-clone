@@ -64,7 +64,7 @@ pub const VENT_SLOPE: i32 = 177;
 /// A ramp of one storey, 30.3 degrees: its rise, run and width.
 pub const RAMP: (i32, i32, i32) = (276, 472, 118);
 /// The railing on catwalk edges (276..362).
-pub const RAIL_HEIGHT: i32 = 86;
+pub const RAIL_HEIGHT: i32 = autolevel::furnish::RAIL;
 /// Units along a railing to one repeat of its texture (Complex's own railings: 0x190's 32 texels
 /// to about 78 units; the glass strips' 88, the same texture, is used for both).
 pub const RAIL_REPEAT: f64 = 88.0;

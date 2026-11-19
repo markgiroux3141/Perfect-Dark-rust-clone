@@ -82,7 +82,9 @@ Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
   AUTOLEVEL.md, "Atriums". Then angled catwalks (`--angled P`, 2026-11-19): an island reached only
   by angled spokes, and shortcuts across a hall's air between catwalks and platforms (arena
   `angled9`); AUTOLEVEL.md, "Angled catwalks". Next: angled ramps between storeys, platforms left
-  floating for them.
+  floating for them. Then flooded rooms (`--flooded P`, on by default at 0.1, the user's call): the
+  floor water under railed walkways joining the doors, rafts, angled catwalks and tanks (arena
+  `flooded13`); AUTOLEVEL.md, "Flooded rooms".
 
 - **Blank levels: your edit wins** (the user's, 2026-11-18; designed, chosen as the next step):
   start empty, draw rooms, and the generator remakes the rest round each edit, offering

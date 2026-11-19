@@ -11,6 +11,8 @@
 //! - ramps: every separate piece of deck gets an open 30 degree ramp down to the storey below,
 //!   found by trying every place it fits, with a landing two cells square at each end;
 //! - pool: a basin's water, in a pit, railed all round, under a bridge. Never a floor;
+//! - flood: a flooded room's water, all its floor but railed walkways joining its doors, with
+//!   rafts, angled catwalks and tanks (`Space::flood`; new in the Rust, none by default);
 //! - hole: a drop through the floor into the room underneath, railed on three sides;
 //! - shape: a single-storey room may have a corner filled in (an L) or a cross wall;
 //! - platforms: big squares of deck off the catwalks into a hall's emptiest air (by
@@ -41,6 +43,7 @@ use std::collections::{BTreeMap, BTreeSet};
 mod angled;
 mod cover;
 mod decks;
+mod flood;
 mod mend;
 mod nav;
 mod pits;
@@ -68,6 +71,8 @@ pub const RAMP_H: i32 = 8;
 pub const LAND: i32 = 4;
 /// Complex's glass strips, units high.
 pub const WINDOW: i32 = 94;
+/// The railing on catwalk edges and down ramps, units high (`complex::RAIL_HEIGHT`).
+pub const RAIL: i32 = 86;
 /// The least a hall's short side may be for a ring of catwalk on its first upper storey, h,
 pub const RING_MIN: i32 = 16;
 /// or for galleries down both long walls,
@@ -401,6 +406,10 @@ pub struct Interior {
     pub shapes: Vec<(i32, &'static str)>,
     /// `Setup::hole_side`.
     pub forced_side: Option<usize>,
+    /// A flooded room's water height (`Space::flood`), and the rafts laid in it (rectangles h, on
+    /// the floor; `flood`).
+    pub flood: Option<i32>,
+    pub rafts: Vec<Rect>,
 }
 
 impl std::fmt::Debug for Interior {
@@ -489,6 +498,8 @@ impl Interior {
             attempt: how.attempt,
             shapes: Vec::new(),
             forced_side: how.hole_side,
+            flood: s.flood,
+            rafts: Vec::new(),
         }
     }
 
@@ -534,7 +545,8 @@ impl Interior {
             let Some(acc) = self.access.iter().find(|(k, _)| *k == p.key).map(|(_, a)| a) else { continue };
             if acc.island && p.x1 - p.x0 >= 2 && p.y1 - p.y0 >= 2 {
                 let (cx, cy) = ((p.x0 + p.x1).div_euclid(2), (p.y0 + p.y1).div_euclid(2));
-                self.piers.push((2 * cx - 2, 2 * cy - 2, 2 * cx + 2, 2 * cy + 2, self.s.floor, shell_z(p, &self.s).0));
+                // (in a flooded room, from the water up)
+                self.piers.push((2 * cx - 2, 2 * cy - 2, 2 * cx + 2, 2 * cy + 2, self.flood.unwrap_or(self.s.floor), shell_z(p, &self.s).0));
             }
         }
         for d in &self.doors {
@@ -549,8 +561,13 @@ impl Interior {
             return Err(format!("{}: doors don't all join", self.s.key));
         }
         self.clear_under_ramps();
+        self.lay_flood()?;
+        if self.flood.is_some() && !self.connected() {
+            return Err(format!("{}: doors don't all join over the water", self.s.key));
+        }
         self.lay_platforms();
         self.lay_angled();
+        self.lay_tanks();
         self.lay_pits();
         self.lay_cover();
         let rails = self.lay_rails();

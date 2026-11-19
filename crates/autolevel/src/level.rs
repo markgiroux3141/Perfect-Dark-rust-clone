@@ -85,6 +85,9 @@ pub struct Options {
     /// catwalk storeys a shortcut across its air (`furnish::angled`; 0: none, as the Python). New
     /// in the Rust.
     pub angled: f64,
+    /// The chance a room's floor is water under railed walkways that join its doors, with
+    /// platforms and angled catwalks over it (`floods`, `furnish::flood`). New in the Rust.
+    pub flooded: f64,
     /// Join up, or cut short, every dead end longer than these (false: leave them):
     pub dead_ends: bool,
     /// cells of corridor to a room that goes nowhere (a camping spot may be that far off),
@@ -145,6 +148,7 @@ impl Default for Options {
             holes: 0.0,
             cellars: 0.0,
             angled: 0.0,
+            flooded: FLOODED,
             dead_ends: true,
             dead_corridor: 8,
             dead_walk: 20,
@@ -257,7 +261,45 @@ pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
         s.high.retain(|z| held.iter().any(|(h, f)| *h == s.key && f == z));
     }
     galleries(seed, o, &mut sp);
+    floods(seed, o, &mut sp);
     Spaces { sp, spin, access, dropped }
+}
+
+/// The chance a room is flooded unless told otherwise (`Options::flooded`; the user's call,
+/// 2026-11-19: on by default, low).
+pub const FLOODED: f64 = 0.1;
+
+/// How far a flooded room's water lies under its floor, units (half a cell: under the walkways'
+/// slabs, 40 deep).
+pub const FLOOD_DEPTH: i32 = 59;
+/// A flooded room's shorter side is at least this, cells.
+pub const FLOOD_NARROWEST: i32 = 5;
+
+/// Flooded rooms (`Options::flooded`): each room, with that chance from its own stream
+/// ("{seed}/{key}/flooded"), has its floor `FLOOD_DEPTH` under water (`Space::flood`), unless it
+/// is a pod, a spire, a basin, an atrium, a cellar or a cellar's hall, narrower than
+/// `FLOOD_NARROWEST`, or has a room under it where the water's pit would be. New in the Rust.
+pub fn floods(seed: u64, o: &Options, sp: &mut [Space]) {
+    if o.flooded <= 0.0 {
+        return;
+    }
+    let halls: Vec<String> = sp.iter().filter_map(|s| s.cellar.as_ref().map(|c| c.hall.clone())).collect();
+    let all: Vec<Space> = sp.to_vec();
+    for s in sp.iter_mut() {
+        let (w, d) = (s.x1 - s.x0, s.y1 - s.y0);
+        if !s.host.is_empty() || s.decks.is_some() || s.pool.is_some() || s.cellar.is_some() || halls.contains(&s.key) || w.min(d) < FLOOD_NARROWEST {
+            continue;
+        }
+        if matches!(s.kind, "spire" | "basin") || s.kind == crate::place::ATRIUM.name {
+            continue;
+        }
+        let water = s.floor - FLOOD_DEPTH;
+        let pit = (s.x0 - 1, s.y0 - 1, s.x1 + 1, s.y1 + 1);
+        let under = all.iter().any(|b| b.key != s.key && b.floor < s.floor && b.top + 39 > water - 40 && crate::scatter::rect_gap(pit, b.rect()) == (0, 0));
+        if !under && PyRandom::named(&format!("{seed}/{}/flooded", s.key)).random() < o.flooded {
+            s.flood = Some(water);
+        }
+    }
 }
 
 /// Cells a cellar keeps from its hall's walls, all round (a corridor's way past it, and the floor

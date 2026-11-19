@@ -128,7 +128,8 @@ fn siting(options: &Value) -> Siting {
 }
 
 fn options(options: &Value) -> Options {
-    let mut o = Options { siting: siting(options), ..Options::default() };
+    // (the Python's levels have no flooded rooms, which the Rust lays by default: `level::FLOODED`)
+    let mut o = Options { siting: siting(options), flooded: 0.0, ..Options::default() };
     if let Some(v) = options.get("walkway") {
         o.walkway = v.as_i64().unwrap() as i32;
     }

@@ -1,7 +1,7 @@
 //! Rails on every edge that drops, the side of a hole that stays open, and the sloped rails down
 //! ramps. From `furnish.py` (`lay_rails`, `hole_approach`, `_hole_side`, `ramp_rails`).
 
-use super::{bounds, common, runs, Interior, Node};
+use super::{bounds, common, runs, Interior, Node, RAIL};
 use crate::cells::{Cell, Cells};
 use crate::plan::{cells as units, Point3};
 use crate::py;
@@ -141,15 +141,31 @@ impl Interior {
                 } else {
                     (y0..y1).map(|y| (if sg < 0 { x0 - 1 } else { x1 }, y)).collect()
                 };
-                if !cs.iter().all(|c| self.inside(*c)) || 2 * common(&cs, &deck) >= cs.len() {
+                if !cs.iter().all(|c| self.inside(*c)) {
                     continue;
                 }
+                // (how far up it runs: to the top, or short of it)
+                let mut to = 1.0;
+                if 2 * common(&cs, &deck) >= cs.len() {
+                    // alongside the deck it climbs to, whose own rail is there. But from a flooded
+                    // floor (new in the Rust) the water is under that deck: railed from the foot
+                    // to where its top meets the deck's rail (under which nobody passes), or all
+                    // the way where the deck runs only part of it
+                    if self.flood.is_none() || r.lo != self.levels[0] || cs.is_disjoint(&self.pool) {
+                        continue;
+                    }
+                    if common(&cs, &deck) == cs.len() {
+                        to = ((r.hi - r.lo - RAIL) as f64 / (r.hi - r.lo) as f64).clamp(0.0, 1.0);
+                    }
+                }
+                let z = r.lo + ((r.hi - r.lo) as f64 * to).round() as i32;
+                let along = |a: f64, b: f64| units(a + (b - a) * to);
                 if dx != 0 {
                     let edge = units((if sg < 0 { y0 } else { y1 }) as f64 / 2.0);
-                    out.push(((units(fx), edge, r.lo), (units(tx), edge, r.hi), (0, sg, 0)));
+                    out.push(((units(fx), edge, r.lo), (along(fx, tx), edge, z), (0, sg, 0)));
                 } else {
                     let edge = units((if sg < 0 { x0 } else { x1 }) as f64 / 2.0);
-                    out.push(((edge, units(fy), r.lo), (edge, units(ty), r.hi), (sg, 0, 0)));
+                    out.push(((edge, units(fy), r.lo), (edge, along(fy, ty), z), (sg, 0, 0)));
                 }
             }
         }

@@ -2055,6 +2055,7 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
                 high: Vec::new(),
                 galleries: Vec::new(),
                 cellar: None,
+                flood: None,
             }
         })
         .collect();

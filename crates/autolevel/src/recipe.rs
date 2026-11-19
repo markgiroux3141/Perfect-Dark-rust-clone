@@ -52,7 +52,7 @@ pub const FORMAT: u32 = 1;
 pub const CEILINGS: [&str; 4] = ["plain", "ceiling_tile", "ceiling_dark", "grille"];
 
 /// The options by name, as the file and a command line spell them, in the file's order.
-pub const OPTIONS: [&str; 29] = [
+pub const OPTIONS: [&str; 30] = [
     "style",
     "washroom",
     "scale",
@@ -74,6 +74,7 @@ pub const OPTIONS: [&str; 29] = [
     "holes",
     "cellars",
     "angled",
+    "flooded",
     "dead_ends",
     "dead_corridor",
     "dead_walk",
@@ -298,6 +299,8 @@ struct Opts {
     #[serde(skip_serializing_if = "Option::is_none")]
     angled: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    flooded: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     dead_ends: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     dead_corridor: Option<i32>,
@@ -344,6 +347,7 @@ impl Opts {
             holes: pick(all, o.holes, base.holes),
             cellars: pick(all, o.cellars, base.cellars),
             angled: pick(all, o.angled, base.angled),
+            flooded: pick(all, o.flooded, base.flooded),
             dead_ends: pick(all, o.dead_ends, base.dead_ends),
             dead_corridor: pick(all, o.dead_corridor, base.dead_corridor),
             dead_walk: pick(all, o.dead_walk, base.dead_walk),
@@ -398,6 +402,7 @@ impl Opts {
         set(&mut o.holes, self.holes);
         set(&mut o.cellars, self.cellars);
         set(&mut o.angled, self.angled);
+        set(&mut o.flooded, self.flooded);
         set(&mut o.dead_ends, self.dead_ends);
         set(&mut o.dead_corridor, self.dead_corridor);
         set(&mut o.dead_walk, self.dead_walk);
@@ -819,6 +824,7 @@ mod tests {
             ("holes", "0.5"),
             ("cellars", "0.5"),
             ("angled", "0.75"),
+            ("flooded", "0.3"),
             ("dead-ends", "false"),
             ("dead-corridor", "6"),
             ("dead_walk", "14"),

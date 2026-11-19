@@ -390,7 +390,12 @@ object's names stay as the Python wrote them; run the tests again without it to 
 and look at the diff under `tests/key/`. Since a key was re-written, `autolevel_key.py` no
 longer writes it byte for byte; it still writes every case a later rule did not move.
 
-**Rules of the Rust's own** (each moved the keys when it came in):
+**Rules of the Rust's own** (each moved the keys when it came in, but the last):
+
+- **Flooded rooms are on by default** (2026-11-19, the user's call): `Options::flooded` is 0.1
+  (`level::FLOODED`), so a seed's level now has a flooded room where one falls (see "Flooded
+  rooms"). The keys did not move: they are the Python's levels, which have none, and both key tests
+  read their cases with `flooded: 0`.
 
 - **Railings are Complex's metal railing** (2026-11-19, the user's call). The Python hung 0x748,
   a blue perforated mesh, on every catwalk edge and down every open ramp side; Complex has that
@@ -2199,6 +2204,58 @@ platforms of any kind, are as welcome.
   left floating on purpose and reached by angled catwalks only.
 - Its ends cut along one edge each: none meets a deck at a corner, and none crosses another.
 - Nothing is placed on islands yet (weapons, spawns): the importer's placement treats them as any floor.
+
+### Flooded rooms: water under railed walkways (2026-11-19)
+
+**The user's idea (2026-11-19):** a room whose floor is water, a good place for platforms and
+catwalks: walkways and platforms at floor level joining its doors, the water recessed a little
+and never walked on, at a low chance. The user's calls: railed all round, the water half a cell
+down, and **on by default** (`level::FLOODED`, 0.1).
+
+- **Which rooms** (`level::floods`, in `stage_rooms`): each room, with chance `--flooded P` (the
+  recipe's `flooded`, the editor's slider) from its own stream ("{seed}/{key}/flooded"), unless it
+  is a pod, a spire, a basin, an atrium, a cellar or a cellar's hall, under 5 cells across, or has a
+  room under it where the pit would be. `Space::flood` is the water's height, `FLOOD_DEPTH` (59) under
+  the floor. A flooded room keeps its upper doors (a basin's `pool` would allow its floor's only);
+  the router keeps the storey under it clear (`route`), and no drop or grate goes into or out of it.
+- **Furnished dry, then flooded** (`furnish::flood`, `lay_flood`, after the ramps and the cut under
+  them, before the platforms): so its decks and ramps are as they would be. Then **walkways** a
+  catwalk wide join every floor target (a door's pad, a pod's way in, a ramp's foot), each the
+  shortest way to those laid that turns least (`walkway`: `TURN`), never under a ramp from the floor;
+  **rafts** (`lay_rafts`), platforms in the water off a walkway along one side, jutting into the
+  widest water (one for each 150 cells of it, at most 3); an **island** with chance 1/2 and the best
+  **shortcut**, both angled catwalks at floor level (`angled`, over `decked`: the floor's walkways),
+  from the room's own stream ("{seed}/{key}/pits/flood"), whatever `--angled` says; then **tanks** in
+  the water (`lay_tanks`, as a basin's, after the angled catwalks). The water is the rest
+  (`Interior::pool`, `reflood`); the walkways are the basin's `bridge` (floor slabs over the pit,
+  `plans`), the pit is the room's box from the water to its floor, less its pods' blocks, which
+  stand on its ground; its pods' piers stand in the water.
+- **Never walked on**: the rails run round every walkway's edge over the water (`lay_rails`, as round
+  a pool); a ramp from the floor is railed down every open side over the water, even alongside the
+  deck it climbs to (where a dry room's is not: the deck has its own rail, and the floor under it is
+  only a step off), from its foot to where its rail's top meets the deck's (`ramp_rails`; the user
+  found the water reached off such a side in `flooded13`, 2026-11-19); the walk `!flood_<room>` steps over one into the widest water and must fail; the importer
+  leaves the water's waypoints out (nobody gets back from it). The room's walks cross its walkways.
+- **The keys** pin the Python's levels, which have none: both key tests pass `flooded: 0` (`options`),
+  so they still check every stage exactly. The levels the Rust makes by default change where a room
+  floods.
+- **Seeds 1-20 by default (0.1):** grand, the same 20 levels, 11 flooded rooms in 8 of them;
+  towering, the same 18 levels, 14 in 10; every walk passes. With `--flooded 1 --angled 1` (every room
+  that can be): grand 20 levels, 158 flooded rooms, towering 18 levels, 231; every walk passes. Of
+  the arenas, `angled9`, `atrium1`, `autolevel1x4`, `towering9`, `towering9g`, `towering9h`,
+  `towering9p` and `trek1` now have a flooded room and were imported again.
+- **Test:** `flood::tests::a_flooded_floor_is_water_under_railed_walkways_that_join_its_doors`
+  (grand and towering seeds 1-6 with every room flooded: the same seeds make levels; walkway or water,
+  never both; every floor target on the walkways, none under a ramp; the doors join; rails on the
+  floor; rafts are walkway, tanks in the water, piers on it; no drop into it).
+- **Arena:** `flooded13` (stage 111): seed 13 grand, flooded 0.4, angled 1: the colossal hall, the vast
+  hall, the tower and a medium room flooded, 4 rafts, an island.
+
+**Rough, and next:**
+- The water is a floor 59 down, kept off by rails: nothing happens to a player who gets into it (no
+  player can), and it is drawn as the basins' water.
+- The walkways are a tree: a second way round (a loop over the water) comes only from the shortcut.
+- A flooded room's floor has no cover but its tanks.
 
 ## Risks
 

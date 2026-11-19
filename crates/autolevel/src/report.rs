@@ -108,6 +108,9 @@ pub struct Report {
     /// Islands (`furnish::angled`), and the angled catwalks: their spokes and the shortcuts.
     pub islands: usize,
     pub angled: usize,
+    /// Flooded rooms (`furnish::flood`), and their rafts.
+    pub flooded: usize,
+    pub rafts: usize,
     pub empty_air: f64,
     pub largest_void: f64,
 }
@@ -208,6 +211,8 @@ pub fn report(lv: &Level) -> Report {
         cellars: lv.drops.iter().filter(|d| d.3.is_some() && lv.space(&d.1).cellar.is_some()).count(),
         islands: its().map(|it| it.islands.len()).sum(),
         angled: its().map(|it| it.angled.len()).sum(),
+        flooded: its().filter(|it| it.flood.is_some()).count(),
+        rafts: its().map(|it| it.rafts.len()).sum(),
         empty_air: 0.0,
         largest_void: 0.0,
     };

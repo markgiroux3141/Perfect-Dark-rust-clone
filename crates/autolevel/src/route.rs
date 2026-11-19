@@ -320,6 +320,12 @@ impl Grid {
                     g.mark((p.0, p.1, p.2, p.3), below, i);
                 }
             }
+            if s.flood.is_some() {
+                // (a flooded room's, all of it)
+                if let Some(&below) = LEVELS.iter().rfind(|&&z| z < s.floor) {
+                    g.mark(s.rect(), below, i);
+                }
+            }
             if !s.host.is_empty() {
                 // its shell in the hall: no doors there
                 let shell = shell_cells(&s, find(&g.sp, &s.host));
@@ -1028,6 +1034,7 @@ pub(crate) mod tests {
             high: Vec::new(),
             galleries: Vec::new(),
             cellar: None,
+            flood: None,
         }
     }
 

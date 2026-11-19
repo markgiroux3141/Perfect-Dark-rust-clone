@@ -28,6 +28,12 @@ impl Interior {
         if let Some(p) = s.pool {
             out.push(box3(p.0 as f64, p.1 as f64, p.2 as f64, p.3 as f64, p.4, s.floor));
         }
+        if let Some(water) = self.flood {
+            // a flooded room's pit, all of it but under its pods (which stand on its ground)
+            let pit = box3(s.x0 as f64, s.y0 as f64, s.x1 as f64, s.y1 as f64, water, s.floor);
+            let under: Vec<Box3> = self.pods.iter().filter(|p| p.floor == s.floor).map(|p| box_h(shell_rect(p, s), water, s.floor)).collect();
+            out.extend(if under.is_empty() { vec![pit] } else { subtract(pit, &under) });
+        }
         out
     }
 

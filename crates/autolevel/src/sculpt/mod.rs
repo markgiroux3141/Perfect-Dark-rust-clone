@@ -379,6 +379,7 @@ fn finish(
                 high: Vec::new(),
                 galleries: Vec::new(),
                 cellar: None,
+                flood: None,
             })
         })
         .collect();

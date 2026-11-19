@@ -53,6 +53,9 @@ pub struct Space {
     pub galleries: Vec<i32>,
     /// A cellar's hall and its hatch (`level::cellars`). None for every other room.
     pub cellar: Option<Cellar>,
+    /// A flooded room's water: its height (`level::floods`, `furnish::flood`). Its whole floor is
+    /// water under railed walkways that join its doors. None for every other room. New in the Rust.
+    pub flood: Option<i32>,
 }
 
 /// A cellar: a room a storey under a hall, inside its footprint, joined to it by a hatch in the
@@ -288,6 +291,7 @@ pub fn spaces(lots: &[Lot]) -> Vec<Space> {
             high: Vec::new(),
             galleries: Vec::new(),
             cellar: None,
+            flood: None,
         })
         .collect();
     // a towering hall's high storeys: the ones of its pods over the storeys ramped inside it

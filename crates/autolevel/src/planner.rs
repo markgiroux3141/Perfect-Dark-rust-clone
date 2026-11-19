@@ -161,6 +161,9 @@ pub fn plan(lv: &mut Level, rng: &mut PyRandom) -> Result<(), String> {
         if let Some(pool) = s.pool {
             pools.push((s.key.clone(), pool.4));
         }
+        if let Some(water) = it.flood {
+            pools.push((s.key.clone(), water)); // (a flooded room's)
+        }
         ramp_rails.extend(it.ramp_rails().into_iter().map(|(a, b, f)| (s.key.clone(), a, b, f)));
         let x = rng.random(); // most rooms are lit as Complex is; some dim, a few bright
         if scheme != "low" && x < 0.3 {

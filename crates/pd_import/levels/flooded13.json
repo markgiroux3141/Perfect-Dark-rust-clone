@@ -1,0 +1,23 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "flooded13",
+  "name": "Grand 13 Flooded",
+  "group": "Autolevel",
+  "stagenum": 111,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 13,
+      "options": {
+        "flooded": 0.4,
+        "angled": 1.0
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}
