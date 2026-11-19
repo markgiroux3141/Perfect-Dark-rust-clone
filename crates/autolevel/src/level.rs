@@ -78,6 +78,9 @@ pub struct Options {
     /// The chance each platform has a drop through it to what stands under it (`furnish::pits`;
     /// 0: none, as the Python). New in the Rust.
     pub holes: f64,
+    /// The chance a hall on the ground floor has a cellar under it, a drop through a hatch and a
+    /// ladder back (`cellars`; 0: none, as the Python). New in the Rust.
+    pub cellars: f64,
     /// Join up, or cut short, every dead end longer than these (false: leave them):
     pub dead_ends: bool,
     /// cells of corridor to a room that goes nowhere (a camping spot may be that far off),
@@ -136,6 +139,7 @@ impl Default for Options {
             platforms: 0.0,
             galleries: 0,
             holes: 0.0,
+            cellars: 0.0,
             dead_ends: true,
             dead_corridor: 8,
             dead_walk: 20,
@@ -205,7 +209,17 @@ pub fn stage_spaces(seed: u64, o: &Options) -> Result<Spaces, String> {
 /// The rest of `stage_spaces`, from the lots as placed: the rooms, the spires' spirals and the
 /// pods' ways in. (Its own stage so that a recipe can change the lots by hand first.)
 pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
-    let mut sp = spaces(placed);
+    let (placed, made) = cellars(seed, o, placed);
+    let mut sp = spaces(&placed);
+    for (key, c) in made {
+        let h = |r: crate::cells::Rect| (2 * r.0, 2 * r.1, 2 * r.2, 2 * r.3);
+        // no door of either room opens onto the hatch (the hall's, nor a cellar door under it)
+        let hall = sp.iter_mut().find(|s| s.key == c.hall).expect("a cellar's hall");
+        hall.clear.extend(crate::cells::rect_cells(crate::furnish::grow(h(c.hatch), 2)));
+        let s = sp.iter_mut().find(|s| s.key == key).expect("the cellar");
+        s.clear.extend(crate::cells::rect_cells(h(c.hatch)));
+        s.cellar = Some(c);
+    }
     let mut spin = Vec::new();
     for s in sp.iter_mut().filter(|s| s.kind == "spire") {
         let mut rng = PyRandom::named(&format!("{seed}/{}/spiral", s.key));
@@ -239,6 +253,67 @@ pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
     }
     galleries(seed, o, &mut sp);
     Spaces { sp, spin, access, dropped }
+}
+
+/// Cells a cellar keeps from its hall's walls, all round (a corridor's way past it, and the floor
+/// in front of the hall's doors).
+pub const CELLAR_INSET: i32 = 3;
+
+/// The lots with cellars added (`Options::cellars`), and each cellar's hall and hatch. A hall
+/// (a colossal, vast or tower lot on the ground floor) takes one with that chance, drawn from its
+/// own stream ("{seed}/{key}/cellar"): a `medium` room on the storey under it (-276, one storey
+/// tall), 4 to 9 cells by 4 to 8, inside its footprint `CELLAR_INSET` cells from its walls, clear
+/// of every other lot by the scatter's rule. Its hatch is two cells square against one of its
+/// walls, a cell from its corners, and clear of the hall's pods. Twenty tries, then none. New in
+/// the Rust; with the option at 0 (the default) the lots are as they were.
+pub fn cellars(seed: u64, o: &Options, lots: &[Lot]) -> (Vec<Lot>, Vec<(String, crate::space::Cellar)>) {
+    use crate::scatter::{clear, rect_gap};
+    let mut out = lots.to_vec();
+    let mut made = Vec::new();
+    if o.cellars <= 0.0 {
+        return (out, made);
+    }
+    for hall in lots.iter().filter(|l| l.host.is_empty() && l.floor == 0 && matches!(l.kind, "colossal" | "vast" | "tower")) {
+        let mut rng = PyRandom::named(&format!("{seed}/{}/cellar", hall.key));
+        if rng.random() >= o.cellars {
+            continue;
+        }
+        let (room_w, room_d) = (hall.x1 - hall.x0 - 2 * CELLAR_INSET, hall.y1 - hall.y0 - 2 * CELLAR_INSET);
+        if room_w < 4 || room_d < 4 {
+            continue;
+        }
+        let pods: Vec<&Lot> = lots.iter().filter(|p| p.host == hall.key).collect();
+        for _ in 0..20 {
+            let w = rng.randint(4, room_w.min(9) as i64) as i32;
+            let d = rng.randint(4, room_d.min(8) as i64) as i32;
+            let x = rng.randint((hall.x0 + CELLAR_INSET) as i64, (hall.x1 - CELLAR_INSET - w) as i64) as i32;
+            let y = rng.randint((hall.y0 + CELLAR_INSET) as i64, (hall.y1 - CELLAR_INSET - d) as i64) as i32;
+            let key = format!("cellar{}", made.len() + 1);
+            let lot = Lot { key: key.clone(), kind: "medium", x0: x, y0: y, x1: x + w, y1: y + d, floor: -276, top: -40, host: String::new() };
+            if !out.iter().all(|q| q.key == hall.key || clear(&lot, q, crate::place::GAP)) {
+                continue;
+            }
+            let side = rng.below(4) as usize;
+            let along = if side.is_multiple_of(2) { w } else { d };
+            let a = rng.randint(1, (along - 3) as i64) as i32;
+            let hatch = match side {
+                0 => (x + a, y, x + a + 2, y + 2),
+                1 => (x + w - 2, y + a, x + w, y + a + 2),
+                2 => (x + a, y + d - 2, x + a + 2, y + d),
+                _ => (x, y + a, x + 2, y + a + 2),
+            };
+            if pods.iter().any(|p| {
+                let (gx, gy) = rect_gap(hatch, p.rect());
+                gx.max(gy) < 1
+            }) {
+                continue;
+            }
+            out.push(lot);
+            made.push((key, crate::space::Cellar { hall: hall.key.clone(), hatch, side }));
+            break;
+        }
+    }
+    (out, made)
 }
 
 /// Storeys between a gallery and any other high storey of its hall, or the top of the storeys

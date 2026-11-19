@@ -395,6 +395,17 @@ pub fn graph(sp: &[Space], net: &Network, interiors: &[(String, Arc<Interior>)],
             ways.push(Way { a, b, kind: "drop", length: 0.0, pa: top, pb: land, oneway: true, route: None });
         }
     }
+    // a cellar's ladder, one way up to the floor beside its hatch (`Space::cellar`)
+    for (up, low, _, side) in drops {
+        let (Some(side), Some(c)) = (*side, room(sp, low).cellar.as_ref()) else { continue };
+        let (Some((_, above)), Some(under), Some(over)) = (interiors.iter().find(|(k, _)| k == up), navs.get(low), navs.get(up)) else { continue };
+        let (Some(foot), top) = (under.nearest(c.foot(0).0, c.foot(0).1, room(sp, low).floor), above.hole_approach(side)) else { continue };
+        if over.piece.contains_key(&top) {
+            let (under, over) = (under.clone(), over.clone());
+            let (a, b) = (places.of(sp, &under, low, foot), places.of(sp, &over, up, top));
+            ways.push(Way { a, b, kind: "ladder", length: 2.0, pa: foot, pb: top, oneway: true, route: None });
+        }
+    }
     // a drop inside a room, through one of its platforms (`furnish::pits`)
     for (key, it) in interiors {
         let Some(nav) = navs.get(key).cloned() else { continue };

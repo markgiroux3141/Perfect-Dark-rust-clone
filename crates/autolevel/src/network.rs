@@ -20,6 +20,8 @@ pub struct Network {
     pub grid: Grid,
     /// (pod, host): joined inside the host by the furnisher.
     pub pods: Vec<(String, String)>,
+    /// (cellar, hall): joined by the hatch and its ladder (`Space::cellar`), not a corridor.
+    pub hatches: Vec<(String, String)>,
     /// Spanning-tree pairs that found no corridor.
     pub failed: Vec<(String, String)>,
 }
@@ -37,7 +39,7 @@ impl Network {
 
     /// Every pair of rooms joined: by a route, then pods and their hosts.
     pub fn edges(&self) -> Vec<(String, String)> {
-        self.grid.routes.iter().map(|r| (r.a.room.clone(), r.b.room.clone())).chain(self.pods.iter().cloned()).collect()
+        self.grid.routes.iter().map(|r| (r.a.room.clone(), r.b.room.clone())).chain(self.pods.iter().cloned()).chain(self.hatches.iter().cloned()).collect()
     }
 
     pub fn doors(&self, key: &str) -> &[Door] {
@@ -52,6 +54,7 @@ impl Network {
         }
         self.grid.drop(key);
         self.pods.retain(|(a, b)| a != key && b != key);
+        self.hatches.retain(|(a, b)| a != key && b != key);
     }
 }
 
@@ -186,12 +189,23 @@ pub fn connect(sp: Vec<Space>, band: i32, c: &Connect) -> Network {
         deg[a] += 1;
         deg[b] += 1;
     }
+    // a cellar is joined to its hall's floor by its hatch: no corridor is needed for it (one may
+    // still come as a loop). No seed's level has one unless asked for (`Options::cellars`).
+    let hatches: Vec<(usize, usize)> = (0..n).filter_map(|i| g.sp[i].cellar.as_ref().map(|c| (i, at(&g, &c.hall)))).collect();
+    for &(a, b) in &hatches {
+        let root = find(&mut parent, b);
+        let from = find(&mut parent, a);
+        parent[from] = root;
+        deg[a] += 1;
+        deg[b] += 1;
+    }
     let by_keys = |g: &Grid, p: (usize, usize), q: (usize, usize)| g.sp[p.0].key.cmp(&g.sp[q.0].key).then_with(|| g.sp[p.1].key.cmp(&g.sp[q.1].key));
     let mut cand: Vec<(f64, usize, usize)> = Vec::new();
     for i in 0..n {
         for j in i + 1..n {
             let (a, b) = (&g.sp[i], &g.sp[j]);
-            if a.host != b.key && b.host != a.key {
+            let under = |p: &Space, q: &Space| p.cellar.as_ref().is_some_and(|c| c.hall == q.key);
+            if a.host != b.key && b.host != a.key && !under(a, b) && !under(b, a) {
                 cand.push((separation(a, b, c.level_change), i, j));
             }
         }
@@ -367,7 +381,8 @@ pub fn connect(sp: Vec<Space>, band: i32, c: &Connect) -> Network {
     let name = |g: &Grid, (a, b): (usize, usize)| (g.sp[a].key.clone(), g.sp[b].key.clone());
     let pods = pods.iter().map(|&e| name(&g, e)).collect();
     let failed = failed.iter().map(|&e| name(&g, e)).collect();
-    Network { grid: g, pods, failed }
+    let hatches = hatches.into_iter().map(|(a, b)| (g.sp[a].key.clone(), g.sp[b].key.clone())).collect();
+    Network { grid: g, pods, hatches, failed }
 }
 
 /// How many pieces the level is in (1: every room reaches every other).

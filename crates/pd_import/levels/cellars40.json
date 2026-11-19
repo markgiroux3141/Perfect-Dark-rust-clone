@@ -1,0 +1,23 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "cellars40",
+  "name": "Cellars 40",
+  "group": "Autolevel",
+  "stagenum": 109,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 40,
+      "options": {
+        "cellars": 1.0,
+        "holes": 0.5
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

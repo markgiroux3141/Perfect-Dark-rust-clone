@@ -108,6 +108,9 @@ impl Interior {
         if self.hole.is_empty() {
             return None;
         }
+        if let Some(side) = self.forced_side {
+            return Some(side); // a cellar's hatch: the ladder's side
+        }
         let first = self.door_nodes().into_iter().flatten().next()?;
         let (cx, cy) = ((self.x0 + self.x1) as f64 / 2.0, (self.y0 + self.y1) as f64 / 2.0);
         let off = |s: &usize| {

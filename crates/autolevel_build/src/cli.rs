@@ -83,6 +83,8 @@ What kind of level (sweep, plan, build, batch and deadends all take these):
                              base given a catwalk of their own, reached only from outside (default 0)
   --holes P                  the chance each platform has a drop through it to what stands under it: a
                              railed hole, or a span crossed by unrailed catwalks (default 0)
+  --cellars P                the chance a hall on the ground floor has a cellar under it: a hatch in its
+                             floor to drop down, a ladder back up (default 0)
   --site WxH                 cells; default 80x60 for grand, 64x48 for standard
   --dead-corridor N          a room that goes nowhere may be this many cells of corridor off a main area (8);
   --dead-walk N              and this many cells' walk in all, ramps and decks too (20);
@@ -603,6 +605,7 @@ pub fn report_json(r: &Report) -> Json {
         ("galleries", json!(r.galleries)),
         ("holes", json!(r.holes)),
         ("spans", json!(r.spans)),
+        ("cellars", json!(r.cellars)),
         ("empty_air", json!(r.empty_air)),
         ("largest_void", json!(r.largest_void)),
     ]) else {
@@ -620,7 +623,7 @@ pub fn report_json(r: &Report) -> Json {
 }
 
 /// The report's keys that are the Rust's own, after the Python's (which end with the score).
-pub const RUSTS_OWN: [&str; 6] = ["platforms", "galleries", "holes", "spans", "empty_air", "largest_void"];
+pub const RUSTS_OWN: [&str; 7] = ["platforms", "galleries", "holes", "spans", "cellars", "empty_air", "largest_void"];
 
 /// A level's walks as walks.json holds them: name -> `[[x, y, z], [x, y, z, flags], ...]`.
 pub fn walks_json(lv: &Level) -> Json {

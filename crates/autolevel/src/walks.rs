@@ -150,6 +150,12 @@ pub fn walks(lv: &mut Level) -> Result<(), String> {
             set(&mut walks, format!("drop_{up}_{low}"), out);
         }
     }
+    // up a cellar's ladder, from its foot to the hall's floor beside the hatch
+    for (up, low, _, side) in &lv.drops {
+        let (Some(side), Some(c)) = (side, lv.space(low).cellar.as_ref()) else { continue };
+        let (foot, top) = (middle(c.foot(lv.space(low).floor)), middle(lv.interior(up).hole_approach(*side)));
+        set(&mut walks, format!("ladder_{low}_{up}"), vec![Step::at(foot), Step::at((top.0, top.1, lv.space(up).floor))]);
+    }
     // walk to a pit's open side (or onto a span's plank), step off, land on what is under it
     for (_, it) in &lv.interiors {
         for (n, p) in it.pits.iter().enumerate() {
@@ -276,6 +282,15 @@ pub fn views(lv: &mut Level) {
                 set(&mut views, format!("gallery_{}_{z}", s.key), (x, y, z, cx, cy));
             }
         }
+    }
+    // each cellar's ladder from across the cellar
+    for (_, low, _, side) in &lv.drops {
+        let (Some(_), Some(c)) = (side, lv.space(low).cellar.as_ref()) else { continue };
+        let s = lv.space(low);
+        let ((ax, ay), (bx, by), (dx, dy)) = c.ladder();
+        let (lx, ly) = ((ax + bx) / 2.0, (ay + by) / 2.0);
+        let back = (((s.x1 - s.x0).min(s.y1 - s.y0)) as f64 - 1.0).min(3.0);
+        set(&mut views, format!("ladder_{low}"), (lx + dx as f64 * back, ly + dy as f64 * back, s.floor, lx, ly));
     }
     // each pit from where it is stepped off, looking across it
     for (_, it) in &lv.interiors {

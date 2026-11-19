@@ -2089,6 +2089,51 @@ hall).
   1-20 with platforms, galleries and holes: every walk passes.
 - **Test:** `climbs::tests::a_towering_towers_storeys_take_turns_and_every_catwalk_is_reached`.
 
+### Cellars: a hatch down, a ladder up (2026-11-19)
+
+**The user's ask (2026-11-19):** rooms rarely lie under rooms (the scatter keeps a lot only clear
+of the rest, and nothing aims for one under another: grand seeds 1-10 have three overlapping
+pairs), so few drops; put a room under a room on purpose, its way out a ramp if it fits, else a
+climbable grate (Complex has one) against a wall, which fits nearly anywhere. Floor thickness was
+already there: a storey is 236 of room and a 40 slab, the plan is air, and a drop's shaft is an air
+box from the lower room's ceiling to the upper's floor (`planner`), its sides drawn.
+
+- **`--cellars P`** (the recipe's `cellars`, the editor's slider; 0 by default: every seed as it
+  was). **`level::cellars`**, in `stage_rooms` before `spaces()`: a colossal, vast or tower lot on
+  the ground floor takes, with chance P (its own stream "{seed}/{key}/cellar"), a `medium` lot
+  `cellar<n>` on the storey under it (-276 to -39), 4-9 by 4-8 cells, `CELLAR_INSET` (3) cells in
+  from its walls, clear of every other lot by the scatter's rule; twenty tries. **`Space::cellar`**
+  (`Cellar { hall, hatch, side }`): the hatch two cells square against one of the cellar's walls,
+  a cell from its corners, clear of the hall's pods. Neither room's doors open onto it
+  (`Space::clear`).
+- **The router** joins a cellar to its hall's floor like a pod (`Network::hatches`, in `edges` and
+  the spanning tree): it needs no corridor (one may come as a loop; seed 40 gets three).
+- **The hatch** is a drop (`build::openings`, before the Python's, always): the hall's floor hole,
+  its open side forced to the ladder's (`Setup::hole_side`, `Interior::forced_side`; the floor
+  there kept clear), railed on the other three.
+- **The ladder** (`geometry::ladder`): the kit's `ladder` (the palette's 21st: Complex's grille
+  0x745, as its own ladder in room 24 is, a cell wide, a storey tall, tiles 0x44) a cell wide on
+  the cellar's wall under the open side, `LADDER_OFF` (2) in front of it, from the cellar's floor
+  through the shaft to the hall's floor (the shaft part in the hall's zone). The importer flags its
+  tiles `GEOFLAG_LADDER` (`pd_import::autolevel`), which `bondwalk` climbs (players) and the
+  waypoint maker links one way up (simulants: they climb, never descend; down is the drop).
+- **Walks**: `drop_<hall>_<cellar>` (in through the hatch) and `ladder_<cellar>_<hall>` (from the
+  ladder's foot, `Cellar::foot`, to the floor beside the hatch: walked on `pd_sim`, it climbs);
+  views `drop_<hall>_hole`, `ladder_<cellar>`. The dead-end graph has the ladder as a one-way way
+  up; the dead-end pass joins a cellar if it can and never takes it away (`holds_cellar`). Report:
+  `cellars`.
+- **Seeds 1-20 with `--cellars 1 --holes 0.5`:** grand 20 levels, 40 cellars; towering 18 levels
+  (4 and 14 fail with or without), 36 cellars; every walk passes, the ladders' too.
+- **Test:** `build::tests::a_cellar_lies_under_its_hall_with_a_hatch_down_and_a_ladder_up`.
+- **Arena:** `cellars40` (stage 109): seed 40 grand, `cellars: 1`, `holes: 0.5`.
+
+**Rough, and next:**
+- No open ramp up through the hall's floor yet (a slot about 1 by 6 cells): the ladder only.
+- Only colossal, vast and tower halls take cellars; a grand tower is seldom wide enough (it needs
+  10 cells each way).
+- Simulants get up by the waypoint maker's ladder link; the importer's report counts the ladder walk
+  as joined.
+
 - The user's other questions with this (2026-11-19): a large base kind (the pod kinds are 3-5 by
   3-4 cells and 2-3 by 2; the scatter's rule allows a fifth of a hall's floor), and a base shared
   by two halls a cell apart (a pod has one host now). Not started.

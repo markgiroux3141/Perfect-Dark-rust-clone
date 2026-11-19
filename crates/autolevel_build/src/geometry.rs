@@ -276,7 +276,34 @@ pub fn finish(lv: &Level, kit: &Kit, planned: Vec<Poly>) -> Result<(Vec<Poly>, V
         let surf = kit.surface("rail", Some(a.2.min(b.2) as f64), Some((cx::RAIL_REPEAT, height)))?;
         out.extend(csg::rail(f3(*a), f3(*b), height, room, surf, f3(*facing), Some(cx::RAIL_REPEAT)));
     }
+    // a cellar's ladder (`Space::cellar`), where its hatch is
+    for (up, low, _, side) in &lv.drops {
+        if let (Some(_), Some(c)) = (side, lv.space(low).cellar.as_ref()) {
+            out.extend(ladder(kit, c, lv.space(low), lv.space(up))?);
+        }
+    }
     Ok((out, lit))
+}
+
+/// How far a ladder stands off its wall, units (it is drawn over it, and is the face a player
+/// climbs: `GEOFLAG_LADDER` on the importer's side).
+pub const LADDER_OFF: f64 = 2.0;
+
+/// A cellar's ladder: the grille, a cell wide, on the wall under the hatch's open side, from the
+/// cellar's floor through the shaft to the hall's (the part in the shaft is the hall's: the
+/// planner gives the hall the shaft's air). Complex's own ladder is the grille on a wall a cell
+/// wide and a storey tall (`ref`'s tiles 0x44 in room 24).
+pub fn ladder(kit: &Kit, c: &autolevel::space::Cellar, cellar: &autolevel::space::Space, hall: &autolevel::space::Space) -> Result<Vec<Poly>, String> {
+    let ((ax, ay), (bx, by), (dx, dy)) = c.ladder();
+    let at = |x: f64, y: f64, z: i32| [C(x) as f64 + dx as f64 * LADDER_OFF, C(y) as f64 + dy as f64 * LADDER_OFF, z as f64];
+    let surf = kit.surface("ladder", None, None)?;
+    let mut out = Vec::new();
+    for (z0, z1, zone) in [(cellar.floor, cellar.top, &cellar.key), (cellar.top, hall.floor, &hall.key)] {
+        let (v0, v1) = (z0 as f64 / 118.11, z1 as f64 / 118.11);
+        let quad = [at(ax, ay, z0), at(bx, by, z0), at(bx, by, z1), at(ax, ay, z1)];
+        out.push(csg::oriented(&quad, [dx as f64, dy as f64, 0.0], surf, zone, Some(&[(0.0, v0), (1.0, v0), (1.0, v1), (0.0, v1)])));
+    }
+    Ok(out)
 }
 
 /// Every polygon of the level: the plan in Complex's grammar, the lit rooms cut along their

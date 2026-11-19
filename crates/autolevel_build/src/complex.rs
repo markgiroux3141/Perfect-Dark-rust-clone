@@ -88,7 +88,7 @@ const SEE_THROUGH: &[&str] = &["Transparent", "CullBoth", "ClampT"];
 /// the user (2026-11-19): a railing is Complex's metal one, 0x190 (the glass strips' texture, which
 /// Complex runs along nearly every catwalk and ledge). The mesh is kept for the walkable floor
 /// grates ("mesh"), which are floors, not railings.
-pub const PALETTE: [Paint; 20] = [
+pub const PALETTE: [Paint; 21] = [
     paint("floor", "073E", &[], "m0", 39.37),
     paint("grate", "073E", &["CullBoth"], "m14CullBoth", 39.37),
     paint("base_pipe", "0740", &["ClampT"], "m8ClampT", 118.11),
@@ -109,6 +109,8 @@ pub const PALETTE: [Paint; 20] = [
     Paint { role: "window", preset: "0190", flags: SEE_THROUGH, name: "m13TransparentCullBothClampT", scale: (88.0, 94.0) },
     Paint { role: "rail", preset: "0190", flags: SEE_THROUGH, name: "m18TransparentCullBothClampT", scale: (RAIL_REPEAT, 86.0) },
     Paint { role: "mesh", preset: "0748", flags: SEE_THROUGH, name: "m19TransparentCullBothClampT", scale: (43.0, 86.0) },
+    // a cellar's ladder: Complex's own is this grille on a wall (the importer flags it climbable)
+    paint("ladder", "0745", &[], "m20", 118.11),
 ];
 
 /// Complex, as the generator dresses its levels.

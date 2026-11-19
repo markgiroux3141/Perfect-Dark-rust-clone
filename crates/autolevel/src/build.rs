@@ -88,6 +88,15 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
     let (mut drops, mut grates): (Vec<DropHole>, Vec<Grate>) = (Vec::new(), Vec::new());
     let (mut lit, mut holed): (BTreeSet<&str>, BTreeSet<&str>) = (BTreeSet::new(), BTreeSet::new());
     let mut pairs: Vec<(&str, &str, Vec<Cell>)> = Vec::new();
+    // a cellar's hatch first: always there, where the cellar's hatch was drawn (`level::cellars`)
+    for s in &rooms {
+        if let Some(c) = &s.cellar {
+            let hall = rooms.iter().find(|h| h.key == c.hall).expect("a cellar's hall");
+            drops.push((hall.key.clone(), s.key.clone(), c.hatch));
+            holed.insert(hall.key.as_str());
+            lit.insert(s.key.as_str());
+        }
+    }
     for up in &rooms {
         if up.decks.is_some() || up.pool.is_some() || o.drops == 0 {
             continue;
@@ -694,6 +703,7 @@ impl Build {
                     holes: self.o.holes,
                     stream: stream("pits"),
                     attempt,
+                    hole_side: self.spaces().iter().find_map(|c| c.cellar.as_ref().filter(|c| c.hall == *key && h.is_some()).map(|c| c.side)),
                 };
                 match Interior::new(s, doors, pods, rng, &self.access, setup).build() {
                     Ok(it) => return Ok((it, h.is_some())),
@@ -754,7 +764,7 @@ impl Build {
                     Some(rooms) => Some(rooms),
                     // a towering hall's high pod (or gallery) is the end of its climb: joined if it
                     // can be, never taken away
-                    None if self.holds_high_pod(e) || self.holds_gallery(&g, e) => None,
+                    None if self.holds_high_pod(e) || self.holds_gallery(&g, e) || self.holds_cellar(e) => None,
                     None => self.shorten(e)?,
                 };
                 touched.extend(done.unwrap_or_default());
@@ -764,6 +774,12 @@ impl Build {
             }
         }
         Ok(())
+    }
+
+    /// Does this dead end hold a cellar (`Space::cellar`)? Joined if it can be, else kept: its
+    /// hatch and ladder are its way in and out.
+    fn holds_cellar(&self, e: &DeadEnd) -> bool {
+        e.rooms.iter().any(|k| self.net.grid.space(k).cellar.is_some())
     }
 
     /// Does this dead end hold a towering hall's gallery (`Space::galleries`)? Joined if it can be,
@@ -973,6 +989,43 @@ mod tests {
     }
 
     #[test]
+    fn a_cellar_lies_under_its_hall_with_a_hatch_down_and_a_ladder_up() {
+        use crate::level::{generate, CELLAR_INSET};
+        use crate::place::Scale;
+        let (mut levels, mut cellars) = (0, 0);
+        for (scale, seeds) in [(Scale::Grand, 1..=6), (Scale::Towering, 1..=4)] {
+            for seed in seeds {
+                let mut o = Options::default();
+                o.siting.scale = scale;
+                let plain = generate(seed, &o);
+                o.cellars = 1.0;
+                let lv = generate(seed, &o);
+                assert_eq!(plain.is_ok(), lv.is_ok(), "seed {seed}: cellars change whether a level is made");
+                let Ok(lv) = lv else { continue };
+                levels += 1;
+                for s in lv.spaces().iter().filter(|s| s.cellar.is_some()) {
+                    cellars += 1;
+                    let c = s.cellar.as_ref().unwrap();
+                    let hall = lv.space(&c.hall);
+                    assert_eq!((s.floor, s.top, hall.floor), (-276, -39, 0), "seed {seed}: {} is no storey under {}", s.key, c.hall);
+                    assert!(
+                        hall.x0 + CELLAR_INSET <= s.x0 && s.x1 <= hall.x1 - CELLAR_INSET && hall.y0 + CELLAR_INSET <= s.y0 && s.y1 <= hall.y1 - CELLAR_INSET
+                    );
+                    let drop = lv.drops.iter().find(|d| d.0 == c.hall && d.1 == s.key);
+                    let drop = drop.unwrap_or_else(|| panic!("seed {seed}: {} has no hatch", s.key));
+                    assert_eq!((drop.2, drop.3), (c.hatch, Some(c.side)), "seed {seed}: {}'s hatch", s.key);
+                    for walk in [format!("drop_{}_{}", c.hall, s.key), format!("ladder_{}_{}", s.key, c.hall)] {
+                        assert!(lv.walks.iter().any(|(k, _)| *k == walk), "seed {seed}: no walk {walk}");
+                    }
+                }
+            }
+        }
+        assert!(levels >= 8 && cellars >= 12, "{levels} levels, {cellars} cellars");
+        // none unless asked for
+        assert!(generate(40, &Options::default()).unwrap().spaces().iter().all(|s| s.cellar.is_none()));
+    }
+
+    #[test]
     fn a_room_over_another_gets_a_drop_into_it() {
         let rooms = || vec![space("up", (0, 0, 8, 6), 276, 512, "medium"), room("low", (0, 0, 8, 6)), room("side", (12, 0, 18, 6))];
         let mut b = build(rooms(), Options::default());
@@ -1002,7 +1055,7 @@ mod tests {
             let r = grid.route(grid.space(a), grid.space(b), &Terms::default()).unwrap();
             grid.commit(r);
         }
-        let mut b = Build::new(5, o, Network { grid, pods: Vec::new(), failed: Vec::new() }, Vec::new(), Vec::new());
+        let mut b = Build::new(5, o, Network { grid, pods: Vec::new(), hatches: Vec::new(), failed: Vec::new() }, Vec::new(), Vec::new());
         b.refresh().unwrap();
         b
     }
@@ -1047,7 +1100,13 @@ mod tests {
         let lay = spiral::layout(spire.rect_h(), &spire.storeys(), 0, 1, 2).unwrap();
         (spire.preset, spire.decks, spire.clear) = (lay.ramps, Some(lay.decks), lay.clear);
         let grid = crate::route::Grid::new(vec![spire, room("b", (14, 0, 20, 6))], 2);
-        let mut b = Build::new(5, Options::default(), Network { grid, pods: Vec::new(), failed: Vec::new() }, Vec::new(), vec![("spire".into(), (0, 1))]);
+        let mut b = Build::new(
+            5,
+            Options::default(),
+            Network { grid, pods: Vec::new(), hatches: Vec::new(), failed: Vec::new() },
+            Vec::new(),
+            vec![("spire".into(), (0, 1))],
+        );
         let s = |b: &Build| b.spaces()[0].clone();
         assert_eq!((s(&b).preset.len(), s(&b).door_levels()), (3, vec![0, 276, 551, 827]));
         b.respiral("spire", 551);

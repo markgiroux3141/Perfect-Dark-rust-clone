@@ -63,6 +63,7 @@ pub fn control(name: &str) -> (Control, &'static str) {
         "holes" => {
             (Share { lo: 0.0, hi: 1.0, step: 0.05 }, "the chance each platform has a drop through it: a railed hole, or a span crossed by unrailed catwalks")
         }
+        "cellars" => (Share { lo: 0.0, hi: 1.0, step: 0.05 }, "the chance a ground-floor hall has a cellar under it: a hatch to drop down, a ladder back up"),
         "dead_ends" => (Switch, "join up or cut short every dead end longer than the three limits below; off leaves them as they fall"),
         "dead_corridor" => (Whole { lo: 1, hi: 30, off: false }, "a room that goes nowhere may be this many cells of corridor off a main area"),
         "dead_walk" => (Whole { lo: 1, hi: 60, off: false }, "and this many cells' walk to its far end, ramps and decks too"),

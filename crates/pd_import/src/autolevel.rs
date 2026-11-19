@@ -276,6 +276,11 @@ pub fn level_source(r: &Recipe, s: &AutolevelSource, b: &Built, assets: &Path, r
                         if flags & GEOFLAG_FLOOR1 != 0 {
                             flags |= crawl;
                         }
+                        // a cellar's ladder (the kit's "ladder", Complex's grille on a wall): climbed,
+                        // by players and simulants, as Complex's own is (`GEOFLAG_LADDER`)
+                        if b.kit.palette[f.material].role == "ladder" {
+                            flags |= GEOFLAG_LADDER;
+                        }
                         collision.push(ColPoly { verts: p.to_vec(), flags, floortype: FLOORTYPE_DEFAULT, grab: false, floorcol, room: n })
                     }
                     None if is_ceiling(p) => ceilings.push((n, p)),

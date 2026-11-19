@@ -1027,6 +1027,7 @@ pub(crate) mod tests {
             preset: Vec::new(),
             high: Vec::new(),
             galleries: Vec::new(),
+            cellar: None,
         }
     }
 

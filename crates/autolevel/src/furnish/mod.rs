@@ -289,6 +289,9 @@ pub struct Setup {
     pub stream: String,
     /// Which attempt at furnishing the room this is (the first is 0).
     pub attempt: usize,
+    /// The side of the hole that stays open, if it is a cellar's hatch (the ladder's: a player
+    /// climbs out there). None: the furnisher chooses (`hole_side`).
+    pub hole_side: Option<usize>,
 }
 
 impl Default for Setup {
@@ -310,6 +313,7 @@ impl Default for Setup {
             holes: 0.0,
             stream: String::new(),
             attempt: 0,
+            hole_side: None,
         }
     }
 }
@@ -381,6 +385,8 @@ pub struct Interior {
     /// `decks::SHAPES`).
     pub attempt: usize,
     pub shapes: Vec<(i32, &'static str)>,
+    /// `Setup::hole_side`.
+    pub forced_side: Option<usize>,
 }
 
 impl std::fmt::Debug for Interior {
@@ -399,6 +405,12 @@ impl Interior {
         let upper = levels[1..].to_vec();
         let empty = || levels.iter().map(|&z| (z, Cells::new())).collect::<BTreeMap<i32, Cells>>();
         let (mut shell, mut roof) = (empty(), empty());
+        let mut keep = how.keep.clone();
+        if let (Some(side), Some(r)) = (how.hole_side, how.hole) {
+            // the floor a player climbs out onto, and steps in from (`pits::approach`)
+            let n = pits::approach(r, side, levels[0]);
+            keep.push((n.0 - 1, n.1 - 1, n.0 + 3, n.1 + 3));
+        }
         for p in pods {
             let cells: Cells = rect_cells(shell_rect(p, s)).intersection(&room).copied().collect();
             let i = index(p.floor);
@@ -450,7 +462,7 @@ impl Interior {
             extended: BTreeSet::new(),
             hole: how.hole.map_or_else(Cells::new, rect_cells),
             hole_open: None,
-            keep: how.keep,
+            keep,
             top: how.top,
             platform_share: how.platforms,
             platforms: Vec::new(),
@@ -459,6 +471,7 @@ impl Interior {
             pits: Vec::new(),
             attempt: how.attempt,
             shapes: Vec::new(),
+            forced_side: how.hole_side,
         }
     }
 

@@ -76,7 +76,8 @@ Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
   and filled with big platforms off the catwalks (`--platforms N`, arena `towering9p`).
   AUTOLEVEL.md, "Platforms". Then galleries (`--galleries N`): high storeys with no base given a
   catwalk of their own, climbed to from outside (arena `towering9g`). Then drops (`--holes P`):
-  holes and spans through platforms, and more drops between rooms (arena `towering9h`).
+  holes and spans through platforms, and more drops between rooms (arena `towering9h`). Then
+  cellars (`--cellars P`): a room under a hall, a hatch down and a ladder up (arena `cellars40`).
   AUTOLEVEL.md, "Drops". Next asked about: a large base kind, bases shared by two halls.
   AUTOLEVEL.md, "Atriums". Angled catwalks were discussed with it and left for later (a feature
   of their own).

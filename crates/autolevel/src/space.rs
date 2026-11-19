@@ -51,6 +51,45 @@ pub struct Space {
     /// Of those, the galleries: high storeys with no pod, a catwalk of their own reached from
     /// outside (`level::galleries`, `Options::galleries`). New in the Rust.
     pub galleries: Vec<i32>,
+    /// A cellar's hall and its hatch (`level::cellars`). None for every other room.
+    pub cellar: Option<Cellar>,
+}
+
+/// A cellar: a room a storey under a hall, inside its footprint, joined to it by a hatch in the
+/// hall's floor over one of the cellar's walls (a drop down) and a ladder up that wall (the way
+/// back). New in the Rust (docs/AUTOLEVEL.md, "Cellars").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Cellar {
+    /// The hall over it.
+    pub hall: String,
+    /// The hatch, cells: two cells square, against the wall the ladder is on.
+    pub hatch: Rect,
+    /// That wall of the cellar (0 south, 1 east, 2 north, 3 west): the hatch's open side in the
+    /// hall, where a player climbs out.
+    pub side: usize,
+}
+
+impl Cellar {
+    /// The nav block (2 x 2 h) at the ladder's foot, against its wall, on storey `z`.
+    pub fn foot(&self, z: i32) -> (i32, i32, i32) {
+        let (x0, y0, x1, y1) = (2 * self.hatch.0, 2 * self.hatch.1, 2 * self.hatch.2, 2 * self.hatch.3);
+        let (mx, my) = ((x0 + x1).div_euclid(2) - 1, (y0 + y1).div_euclid(2) - 1);
+        let (x, y) = [(mx, y0), (x1 - 2, my), (mx, y1 - 2), (x0, my)][self.side];
+        (x, y, z)
+    }
+
+    /// The ladder: its two ends along the wall, in cells (x, y), one cell wide in the middle of the
+    /// hatch's side, and the way it faces (into the cellar).
+    pub fn ladder(&self) -> ((f64, f64), (f64, f64), (i32, i32)) {
+        let (x0, y0, x1, y1) = (self.hatch.0 as f64, self.hatch.1 as f64, self.hatch.2 as f64, self.hatch.3 as f64);
+        let (mx, my) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        match self.side {
+            0 => ((mx - 0.5, y0), (mx + 0.5, y0), (0, 1)),
+            1 => ((x1, my - 0.5), (x1, my + 0.5), (-1, 0)),
+            2 => ((mx - 0.5, y1), (mx + 0.5, y1), (0, -1)),
+            _ => ((x0, my - 0.5), (x0, my + 0.5), (1, 0)),
+        }
+    }
 }
 
 impl Space {
@@ -248,6 +287,7 @@ pub fn spaces(lots: &[Lot]) -> Vec<Space> {
             preset: Vec::new(),
             high: Vec::new(),
             galleries: Vec::new(),
+            cellar: None,
         })
         .collect();
     // a towering hall's high storeys: the ones of its pods over the storeys ramped inside it
