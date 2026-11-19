@@ -52,7 +52,7 @@ fn seed_40_is_built_and_every_route_walks_in_this_process() {
     assert!(std::fs::read_dir(&dir).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().starts_with(".simwalk")));
     let polys = &w.level.geom.polys;
     // (a tile for each triangle that is one, in the generator's 61 rooms and PD's room 0)
-    assert_eq!((polys.len(), w.stage.rooms.roomcount(), w.stage.rooms.portals.len()), (13119, 62, 91));
+    assert_eq!((polys.len(), w.stage.rooms.roomcount(), w.stage.rooms.portals.len()), (12850, 62, 91));
     let flags = |f: u32| polys.iter().filter(|p| p.geoflags == f).count();
     let (grates, ramp_walls) = (flags(GEOFLAG_FLOOR1 | GEOFLAG_FLOOR2), polys.iter().filter(|p| p.geoflags & GEOFLAG_RAMPWALL != 0).count());
     let low = polys.iter().filter(|p| p.wall && p.normal.y < -0.49).count();

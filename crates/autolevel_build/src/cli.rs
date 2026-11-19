@@ -1318,7 +1318,8 @@ mod tests {
         let file = |name: &str| fs::read_to_string(dir.join(name)).unwrap();
         assert_eq!(title(&lv), "autolevel seed 40: 29 rooms, 44 links, 16 loops, score 37.85");
         let drawn = fs::read_to_string(&plan).unwrap();
-        assert_eq!((svg::counts(&drawn), drawn.len(), drawn.contains(&title(&lv))), ((371, 888, 91), 140567, true));
+        // (371 rectangles and 140,567 bytes before the Rust's tall halls took fewer pillars)
+        assert_eq!((svg::counts(&drawn), drawn.len(), drawn.contains(&title(&lv))), ((363, 888, 91), 139735, true));
         // the report: the Python's 54 keys in its order (and the Rust's own after them), and its numbers
         let report = in_order(&file("report.json")).unwrap();
         let Json::Dict(mine) = report_json(&lv.report) else { panic!("a report is a dict") };

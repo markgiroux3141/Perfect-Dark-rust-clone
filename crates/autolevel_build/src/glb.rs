@@ -812,7 +812,7 @@ mod tests {
         // as the Blender build of seed 40: 61 rooms, 15,303 triangles; 18 materials, three of them
         // see-through (the Blender build's 17 and two: its railings and floor grates were one, the
         // mesh, and the railings are now Complex's metal railing, the glass strips' texture)
-        assert_eq!(check(&gltf, &bin), 15303);
+        assert_eq!(check(&gltf, &bin), 14995); // (15,303 before the Rust's pillars stopped at the first storey)
         assert_eq!((report.rooms, report.materials, list(&gltf, "nodes").len(), list(&gltf, "meshes").len()), (61, 18, 61, 61));
         assert_eq!(gltf["asset"]["extras"]["transparent_materials"], 3);
         assert_eq!(gltf["nodes"][0]["name"], "Room_01");

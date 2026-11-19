@@ -816,6 +816,12 @@ fn report_json(lv: &Level) -> Vec<(&'static str, Value)> {
 /// A dict of the level's against the key's: the same names in the same order, and each value.
 fn assert_dict(at: &str, what: &str, mine: &[(String, Value)], want: &Value, order: &Tree) {
     let names: Vec<&str> = mine.iter().map(|(k, _)| k.as_str()).collect();
+    if keyfile::rewriting() && names != order.names() {
+        // (re-writing the key, a dict whose names changed is taken whole, in its own order)
+        let items: Vec<String> = mine.iter().map(|(k, v)| format!("{}: {}", serde_json::to_string(k).unwrap(), serde_json::to_string(v).unwrap())).collect();
+        assert!(keyfile::take_text(want, format!("{{{}}}", items.join(", "))), "{at}: {what} is not in the key");
+        return;
+    }
     for (n, (name, w)) in names.iter().zip(order.names()).enumerate() {
         assert_eq!(*name, w, "{at}: {what} {n}");
     }

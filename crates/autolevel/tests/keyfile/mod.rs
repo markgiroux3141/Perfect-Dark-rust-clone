@@ -178,6 +178,12 @@ pub fn read(path: &str, missing: &str) -> &'static Value {
 /// The key's value `want` is to become `mine`: true if the key is being re-written (and it is
 /// noted), false if not (the caller fails as it would have).
 pub fn take(want: &Value, mine: &Value) -> bool {
+    take_text(want, serde_json::to_string(mine).unwrap())
+}
+
+/// `take`, with the value to put in as its text (a dict whose names must keep their order: a
+/// `Value`'s object sorts them).
+pub fn take_text(want: &Value, mine: String) -> bool {
     if !rewriting() {
         return false;
     }
@@ -186,7 +192,7 @@ pub fn take(want: &Value, mine: &Value) -> bool {
         panic!("a value that is not in a key read for re-writing");
     };
     let span = file.spans[&address(want)];
-    file.patches.push((span, serde_json::to_string(mine).unwrap()));
+    file.patches.push((span, mine));
     true
 }
 

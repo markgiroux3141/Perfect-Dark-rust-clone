@@ -74,7 +74,7 @@ fn the_generators_rooms_and_doorways_are_pds_rooms_and_portals() {
     assert_eq!((own.boxes.len(), own.portals.len(), openings.len()), (61, 91, 91));
     assert!(report[0].starts_with("autolevel: seed 40, 61 rooms (0 with nothing drawn), 91 openings between them, 18 materials of the complex kit's (arena ref) on 16 pool textures, baked"), "{report:?}");
     // Every triangle and tile names its room, and lies in its box.
-    assert_eq!(src.tris.len(), 15303);
+    assert_eq!(src.tris.len(), 14995); // (15,303 before the Rust's pillars stopped at the first storey)
     for (room, pts) in src.tris.iter().map(|t| (t.room, t.v.map(|v| v.pos).to_vec())).chain(src.collision.iter().map(|p| (p.room, p.verts.clone()))) {
         assert!((1..=61).contains(&room), "room {room}");
         let (lo, hi) = own.boxes[room as usize - 1];
@@ -207,9 +207,10 @@ fn the_level_is_drawn_on_the_pools_textures_with_complexs_materials() {
     assert!(textures.keys().all(|k| k.parse::<u32>().unwrap() < 0x10000) && textures.values().all(|t| t["source"] == "pd"), "{textures:?}");
     assert_eq!(bg["rooms"].as_array().unwrap().len(), 61);
     assert_eq!(bg["portals"].as_array().unwrap().len(), 91);
-    // 15,303 drawn, and 30 more where the translucent layers' block trees cut
-    // a railing or window across another's plane (`crate::bsp`).
-    assert_eq!(bg["batches"].as_array().unwrap().iter().map(|b| b["nidx"].as_u64().unwrap()).sum::<u64>(), 15333 * 3);
+    // 14,995 drawn (15,303 before the Rust's pillars stopped at the first
+    // storey), and 30 more where the translucent layers' block trees cut a
+    // railing or window across another's plane (`crate::bsp`).
+    assert_eq!(bg["batches"].as_array().unwrap().iter().map(|b| b["nidx"].as_u64().unwrap()).sum::<u64>(), 15025 * 3);
     let xlu: Vec<&Value> = bg["nodes"].as_array().unwrap().iter().filter(|n| n["layer"] == "xlu").collect();
     assert!(!xlu.is_empty() && xlu.iter().all(|n| n["tree"].is_array()), "every translucent layer is ordered by a block tree");
     // A floor triangle's texels: 32 to every 39.37 units, in s and in t.
@@ -231,7 +232,7 @@ fn the_level_is_drawn_on_the_pools_textures_with_complexs_materials() {
 fn its_tiles_are_pds_rules_and_these_levels_three() {
     let (src, report) = source40();
     // What the glTF source's three options made of the same level.
-    assert_eq!(report[1], "tiles: 4 translucent triangles facing up made floors (grates), 38 of 2222 ceiling triangles under 172 cm made walls, 724 wall triangles flagged as ramp walls");
+    assert_eq!(report[1], "tiles: 4 translucent triangles facing up made floors (grates), 38 of 2183 ceiling triangles under 172 cm made walls, 724 wall triangles flagged as ramp walls");
     let count = |f: &dyn Fn(&ColPoly) -> bool| src.collision.iter().filter(|p| f(p)).count();
     let floor = GEOFLAG_FLOOR1 | GEOFLAG_FLOOR2;
     // grates: a translucent triangle facing up is a floor seen and shot through
@@ -247,7 +248,7 @@ fn its_tiles_are_pds_rules_and_these_levels_three() {
     // and the rest are PD's: opaque floors block sight and shots, and carry their colour
     let floors = count(&|p| p.flags & floor != 0 && p.flags & GEOFLAG_BLOCK_SIGHT != 0 && p.flags & GEOFLAG_BLOCK_SHOOT != 0);
     assert!(floors > 2500 && count(&|p| p.flags & floor != 0 && p.floorcol != 0) > floors / 2, "{floors} floors");
-    assert_eq!(src.collision.len(), 13119);
+    assert_eq!(src.collision.len(), 12850);
 }
 
 #[test]

@@ -10,6 +10,7 @@ use super::{bounds, grow, meets, overlap, Cover, Interior, CLEAR};
 use crate::cells::{rect_cells, Cells};
 use crate::py;
 use crate::space::door_pad;
+use crate::storeys::storey;
 
 /// A line between two doors on the floor: its length, and the middle of each door's pad, h.
 type Lane = (f64, (f64, f64), (f64, f64));
@@ -42,12 +43,19 @@ impl Interior {
         if meets(&grown, &st.no_pillar) {
             return 0;
         }
+        // A pillar stops at its storey's ceiling, under the first storey's deck or where it would
+        // be (the Rust's own, the user's call, 2026-11-19: to the hall's ceiling, as the Python
+        // stood them, a tall hall was a forest of columns), so only that deck stands in its way.
+        let first = storey(st.z).1 - st.z;
         for (zz, deck) in &st.above {
+            if zz - 40 - st.z > first {
+                break;
+            }
             if meets(&grown, deck) {
-                return if cells.is_subset(deck) { zz - 40 - st.z } else { 0 };
+                return if cells.is_subset(deck) { (zz - 40 - st.z).min(first) } else { 0 };
             }
         }
-        st.full
+        st.full.min(first)
     }
 
     fn fits(&self, st: &Site, x: i32, y: i32, w: i32, d: i32, tall: bool) -> bool {
@@ -179,14 +187,21 @@ impl Interior {
     }
 
     /// Rows of pillars down the room's long axis: one row for each seven cells of width, a
-    /// pillar every three to six cells (by `clutter`), two cells square in the widest halls.
-    /// Each stands to the ceiling, or to the deck over it.
+    /// pillar every three to six cells (by `clutter`), two cells square in the widest halls; in a
+    /// room of more than one storey, one row for each fourteen cells and half as far again apart.
+    /// Each stands to its storey's ceiling, or to the deck over it (`reach`).
     fn colonnade(&mut self, st: &mut Site) {
         let long_x = self.w >= self.d;
         let (lh, sh) = if long_x { (self.w, self.d) } else { (self.d, self.w) };
         let size = if sh >= 28 { 4 } else { 2 };
-        let rows = 1.max(py::round(sh as f64 / 14.0)) as i32;
-        let step = 2 * py::round(2.0 + 1.0 / self.clutter.max(0.2)) as i32 + if size == 4 { 4 } else { 0 };
+        // (in a room of more than one storey, half the rows and half as far again between pillars:
+        // the Rust's own, the user's call, 2026-11-19)
+        let tall = !self.upper.is_empty();
+        let rows = 1.max(py::round(sh as f64 / if tall { 28.0 } else { 14.0 })) as i32;
+        let mut step = 2 * py::round(2.0 + 1.0 / self.clutter.max(0.2)) as i32 + if size == 4 { 4 } else { 0 };
+        if tall {
+            step = 2 * py::round(step as f64 * 0.75) as i32;
+        }
         let n = 1.max((lh - 8 - size).div_euclid(step) + 1);
         let mut start = (lh - ((n - 1) * step + size)).div_euclid(2);
         start -= start.rem_euclid(2);

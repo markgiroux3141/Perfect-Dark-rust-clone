@@ -397,6 +397,18 @@ longer writes it byte for byte; it still writes every case a later rule did not 
   both key tests read their cases with `shaped: 0`, and every test that pins a seed's level uses
   `Options::python`.
 
+- **Pillars stop at the first storey, and a tall room takes fewer** (2026-11-19, the user's call,
+  after `shaped1`'s hall stood "a forest" of grey columns floor to ceiling through four storeys).
+  Every pillar (the colonnade's, the lane breakers') stands to its storey's ceiling (236 over the
+  floor), or to the first storey's deck over it, never higher (`cover::reach`: only that deck can
+  stand in its way). And in a room of more than one storey the colonnade lays one row for each 14
+  cells of width (7 before) and its pillars half as far again apart (`cover::colonnade`). Rooms of
+  one storey are as they were. It moved 19 of the 20 levels of `interiors.json`, `level.json` and
+  `polys.json`, 17 of `deadends.json` and one of `lights.json` (re-written; the level key's dicts
+  can now be re-written whole, in their own order, `keyfile::take_text`), and seed 40's pinned
+  counts: 15,303 triangles to 14,995, 13,119 tiles to 12,850 (13,507 to 13,238 with a ring), the
+  plan's 371 rectangles to 363. Seeds 1-20 at the defaults: the same levels, every walk passes.
+
 - **Flooded rooms are on by default** (2026-11-19, the user's call): `Options::flooded` is 0.1
   (`level::FLOODED`), so a seed's level now has a flooded room where one falls (see "Flooded
   rooms"). The keys did not move: they are the Python's levels, which have none, and both key tests
