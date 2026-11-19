@@ -52,7 +52,7 @@ pub const FORMAT: u32 = 1;
 pub const CEILINGS: [&str; 4] = ["plain", "ceiling_tile", "ceiling_dark", "grille"];
 
 /// The options by name, as the file and a command line spell them, in the file's order.
-pub const OPTIONS: [&str; 24] = [
+pub const OPTIONS: [&str; 26] = [
     "style",
     "washroom",
     "scale",
@@ -69,6 +69,8 @@ pub const OPTIONS: [&str; 24] = [
     "windows",
     "drops",
     "grates",
+    "platforms",
+    "galleries",
     "dead_ends",
     "dead_corridor",
     "dead_walk",
@@ -283,6 +285,10 @@ struct Opts {
     #[serde(skip_serializing_if = "Option::is_none")]
     grates: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    platforms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    galleries: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     dead_ends: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     dead_corridor: Option<i32>,
@@ -324,6 +330,8 @@ impl Opts {
             windows: pick(all, o.windows, base.windows),
             drops: pick(all, o.drops, base.drops),
             grates: pick(all, o.grates, base.grates),
+            platforms: pick(all, o.platforms, base.platforms),
+            galleries: pick(all, o.galleries, base.galleries),
             dead_ends: pick(all, o.dead_ends, base.dead_ends),
             dead_corridor: pick(all, o.dead_corridor, base.dead_corridor),
             dead_walk: pick(all, o.dead_walk, base.dead_walk),
@@ -373,6 +381,8 @@ impl Opts {
         set(&mut o.windows, self.windows);
         set(&mut o.drops, self.drops);
         set(&mut o.grates, self.grates);
+        set(&mut o.platforms, self.platforms);
+        set(&mut o.galleries, self.galleries);
         set(&mut o.dead_ends, self.dead_ends);
         set(&mut o.dead_corridor, self.dead_corridor);
         set(&mut o.dead_walk, self.dead_walk);
@@ -789,6 +799,8 @@ mod tests {
             ("windows", "6"),
             ("drops", "0"),
             ("grates", "5"),
+            ("platforms", "1.5"),
+            ("galleries", "2"),
             ("dead-ends", "false"),
             ("dead-corridor", "6"),
             ("dead_walk", "14"),

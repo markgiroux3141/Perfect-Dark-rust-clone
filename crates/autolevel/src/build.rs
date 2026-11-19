@@ -563,6 +563,7 @@ impl Build {
                     keep: keep.to_vec(),
                     top: self.caps.get(key).copied(),
                     band: self.o.band(),
+                    platforms: self.o.platforms,
                 };
                 match Interior::new(s, doors, pods, rng, &self.access, setup).build() {
                     Ok(it) => return Ok((it, h.is_some())),
@@ -621,9 +622,9 @@ impl Build {
                 }
                 let done = match done {
                     Some(rooms) => Some(rooms),
-                    // a towering hall's high pod is the end of its climb: joined if it can be,
-                    // never taken away
-                    None if self.holds_high_pod(e) => None,
+                    // a towering hall's high pod (or gallery) is the end of its climb: joined if it
+                    // can be, never taken away
+                    None if self.holds_high_pod(e) || self.holds_gallery(&g, e) => None,
                     None => self.shorten(e)?,
                 };
                 touched.extend(done.unwrap_or_default());
@@ -633,6 +634,15 @@ impl Build {
             }
         }
         Ok(())
+    }
+
+    /// Does this dead end hold a towering hall's gallery (`Space::galleries`)? Joined if it can be,
+    /// as a high pod is, else kept: it is a climb's end of its own.
+    fn holds_gallery(&self, g: &Graph, e: &DeadEnd) -> bool {
+        e.places.iter().any(|k| {
+            let p = g.place(k);
+            self.net.grid.space(&p.room).galleries.contains(&p.level)
+        })
     }
 
     /// Does this dead end hold a pod on a towering hall's high storey (`Space::high`)?

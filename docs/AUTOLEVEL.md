@@ -392,6 +392,14 @@ longer writes it byte for byte; it still writes every case a later rule did not 
 
 **Rules of the Rust's own** (each moved the keys when it came in):
 
+- **Railings are Complex's metal railing** (2026-11-19, the user's call). The Python hung 0x748,
+  a blue perforated mesh, on every catwalk edge and down every open ramp side; Complex has that
+  mesh on one catwalk only, and its railings elsewhere are 0x190 (the frame with posts the
+  generator already used for its glass strips, "window"). The kit's `rail` is now 0x190, one
+  repeat to `complex::RAIL_REPEAT` (88) units along, as the glass strips; the walkable floor grates
+  keep the mesh as a role of their own, `mesh` (the palette's 20th). Moved `polys.json` only (a
+  railing's and a grate's material, a railing's scale and UVs); `verycomplex` keeps the original's
+  own mesh catwalk. Every Complex-kit arena was imported again.
 - **No deck under a ramp** (2026-11-18, the user's call). A big hall's open ramp could lie
   across the catwalk on the storey it rises from: `ramp_options` keeps a ramp off the deck it
   climbs to, but only scores against the deck it starts on. The plan knew nobody could stand
@@ -1930,6 +1938,89 @@ generator already has. So the atrium's rules were made general and given to the 
   rooms cut off): not looked at.
 - In the import's one-minute check six simulants on `towering9` met almost never (0 kills): 89
   rooms over fifteen storeys is a lot of level for six.
+
+## Platforms: filling a hall's empty air (2026-11-19)
+
+**The user's ask (2026-11-19):** find the empty space in the big halls and fill it, with large
+platforms on the catwalks (as the landings at a catwalk's turns, but larger), where not much is
+happening. Both are new in the Rust, and off by default: every seed's level is as it was.
+
+- **Empty air** (`furnish::platforms`, `Interior::void`): a tall room's half cells over which
+  nothing is built on any storey above its floor (no deck, pod, pod roof, ramp or landing, pier,
+  and nothing a drop or a grate's beam falls through): columns of air floor to ceiling. The
+  furnisher's per-storey cell sets give it at once; nothing new is modelled. In the report
+  (after the Python's 54 keys, `cli::RUSTS_OWN`): `empty_air`, its share of the tall rooms' cells,
+  and `largest_void`, the biggest rectangle of it in one room, in cells.
+- **Platforms** (`--platforms N`, the recipe's `platforms`, the editor's slider; `Setup::platforms`):
+  one for each 100 cells of empty air, times N (in a tall hall, the air each storey sees within
+  `WINDOW`, shared among the storeys that see it: a hall 15 storeys tall takes several times a
+  short one's). Laid after the ramps (and the cut under
+  them), before the cover and the rails, so the rails run round a platform's open edges and a
+  pillar under one stops at its underside. A platform is a rectangle of deck 4 to 8 cells a side
+  (`SIZES`, reaching no more than a third of the way across), a catwalk's depth in from every wall,
+  touching its storey's deck along 2 cells or more (`CONTACT`), with nothing built over or under
+  it within two storeys (`WINDOW`: a tall hall's column may hold a platform low down and another
+  high up; what a drop or a beam falls through is kept clear on every storey), a cell clear of
+  anything hard, with 60% of the air within 3 cells of it empty (`EMPTY`). The best
+  by area times that emptiness, each next one kept 2 cells clear of the last and counting for
+  less within three storeys of another (`SPREAD`). No random numbers: nothing else in the room
+  moves. Rooms under 10 cells across and spirals get none.
+- Each platform has a view, `platform_<room>_<storey>` (`_2` for a second on that storey), from the
+  far end of its storey's catwalk.
+- **Seeds 1-20** (with `--platforms 1`): towering, the same 18 levels, 117 platforms, empty air
+  0.64 to 0.51; grand, the same 20 levels, 64 platforms, empty air 0.66 to 0.56. Every walk passes
+  in both. Seed 9 towering: 8 platforms (the colossal hall three at 276, three at 1654, one at
+  1929; the vast hall one at 276), empty air 0.62 to 0.45, largest void 136 to 68 cells. (With the
+  whole column kept clear, as at first, it was 4 and 67.)
+- **Density saturates**: seed 9 has 8 at `--platforms` 1, 2 or 3. What limits it is catwalk to
+  hang from: a towering hall's storeys over its ramped ones have catwalk only where a high pod or
+  a door is (seed 9's colossal hall: 276, 1654, 1929), so the walls over them stay bare.
+- **Test:** `platforms::tests` (a platform is deck, joined to its catwalk, over a column nothing
+  else is in, clear of ramps, with its view; the same seeds make levels with and without).
+- **Arena:** `towering9p` (stage 106): `towering9` with `platforms: 1`.
+
+**Rough, and next:**
+- A platform hangs off catwalk that is already there (above): galleries (below) give the high
+  storeys some.
+- Nothing stands under a platform but what the cover puts there; it floats as the catwalks do.
+- Nothing is placed on platforms yet (weapons, spawns): the importer's placement treats them as
+  any floor.
+### Galleries: high catwalks of their own (2026-11-19)
+
+**The user's idea (2026-11-19):** a high catwalk and its platforms can be a place of their own, as
+a high base is, with its own way up and down through other rooms. So a high storey no longer
+needs a pod.
+
+- **`--galleries N`** (the recipe's `galleries`, the editor's; `level::galleries`, run at the end
+  of `stage_rooms`): in each towering hall, up to N of its storeys over the ramped ones that hold
+  no pod, `GALLERY_GAP` (2) storeys or more from each other, its pods' storeys and the top ramped
+  one, at a height another room has a door on. Drawn from the hall's own stream
+  ("{seed}/{key}/galleries"): nothing else moves, and none unless asked for. Each is put in
+  `Space::high` and listed in **`Space::galleries`**, so everything a high pod's storey has comes
+  with it: a door from outside, a band of its own (never ramped down), a node of the router's
+  tree, a walk, and `unreached` leaving it out (and routing again) if no corridor got there.
+- **Its catwalk** (`lay_decks`): the length of every wall it has a door in, joined in one piece
+  (`arc`, `whole`); platforms then hang off it.
+- **The dead-end pass** joins a gallery with one way in to another room if it can, else keeps it
+  (`Build::holds_gallery`): it is a climb's end.
+- **Climbs** (`climbs::climbs`) take galleries too (`Climb::gallery`; the way ends in the hall on
+  that storey); `--example climbs -- 1 40 2` lists them with their doors. In the report:
+  `galleries` (after the Python's keys). Views: `gallery_<hall>_<storey>`, from its door.
+- **Seeds 1-20, towering, `--galleries 2 --platforms 1`:** the same 18 levels, 56 galleries, 167
+  platforms (117 without galleries), empty air 0.47, every walk passes. Seeds 1-12: most galleries
+  have two to four doors; the longest climbs go 6 and 7 rooms out (seed 9's colossal hall at 2756:
+  spire, vast hall, basin, spire, loft, vast hall, loft). Seed 9: 5 galleries, 12 platforms.
+- **Test:** `climbs::tests::a_gallery_is_a_high_storey_of_catwalk_climbed_to_from_outside`.
+- **Arena:** `towering9g` (stage 107): seed 9 towering, `platforms: 1`, `galleries: 2`.
+
+**Rough, and next:**
+- Galleries with one door stay as camps; a second way down (a drop to a catwalk below) is not made.
+- The gallery's storey must be one another room has a door on, so a hall's highest storeys get
+  one only where a spire or a loft reaches them.
+
+- The user's other questions with this (2026-11-19): a large base kind (the pod kinds are 3-5 by
+  3-4 cells and 2-3 by 2; the scatter's rule allows a fifth of a hall's floor), and a base shared
+  by two halls a cell apart (a pod has one host now). Not started.
 
 ## Risks
 

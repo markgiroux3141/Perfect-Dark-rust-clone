@@ -72,6 +72,11 @@ Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
   built; arenas `atrium1` and `trek1`. Then (the user's direction) made general: `--scale
   towering`, whose tall halls' high pods are reached only from outside, through whatever rooms
   the scatter put at that height (arena `towering9`). Next: climbs in the score, longer climbs.
+- **Empty air and platforms** (2026-11-19): measured (`empty_air`, `largest_void` in the report)
+  and filled with big platforms off the catwalks (`--platforms N`, arena `towering9p`).
+  AUTOLEVEL.md, "Platforms". Then galleries (`--galleries N`): high storeys with no base given a
+  catwalk of their own, climbed to from outside (arena `towering9g`). Next asked about: a large
+  base kind, bases shared by two halls.
   AUTOLEVEL.md, "Atriums". Angled catwalks were discussed with it and left for later (a feature
   of their own).
 

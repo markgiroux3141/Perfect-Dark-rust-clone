@@ -93,6 +93,15 @@ pub struct Report {
     pub rails: usize,
     pub walks: usize,
     pub score: f64,
+    /// New in the Rust (not the Python's dict, nor the key's): platforms laid off the catwalks
+    /// (`furnish::platforms`), and the halls' empty air: cells of it in the rooms with storeys
+    /// over their floor, as a share of those rooms' cells, and the biggest rectangle of it in one
+    /// room, cells.
+    pub platforms: usize,
+    /// Galleries (`Space::galleries`).
+    pub galleries: usize,
+    pub empty_air: f64,
+    pub largest_void: f64,
 }
 
 /// The level's numbers.
@@ -184,7 +193,15 @@ pub fn report(lv: &Level) -> Report {
         rails: its().map(|it| it.rails.len()).sum(),
         walks: lv.walks.len(),
         score: 0.0,
+        platforms: its().map(|it| it.platforms.len()).sum(),
+        galleries: sp.iter().map(|s| s.galleries.len()).sum(),
+        empty_air: 0.0,
+        largest_void: 0.0,
     };
+    let voids: Vec<crate::furnish::Void> = its().filter(|it| !it.upper.is_empty()).map(|it| it.void()).collect();
+    let (empty, room) = voids.iter().fold((0.0, 0.0), |(e, r), v| (e + v.empty, r + v.room));
+    out.empty_air = if room > 0.0 { py::round_to(empty / room, 2) } else { 0.0 };
+    out.largest_void = voids.iter().map(|v| v.largest).fold(0.0, f64::max);
     out.score = score(&out);
     out
 }

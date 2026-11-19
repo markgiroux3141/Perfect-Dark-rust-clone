@@ -30,7 +30,7 @@ pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
   --empty               an empty start: no rooms but those --add makes; the seed only decorates them
   --recipe FILE         a recipe (seed, options, edits) instead; --seed and options then change it
   --NAME VALUE          an option, by its name in the recipe: scale size site cover clutter walkway
-                        crates shapes risers second vents windows drops grates dead-ends
+                        crates shapes risers second vents windows drops grates platforms galleries dead-ends
                         dead-corridor dead-walk dead-climb loops shift level-change tries
                         (also --no-shapes, --keep-dead-ends, and --crates alone)
   --shot FILE.png       write the plan view and print the dead-end list; no window, no GPU

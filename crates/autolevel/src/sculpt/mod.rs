@@ -377,6 +377,7 @@ fn finish(
                 clear: Cells::default(),
                 preset: Vec::new(),
                 high: Vec::new(),
+                galleries: Vec::new(),
             })
         })
         .collect();

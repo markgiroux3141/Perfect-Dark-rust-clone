@@ -54,7 +54,10 @@ cargo build --release -p pd_import          # also builds target/release/autolev
                                             #   `autolevel trek 1`: an atrium 15 storeys tall whose base is reached only
                                             #   through a helix of rooms round it; `--scale towering` (any command): halls up
                                             #   to 15 storeys whose high bases are reached only from outside (docs/AUTOLEVEL.md,
-                                            #   "Atriums"; `cargo run --release -p autolevel --example climbs -- 1 40` lists the climbs)
+                                            #   "Atriums"; `cargo run --release -p autolevel --example climbs -- 1 40` lists the climbs);
+                                            #   `--platforms N`: big platforms off the catwalks into a hall's empty air;
+                                            #   `--galleries N`: high catwalks of their own in towering halls, climbed to
+                                            #   from outside (docs/AUTOLEVEL.md, "Platforms", "Galleries")
                                             #   also `sweep`, `plan`, `batch`, `walk`, `deadends`, `--recipe FILE`; `autolevel --help`
 cargo run --release -p autolevel_edit -- --seed 40 --shot out.png [--empty] [--storey Z] [--pick ROOM@STOREY [--join N]] [--remove KEY]
                                             #   the generator's editor: its plan view as a PNG with no window (how to look at a

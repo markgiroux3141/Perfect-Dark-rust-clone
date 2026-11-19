@@ -69,6 +69,12 @@ pub struct Options {
     pub drops: usize,
     /// Walkable grates in a corridor's floor over a room, with a beam of light through.
     pub grates: usize,
+    /// Platforms off a hall's catwalks into its empty air: one for each 100 cells of it, times
+    /// this (0: none, as the Python). New in the Rust (`furnish::platforms`).
+    pub platforms: f64,
+    /// Galleries in each towering hall, at most: high storeys with no pod given a catwalk of their
+    /// own, reached from outside (`galleries`; 0: none, as the Python). New in the Rust.
+    pub galleries: usize,
     /// Join up, or cut short, every dead end longer than these (false: leave them):
     pub dead_ends: bool,
     /// cells of corridor to a room that goes nowhere (a camping spot may be that far off),
@@ -124,6 +130,8 @@ impl Default for Options {
             windows: 4,
             drops: 2,
             grates: 3,
+            platforms: 0.0,
+            galleries: 0,
             dead_ends: true,
             dead_corridor: 8,
             dead_walk: 20,
@@ -225,7 +233,47 @@ pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
     for s in sp.iter_mut() {
         s.high.retain(|z| held.iter().any(|(h, f)| *h == s.key && f == z));
     }
+    galleries(seed, o, &mut sp);
     Spaces { sp, spin, access, dropped }
+}
+
+/// Storeys between a gallery and any other high storey of its hall, or the top of the storeys
+/// ramped inside it.
+pub const GALLERY_GAP: usize = 2;
+
+/// A towering hall's galleries (`Space::galleries`): up to `o.galleries` of its storeys over the
+/// ramped ones that hold no pod, `GALLERY_GAP` storeys or more from each other, its pods' and its
+/// ramped storeys, and at a height some other room has a door on (else no corridor could reach
+/// it). Each becomes a high storey (`Space::high`): a place of its own that the router must reach
+/// from outside, through other rooms, as it does a high pod. Drawn from the hall's own stream,
+/// "{seed}/{key}/galleries", so nothing else in the level moves; none unless asked for.
+fn galleries(seed: u64, o: &Options, sp: &mut [Space]) {
+    use crate::storeys::{index, LEVELS};
+    if o.galleries == 0 {
+        return;
+    }
+    let reach: Vec<(String, Vec<i32>)> = sp.iter().filter(|s| s.host.is_empty()).map(|s| (s.key.clone(), s.door_levels())).collect();
+    for s in sp.iter_mut().filter(|s| s.host.is_empty() && s.towers() && s.decks.is_none()) {
+        let first = index(s.floor) + crate::space::ramped(s.kind, s.area());
+        let taken: Vec<usize> = s.high.iter().map(|&z| index(z)).chain(std::iter::once(first - 1)).collect();
+        let mut free: Vec<i32> = (first..LEVELS.len())
+            .filter(|&i| LEVELS[i] + crate::scatter::STOREY <= s.top)
+            .filter(|&i| taken.iter().all(|&t| i.abs_diff(t) >= GALLERY_GAP))
+            .map(|i| LEVELS[i])
+            .filter(|z| reach.iter().any(|(k, levels)| *k != s.key && levels.contains(z)))
+            .collect();
+        PyRandom::named(&format!("{seed}/{}/galleries", s.key)).shuffle(&mut free);
+        let mut chosen: Vec<i32> = Vec::new();
+        for z in free {
+            if chosen.len() < o.galleries && chosen.iter().all(|&c| index(c).abs_diff(index(z)) >= GALLERY_GAP) {
+                chosen.push(z);
+            }
+        }
+        chosen.sort();
+        s.high.extend(chosen.iter().copied());
+        s.high.sort();
+        s.galleries = chosen;
+    }
 }
 
 /// Every corridor, stub and vent between the rooms. Err if a room is cut off.
@@ -233,13 +281,14 @@ pub fn stage_network(seed: u64, o: &Options, sp: &[Space]) -> Result<Network, St
     let how = Connect { loops: o.loops, level_change: o.level_change, risers: o.risers, second: o.second, vents: o.vents, ..Connect::default() };
     let mut net = connect(sp.to_vec(), o.band(), &how);
     // a towering hall's high storey that no route reached (nothing stands that high near enough):
-    // its pods are left out, and the level is routed again without them
+    // its pods (or its gallery) are left out, and the level is routed again without them
     let cut = unreached(&net);
     if !cut.is_empty() {
         let mut sp = sp.to_vec();
         sp.retain(|s| !cut.contains(&(s.host.clone(), s.floor)));
         for s in sp.iter_mut() {
             s.high.retain(|z| !cut.contains(&(s.key.clone(), *z)));
+            s.galleries.retain(|z| !cut.contains(&(s.key.clone(), *z)));
         }
         net = connect(sp, o.band(), &how);
     }

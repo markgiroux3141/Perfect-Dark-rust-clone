@@ -77,6 +77,10 @@ What kind of level (sweep, plan, build, batch and deadends all take these):
   --windows N                corridors that run past a room open onto it, glazed or as a railed balcony (4)
   --drops N                  holes in a room's floor into the room underneath (2)
   --grates N                 walkable grates in a corridor's floor over a room, with a beam of light through (3)
+  --platforms N              big platforms off the catwalks into a hall's empty air: one for each 100 cells
+                             of it, times N (default 0: none)
+  --galleries N              towering scale: up to N galleries in each towering hall, high storeys with no
+                             base given a catwalk of their own, reached only from outside (default 0)
   --site WxH                 cells; default 80x60 for grand, 64x48 for standard
   --dead-corridor N          a room that goes nowhere may be this many cells of corridor off a main area (8);
   --dead-walk N              and this many cells' walk in all, ramps and decks too (20);
@@ -592,6 +596,11 @@ pub fn report_json(r: &Report) -> Json {
         ("rails", json!(r.rails)),
         ("walks", json!(r.walks)),
         ("score", json!(r.score)),
+        // the Rust's own (`RUSTS_OWN`)
+        ("platforms", json!(r.platforms)),
+        ("galleries", json!(r.galleries)),
+        ("empty_air", json!(r.empty_air)),
+        ("largest_void", json!(r.largest_void)),
     ]) else {
         unreachable!("a dict is a dict")
     };
@@ -605,6 +614,9 @@ pub fn report_json(r: &Report) -> Json {
     }
     Json::Dict(items)
 }
+
+/// The report's keys that are the Rust's own, after the Python's (which end with the score).
+pub const RUSTS_OWN: [&str; 4] = ["platforms", "galleries", "empty_air", "largest_void"];
 
 /// A level's walks as walks.json holds them: name -> `[[x, y, z], [x, y, z, flags], ...]`.
 pub fn walks_json(lv: &Level) -> Json {
@@ -1243,9 +1255,11 @@ mod tests {
         };
         let j = report_json(&r);
         let Json::Dict(items) = &j else { panic!("a report is a dict") };
-        // the Python's keys, in its order: "cover" third (it first held the option), the score last
+        // the Python's keys, in its order: "cover" third (it first held the option), the score last;
+        // then the Rust's own
         let names: Vec<&str> = items.iter().map(|(k, _)| k.as_str()).collect();
-        assert_eq!((names.len(), &names[..5], names[names.len() - 1]), (54, &["seed", "scale", "cover", "rooms", "plan_rooms"][..], "score"));
+        assert_eq!((names.len(), &names[..5], names[53]), (54 + RUSTS_OWN.len(), &["seed", "scale", "cover", "rooms", "plan_rooms"][..], "score"));
+        assert_eq!(names[54..], RUSTS_OWN);
         assert_eq!(
             j.get("dead_ends").unwrap().dump(None),
             "[{\"root\": \"vast@276\", \"tip\": \"small8\", \"rooms\": [\"small8\"], \"length\": 9.5, \"corridor\": 0.0, \"storeys\": 1, \"climb\": 0, \"allowed\": true, \"why\": []}]"
@@ -1285,14 +1299,14 @@ mod tests {
         assert_eq!(title(&lv), "autolevel seed 40: 29 rooms, 44 links, 16 loops, score 37.85");
         let drawn = fs::read_to_string(&plan).unwrap();
         assert_eq!((svg::counts(&drawn), drawn.len(), drawn.contains(&title(&lv))), ((371, 888, 91), 140567, true));
-        // the report: the Python's 54 keys in its order, and its numbers
+        // the report: the Python's 54 keys in its order (and the Rust's own after them), and its numbers
         let report = in_order(&file("report.json")).unwrap();
         let Json::Dict(mine) = report_json(&lv.report) else { panic!("a report is a dict") };
         assert_eq!(report.iter().map(|(k, _)| k).collect::<Vec<_>>(), mine.iter().map(|(k, _)| k).collect::<Vec<_>>());
         let number = |name: &str| report.iter().find(|(k, _)| k == name).unwrap().1.clone();
         assert_eq!(
             (report.len(), number("cover"), number("walks"), number("score"), number("extent")),
-            (54, json!(13), json!(71), json!(37.85), json!([65, 50]))
+            (54 + RUSTS_OWN.len(), json!(13), json!(71), json!(37.85), json!([65, 50]))
         );
         // the walks, in the level's order, are the routes a walker is given
         let routes = routes_from(&file("walks.json")).unwrap();

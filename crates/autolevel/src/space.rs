@@ -45,9 +45,12 @@ pub struct Space {
     /// Its fixed ramps.
     pub preset: Vec<spiral::Ramp>,
     /// A towering hall's high storeys (`towers`): those over the storeys ramped inside it
-    /// (`ramped`) that hold a pod, lowest first. Each is a place of its own, reached by a door
-    /// from outside and never ramped down. Empty for every other room.
+    /// (`ramped`) that hold a pod, and its galleries, lowest first. Each is a place of its own,
+    /// reached by a door from outside and never ramped down. Empty for every other room.
     pub high: Vec<i32>,
+    /// Of those, the galleries: high storeys with no pod, a catwalk of their own reached from
+    /// outside (`level::galleries`, `Options::galleries`). New in the Rust.
+    pub galleries: Vec<i32>,
 }
 
 impl Space {
@@ -244,6 +247,7 @@ pub fn spaces(lots: &[Lot]) -> Vec<Space> {
             clear: Cells::new(),
             preset: Vec::new(),
             high: Vec::new(),
+            galleries: Vec::new(),
         })
         .collect();
     // a towering hall's high storeys: the ones of its pods over the storeys ramped inside it

@@ -1,0 +1,24 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "towering9g",
+  "name": "Towering 9 Galleries",
+  "group": "Autolevel",
+  "stagenum": 107,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 9,
+      "options": {
+        "scale": "towering",
+        "platforms": 1.0,
+        "galleries": 2
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

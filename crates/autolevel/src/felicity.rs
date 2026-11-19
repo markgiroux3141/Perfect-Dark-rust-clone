@@ -2053,6 +2053,7 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
                 clear: Cells::default(),
                 preset: Vec::new(),
                 high: Vec::new(),
+                galleries: Vec::new(),
             }
         })
         .collect();

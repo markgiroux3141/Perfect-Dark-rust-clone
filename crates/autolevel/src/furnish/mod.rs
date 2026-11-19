@@ -13,6 +13,8 @@
 //! - pool: a basin's water, in a pit, railed all round, under a bridge. Never a floor;
 //! - hole: a drop through the floor into the room underneath, railed on three sides;
 //! - shape: a single-storey room may have a corner filled in (an L) or a cross wall;
+//! - platforms: big squares of deck off the catwalks into a hall's emptiest air (by
+//!   `Setup::platforms`; new in the Rust, none by default);
 //! - cover: pillars, crates or nothing, never in front of a door or cutting the floor in two;
 //! - rails: on every edge that drops, except where a ramp arrives, and down ramps' open sides;
 //! - nav: every door must reach every other on foot, through spaces a player fits.
@@ -36,6 +38,7 @@ mod decks;
 mod mend;
 mod nav;
 mod plans;
+mod platforms;
 mod pod;
 mod rails;
 mod ramps;
@@ -43,6 +46,7 @@ mod ramps;
 mod tests;
 
 pub use nav::{Nav, Node};
+pub use platforms::Void;
 pub use pod::{pod_interior, Glass, PodDoor, PodPlan};
 pub use rails::Rail;
 
@@ -271,6 +275,9 @@ pub struct Setup {
     pub top: Option<i32>,
     /// A catwalk's depth along a wall, and the width of open ramps and bridges, h.
     pub band: i32,
+    /// Platforms off the catwalks into the empty air (`lay_platforms`): one for each 100 cells
+    /// of it, times this. 0 (the default, and every seed's level): none.
+    pub platforms: f64,
 }
 
 impl Default for Setup {
@@ -288,6 +295,7 @@ impl Default for Setup {
             keep: Vec::new(),
             top: None,
             band: 2,
+            platforms: 0.0,
         }
     }
 }
@@ -348,6 +356,9 @@ pub struct Interior {
     pub hole_open: Option<usize>,
     pub keep: Vec<Rect>,
     pub top: Option<i32>,
+    /// `Setup::platforms`, and the platforms laid: (storey, rectangle h).
+    pub platform_share: f64,
+    pub platforms: Vec<(i32, Rect)>,
 }
 
 impl std::fmt::Debug for Interior {
@@ -419,6 +430,8 @@ impl Interior {
             hole_open: None,
             keep: how.keep,
             top: how.top,
+            platform_share: how.platforms,
+            platforms: Vec::new(),
         }
     }
 
@@ -457,7 +470,7 @@ impl Interior {
         out
     }
 
-    /// All of it: the pool, the decks, the ramps, the cover and the rails. Err says why the room
+    /// All of it: the pool, the decks, the ramps, the platforms, the cover and the rails. Err says why the room
     /// can't be furnished (the Python's `Unfurnishable`).
     pub fn build(mut self) -> Result<Interior, String> {
         for p in &self.pods {
@@ -479,6 +492,7 @@ impl Interior {
             return Err(format!("{}: doors don't all join", self.s.key));
         }
         self.clear_under_ramps();
+        self.lay_platforms();
         self.lay_cover();
         self.rails = self.lay_rails();
         Ok(self)

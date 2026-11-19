@@ -251,6 +251,32 @@ pub fn views(lv: &mut Level) {
         let far = py::first_min(cells.iter().copied(), |c| (-((c.0 - r.0).abs() + (c.1 - r.1).abs()), *c)).expect("a piece's storey has cells");
         set(&mut views, format!("grate_{piece}_above"), (far.0 as f64 + 0.5, far.1 as f64 + 0.5, *z, x, y));
     }
+    // each gallery from its door farthest from the hall's middle, looking across (none in the
+    // Python's levels)
+    for s in sp.iter().filter(|s| !s.galleries.is_empty()) {
+        let it = lv.interior(&s.key);
+        let (cx, cy) = centre(s.rect());
+        for &z in &s.galleries {
+            let at: Vec<Node> = it.door_nodes().into_iter().flatten().filter(|n| n.2 == z).collect();
+            if let Some(n) = py::first_max(at, |n| off(n, cx, cy)) {
+                let (x, y, _) = middle(n);
+                set(&mut views, format!("gallery_{}_{z}", s.key), (x, y, z, cx, cy));
+            }
+        }
+    }
+    // each platform from the far end of its storey's catwalk (none in the Python's levels)
+    for (key, it) in &lv.interiors {
+        for (n, &(z, r)) in it.platforms.iter().enumerate() {
+            let (x, y) = (centre(r).0 / 2.0, centre(r).1 / 2.0);
+            if let Some(b) = py::first_max(it.blocks(z), |c: &Cell| off(&(c.0, c.1, z), x, y)) {
+                let (bx, by, _) = middle((b.0, b.1, z));
+                // (the second on a storey: _2)
+                let k = it.platforms[..n].iter().filter(|p| p.0 == z).count();
+                let name = if k == 0 { format!("platform_{key}_{z}") } else { format!("platform_{key}_{z}_{}", k + 1) };
+                set(&mut views, name, (bx, by, z, x, y));
+            }
+        }
+    }
     // through the opening from the corridor
     for w in &lv.windows {
         let (dx, dy) = (DIRS[w.d].0 as f64, DIRS[w.d].1 as f64);

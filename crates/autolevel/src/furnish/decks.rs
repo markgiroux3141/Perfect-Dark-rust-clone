@@ -160,6 +160,18 @@ impl Interior {
             for &c in &cells {
                 need.extend(self.slot(c));
             }
+            if self.s.galleries.contains(&z) {
+                // a gallery (`Space::galleries`): catwalk the length of every wall it has a door in
+                for dr in self.doors.iter().filter(|dr| dr.level == z) {
+                    let side = match dr.side {
+                        'S' => 0,
+                        'E' => 1,
+                        'N' => 2,
+                        _ => 3,
+                    };
+                    need.extend(self.wall(side).filter(|t| !blocked.contains(t)));
+                }
+            }
             let own = self.top.is_none_or(|top| z <= top); // may this storey have deck nothing arrives on?
             let mut ring = ring_kind && w.min(d) >= 12 && own;
             let lay = if n == 0 && own { self.layout } else { None };

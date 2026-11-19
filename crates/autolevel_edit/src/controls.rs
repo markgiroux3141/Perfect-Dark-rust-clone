@@ -54,6 +54,12 @@ pub fn control(name: &str) -> (Control, &'static str) {
         "windows" => (Whole { lo: 0, hi: 12, off: false }, "corridors that run past a hall open onto it, glazed or as a railed balcony"),
         "drops" => (Whole { lo: 0, hi: 8, off: false }, "holes in a room's floor into the room underneath"),
         "grates" => (Whole { lo: 0, hi: 10, off: false }, "walkable grates in a corridor's floor over a room, with a beam of light through"),
+        "platforms" => {
+            (Share { lo: 0.0, hi: 3.0, step: 0.25 }, "big platforms off a hall's catwalks into its empty air: one for each 100 cells of it, times this")
+        }
+        "galleries" => {
+            (Whole { lo: 0, hi: 6, off: false }, "a towering hall's galleries: high storeys with no base given a catwalk of their own, reached from outside")
+        }
         "dead_ends" => (Switch, "join up or cut short every dead end longer than the three limits below; off leaves them as they fall"),
         "dead_corridor" => (Whole { lo: 1, hi: 30, off: false }, "a room that goes nowhere may be this many cells of corridor off a main area"),
         "dead_walk" => (Whole { lo: 1, hi: 60, off: false }, "and this many cells' walk to its far end, ramps and decks too"),
