@@ -263,6 +263,9 @@ pub struct Boxes {
     /// Why the change being tried can't be made: the selected box is then drawn as refused,
     /// with these words.
     pub refused: Option<String>,
+    /// The site the rooms stand on, in cells (from the origin), where it is known: the bare plan
+    /// is framed on it, so an empty start has the whole site to draw on.
+    pub site: Option<(i32, i32)>,
 }
 
 /// What of the room boxes a place on the plan shows.
@@ -444,9 +447,12 @@ fn hold(mut lo: P, mut hi: P, view: &View) -> (P, P) {
     (lo, hi)
 }
 
-/// The bounds of `bare`: the room boxes' own (with none, a cell).
+/// The bounds of `bare`: the room boxes' own and the site's (with neither, a cell).
 pub fn bounds_bare(view: &View) -> (P, P) {
-    let none = ((f32::INFINITY, f32::INFINITY), (f32::NEG_INFINITY, f32::NEG_INFINITY));
+    let mut none = ((f32::INFINITY, f32::INFINITY), (f32::NEG_INFINITY, f32::NEG_INFINITY));
+    if let Some((w, h)) = view.boxes.as_ref().and_then(|b| b.site) {
+        none = ((-1.5, -1.5), (w as f32 + 1.5, h as f32 + 1.5));
+    }
     match hold(none.0, none.1, view) {
         (lo, hi) if lo.0 < hi.0 => (lo, hi),
         _ => ((0.0, 0.0), (1.0, 1.0)),
@@ -1135,10 +1141,17 @@ pub fn bare(view: &View) -> Picture {
     let (lo, hi) = bounds_bare(view);
     let mut out = Vec::new();
     out.grid(lo, hi);
+    let site = view.boxes.as_ref().and_then(|b| b.site);
+    if let Some((w, h)) = site {
+        out.dashed_frame((0.0, 0.0, w as f32, h as f32), colour::FAINT, 1.5, 0.6, 0.4);
+    }
     lots(&mut out, view, None, (lo, hi));
     let on = |z: &i32| view.boxes.iter().flat_map(|b| &b.lots).any(|a| a.floor == *z) && view.storey.is_none_or(|s| s == *z);
     let floor = |z: i32| Key { swatch: Swatch::Fill, col: colour::storey(z), text: format!("floor {z}") };
     let mut legend: Vec<Key> = LEVELS.into_iter().filter(on).map(floor).collect();
+    if let Some((w, h)) = site {
+        legend.push(Key { swatch: Swatch::Line, col: colour::FAINT, text: format!("the site, {w} x {h} cells: rooms stand inside it") });
+    }
     legend.extend(box_keys(view, None));
     Picture { prims: out, lo, hi, legend }
 }
@@ -1763,7 +1776,7 @@ mod picture_tests {
     }
 
     fn boxed(lots: Vec<Lot>, selected: Option<&str>, refused: Option<&str>) -> View {
-        View { boxes: Some(Boxes { lots, selected: selected.map(str::to_string), refused: refused.map(str::to_string) }), ..View::default() }
+        View { boxes: Some(Boxes { lots, selected: selected.map(str::to_string), refused: refused.map(str::to_string), site: None }), ..View::default() }
     }
 
     /// The lines of one colour and width.

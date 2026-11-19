@@ -279,6 +279,8 @@ pub struct Placed {
     pub gone: Vec<(String, String)>,
     /// Lots a change named.
     pub touched: BTreeSet<String>,
+    /// An empty start (`Placed::empty`): the last lot may be deleted too.
+    pub blank: bool,
 }
 
 /// "at 3, 4 to 9, 8, from 0 to 236": where a lot is, for a message.
@@ -310,7 +312,12 @@ impl Placed {
     /// The lots as they were placed for these options, nothing changed yet.
     pub fn new(lots: Vec<Lot>, o: &Siting) -> Placed {
         let (kinds, site) = kinds_and_site(o);
-        Placed { lots, site, kinds, gone: Vec::new(), touched: BTreeSet::new() }
+        Placed { lots, site, kinds, gone: Vec::new(), touched: BTreeSet::new(), blank: false }
+    }
+
+    /// No lots at all, on the site the siting gives: an empty start (`level::Start::Empty`).
+    pub fn empty(o: &Siting) -> Placed {
+        Placed { blank: true, ..Placed::new(Vec::new(), o) }
     }
 
     /// Which lot has this key. Err says if an earlier change took it out.
@@ -430,7 +437,7 @@ impl Placed {
     pub fn delete(&mut self, room: &str) -> Result<(), String> {
         let n = self.at("delete", room)?;
         let keys: Vec<String> = self.group(n).into_iter().map(|m| self.lots[m].key.clone()).collect();
-        if keys.len() == self.lots.len() {
+        if keys.len() == self.lots.len() && !self.blank {
             return Err(format!("delete: without {room} the level has no room at all"));
         }
         for pod in &keys[1..] {

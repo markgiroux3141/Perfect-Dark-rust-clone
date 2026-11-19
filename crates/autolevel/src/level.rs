@@ -83,6 +83,22 @@ pub struct Options {
     pub level_change: f64,
     /// Times a room is furnished, each with its own random numbers, before the level is given up.
     pub tries: usize,
+    /// How the level begins: the seed's own rooms, or none. Not one of the recipe's options (it
+    /// is the recipe's own field, "start"), but here so every stage can see it.
+    pub start: Start,
+}
+
+/// How a level begins: with the rooms the seed scatters (`Seed`: every seed's level), or with
+/// none (`Empty`: a person draws them, and the seed only decorates them). New here: the Python
+/// has no empty start. In an empty start each room, drop, window and corridor draws its random
+/// numbers from a stream of its own (`Options::stream`), so an edit re-draws only what it
+/// touches; a seed's level keeps the level-wide streams it has always had.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Start {
+    #[default]
+    Seed,
+    Empty,
 }
 
 /// What `Options::style` may be.
@@ -115,6 +131,7 @@ impl Default for Options {
             loops: 0.4,
             level_change: 10.0,
             tries: 8,
+            start: Start::Seed,
         }
     }
 }
@@ -136,7 +153,21 @@ impl Options {
         if !matches!(self.walkway, 1 | 2) {
             return Err("walkway: 1 or 2 cells".to_string());
         }
+        if self.start == Start::Empty && self.style != "complex" {
+            return Err(format!("an empty start is for a complex level, not a {} one", self.style));
+        }
         Ok(())
+    }
+
+    /// Where one thing's random numbers come from. A seed's level draws them, in order, from the
+    /// level's one stream (`shared`), as the Python does; an empty start gives the thing a stream
+    /// of its own (`PyRandom::named(name())`, kept in `own`), so that adding a room elsewhere
+    /// does not move them.
+    pub fn stream<'a>(&self, shared: &'a mut PyRandom, own: &'a mut Option<PyRandom>, name: impl FnOnce() -> String) -> &'a mut PyRandom {
+        match self.start {
+            Start::Seed => shared,
+            Start::Empty => own.insert(PyRandom::named(&name())),
+        }
     }
 }
 
@@ -470,6 +501,9 @@ impl Level {
 /// The level for a seed. Err if the options make no sense, or this seed can't be finished.
 pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
     o.check()?;
+    if o.start == Start::Empty {
+        return Err("an empty start is made from a recipe (its rooms are the recipe's)".to_string());
+    }
     if o.style == "felicity" {
         return crate::felicity::generate(seed, o);
     }

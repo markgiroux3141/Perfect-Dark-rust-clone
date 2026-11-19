@@ -27,6 +27,7 @@ pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
                                                     a room resized and one made; the recipe with both
 
   --seed N              the level's seed (default 40)
+  --empty               an empty start: no rooms but those --add makes; the seed only decorates them
   --recipe FILE         a recipe (seed, options, edits) instead; --seed and options then change it
   --NAME VALUE          an option, by its name in the recipe: scale size site cover clutter walkway
                         crates shapes risers second vents windows drops grates dead-ends
@@ -160,7 +161,8 @@ impl Args {
 
     /// Does a snapshot draw the room boxes? Asked for (`--rooms`), or any room flag is given.
     pub fn draws_rooms(&self) -> bool {
-        self.rooms || self.select.is_some() || self.lots || !self.boxes.is_empty()
+        let empty = self.recipe.options.start == autolevel::level::Start::Empty;
+        empty || self.rooms || self.select.is_some() || self.lots || !self.boxes.is_empty()
     }
 }
 
@@ -254,6 +256,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
                     _ => Some(floor("--storey: all, or a floor", v)?),
                 };
             }
+            "empty" => (out.recipe.options.start, took) = (autolevel::level::Start::Empty, 1),
             "list" => (out.list, took) = (true, 1),
             "routes" => (out.routes, took) = (true, 1),
             "all" => (out.all, took) = (true, 1),

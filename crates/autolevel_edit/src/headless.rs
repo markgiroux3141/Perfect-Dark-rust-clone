@@ -228,6 +228,17 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_start_makes_only_the_rooms_added() {
+        let none = run(&args("--empty --shot plan.png --width 600")).unwrap();
+        assert_eq!(none.failed.as_deref(), Some("no room yet: an empty start (draw one)"));
+        assert!(none.shot.is_some(), "the bare plan is still drawn");
+        let two = run(&args("--empty --add medium@30,20,40,28@0@512 --add vast@44,16,58,34@0@787 --shot plan.png --width 600")).unwrap();
+        assert!(two.failed.is_none() && two.refused.is_none(), "{:?} {:?}", two.failed, two.refused);
+        assert!(two.text.contains("autolevel seed 40: 2 rooms"), "{}", two.text);
+        assert!(autolevel::recipe::save(&two.recipe).contains("\"start\": \"empty\""));
+    }
+
+    #[test]
     fn a_plain_line_makes_no_level_unless_it_needs_one() {
         let done = run(&args("--seed 7 --walkway 3 --save-recipe out.json")).unwrap();
         assert!(done.text.is_empty() && done.shot.is_none() && done.recipe.options.walkway == 3);
@@ -416,8 +427,10 @@ mod tests {
         let done = run(&args("--seed 25 --select tower --shot plan.png --width 900")).unwrap();
         assert_eq!((done.failed.as_deref(), done.refused.as_deref()), (Some(why), None));
         assert_eq!(done.text, format!("no level: {why}\n"));
+        // (the bare plan is framed on the site, and draws its edge)
+        let placed = Doc::new(Recipe::new(25), true).lots().unwrap();
         let view = View {
-            boxes: Some(crate::planview::Boxes { lots: Doc::new(Recipe::new(25), true).lots().unwrap().lots, selected: Some("tower".into()), refused: None }),
+            boxes: Some(crate::planview::Boxes { lots: placed.lots, selected: Some("tower".into()), refused: None, site: Some(placed.site) }),
             ..View::default()
         };
         assert_eq!(png(&done), shot::render_bare(25, why, &view, 900).png().unwrap());

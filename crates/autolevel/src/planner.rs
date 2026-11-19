@@ -7,7 +7,7 @@
 
 use crate::cells::Cells;
 use crate::furnish::{rectangles, Interior};
-use crate::level::{Level, Pane, HUBS, NAMES, SCHEMES, WALKABLE};
+use crate::level::{Level, Pane, Start, HUBS, NAMES, SCHEMES, WALKABLE};
 use crate::plan::{box3, cells as units, Box3, Plan, Rail, Ramp, Room};
 use crate::py;
 use crate::pyrand::PyRandom;
@@ -36,10 +36,14 @@ pub fn plan(lv: &mut Level, rng: &mut PyRandom) -> Result<(), String> {
     let mut glass: Vec<Pane> = Vec::new();
     let (mut pools, mut ramp_rails, mut moods, mut ceilings, mut glows) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
 
+    let (seed, empty) = (lv.seed, lv.options.start == Start::Empty);
     let mut names: Vec<(&str, Vec<&str>)> = NAMES.iter().map(|(k, v)| (*k, v.to_vec())).collect();
-    for (_, v) in &mut names {
-        rng.shuffle(v);
+    if !empty {
+        for (_, v) in &mut names {
+            rng.shuffle(v);
+        }
     }
+    let mut named: BTreeSet<String> = BTreeSet::new();
     let mut stubs: BTreeMap<&str, Vec<Box3>> = sp.iter().map(|s| (s.key.as_str(), Vec::new())).collect();
     let mut links: Vec<(String, String, &'static str)> = Vec::new();
     // boxes and rails added to a room for its openings
@@ -98,10 +102,21 @@ pub fn plan(lv: &mut Level, rng: &mut PyRandom) -> Result<(), String> {
         let key = s.key.as_str();
         // a name of its kind's while they last, then its key. (The Python would title-case the
         // key if its list of names came back empty, which the list it falls back on never is.)
-        let name = match names.iter_mut().find(|(k, _)| *k == s.kind).and_then(|(_, pool)| pool.pop()) {
-            Some(name) => name.to_string(),
-            None => s.key.clone(),
+        let name = if empty {
+            // (an empty start: the room's own draw of its kind's names, the first one no earlier
+            // room has, so a room added later never renames one before it)
+            let mut pool = names.iter().find(|(k, _)| *k == s.kind).map_or(Vec::new(), |(_, pool)| pool.clone());
+            PyRandom::named(&format!("{seed}/{key}/name")).shuffle(&mut pool);
+            pool.into_iter().find(|n| !named.contains(*n)).map_or_else(|| s.key.clone(), str::to_string)
+        } else {
+            match names.iter_mut().find(|(k, _)| *k == s.kind).and_then(|(_, pool)| pool.pop()) {
+                Some(name) => name.to_string(),
+                None => s.key.clone(),
+            }
         };
+        named.insert(name.clone());
+        let mut own = None;
+        let rng = lv.options.stream(rng, &mut own, || format!("{seed}/{key}/plan"));
         let mut scheme = *rng.choice(SCHEMES.iter().find(|(k, _)| *k == s.kind).map_or(&["standard"][..], |(_, v)| *v));
         let mut boxes;
         if !s.host.is_empty() {
@@ -191,7 +206,11 @@ pub fn plan(lv: &mut Level, rng: &mut PyRandom) -> Result<(), String> {
             continue;
         }
         let mut chain = vec![r.a.room.clone()];
-        for pc in &r.pieces {
+        for (i, pc) in r.pieces.iter().enumerate() {
+            // (an empty start: each piece its own stream, named by its route's rooms, not by its
+            // key, which is dealt out again when the rooms change)
+            let mut own = None;
+            let rng = lv.options.stream(rng, &mut own, || format!("{seed}/{}/{}/{i}/plan", r.a.room, r.b.room));
             let mut boxes = Vec::new();
             for (z, cells) in by_storey(pc) {
                 let (lo, hi) = storey(*z);

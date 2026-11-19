@@ -15,7 +15,7 @@
 use crate::cells::{rect_cells, Cell, Cells, Rect};
 use crate::deadends::{self, DeadEnd, Graph, Limits, NavCache};
 use crate::furnish::{Interior, Setup, GALLERIES_MIN, MEZZANINE_MIN, RING_MIN};
-use crate::level::Options;
+use crate::level::{Options, Start};
 use crate::network::{components, Network};
 use crate::pods::Access;
 use crate::py;
@@ -116,7 +116,18 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
             }
         }
     }
-    rng.shuffle(&mut pairs);
+    // (an empty start: each pair of rooms its own stream, by their keys, for where it comes in
+    // the order and then a spot over their overlap: the drop takes the free place nearest it, so
+    // a door added elsewhere in the room moves it only if that door is where it was)
+    let empty = o.start == Start::Empty;
+    let own = |up: &str, low: &str| PyRandom::named(&format!("{seed}/{up}/{low}/drop"));
+    if empty {
+        let mut drawn: Vec<_> = pairs.into_iter().map(|p| (own(p.0, p.1).random(), p)).collect();
+        drawn.sort_by(|a, b| a.0.total_cmp(&b.0));
+        pairs = drawn.into_iter().map(|(_, p)| p).collect();
+    } else {
+        rng.shuffle(&mut pairs);
+    }
     for (up, low, blocks) in &pairs {
         if drops.len() >= o.drops {
             break;
@@ -124,7 +135,19 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
         if holed.contains(up) || lit.contains(low) || lit.contains(up) || holed.contains(low) {
             continue;
         }
-        let (x, y) = *rng.choice(blocks);
+        let (x, y) = if empty {
+            // the spot: over the two rooms' overlap, which no door changes
+            let mut r = own(up, low);
+            r.random();
+            let (u, v) = (r.random(), r.random());
+            let (a, b) = (rooms.iter().find(|s| s.key == *up).expect("a room of the pair"), rooms.iter().find(|s| s.key == *low).expect("a room of the pair"));
+            let (x0, y0, x1, y1) = (a.x0.max(b.x0), a.y0.max(b.y0), a.x1.min(b.x1) - 2, a.y1.min(b.y1) - 2);
+            let (tx, ty) = (x0 as f64 + u * (x1 - x0) as f64, y0 as f64 + v * (y1 - y0) as f64);
+            let far = |c: &&(i32, i32)| (c.0 as f64 - tx).powi(2) + (c.1 as f64 - ty).powi(2);
+            *blocks.iter().min_by(|p, q| far(p).total_cmp(&far(q))).expect("a pair has a place")
+        } else {
+            *rng.choice(blocks)
+        };
         drops.push((up.to_string(), low.to_string(), (x, y, x + 2, y + 2)));
         holed.insert(up);
         lit.insert(low);

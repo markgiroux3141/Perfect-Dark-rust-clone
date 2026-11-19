@@ -50,7 +50,7 @@ use crate::raster::Fit;
 use crate::{routes, shot};
 use autolevel::boxes::{self, Change, Part, Trial};
 use autolevel::candidates::Removal;
-use autolevel::level::{Options, COVER};
+use autolevel::level::{Options, Start, COVER};
 use autolevel::place::{self, Placed};
 use autolevel::recipe::{self, Edit, Recipe};
 use autolevel::scatter::Lot;
@@ -656,6 +656,23 @@ impl Editor {
             }
             if ui.button(">").clicked() {
                 self.doc.set_seed(self.doc.recipe.seed + 1);
+            }
+            let mut empty = self.doc.recipe.options.start == Start::Empty;
+            let does = "an empty start: no rooms but the ones you draw; the seed then only decorates them";
+            let switch = ui.checkbox(&mut empty, "empty").on_hover_text(does);
+            self.spots.push(("empty".to_string(), switch.rect));
+            if switch.changed() {
+                let gone = self.doc.set_start(if empty { Start::Empty } else { Start::Seed });
+                self.drop_drag();
+                self.look = None; // (framed again: on the site, or on the seed's level)
+                if empty {
+                    self.set_tool(Tool::Rooms);
+                }
+                let begun = if empty { "an empty start: draw a room (New room, below)" } else { "the seed's own rooms" };
+                self.status = match gone {
+                    0 => begun.to_string(),
+                    n => format!("{begun}; {n} edits set aside (Undo brings them back)"),
+                };
             }
         });
         if let Some(job) = &self.job {
@@ -1476,6 +1493,11 @@ impl Editor {
 /// in hand every box's too (one may have been put clear of the level, or there may be no level).
 fn bounds(made: Option<&Made>, placed: Option<&Placed>) -> (P, P) {
     let mut all = made.map(|made| planview::bounds(&made.level));
+    // (an empty start: the whole site, to draw rooms anywhere on it)
+    if let Some((w, h)) = placed.filter(|p| p.blank).map(|p| p.site) {
+        let site = ((-1.5, -1.5), (w as f32 + 1.5, h as f32 + 1.5));
+        all = Some(all.map_or(site, |(l, h): (P, P)| ((l.0.min(site.0 .0), l.1.min(site.0 .1)), (h.0.max(site.1 .0), h.1.max(site.1 .1)))));
+    }
     for a in placed.iter().flat_map(|p| &p.lots) {
         let (lo, hi) = ((a.x0 as f32 - 1.5, a.y0 as f32 - 1.5), (a.x1 as f32 + 1.5, a.y1 as f32 + 1.5));
         all = Some(all.map_or((lo, hi), |(l, h)| ((l.0.min(lo.0), l.1.min(lo.1)), (h.0.max(hi.0), h.1.max(hi.1)))));
@@ -1973,6 +1995,46 @@ mod tests {
         assert_eq!(lot(&mut ed, "medium3").rect(), (b.x0, b.y0, b.x1, b.y0 + 2));
         // three steps to undo, the box selected throughout
         assert!(ed.doc.selected() == Some("medium3") && ed.doc.undo() && ed.doc.undo() && ed.doc.undo() && !ed.doc.undo());
+    }
+
+    #[test]
+    fn an_empty_start_is_drawn_on_from_nothing() {
+        let (mut ed, egui) = rooms();
+        ed.doc.add(Edit::Keep { room: "spire1".into() });
+        pass(&mut ed, &egui, Vec::new());
+        // the switch: no rooms, the edits set aside, the room tool in hand
+        let at = spot(&ed, "empty");
+        click(&mut ed, &egui, at);
+        assert!(ed.doc.recipe.options.start == Start::Empty && ed.doc.recipe.edits.is_empty() && ed.tool == Tool::Rooms);
+        assert!(ed.status.contains("1 edits set aside"), "{}", ed.status);
+        settle(&mut ed);
+        assert_eq!(ed.doc.error(), Some("no room yet: an empty start (draw one)"));
+        // the bare plan is framed on the whole site (80 x 60 cells at the grand scale)
+        pass(&mut ed, &egui, Vec::new());
+        let (lo, hi) = (px(&ed, (0.0, 0.0)), px(&ed, (80.0, 60.0)));
+        assert!(hi.x - lo.x > 600.0 && lo.x >= 0.0 && hi.x <= 1500.0 && lo.y >= 0.0 && hi.y <= 950.0, "{lo:?} {hi:?}");
+        // a room, and a second beside it: each an add, the level made with them
+        for (from, to, want) in [
+            ((20.5, 20.5), (29.5, 27.5), "add room1 (medium) at 20, 20 to 30, 28, from 0 to 236"),
+            ((34.5, 20.5), (43.5, 27.5), "add room2 (medium) at 34, 20 to 44, 28, from 0 to 236"),
+        ] {
+            let draw = spot(&ed, "draw");
+            click(&mut ed, &egui, draw);
+            drag(&mut ed, &egui, from, to);
+            release(&mut ed, &egui, to);
+            assert_eq!(edits(&ed).last().map(String::as_str), Some(want));
+            settle(&mut ed);
+            assert!(ed.doc.error().is_none(), "{:?}", ed.doc.error());
+            pass(&mut ed, &egui, Vec::new());
+        }
+        let lv = &ed.doc.made().unwrap().level;
+        assert_eq!(lv.spaces().len(), 2);
+        assert!(!lv.net.routes().is_empty(), "the two rooms are joined");
+        // undo takes the rooms out and then the empty start, the set-aside edit back with it
+        for _ in 0..3 {
+            ed.doc.undo();
+        }
+        assert!(ed.doc.recipe.options.start == Start::Seed && ed.doc.recipe.edits == [Edit::Keep { room: "spire1".into() }]);
     }
 
     #[test]

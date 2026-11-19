@@ -37,8 +37,6 @@ should be taken: the user's own look first, since it is the most likely source o
 
 Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
 
-- **The site's edge is not drawn** on the plan (`planview::Boxes` carries no site), so the
-  refusal "off the site" has nothing on screen to point at.
 - **No edit changes an existing room's height.** Only `add` gives one. Today it means deleting
   the room and adding another.
 - **The 3D view is brighter than the game**: it draws every room at full baked brightness with
@@ -66,6 +64,11 @@ Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
 - **`--size 4` levels** were walked (270 of 270) but never imported as an arena.
 
 ## 3. Bigger directions (not started; the user chooses)
+
+- **Blank levels: your edit wins** (the user's, 2026-11-18; designed, chosen as the next step):
+  start empty, draw rooms, and the generator remakes the rest round each edit, offering
+  alternatives where an edit can be met in several ways; a side view for heights. Design, the
+  user's decisions and the order of work: AUTOLEVEL.md, "Blank levels: your edit wins".
 
 - **The generator in other levels' styles** (Felicity, G5): the user's stated next step before
   the port. Do the same methods transfer, or does each style need rules of its own? The procgen

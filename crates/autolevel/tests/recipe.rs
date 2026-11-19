@@ -647,3 +647,97 @@ fn edited_levels_of_seed_7_are_whole_or_refused_for_a_reason() {
 fn edited_levels_of_seed_1_are_whole_or_refused_for_a_reason() {
     whole_or_refused(1);
 }
+
+// ---- an empty start (`"start": "empty"`, docs/AUTOLEVEL.md, "Blank levels: your edit wins") ----
+
+/// An empty start with these edits.
+fn empty(seed: u64, edits: Vec<Edit>) -> Recipe {
+    Recipe { edits, ..Recipe::empty(seed) }
+}
+
+/// Two rooms a corridor joins (the first test of the design: a room, then another).
+fn two() -> Vec<Edit> {
+    vec![add("room1", "medium", (30, 20, 40, 28), 0, 512), add("room2", "vast", (44, 16, 58, 34), 0, 787)]
+}
+
+fn name(lv: &Level, key: &str) -> String {
+    lv.plan.rooms.iter().find(|r| r.key == key).unwrap_or_else(|| panic!("no room {key}")).name.clone()
+}
+
+fn row<T: Clone>(rows: &[(String, T)], key: &str) -> Option<T> {
+    rows.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+}
+
+#[test]
+fn an_empty_start_has_no_room_until_one_is_added() {
+    assert_eq!(Recipe::empty(40).generate().unwrap_err(), "no room yet: an empty start (draw one)");
+    let one = empty(40, two()[..1].to_vec()).generate().unwrap();
+    assert_eq!(one.spaces().iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["room1"]);
+    let lv = empty(40, two()).generate().unwrap();
+    assert_eq!(lv.spaces().len(), 2);
+    assert!(!lv.net.routes().is_empty(), "the two rooms are joined");
+    // the file says so, and a seed's recipe does not mention it
+    let text = save(&empty(40, two()));
+    assert!(text.contains("\"start\": \"empty\""), "{text}");
+    assert_eq!(load(&text).unwrap(), empty(40, two()));
+    assert!(!save(&Recipe::new(40)).contains("start"));
+    // a level made from a seed alone cannot start empty: its rooms are the recipe's
+    let o = Recipe::empty(40).options;
+    assert!(autolevel::level::generate(40, &o).unwrap_err().contains("recipe"));
+    let felicity = Options { style: "felicity", ..o };
+    assert_eq!(felicity.check().unwrap_err(), "an empty start is for a complex level, not a felicity one");
+}
+
+#[test]
+fn an_empty_start_may_lose_its_last_room() {
+    let mut edits = two();
+    edits.extend([delete("room1"), delete("room2")]);
+    assert_eq!(empty(40, edits).generate().unwrap_err(), "no room yet: an empty start (draw one)");
+}
+
+#[test]
+fn in_an_empty_start_the_seed_routes_nothing_but_decorates() {
+    // the router draws no random numbers: the same rooms, the same network on any seed. (The
+    // dead-end pass after it can differ: it measures walks over the rooms' decks, which the seed
+    // furnishes, so a seed whose deck leaves a dead end gets a corridor that another does not.)
+    let routed = |seed| empty(seed, two()).routed().unwrap().1.routes().iter().map(|r| r.path.clone()).collect::<Vec<_>>();
+    assert_eq!(routed(40), routed(41));
+    let a = empty(40, two()).generate().unwrap();
+    // (and the seed does reach the decoration: some room of the two is named, lit or roofed
+    // otherwise on one of a few seeds)
+    let looks = |lv: &Level| ["room1", "room2"].map(|k| (name(lv, k), row(&lv.moods, k), row(&lv.ceilings, k)));
+    assert!((41..46).any(|seed| looks(&empty(seed, two()).generate().unwrap()) != looks(&a)));
+}
+
+#[test]
+fn in_an_empty_start_a_room_added_elsewhere_leaves_the_others_as_they_were() {
+    let before = empty(40, two()).generate().unwrap();
+    for (n, far) in [add("room3", "small", (8, 44, 13, 49), 0, 236), add("room3", "tower", (64, 40, 72, 49), 0, 1063)].into_iter().enumerate() {
+        let mut edits = two();
+        edits.push(far);
+        let after = empty(40, edits).generate().unwrap();
+        for k in ["room1", "room2"] {
+            assert_eq!(name(&after, k), name(&before, k), "{n}: {k}'s name");
+            assert_eq!(row(&after.moods, k), row(&before.moods, k), "{n}: {k}'s brightness");
+            assert_eq!(row(&after.ceilings, k), row(&before.ceilings, k), "{n}: {k}'s ceiling");
+        }
+    }
+}
+
+#[test]
+fn in_an_empty_start_a_drop_stays_where_it_was_when_a_room_is_added_elsewhere() {
+    // a room over another, a slab between: the upper one has a hole into the lower
+    let stack = || {
+        vec![
+            add("room1", "medium", (30, 20, 40, 28), 0, 236),
+            add("room2", "medium", (30, 20, 40, 28), 276, 512),
+            add("room3", "vast", (44, 16, 58, 34), 0, 787),
+        ]
+    };
+    let before = empty(40, stack()).generate().unwrap();
+    assert!(!before.drops.is_empty(), "the stacked rooms have a drop");
+    let mut edits = stack();
+    edits.push(add("room4", "small", (8, 44, 13, 49), 0, 236));
+    let after = empty(40, edits).generate().unwrap();
+    assert_eq!(after.drops, before.drops);
+}

@@ -52,9 +52,10 @@ cargo build --release -p pd_import          # also builds target/release/autolev
                                             #   its recipe kept in levels/autolevel40.json (`--gltf`: as any glTF instead);
                                             #   `autolevel shots out/autolevel/seed40` then draws its views with the game (DIR/shots/*.png);
                                             #   also `sweep`, `plan`, `batch`, `walk`, `deadends`, `--recipe FILE`; `autolevel --help`
-cargo run --release -p autolevel_edit -- --seed 40 --shot out.png [--storey Z] [--pick ROOM@STOREY [--join N]] [--remove KEY]
+cargo run --release -p autolevel_edit -- --seed 40 --shot out.png [--empty] [--storey Z] [--pick ROOM@STOREY [--join N]] [--remove KEY]
                                             #   the generator's editor: its plan view as a PNG with no window (how to look at a
                                             #   level's plan), the dead-end list, the joins that could be made; without --shot a window (the user's).
+                                            #   `--empty`: no rooms but those --add makes (a blank level; docs/AUTOLEVEL.md, "Blank levels").
                                             #   Room boxes: `--rooms --select ROOM --lots --move ROOM@X,Y --rect ROOM@X0,Y0,X1,Y1 --pin ROOM@FLOOR
                                             #   --delete ROOM --add KIND@X0,Y0,X1,Y1@FLOOR@TOP --try` (a refusal is drawn and exits 1). One room's
                                             #   choices: `--layout --cover --inside --brightness --ceiling --own ROOM@VALUE`, `--choices ROOM`

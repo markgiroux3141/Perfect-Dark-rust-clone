@@ -28,12 +28,13 @@ use crate::planview::{Boxes, View};
 use autolevel::boxes::{self, Change, Trial};
 use autolevel::candidates::{self, Candidate, Candidates, Removal};
 use autolevel::choices::{self, Choices};
+use autolevel::level::Start;
 use autolevel::place::{Placed, Siting};
 use autolevel::recipe::{self, Edit, Recipe};
 use std::sync::Arc;
 
 /// The seed's own lots, with the seed and siting they were scattered for.
-type Base = (u64, Siting, Result<Arc<Placed>, String>);
+type Base = (u64, Siting, Start, Result<Arc<Placed>, String>);
 
 /// The most steps kept to undo.
 pub const UNDO: usize = 500;
@@ -148,6 +149,17 @@ impl Doc {
             self.push();
             self.recipe.seed = seed;
         }
+    }
+
+    /// Begin with the seed's own rooms or with none (`Start::Empty`). The edits are set aside
+    /// (they name the other start's rooms); undo brings them back. Returns how many went.
+    pub fn set_start(&mut self, start: Start) -> usize {
+        if start == self.recipe.options.start {
+            return 0;
+        }
+        self.push();
+        self.recipe.options.start = start;
+        std::mem::take(&mut self.recipe.edits).len()
     }
 
     /// Set an option by its name, from text (`recipe::set_option`).
@@ -313,15 +325,15 @@ impl Doc {
         self.selected.as_deref()
     }
 
-    /// The seed's own lots, as scattered for the recipe's seed and siting: what the recipe's lot
-    /// edits are made on. Worked out once, and again when either changes. Err if the site has
-    /// no room for a lot.
+    /// The seed's own lots, as scattered for the recipe's seed and siting (none, for an empty
+    /// start): what the recipe's lot edits are made on. Worked out once, and again when any of
+    /// the three changes. Err if the site has no room for a lot.
     pub fn base(&mut self) -> Result<Arc<Placed>, String> {
-        let (seed, siting) = (self.recipe.seed, &self.recipe.options.siting);
-        if !self.base.as_ref().is_some_and(|(s, o, _)| *s == seed && o == siting) {
-            self.base = Some((seed, siting.clone(), self.recipe.scattered().map(Arc::new)));
+        let (seed, siting, start) = (self.recipe.seed, &self.recipe.options.siting, self.recipe.options.start);
+        if !self.base.as_ref().is_some_and(|(s, o, b, _)| *s == seed && o == siting && *b == start) {
+            self.base = Some((seed, siting.clone(), start, self.recipe.scattered().map(Arc::new)));
         }
-        self.base.as_ref().expect("just set").2.clone()
+        self.base.as_ref().expect("just set").3.clone()
     }
 
     /// The lots as the recipe places them now, held to no rule (so they can be shown even
@@ -367,12 +379,14 @@ impl Doc {
     /// (or as `trial`, a change being tried, would: its refusal goes with them), and the one
     /// selected, if there is still such a room.
     pub fn boxes(&mut self, trial: Option<&Trial>) -> Boxes {
+        let placed = self.lots().ok();
+        let site = placed.as_ref().map(|p| p.site);
         let lots = match trial {
             Some(t) => t.lots.clone(),
-            None => self.lots().map_or(Vec::new(), |p| p.lots),
+            None => placed.map_or(Vec::new(), |p| p.lots),
         };
         let selected = self.selected.clone().filter(|key| lots.iter().any(|a| a.key == *key));
-        Boxes { lots, selected, refused: trial.and_then(|t| t.refused.clone()) }
+        Boxes { lots, selected, refused: trial.and_then(|t| t.refused.clone()), site }
     }
 
     // ------------------------------------------------------------ one room's choices

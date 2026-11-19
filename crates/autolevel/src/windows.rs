@@ -87,6 +87,9 @@ pub fn windows(lv: &Level) -> Vec<Window> {
             continue;
         }
         pieces.insert(piece.clone());
+        // (an empty start: the window's own stream, by its hall and where it is in the wall)
+        let mut own = None;
+        let rng = lv.options.stream(&mut rng, &mut own, || format!("{}/{hall}/window/{z}/{},{}", lv.seed, wall[0].0, wall[0].1));
         let kind = if !level && rng.random() < 0.3 { "rail" } else { "glass" };
         out.push(Window { piece, hall, z, wall, d, kind });
     }

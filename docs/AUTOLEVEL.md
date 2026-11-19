@@ -735,6 +735,9 @@ list, Felicity's greyed sliders; the site made one's own and back). Nobody has l
 4. Per-room choices (layout, cover, brightness, ceiling) and re-rolling one room's inside.
    **Done** (2026-11-17).
 5. The 3D view and walking the level in place. **Done** (2026-11-17), in `pd_edit`.
+6. Blank levels: an empty start, contacts in place of refusals, alternatives, the cascade shown,
+   and a side view for heights. **Designed** (2026-11-18); its step 1, the empty start, **done**
+   the same day: see "Blank levels: your edit wins".
 
 ## The recipe
 
@@ -1566,6 +1569,198 @@ kills (version 1: 3 and 4; the rooms are bigger, and some now read as plain hall
 - The 4 part-way failures (seed 1 r3, seed 8 r6: read them with the walker's trace).
 - L and U rooms (footprint first: a corner, an edge or the middle cut from the box); angled walls.
 - The views: some stand against a wall (a doorway's cell, facing the room's middle).
+
+## Blank levels: your edit wins
+
+**Designed 2026-11-18; step 1 (the empty start) built the same day** (see "As built" at the
+end of this section). The user's idea: start from nothing, draw rooms, and have the
+generator work out the rest around each edit. A move is top priority, and everything around it is
+made again to fit it. Where the edit can be met in more than one way, the editor shows the ways
+and the person chooses. The cascade is the point: change something and see what follows from it.
+The user's test: start blank, add a room, add a second beside it, add a third that pokes into one
+of them. The generator does the rest, and offers alternatives where there are several.
+
+**The user's decisions (2026-11-18):**
+1. **The newest edit wins.** Where two of the person's own rooms conflict, the one touched last
+   keeps its box and the other gives way. (Priority is by the last edit that names a room, so
+   moving an old room makes it the winner again.)
+2. **The generator may add rooms of its own** (a junction hall, a stair room) where that is the
+   best way to join the person's rooms.
+3. **A room poking into another at a different height is offered as alternatives**, like any
+   other overlap: it is not always a pod.
+4. **Heights need a proper tool: a side view** (below).
+
+### What the seed is for here
+
+From reading the code: routing (`route::connect`) and the dead-end pass draw no random numbers.
+For the same rooms and options the router gives the same corridors whatever the seed (tested).
+**The dead-end pass does not**: it measures walks over the rooms' decks and ramps, which the seed
+furnishes, so a seed whose deck leaves a dead end gets a corridor another does not (two rooms of
+an empty start: seed 40 adds a ramp corridor, seed 41 none). The seed's streams are: the scatter (`PyRandom::from_int(seed)`: which rooms exist, and where), each spire's
+spiral (`{seed}/{key}/spiral`), each room's dress and furnishing (`{seed}/{key}/dress`,
+`/{attempt}`, `/reroll{n}/...`), drops and grates (`{seed}/openings`), windows (`{seed}/windows`)
+and the plan (`{seed}/plan`: names, moods, ceilings, tints, glows). With no scatter, **the seed is
+a decoration number**: changing it re-dresses the rooms, and can add or cut a dead-end corridor
+through them, but never moves one the router made.
+
+### What has to change
+
+The generator already cascades: an edit makes the level again from the first stage it touches.
+What it lacks:
+- **Contact is refused.** Rooms keep a cell apart unless one is a pod or stacked above the other.
+- **Noise in the cascade.** Openings, windows and names come from level-wide streams, and route
+  keys are dealt out again, so an edit changes things it has nothing to do with.
+- **One answer.** The router makes the cheapest network and nothing else.
+- **Nothing shows what changed.** The new level simply replaces the old one.
+
+### The model
+
+- **What the person places is fixed** (their rooms' boxes, and any choice or "keep").
+  **What the generator makes can change** (corridors, vents, ramps, catwalks, decks, windows,
+  cover, dead-end fixes, and rooms it adds itself). An edit makes the changeable things again
+  around the fixed ones.
+- **Stability.** Of the ways to meet an edit, prefer the one closest to the level before it: the
+  generator's own cost plus a cost for each thing changed. Without this, one moved room can
+  rewire the whole network over a small difference in cost.
+- **The recipe still replays.** The way the person chose is recorded as an edit in plain words
+  (`{"edit": "contact", "rooms": ["room3", "room2"], "as": "carve"}`). The level is never stored.
+- **Rooms the generator adds** are its own: a later cascade may move or remove them. The person
+  can adopt one (it becomes theirs and fixed).
+
+### The pieces
+
+**1. An empty start.** A recipe field (`"start": "empty"`): no scatter, rooms keyed `room1`,
+`room2` and so on. In this mode the level-wide streams are keyed by room and by route
+(`{seed}/{key}/openings`, `{seed}/{route}/window`, a room's name from `{seed}/{key}/name`), so adding
+a room re-draws only what touches it. Seeded recipes keep the streams they have: **no seed's
+level changes, and the answer keys still pass** (a test says so).
+
+**2. Contacts in place of refusals.** How two of the person's rooms meet:
+
+| Contact | What the generator does |
+|---|---|
+| Apart | Corridors, as now |
+| Beside (walls touching, storeys in common) | A shared wall with a doorway: no corridor between |
+| Poking in (footprints overlap, storeys in common) | Alternatives (below) |
+| Above (no storey in common) | A slab between, as now, or joined by a ramp or a drop |
+
+Built on what is there. Rooms are rectangles (`space::Space`); a room's L-shape is only a notch the
+furnisher puts inside it (`build::dress`, `shape`). But `Space::host` is already "the room it pokes
+into" for a pod, the hall's furnisher already keeps clear of its pods, and `pods::pod_access`
+already gives a pod a way in from its hall with no corridor. So:
+- **Poking in** is a host relation, generalised from pods to any size and height.
+- **Beside** is a pod's way in, generalised to two rooms sharing a wall.
+
+Sculpt's voxel grid handles any contact (`sculpt::layout` cuts an overlapping room back and joins
+rooms through shared walls), but sculpt is shelved, and Complex's rooms, router and furnisher are
+the ones that walk clean. Blank levels are built on Complex's model.
+
+**3. Alternatives for an overlap.** When room C pokes into room B (C touched last, so B gives way):
+- **C carves B.** C's box is solid in B from B's floor to its top, apart from C's own air: an
+  intrusion, like a full-height pod. The wall C shows inside B gets windows or a railed opening,
+  so each room sees into the other.
+- **C hangs in B.** C is a glazed box in B's air, and B's floor runs on under it. This is a pod,
+  of any size, at any height that leaves room under it.
+- **Merged.** One room, with a cross wall where they met (the furnisher's `partition`).
+- **B pushed away.** Not by the first decision when B is the person's own. Offered only where B
+  is a room the generator added.
+
+Each alternative is made as a whole level on a thread, as the Join tool's candidates are
+(`candidates.rs`: "what is previewed is what is made"), and the ones that make no level are
+listed as refused, with the reason. The rest come ranked (cost plus change), the first one made at
+once, the others a click away. With a handful of rooms a level takes a small part of the
+0.5 s a seed does, so the alternatives arrive in well under a second.
+
+**4. Alternatives in the network.** The router gives one network. For a choice of corridors,
+the next-cheapest networks within a margin are offered too: k-best, or the cheapest with one of
+its links forbidden in turn. So is a network with a room the generator adds (decision 2), where it
+costs less than the corridors it saves.
+
+**5. The cascade, shown.** After any edit, the plan compares the new level with the one before
+it: what is new is lit, what went is a ghost, what moved has an arrow. A list says it in words
+("c03 re-routed round room3, +6 cells; two windows in room2's east wall; room2's ring is now a
+U"). Each alternative carries its own list. A `diff` of two `Level`s, by room key and by route
+ends (not route keys, which are dealt out again).
+
+**6. Keeping what the generator made.** "Keep" on a corridor, a window or a catwalk makes it
+fixed (an edit), so later edits route round it. A kept thing that a newer edit cannot be met
+with is given up, by the first decision, and the list says so.
+
+**7. The side view.** A switch on the plan, **Top | Side**: a section through the level, height
+upwards.
+- **The section** is a line on the top view, along x or along y (a toggle), dragged to where it
+  should cut. By default it cuts through the middle of the room in hand. Rooms the line crosses
+  are drawn solid, those behind it faded, with the nearest in front.
+- **The grid is the storeys:** floors at -276, 0, 276, ..., 1654 (`storeys::LEVELS`) and tops at
+  -39, 236, ..., 1890 (`storeys::CEILINGS`), labelled up the side.
+- **It shows** the rooms' boxes and slabs, decks and catwalks, ramps as slopes, corridors at
+  their heights, pods hanging, drops and where they land, and the cascade's ghosts and arrows.
+- **Editing:** drag a box up or down to change its floor (its height kept), drag its top or
+  bottom edge to change its height (snapped to the storeys), drag it sideways to move it along
+  the section's axis. Each goes through the same trial as the top view: tried at every whole
+  step while the button is down, and made when it is let go.
+- **Heights need an edit.** No edit changes a seeded room's height now (the room boxes' "Rough").
+  In an empty start every room is an `add`, so the side view rewrites the add's floor and top.
+  For seeded rooms a `height` edit is new: floor and top, a hall's pods kept at the same storeys
+  above its floor.
+- **Without a window:** `autolevel_edit --side x@Y | y@X --shot`, as the top view's `--shot`.
+
+### Order of work
+
+1. Empty start, with streams keyed by room and route; `--empty` on the command line; a test that
+   the seeds' keys are unchanged.
+2. The side view, showing first and then editing; the `height` edit.
+3. Beside: shared walls and doorways.
+4. Poking in: carve, hang and merge, the newest edit winning, the alternatives made in parallel,
+   and the `contact` edit.
+5. The cascade shown: the `diff`, drawn and listed.
+6. Stability (the change cost), "keep" on generated things, and network alternatives.
+7. Rooms the generator adds.
+
+**The acceptance test**, as a test and a set of shots at each step: empty start; add `room1`; add
+`room2` touching it (one doorway, no corridor); add `room3` overlapping `room2` (at least carve and
+hang offered, both walk clean); choose carve (windows in the shared wall; `room2`'s catwalk, if
+`room3` blocks it, routed round); then the same with `room3` raised two storeys in the side view.
+
+### As built (step 1: the empty start, 2026-11-18)
+
+- **The recipe:** `"start": "empty"` beside `"seed"` (left out for a seed's own; still format 1).
+  It is `level::Start` (`Seed`, `Empty`), held on `Options::start` so every stage sees it, though
+  it is not one of `recipe::OPTIONS`. `Recipe::empty(seed)`. `scattered()` is `Placed::empty`
+  (no lots; `Placed::blank`, so the last room may be deleted too). With no room, every stage
+  refuses with "no room yet: an empty start (draw one)". `level::generate` refuses an empty
+  start (its rooms are the recipe's), and `Options::check` refuses one for another style.
+- **Streams of their own** (`Options::stream`: a seed's level gets the shared stream back,
+  untouched, so the keys pass): a room's name (`{seed}/{key}/name`: its own shuffle of its kind's
+  names, the first one no earlier room has, so a room added later never renames one before it),
+  its scheme, brightness and ceiling (`{seed}/{key}/plan`), each corridor piece's tint, scheme and
+  glow (`{seed}/{a}/{b}/{i}/plan`: by its route's rooms, not its key), a window's glass or rail
+  (`{seed}/{hall}/window/{z}/{x},{y}`: by where it is), and a drop
+  (`{seed}/{up}/{low}/drop`: its place in the order, then a spot over the two rooms' overlap;
+  the drop takes the free place **nearest** that spot, so a door added to the room moves it only
+  if the door is where it was. Picking by index, as the seed's level does, moved it.) Grates
+  draw no random numbers. A room's dress and furnishing and a spire's spiral were keyed by room
+  already. The level-wide limits still hold (`drops`, `windows`, three glows), so a new
+  candidate can take a place another had: a real consequence of the edit, not noise.
+- **The editor:** `--empty` on the command line (the room boxes always drawn); in the window an
+  "empty" switch in the seed row: the edits are set aside (Undo brings them back), the Rooms tool
+  is put in hand, and the plan is framed on the site. The bare plan (no level: an empty start,
+  or a seed like 25 that makes none) is framed on the site and draws its edge dashed, with a
+  legend line (`Boxes::site`); `Doc::base` is cached by the start as well as the seed and siting.
+- **Checked:** 5 tests in `tests/recipe.rs` (no room until one is added, the file both ways, the
+  last room deleted, the router the same on two seeds while the decoration differs on some,
+  names, brightness and ceilings unchanged by a room added elsewhere, a drop unchanged by a room
+  added elsewhere), one on the command line and one in the window (the switch, the site framed,
+  two rooms drawn, a level of them joined, undo back to the seed with its edit). All 123 layout
+  tests and the keys pass unchanged.
+- **Rough:** a room the dead-end pass joins with a corridor of its own is still named by a route
+  key that is dealt out again. Two rooms "beside" each other are still refused (a cell between):
+  that is step 3.
+
+**Not decided yet:** how many alternatives to show at most, and whether they appear as a strip of
+small plans or one at a time with numbers (as the Join tool's are); what a room the generator adds
+looks like (its kind, and so its dress); whether a seeded level can be switched to "your edit
+wins" (its rooms all made the person's) or only an empty one.
 
 ## Risks
 

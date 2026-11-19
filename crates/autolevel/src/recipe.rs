@@ -28,13 +28,16 @@
 //!   (after the pass: a room's own decks stop at a storey);
 //! - `brightness`, `ceiling` (on the finished level: they replace the planner's own choice).
 //!
+//! `"start": "empty"` (`level::Start::Empty`) begins with no rooms: every room is an `add`, and
+//! the seed only decorates them (see `Options::stream`). Left out, the start is the seed's own.
+//!
 //! Later edits see earlier ones: a room that was moved is joined where it now is, and an edit
 //! that names a room a `delete` took out is an error that says so. An edited level is held to
 //! everything a seed's own is: no room cut off, every room furnished, the plan's check passed.
 
 use crate::build::{takes, Build, JOIN_COST, JOIN_SEARCH, LAYOUTS};
 use crate::cells::Rect;
-use crate::level::{self, Level, Options, COVER};
+use crate::level::{self, Level, Options, Start, COVER};
 use crate::network::{components, Network};
 use crate::place::{self, Placed, Scale};
 use crate::py;
@@ -384,10 +387,16 @@ impl Opts {
 struct File {
     format: u32,
     seed: u64,
+    #[serde(default, skip_serializing_if = "is_seed")]
+    start: Start,
     #[serde(default)]
     options: Opts,
     #[serde(default)]
     edits: Vec<Edit>,
+}
+
+fn is_seed(s: &Start) -> bool {
+    *s == Start::Seed
 }
 
 /// A recipe from its file's text. Err, saying what, for text that is not JSON, a format this
@@ -402,13 +411,14 @@ pub fn load(text: &str) -> Result<Recipe, String> {
     let file: File = serde_json::from_str(text).map_err(|e| format!("recipe: {e}"))?;
     let mut options = Options::default();
     file.options.apply(&mut options).map_err(|e| format!("recipe: {e}"))?;
+    options.start = file.start;
     Ok(Recipe { seed: file.seed, options, edits: file.edits })
 }
 
 /// A recipe as its file's text: pretty JSON, the fields always in the same order, and only the
 /// options that are not the default.
 pub fn save(r: &Recipe) -> String {
-    let file = File { format: FORMAT, seed: r.seed, options: Opts::of(&r.options, &Options::default(), false), edits: r.edits.clone() };
+    let file = File { format: FORMAT, seed: r.seed, start: r.options.start, options: Opts::of(&r.options, &Options::default(), false), edits: r.edits.clone() };
     serde_json::to_string_pretty(&file).expect("a recipe is plain data") + "\n"
 }
 
@@ -458,6 +468,11 @@ impl Recipe {
     /// A seed's level as it falls: the default options and no edits.
     pub fn new(seed: u64) -> Recipe {
         Recipe { seed, options: Options::default(), edits: Vec::new() }
+    }
+
+    /// An empty start: no rooms until they are added, the seed only for how they are decorated.
+    pub fn empty(seed: u64) -> Recipe {
+        Recipe { seed, options: Options { start: Start::Empty, ..Options::default() }, edits: Vec::new() }
     }
 
     /// The level this makes. Err if the options make no sense, the seed can't be finished, or an
@@ -543,6 +558,9 @@ impl Recipe {
         o.check()?;
         let own = base.lots.clone();
         let placed = self.lots_on(base)?;
+        if placed.lots.is_empty() {
+            return Err("no room yet: an empty start (draw one)".to_string());
+        }
         if placed.changed() {
             placed.check(o.band())?;
         }
@@ -584,6 +602,9 @@ impl Recipe {
     /// what the recipe's lot edits are made on. Err if the site has no room for a lot.
     pub fn scattered(&self) -> Result<Placed, String> {
         let o = &self.options;
+        if o.start == Start::Empty {
+            return Ok(Placed::empty(&o.siting));
+        }
         Ok(Placed::new(place::lots(self.seed, &o.siting)?.placed, &o.siting))
     }
 
