@@ -27,7 +27,8 @@ should be taken: the user's own look first, since it is the most likely source o
   `// SUBST`): of more than 20 floor tiles under the player it keeps the 20 nearest, not the
   first 20. Generated levels need it (stacked decks). It also changes Car Park at 60 of 684
   probed spots. Keep it for PD's arenas, or gate it to custom stages?
-- **Stage numbers.** 124 to 127 are the only free custom numbers. 124, 125 and 126 hold
+- **Stage numbers.** (2026-11-19: the custom numbers run from 96 to 127, and 103 to 121 were free;
+  `atrium1` and `trek1` took 103 and 104.) Before: 124 to 127 are the only free custom numbers. 124, 125 and 126 hold
   `autolevel40`, `autolevel1` and `autolevel7` (the last two imported while the new source was
   checked). Remove those two (`crates/pd_import/levels/autolevel1.json`, `autolevel7.json` and
   their `custom/stages/` folders) if the numbers are wanted. More numbers would mean widening
@@ -67,9 +68,10 @@ Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
 
 - **Atriums and the trek** (the user's, 2026-11-18; started 2026-11-19): a hall fifteen storeys
   tall whose top walkway and base are reached through a sequence of other rooms, planned
-  goal-first. Storeys to 4134 and the atrium's rules are built, and a trek laid by hand works;
-  next is the planner that lays the trek from a seed. AUTOLEVEL.md, "Atriums". Angled catwalks
-  were discussed with it and left for later (a feature of their own).
+  goal-first. Storeys to 4134, the atrium's rules, and the planner (`autolevel trek SEED`) are
+  built; arenas `atrium1` and `trek1`. Next: a trek inside a full level, a second way down.
+  AUTOLEVEL.md, "Atriums". Angled catwalks were discussed with it and left for later (a feature
+  of their own).
 
 - **Blank levels: your edit wins** (the user's, 2026-11-18; designed, chosen as the next step):
   start empty, draw rooms, and the generator remakes the rest round each edit, offering

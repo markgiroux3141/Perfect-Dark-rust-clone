@@ -87,8 +87,9 @@ impl Space {
     pub fn door_levels(&self) -> Vec<i32> {
         let storeys = self.storeys();
         if self.kind == crate::place::ATRIUM.name {
-            // its two lowest storeys and its top one: the storeys between are reached by nobody
-            let mut out: Vec<i32> = storeys.iter().copied().take(2).collect();
+            // its floor and its top storey: the storeys between are reached by nobody (a door on
+            // its first upper storey let the router climb from there into the middle of a trek)
+            let mut out: Vec<i32> = storeys.iter().copied().take(1).collect();
             out.extend(storeys.last().filter(|z| !out.contains(z)));
             return out;
         }

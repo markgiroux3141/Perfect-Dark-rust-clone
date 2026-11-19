@@ -6,6 +6,7 @@
 //! least three doors apart, a second door for rooms left with one, and vents. Each link has to
 //! find an actual corridor on the grid, and rooms on a common storey come first.
 
+use crate::place::ATRIUM;
 use crate::py;
 use crate::route::{Grid, Route, Terms, VentTerms, RAMP, WIDE};
 use crate::scatter::{hops, rect_gap};
@@ -134,6 +135,10 @@ fn cap_by_area(a: &Space) -> usize {
     }
 }
 
+/// A join the spanning tree tries: (the gap, room a, room b, the storeys a's door may be on,
+/// and b's; None: any it offers).
+type TreeJoin = (f64, usize, usize, Option<Vec<i32>>, Option<Vec<i32>>);
+
 /// Route everything: a spanning tree over the shortest gaps first, so nothing is cut off, then
 /// loops between rooms at least three doors apart (each link has to find an actual corridor,
 /// and rooms on a common storey come first: see `separation`). Pods join their hosts without
@@ -145,7 +150,25 @@ pub fn connect(sp: Vec<Space>, band: i32, c: &Connect) -> Network {
     let mut g = Grid::new(sp, band);
     let at = |g: &Grid, key: &str| g.sp.iter().position(|s| s.key == key).unwrap_or_else(|| panic!("no room {key}"));
     let pods: Vec<(usize, usize)> = (0..n).filter(|&i| !g.sp[i].host.is_empty()).map(|i| (i, at(&g, &g.sp[i].host))).collect();
-    let mut parent: Vec<usize> = (0..n).collect();
+    // An atrium is two places: its floor and its top storey, which nothing joins inside it
+    // (`place::ATRIUM`). Its top is a node of the tree's own, past the rooms' (`n + k`), and a
+    // join to it is tried for each, the route held to that one's storeys. A level with no atrium
+    // has no such node and the same joins in the same order as ever.
+    let tops: Vec<(usize, i32)> =
+        (0..n).filter(|&i| g.sp[i].kind == ATRIUM.name && g.sp[i].tall()).map(|i| (i, *g.sp[i].storeys().last().expect("a tall room has storeys"))).collect();
+    let node = |i: usize, level: i32| tops.iter().position(|&(a, z)| a == i && z == level).map_or(i, |k| n + k);
+    // the storeys of each place of a room: None for a room that is one place
+    let bands: Vec<Vec<Option<Vec<i32>>>> = (0..n)
+        .map(|i| match tops.iter().find(|&&(a, _)| a == i) {
+            Some(&(_, top)) => vec![Some(g.sp[i].door_levels().into_iter().filter(|&z| z != top).collect()), Some(vec![top])],
+            None => vec![None],
+        })
+        .collect();
+    let band_node = |i: usize, band: &Option<Vec<i32>>| match band.as_deref() {
+        Some(&[z]) => node(i, z),
+        _ => i,
+    };
+    let mut parent: Vec<usize> = (0..n + tops.len()).collect();
     fn find(parent: &mut [usize], mut x: usize) -> usize {
         while parent[x] != x {
             parent[x] = parent[parent[x]];
@@ -155,7 +178,7 @@ pub fn connect(sp: Vec<Space>, band: i32, c: &Connect) -> Network {
     }
     let mut deg = vec![0usize; n];
     for &(a, b) in &pods {
-        let root = find(&mut parent, b);
+        let root = find(&mut parent, node(b, g.sp[a].floor));
         let from = find(&mut parent, a);
         parent[from] = root;
         deg[a] += 1;
@@ -172,6 +195,15 @@ pub fn connect(sp: Vec<Space>, band: i32, c: &Connect) -> Network {
         }
     }
     cand.sort_by(|p, q| py::cmp_f64(p.0, q.0).then_with(|| by_keys(&g, (p.1, p.2), (q.1, q.2))));
+    // the tree's candidates: each pair once for each place of each of the two
+    let tree: Vec<TreeJoin> = cand
+        .iter()
+        .flat_map(|&(d, a, b)| {
+            let lbs = &bands[b];
+            bands[a].iter().flat_map(move |la| lbs.iter().map(move |lb| (d, a, b, la.clone(), lb.clone())))
+        })
+        .filter(|(_, _, _, la, lb)| la.as_ref().is_none_or(|l| !l.is_empty()) && lb.as_ref().is_none_or(|l| !l.is_empty()))
+        .collect();
     let mut failed: Vec<(usize, usize)> = Vec::new();
     let mut links: Vec<(usize, usize)> = pods.clone();
     // Twice over: first no corridor may be much longer than the gap it crosses (a corridor that
@@ -179,24 +211,26 @@ pub fn connect(sp: Vec<Space>, band: i32, c: &Connect) -> Network {
     // the full allowance.
     for full in [false, true] {
         failed = Vec::new();
-        for &(d, a, b) in &cand {
-            if find(&mut parent, a) == find(&mut parent, b) {
+        for (d, a, b, la, lb) in &tree {
+            let (a, b, d) = (*a, *b, *d);
+            let (na, nb) = (band_node(a, la), band_node(b, lb));
+            if find(&mut parent, na) == find(&mut parent, nb) {
                 continue;
             }
             let allowance = if full { c.tree_cost } else { c.tree_cost.min(2.5 * d + 20.0) };
-            let Some(r) = g.route(&g.sp[a], &g.sp[b], &Terms::within(allowance)) else {
+            let Some(r) = g.route(&g.sp[a], &g.sp[b], &Terms { la: la.clone(), lb: lb.clone(), ..Terms::within(allowance) }) else {
                 failed.push((a, b));
                 continue;
             };
             g.commit(r);
-            let root = find(&mut parent, b);
-            let from = find(&mut parent, a);
+            let root = find(&mut parent, nb);
+            let from = find(&mut parent, na);
             parent[from] = root;
             links.push((a, b));
             deg[a] += 1;
             deg[b] += 1;
         }
-        let roots: BTreeSet<usize> = (0..n).map(|k| find(&mut parent, k)).collect();
+        let roots: BTreeSet<usize> = (0..n + tops.len()).map(|k| find(&mut parent, k)).collect();
         if roots.len() == 1 {
             break;
         }

@@ -45,6 +45,11 @@ pub const USAGE: &str = "autolevel: Complex-style levels from a seed, with no mo
                                                         be imported: the game's pd_snapshot draws them); with
                                                         --pd-walk, pd-walk's frames of its OBJ instead
   autolevel deadends SEED                               what hung off the level by one way in, and what was done
+  autolevel trek SEED [--storeys N] [--out DIR] [--no-bake]
+                                                        an atrium N storeys tall (15) with a base on its top storey,
+                                                        and a helix of rooms round it that is the only way up: laid
+                                                        as a recipe (DIR/recipe.json, for the editor), then built
+                                                        and walked as `build` does; DIR is out/autolevel/trek<SEED>
   autolevel import DIR [--code C] [--name N] [--stagenum N] [--gltf]
                                                         a built level into the game, by its recipe (the generator's
                                                         rooms and doorways as rooms and portals; --gltf: its .glb as
@@ -93,7 +98,7 @@ Where things are:
 `build` exits 0 only if the level was built and every walk came out as expected.";
 
 /// The commands, by name.
-pub const COMMANDS: [&str; 7] = ["sweep", "plan", "build", "batch", "walk", "shots", "deadends"];
+pub const COMMANDS: [&str; 8] = ["sweep", "plan", "build", "batch", "walk", "shots", "deadends", "trek"];
 
 /// What to do.
 #[derive(Clone, Debug, PartialEq)]
@@ -122,6 +127,10 @@ pub enum Command {
         names: Vec<String>,
     },
     Deadends,
+    /// An atrium this many storeys tall and the trek up to its base (`autolevel::trek`), built.
+    Trek {
+        storeys: usize,
+    },
 }
 
 /// What the command line asks for.
@@ -144,16 +153,18 @@ const FLAGS: [&str; 4] = ["crates", "shapes", "dead_ends", "washroom"];
 
 /// Does the command `cmd` take the flag `name` (underscores for its hyphens)?
 fn takes(cmd: &str, name: &str) -> bool {
-    let builds = matches!(cmd, "build" | "batch");
+    let builds = matches!(cmd, "build" | "batch" | "trek");
     match name {
         "root" | "jobs" => true,
         "seeds" | "top" => matches!(cmd, "sweep" | "batch"),
-        "out" => matches!(cmd, "sweep" | "plan" | "build" | "batch"),
+        "out" => matches!(cmd, "sweep" | "plan" | "build" | "batch" | "trek"),
+        "storeys" => cmd == "trek",
         "no_bake" | "textures" => builds,
         "shots" => cmd == "batch",
         "recipe" => matches!(cmd, "plan" | "build" | "deadends"),
         "pd_walk" => builds || matches!(cmd, "walk" | "shots"),
-        _ => !matches!(cmd, "walk" | "shots") && (matches!(name, "no_shapes" | "keep_dead_ends" | "no_washroom") || recipe::OPTIONS.contains(&name)),
+        // (a trek's options are its own: `trek::OPTIONS`)
+        _ => !matches!(cmd, "walk" | "shots" | "trek") && (matches!(name, "no_shapes" | "keep_dead_ends" | "no_washroom") || recipe::OPTIONS.contains(&name)),
     }
 }
 
@@ -186,7 +197,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
         let path = value(n)?;
         out.recipe = recipe::load(&read(path)?).map_err(|e| format!("{path}: {e}"))?;
     }
-    let (mut plain, mut verbose, mut shots) = (Vec::new(), false, false);
+    let (mut plain, mut verbose, mut shots, mut storeys) = (Vec::new(), false, false, autolevel::trek::TrekOptions::default().storeys);
     let (mut range, mut top) = (if cmd == "sweep" { (1, 200) } else { (1, 60) }, if cmd == "sweep" { 8 } else { 4 });
     let mut n = 1;
     while n < args.len() {
@@ -212,6 +223,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
             "recipe" => {}
             "seeds" => range = seeds(value(n)?)?,
             "top" => top = number(n)? as usize,
+            "storeys" => storeys = number(n)? as usize,
             "jobs" => match number(n)? {
                 0 => return Err("--jobs: at least one thread".to_string()),
                 jobs => out.jobs = Some(jobs as usize),
@@ -266,6 +278,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
             match cmd {
                 "plan" => Command::Plan,
                 "build" => Command::Build,
+                "trek" => Command::Trek { storeys },
                 _ => Command::Deadends,
             }
         }
@@ -986,6 +999,17 @@ pub fn run(a: &Args, env: &Env, inside: Option<Open>) -> Result<bool, String> {
             print!("{}", deadlist::make(&a.recipe)?.1.text());
             Ok(true)
         }
+        Command::Trek { storeys } => {
+            let seed = a.recipe.seed;
+            let (trek, lv) = autolevel::trek::lay(seed, &autolevel::trek::TrekOptions { storeys: *storeys, ..Default::default() })?;
+            let way = autolevel::trek::climb(&lv).unwrap_or_default();
+            println!("trek {seed} (try {}): {} rooms; the way up: {}", trek.attempt, trek.rooms.len(), way.join(" > "));
+            let dir = match &a.out {
+                Some(out) => out.clone(),
+                None => a.work(env)?.join(format!("trek{seed}")),
+            };
+            build(a, env, &trek.recipe, &dir, false, inside)
+        }
     }
 }
 
@@ -1028,6 +1052,11 @@ mod tests {
         let a = args("build --no-bake 14 --root /repo").unwrap();
         assert_eq!((a.command, a.recipe.seed, a.bake, a.root), (Command::Build, 14, false, Some(PathBuf::from("/repo"))));
         assert_eq!((args("deadends 7").unwrap().command, args("deadends 7").unwrap().recipe.seed), (Command::Deadends, 7));
+        let a = args("trek 5 --storeys 12 --no-bake").unwrap();
+        assert_eq!((a.command, a.recipe.seed, a.bake), (Command::Trek { storeys: 12 }, 5, false));
+        assert_eq!(args("trek 5").unwrap().command, Command::Trek { storeys: 15 });
+        assert!(args("trek 5 --loops 2").is_err(), "a trek's options are its own");
+        assert!(args("build 5 --storeys 3").is_err());
         let a = args("walk out/seed40 !pool_basin link_c01_a_b -v").unwrap();
         assert_eq!(
             a.command,
@@ -1078,8 +1107,8 @@ mod tests {
 
     #[test]
     fn what_it_cannot_read_it_says() {
-        assert_eq!(args("").unwrap_err(), "no command: one of sweep, plan, build, batch, walk, shots, deadends (see --help)");
-        assert_eq!(args("make 4").unwrap_err(), "make: not a command: one of sweep, plan, build, batch, walk, shots, deadends (see --help)");
+        assert_eq!(args("").unwrap_err(), "no command: one of sweep, plan, build, batch, walk, shots, deadends, trek (see --help)");
+        assert_eq!(args("make 4").unwrap_err(), "make: not a command: one of sweep, plan, build, batch, walk, shots, deadends, trek (see --help)");
         assert_eq!(args("plan").unwrap_err(), "plan needs a seed (or --recipe FILE)");
         assert_eq!(args("plan forty").unwrap_err(), "plan: a seed is a whole number, not forty");
         assert_eq!(args("plan 4 5").unwrap_err(), "5: plan takes one seed");

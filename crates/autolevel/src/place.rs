@@ -64,7 +64,7 @@ pub const GRAND: [Kind; 10] = [
 
 /// An atrium: a hall up to fifteen storeys tall, made by hand or by the trek planner, never
 /// scattered (it is one of `Placed`'s kinds, not `kinds_and_site`'s, so every seed keeps its
-/// level). Doors open on its two lowest storeys and its top one only (`Space::door_levels`), it
+/// level). Doors open on its floor and its top storey only (`Space::door_levels`), it
 /// takes pods on its top storey too (`scatter::pod_levels`), and its top storey is not ramped
 /// down to the rest: it is reached from outside, through other rooms (the furnisher's `bands`).
 /// New in the Rust (docs/AUTOLEVEL.md, "Atriums").

@@ -1795,7 +1795,9 @@ trek's length measured, (4) a searched trek, a second way down (a drop from the 
   STOREY`) gained nine paler ones; a room may be added or pinned up to 4370.
 - **The atrium kind** (`place::ATRIUM`): one of `Placed`'s kinds (so `add` takes it at any scale),
   never one of `kinds_and_site`'s (the scatter's list is the Python's: the lots key checks it).
-  Its rules: doors on its two lowest storeys and its top one (`Space::door_levels`); pods on its
+  Its rules: doors on its floor and its top storey (`Space::door_levels`; at first its two lowest
+  storeys too, but a door on its first upper storey let the router climb from there into the middle
+  of the trek, so step 3 took it away); pods on its
   first two upper storeys and its top one (`scatter::pod_levels`); in the furnisher each storey
   over the two lowest is a band of its own (`Interior::band_of`): `place_ramps` never ramps a
   band down, and `connected` asks that each band's doors reach one another, not every door every
@@ -1833,6 +1835,44 @@ trek's length measured, (4) a searched trek, a second way down (a drop from the 
 - **Not imported as an arena** yet, and nobody has played one. The stage numbers are the limit
   (124 to 127; see AUTOLEVEL_BACKLOG.md).
 - Next is step 3, the helix trek planner (above).
+
+### As built (step 3: the trek planner, 2026-11-19)
+
+- **`autolevel trek SEED [--storeys N] [--out DIR] [--no-bake]`** (`autolevel::trek`, `lay`): an
+  atrium N storeys tall (15 by default; 4 to 16), 16-22 by 12-16 cells near the site's middle,
+  with a base (a `small` pod, 3-5 by 3-4 cells, three cells and more from the walls) on its top
+  storey; then the trek from the top down along a ring round the atrium, a cell clear of it, from
+  a seeded side and either way round: each room 6-10 cells along the ring and 6-9 out (8 at least
+  one way, so it takes doors on its upper storeys), dropping two storeys (a `tower`, 70%) or one
+  (a `medium`), its top storey the one the room before stands on, until one stands on the
+  atrium's floor. When a ring is full a second goes round outside it, 10 cells further out.
+  Written as a recipe on an empty start (`trek<SEED>/recipe.json`, every room an `add`) with the
+  trek's options (`trek::OPTIONS`: no loops, risers or vents, each a way round the climb, and the
+  dead-end pass off, since the trek is the level). Drops stay: a hole into the room below is a quick
+  way down. Then built and walked as `build` does.
+- **Checked by the way up** (`trek::climb`: the fewest rooms from the atrium's floor to the base
+  over the routes and pods' doors, the atrium's floor and top two places, drops left out). A
+  layout is kept only if that way goes through every room of the trek; else (or if the lots
+  break the placing rule) the next stream is tried (`{seed}/trek/{attempt}`, 40 at most).
+  **Seeds 1-40: all 40 laid** (0 to 7 tries), 7 to 10 rooms each, every walk as expected
+  (15 to 21 a level), 0.2 s a level. Seed 24 needed the second ring.
+- **The router knows an atrium is two places** (`network::connect`): its top storey is a node of
+  the spanning tree's own, and a join to an atrium is tried for its floor and for its top, the
+  route held to those storeys (`Terms::la`, `lb`). Before, the tree thought the trek's two ends
+  joined through the atrium and left out a link in the middle (seed 1: trek6 to trek7). A level
+  with no atrium makes the same joins in the same order: every key passes.
+- **Tests:** `trek::tests` (rooms round the atrium clear of it; seeds 1-8 climb through every
+  room in order to the base, the atrium joined on its floor and top only; the same seed the same
+  trek), the command line's.
+- **Arenas:** `atrium1` (stage 103, the hand-laid prototype) and `trek1` (stage 104, `autolevel
+  trek 1`). The custom stage numbers run from 96 to 127; 103 to 121 were free.
+
+**Rough, and next:**
+- A trek is the whole level: the atrium and its climb, nothing round them. Joining it to a seed's
+  scattered rooms needs the scatter to start from fixed lots (or the blank-levels remake).
+- The outer ring's rooms are joined by long corridors (seed 24: three of 15 cells and more).
+- Nothing yet chooses a second way down (a drop from the gangway into the atrium, a vent).
+- The rooms are all `tower` or `medium`, so a trek's names run out (then a room is named by its key).
 
 ## Risks
 

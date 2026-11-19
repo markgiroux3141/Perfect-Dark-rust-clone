@@ -773,7 +773,7 @@ fn atrium_trek() -> Vec<Edit> {
 fn an_atriums_top_is_reached_through_other_rooms_and_never_ramped_down() {
     let lv = empty(1, atrium_trek()).generate().unwrap();
     let atrium = lv.space("room1");
-    assert_eq!(atrium.door_levels(), [0, 276, 3858], "its two lowest storeys and its top one");
+    assert_eq!(atrium.door_levels(), [0, 3858], "its floor and its top storey");
     assert_eq!(lv.space("base").host, "room1", "the base is the atrium's pod, on its top storey");
     // the top storey's door comes from room2, the top of the trek
     let top: Vec<&str> = lv.net.routes().iter().filter(|r| [&r.a, &r.b].iter().any(|d| d.room == "room1" && d.level == 3858)).map(|r| r.key()).collect();
