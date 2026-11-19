@@ -251,7 +251,7 @@ pub fn finish(lv: &Level, kit: &Kit, planned: Vec<Poly>) -> Result<(Vec<Poly>, V
     if !lit.is_empty() {
         csg::fix_t_junctions(&mut out);
     }
-    let grate = kit.surface("rail", None, None)?; // a walkable mesh square to each cell, flush with the floor
+    let grate = kit.surface("mesh", None, None)?; // a walkable mesh square to each cell, flush with the floor
     for (piece, _, (x0, y0, x1, y1), z) in &lv.grates {
         for i in *x0..*x1 {
             for j in *y0..*y1 {
@@ -272,9 +272,9 @@ pub fn finish(lv: &Level, kit: &Kit, planned: Vec<Poly>) -> Result<(Vec<Poly>, V
     }
     let height = cx::RAIL_HEIGHT as f64;
     for (room, a, b, facing) in &lv.ramp_rails {
-        // the mesh rail, down the open sides of the ramps
-        let surf = kit.surface("rail", Some(a.2.min(b.2) as f64), Some((43.0, height)))?;
-        out.extend(csg::rail(f3(*a), f3(*b), height, room, surf, f3(*facing), Some(43.0)));
+        // the railing, down the open sides of the ramps
+        let surf = kit.surface("rail", Some(a.2.min(b.2) as f64), Some((cx::RAIL_REPEAT, height)))?;
+        out.extend(csg::rail(f3(*a), f3(*b), height, room, surf, f3(*facing), Some(cx::RAIL_REPEAT)));
     }
     Ok((out, lit))
 }

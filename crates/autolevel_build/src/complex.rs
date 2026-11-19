@@ -63,8 +63,11 @@ pub const VENT: i32 = 118;
 pub const VENT_SLOPE: i32 = 177;
 /// A ramp of one storey, 30.3 degrees: its rise, run and width.
 pub const RAMP: (i32, i32, i32) = (276, 472, 118);
-/// The mesh railing on catwalk edges (276..362).
+/// The railing on catwalk edges (276..362).
 pub const RAIL_HEIGHT: i32 = 86;
+/// Units along a railing to one repeat of its texture (Complex's own railings: 0x190's 32 texels
+/// to about 78 units; the glass strips' 88, the same texture, is used for both).
+pub const RAIL_REPEAT: f64 = 88.0;
 /// The edge strip under open ramps and catwalks.
 pub const GRATE_EDGE: i32 = 16;
 /// The glass strip's height (0..94 above a floor).
@@ -79,8 +82,13 @@ const fn paint(role: &'static str, preset: &'static str, flags: &'static [&'stat
 
 const SEE_THROUGH: &[&str] = &["Transparent", "CullBoth", "ClampT"];
 
-/// The kit's materials, in the Python's order.
-pub const PALETTE: [Paint; 19] = [
+/// The kit's materials, in the Python's order, and the Rust's after them.
+///
+/// "rail" was the Python's 0x748, a blue perforated mesh that Complex hangs on one catwalk only;
+/// the user (2026-11-19): a railing is Complex's metal one, 0x190 (the glass strips' texture, which
+/// Complex runs along nearly every catwalk and ledge). The mesh is kept for the walkable floor
+/// grates ("mesh"), which are floors, not railings.
+pub const PALETTE: [Paint; 20] = [
     paint("floor", "073E", &[], "m0", 39.37),
     paint("grate", "073E", &["CullBoth"], "m14CullBoth", 39.37),
     paint("base_pipe", "0740", &["ClampT"], "m8ClampT", 118.11),
@@ -99,7 +107,8 @@ pub const PALETTE: [Paint; 19] = [
     paint("water", "090F", &[], "m12", 157.0),
     paint("water_surface", "090F", &["Transparent"], "m17Transparent", 197.0),
     Paint { role: "window", preset: "0190", flags: SEE_THROUGH, name: "m13TransparentCullBothClampT", scale: (88.0, 94.0) },
-    Paint { role: "rail", preset: "0748", flags: SEE_THROUGH, name: "m18TransparentCullBothClampT", scale: (43.0, 86.0) },
+    Paint { role: "rail", preset: "0190", flags: SEE_THROUGH, name: "m18TransparentCullBothClampT", scale: (RAIL_REPEAT, 86.0) },
+    Paint { role: "mesh", preset: "0748", flags: SEE_THROUGH, name: "m19TransparentCullBothClampT", scale: (43.0, 86.0) },
 ];
 
 /// Complex, as the generator dresses its levels.
@@ -271,11 +280,11 @@ pub fn glass_rail(kit: &Kit, p0: P3, p1: P3, zone: &str, facing: P3, height: f64
     Ok(csg::rail(p0, p1, height, zone, kit.surface("window", Some(low), Some((88.0, height)))?, facing, Some(88.0)))
 }
 
-/// A mesh railing along a catwalk edge, `RAIL_HEIGHT` tall, at p0's height or at `level`.
+/// A railing along a catwalk edge, `RAIL_HEIGHT` tall, at p0's height or at `level`.
 pub fn railing(kit: &Kit, p0: P3, p1: P3, zone: &str, facing: P3, level: Option<f64>) -> Result<Vec<Poly>, String> {
     let z = level.unwrap_or(p0[2]);
     let height = RAIL_HEIGHT as f64;
-    Ok(csg::rail([p0[0], p0[1], z], [p1[0], p1[1], z], height, zone, kit.surface("rail", Some(z), Some((43.0, height)))?, facing, None))
+    Ok(csg::rail([p0[0], p0[1], z], [p1[0], p1[1], z], height, zone, kit.surface("rail", Some(z), Some((RAIL_REPEAT, height)))?, facing, None))
 }
 
 // ------------------------------------------------------------- from a plan
@@ -526,7 +535,8 @@ mod tests {
     #[test]
     fn units_and_the_palette() {
         assert_eq!((m(5.0), cells(4.0, 0.0), cells(2.5, 0.0)), (197, 472, 295));
-        assert_eq!(KIT.paint("rail").unwrap().scale, (43.0, 86.0));
+        assert_eq!((KIT.paint("rail").unwrap().preset, KIT.paint("rail").unwrap().scale), ("0190", (88.0, 86.0)));
+        assert_eq!(KIT.paint("mesh").unwrap().preset, "0748");
         assert_eq!(KIT.surface("plain", Some(118.0), None).unwrap(), Surface::new("plain", (118.11, 118.11), Some(118.0)));
         assert_eq!(strip(scheme(&schemes(), "striped").unwrap(), 394), Some("panel_pipes"));
         assert_eq!((strip_base(120), strip_base(787), strip_base(-300)), (Some(118), Some(748), None));

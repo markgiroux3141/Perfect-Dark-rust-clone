@@ -809,17 +809,19 @@ mod tests {
         let textures = crate::textures::is_pool(&pool, &presets).then(|| crate::textures::dumps(&pool, &dir, &presets).unwrap());
         let (glb, report) = bytes(&rooms, &KIT, "autolevel_40", textures.as_deref()).unwrap();
         let (gltf, bin) = parse(&glb);
-        // as the Blender build of seed 40: 61 rooms, 15,303 triangles, 17 materials, two of them see-through
+        // as the Blender build of seed 40: 61 rooms, 15,303 triangles; 18 materials, three of them
+        // see-through (the Blender build's 17 and two: its railings and floor grates were one, the
+        // mesh, and the railings are now Complex's metal railing, the glass strips' texture)
         assert_eq!(check(&gltf, &bin), 15303);
-        assert_eq!((report.rooms, report.materials, list(&gltf, "nodes").len(), list(&gltf, "meshes").len()), (61, 17, 61, 61));
-        assert_eq!(gltf["asset"]["extras"]["transparent_materials"], 2);
+        assert_eq!((report.rooms, report.materials, list(&gltf, "nodes").len(), list(&gltf, "meshes").len()), (61, 18, 61, 61));
+        assert_eq!(gltf["asset"]["extras"]["transparent_materials"], 3);
         assert_eq!(gltf["nodes"][0]["name"], "Room_01");
         let numbers: Vec<u64> = list(&gltf, "nodes").iter().map(|n| n["extras"]["ge_room"].as_u64().unwrap()).collect();
         assert!(numbers.windows(2).all(|w| w[0] < w[1]));
         if textures.is_some() {
             assert_eq!(report.warnings, Vec::<String>::new());
             assert_eq!((list(&gltf, "images").len(), list(&gltf, "textures").len(), list(&gltf, "samplers").len()), (16, 16, 1));
-            // the two see-through textures keep their cut-out alpha
+            // the see-through textures keep their cut-out alpha
             for m in list(&gltf, "materials").iter().filter(|m| m["alphaMode"] == "BLEND") {
                 let t = &gltf["textures"][m["pbrMetallicRoughness"]["baseColorTexture"]["index"].as_u64().unwrap() as usize];
                 let (name, got) = image(&gltf, &bin, t["source"].as_u64().unwrap() as usize);
