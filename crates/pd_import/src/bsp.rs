@@ -125,6 +125,14 @@ fn node<T: Copy>(items: Vec<Item<T>>, leaves: &mut Vec<Vec<Item<T>>>) -> Value {
     } else {
         front.extend(on);
     }
+    // A cut that parts nothing (every triangle on it within `EPS`, as a sliver
+    // is on planes it does not lie in) would be made again below it for ever:
+    // the triangles are as good as one plane, a leaf.
+    if behind.is_empty() || front.is_empty() {
+        behind.extend(front);
+        leaves.push(behind);
+        return json!({ "leaf": leaves.len() - 1 });
+    }
     let p = n * d;
     let a = node(behind, leaves);
     let b = node(front, leaves);

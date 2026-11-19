@@ -2138,6 +2138,68 @@ box from the lower room's ceiling to the upper's floor (`planner`), its sides dr
   3-4 cells and 2-3 by 2; the scatter's rule allows a fifth of a hall's floor), and a base shared
   by two halls a cell apart (a pod has one host now). Not started.
 
+### Angled catwalks: islands and shortcuts (2026-11-19)
+
+**The user's idea (2026-11-19):** straight catwalks at any angle, not on the grid, as Complex has
+(its railing runs at 45 degrees from (-997, -1601) to (-761, -1365)). Spokes to a central island
+were the first example, not a target: angled catwalks spanning a hall's air on their own, or joining
+platforms of any kind, are as welcome.
+
+- **An overlay, not a grid change** (`furnish::angled`). An angled catwalk (`Angled`) is a slab a
+  catwalk wide on one storey, from one deck edge to another, each end cut along its deck's edge
+  (`End`: the edge's axis and line, the way out, the crossing point, the two corners in units, the
+  nav block just inside). It is not deck and not in the plan: `geometry::angled` draws it in
+  `finish` (top `floor`, the world's projection, so the plates run on from the decks'; underside
+  `ceiling_dark`; sides `plain`; `complex::railing` down both sides), and `fix_t_junctions` runs
+  once more when a level has any, since its corners lie along the decks' edges.
+- **Its footprint** (the half cells it crosses and a half cell round, by a convex-polygon test,
+  `cover`) is `Interior::spanned`: a platform's `built` counts it hard, a pit lands on nothing and
+  falls past nothing there (`lands_on`), no pillar stands under it (`lay_cover`), a drop between
+  rooms does not fall through it (`build::lands_clear`), and no pit is cut where one ends
+  (`joints`). When it is laid it keeps clear of what is at its height (`blocked`: the storey's deck,
+  pods and roofs, ramps from or to the storey and their landings, piers through it, every column a
+  drop or a beam falls down, other angled catwalks); a storey over or under it has a deck's headroom.
+- **Its way**: `nav_over` joins its two end blocks; `waypoints` steps onto its middle line a half
+  cell inside each deck and walks that line (the end blocks are beside it: walking block to block
+  caught the railing on a long one); the dead-end graph has a way of kind `angled`; the room's
+  rails are cut where it crosses an edge (`cut_rails`).
+- **`--angled P`** (the recipe's `angled`, the editor's slider; 0 by default: every seed as it was).
+  In a hall 10 cells across or more that is no spiral, from its own stream ("{seed}/{key}/pits/angled",
+  every draw made first): with chance P an **island** (`lay_island`): a rectangle of deck 3 to 6
+  catwalk widths a side (`ISLANDS`) with nothing over or under it within two storeys, 3 cells
+  (`CLEAR`) from every deck at its height, the most clear air round it first (to `REACH`, 12 cells),
+  taking 3 or 4 spokes (`spokes`: the shortest first, 60 degrees apart round it, clear of one another);
+  and with chance P each catwalk storey a **shortcut** (`lay_shortcut`): of every angled catwalk from
+  that storey's deck edges at 20 to 60 degrees off straight out (`ANGLES`), the one that saves the
+  most walking on the room's nav, 10 cells or more (one between decks nothing else joins counts 40).
+  Lengths 2 to 24 cells. A shortcut often reaches a platform (`--platforms`), and joins two.
+- **Walks and views**: `angled_<room>_<storey>_<n>`: from a door of its band to one end by any way
+  but that catwalk, across it, and onto the island's middle for a spoke; the view from its end
+  along it. Report (`RUSTS_OWN`): `islands`, `angled`.
+- **Seeds 1-20 with `--angled 1`:** grand, the same 20 levels, 11 islands, 64 angled catwalks;
+  towering with `--platforms 1 --galleries 2 --holes 0.5`, the same 18 levels, 4 islands, 103 (most
+  of them shortcuts, many to platforms: platforms take the air islands want). Every walk passes;
+  `--example room -- RECIPE orphans` lists nothing. Without platforms, 13 islands in 46 big halls of
+  seeds 1-10, spokes 3 to 13 cells long.
+- **Found on the way:** the importer's translucent block tree (`pd_import::bsp`) recursed for ever
+  when a cut parted no triangles (slivers within `EPS` of planes they do not lie in: the angled
+  railings' were the first); such a set is now a leaf.
+- **Test:** `angled::tests::angled_catwalks_join_decks_and_an_island_is_reached_only_by_its_spokes`
+  (grand seeds 1-10 bare, towering 1-10 with platforms and holes: the same seeds make levels with and
+  without; the ends on standing room and on their edges, no rail across a joint, nothing in a
+  footprint, each in the dead-end graph with a walk and a view; an island cut off on the grid alone
+  and reached from a door through its spokes).
+- **Arena:** `angled9` (stage 110): seed 9 towering, platforms 1, galleries 2, holes 0.5, angled 1:
+  an island at 1654 with four spokes and seven shortcuts.
+
+**Rough, and next:**
+- Flat only: an angled catwalk joins two decks on one storey. An angled ramp between storeys is not
+  made (the grid's ramps are straight along x or y).
+- Islands are rare where platforms are on (the platforms fill the air first); a platform could be
+  left floating on purpose and reached by angled catwalks only.
+- Its ends cut along one edge each: none meets a deck at a corner, and none crosses another.
+- Nothing is placed on islands yet (weapons, spawns): the importer's placement treats them as any floor.
+
 ## Risks
 
 - **A missed order dependence** shows up as a key mismatch deep in furnish. The cure is in

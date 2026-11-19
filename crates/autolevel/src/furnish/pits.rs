@@ -91,6 +91,7 @@ impl Interior {
             for q in self.piers.iter().filter(|q| q.4 <= s && s < q.5) {
                 built.extend(rect_cells((q.0, q.1, q.2, q.3)));
             }
+            built.extend(self.spanned(s)); // an angled catwalk: no standing room, no falling past
             if !floor && cells.is_disjoint(&built) {
                 continue; // air: it falls on
             }
@@ -114,6 +115,9 @@ impl Interior {
             let spanned = rng.random() < 0.5;
             let pit = if spanned { self.span(z, r).or_else(|| self.hole_in(z, r)) } else { self.hole_in(z, r).or_else(|| self.span(z, r)) };
             let Some(pit) = pit else { continue };
+            if !self.angled.is_empty() && !pit.cells().is_disjoint(&self.joints(z)) {
+                continue; // (an angled catwalk ends on the deck it would cut)
+            }
             let open = pit.cells();
             let deck = self.deck.get_mut(&z).expect("a storey of the room");
             deck.retain(|c| !open.contains(c));

@@ -15,6 +15,9 @@
 //! - shape: a single-storey room may have a corner filled in (an L) or a cross wall;
 //! - platforms: big squares of deck off the catwalks into a hall's emptiest air (by
 //!   `Setup::platforms`; new in the Rust, none by default);
+//! - angled catwalks: an island in a big hall's empty air reached only by them, and shortcuts
+//!   across its air between catwalks and platforms (`Setup::angled`; new in the Rust, none by
+//!   default);
 //! - pits: drops through the platforms to what stands under them (`Setup::holes`; new in the
 //!   Rust, none by default);
 //! - cover: pillars, crates or nothing, never in front of a door or cutting the floor in two;
@@ -35,6 +38,7 @@ use crate::space::{door_pad, shell_rect, Door, Space, DIRS};
 use crate::storeys::{index, storey, LEVELS};
 use std::collections::{BTreeMap, BTreeSet};
 
+mod angled;
 mod cover;
 mod decks;
 mod mend;
@@ -48,6 +52,7 @@ mod ramps;
 #[cfg(test)]
 mod tests;
 
+pub use angled::{Angled, End as AngledEnd};
 pub use decks::SHAPES;
 pub use nav::{Nav, Node};
 pub use pits::{Pit, MAX_FALL};
@@ -285,6 +290,9 @@ pub struct Setup {
     pub platforms: f64,
     /// The chance each platform has a drop through it (`lay_pits`). 0 (the default): none.
     pub holes: f64,
+    /// Angled catwalks (`lay_angled`): the chance the room has an island reached only by them, and
+    /// each of its catwalk storeys a shortcut. 0 (the default): none.
+    pub angled: f64,
     /// The room's own stream's name ("{seed}/{key}"), which the pits draw theirs from.
     pub stream: String,
     /// Which attempt at furnishing the room this is (the first is 0).
@@ -311,6 +319,7 @@ impl Default for Setup {
             band: 2,
             platforms: 0.0,
             holes: 0.0,
+            angled: 0.0,
             stream: String::new(),
             attempt: 0,
             hole_side: None,
@@ -381,6 +390,11 @@ pub struct Interior {
     pub hole_share: f64,
     pub stream: String,
     pub pits: Vec<Pit>,
+    /// `Setup::angled`, the islands laid (storey, rectangle h), and the angled catwalks: the
+    /// islands' spokes and the shortcuts.
+    pub angled_share: f64,
+    pub islands: Vec<(i32, Rect)>,
+    pub angled: Vec<Angled>,
     /// `Setup::attempt`, and a towering tower's storey shapes as drawn: (storey, one of
     /// `decks::SHAPES`).
     pub attempt: usize,
@@ -469,6 +483,9 @@ impl Interior {
             hole_share: how.holes,
             stream: how.stream,
             pits: Vec::new(),
+            angled_share: how.angled,
+            islands: Vec::new(),
+            angled: Vec::new(),
             attempt: how.attempt,
             shapes: Vec::new(),
             forced_side: how.hole_side,
@@ -533,9 +550,11 @@ impl Interior {
         }
         self.clear_under_ramps();
         self.lay_platforms();
+        self.lay_angled();
         self.lay_pits();
         self.lay_cover();
-        self.rails = self.lay_rails();
+        let rails = self.lay_rails();
+        self.rails = self.cut_rails(rails);
         Ok(self)
     }
 }

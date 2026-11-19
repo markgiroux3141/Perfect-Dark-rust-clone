@@ -1,0 +1,26 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "angled9",
+  "name": "Towering 9 Angled",
+  "group": "Autolevel",
+  "stagenum": 110,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 9,
+      "options": {
+        "scale": "towering",
+        "platforms": 1.0,
+        "galleries": 2,
+        "holes": 0.5,
+        "angled": 1.0
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

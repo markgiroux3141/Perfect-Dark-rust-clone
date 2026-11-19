@@ -105,6 +105,7 @@ impl Interior {
         let mut no_pillar = Cells::new();
         for zz in &self.upper {
             no_pillar.extend(self.shell[zz].iter().copied());
+            no_pillar.extend(self.spanned(*zz)); // (a pillar would stop under an angled catwalk)
         }
         for r in self.ramps.iter().filter(|r| r.lo != z) {
             no_pillar.extend(r.cells());

@@ -318,6 +318,9 @@ fn lands_clear(low: &Interior, r: Rect) -> bool {
     for q in &low.piers {
         built.extend(rect_cells((q.0, q.1, q.2, q.3)));
     }
+    for z in &low.upper {
+        built.extend(low.spanned(*z)); // under an angled catwalk
+    }
     col.is_disjoint(&built) && col.is_subset(&low.stand(low.levels[0]))
 }
 
@@ -701,6 +704,7 @@ impl Build {
                     band: self.o.band(),
                     platforms: self.o.platforms,
                     holes: self.o.holes,
+                    angled: self.o.angled,
                     stream: stream("pits"),
                     attempt,
                     hole_side: self.spaces().iter().find_map(|c| c.cellar.as_ref().filter(|c| c.hall == *key && h.is_some()).map(|c| c.side)),

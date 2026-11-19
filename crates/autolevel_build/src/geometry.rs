@@ -282,7 +282,53 @@ pub fn finish(lv: &Level, kit: &Kit, planned: Vec<Poly>) -> Result<(Vec<Poly>, V
             out.extend(ladder(kit, c, lv.space(low), lv.space(up))?);
         }
     }
+    // the angled catwalks (`furnish::angled`), which the plan can't hold
+    let mut any = false;
+    for (key, it) in &lv.interiors {
+        for s in &it.angled {
+            out.extend(angled(kit, s, key)?);
+            any = true;
+        }
+    }
+    if any {
+        csg::fix_t_junctions(&mut out); // (its corners lie along the decks' edges)
+    }
     Ok((out, lit))
+}
+
+/// A deck's slab, units: its top at the storey's floor, this far down (`furnish::plans`).
+pub const SLAB: f64 = 40.0;
+
+/// An angled catwalk: a slab a catwalk wide from deck to deck, its top the decks' floor (the
+/// world's projection, so its plates run on from theirs), its underside and its two sides the
+/// decks' own, a railing along each side. Its ends are open: each is cut along its deck's edge
+/// (`furnish::AngledEnd`), its corners on that edge, so it meets the deck's top and underside edge
+/// to edge. Split every `csg::STEP` along it, as the carver splits the decks.
+pub fn angled(kit: &Kit, s: &autolevel::furnish::Angled, zone: &str) -> Result<Vec<Poly>, String> {
+    let (top, under) = (kit.surface("floor", None, None)?, kit.surface("ceiling_dark", None, None)?);
+    let (z, z0) = (s.z as f64, s.z as f64 - SLAB);
+    let side = kit.surface("plain", Some(z0), None)?;
+    let p = |c: (i32, i32)| [c.0 as f64, c.1 as f64];
+    let ([l0, r0], [l1, r1]) = (s.ends[0].corners.map(p), s.ends[1].corners.map(p));
+    let (ux, uy) = s.way();
+    let left = [-uy, ux, 0.0]; // out of its left side
+    let right = [uy, -ux, 0.0];
+    let length = ((l1[0] - l0[0]).hypot(l1[1] - l0[1])).max((r1[0] - r0[0]).hypot(r1[1] - r0[1]));
+    let n = ((length / csg::STEP).ceil() as usize).max(1);
+    let lerp = |a: [f64; 2], b: [f64; 2], t: f64, h: f64| [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, h];
+    let mut out = Vec::new();
+    for i in 0..n {
+        let (t0, t1) = (i as f64 / n as f64, (i + 1) as f64 / n as f64);
+        let (la, lb, ra, rb) = (|h| lerp(l0, l1, t0, h), |h| lerp(l0, l1, t1, h), |h| lerp(r0, r1, t0, h), |h| lerp(r0, r1, t1, h));
+        out.push(csg::oriented(&[la(z), ra(z), rb(z), lb(z)], [0.0, 0.0, 1.0], top, zone, None));
+        out.push(csg::oriented(&[la(z0), ra(z0), rb(z0), lb(z0)], [0.0, 0.0, -1.0], under, zone, None));
+        out.push(csg::oriented(&[la(z0), lb(z0), lb(z), la(z)], left, side, zone, None));
+        out.push(csg::oriented(&[ra(z0), rb(z0), rb(z), ra(z)], right, side, zone, None));
+    }
+    // (as the decks' own rails: `complex::railing`)
+    out.extend(cx::railing(kit, [l0[0], l0[1], z], [l1[0], l1[1], z], zone, left, None)?);
+    out.extend(cx::railing(kit, [r0[0], r0[1], z], [r1[0], r1[1], z], zone, right, None)?);
+    Ok(out)
 }
 
 /// How far a ladder stands off its wall, units (it is drawn over it, and is the face a player

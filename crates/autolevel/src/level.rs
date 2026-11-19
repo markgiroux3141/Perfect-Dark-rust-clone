@@ -81,6 +81,10 @@ pub struct Options {
     /// The chance a hall on the ground floor has a cellar under it, a drop through a hatch and a
     /// ladder back (`cellars`; 0: none, as the Python). New in the Rust.
     pub cellars: f64,
+    /// Angled catwalks: the chance a big hall has an island reached only by them, and each of its
+    /// catwalk storeys a shortcut across its air (`furnish::angled`; 0: none, as the Python). New
+    /// in the Rust.
+    pub angled: f64,
     /// Join up, or cut short, every dead end longer than these (false: leave them):
     pub dead_ends: bool,
     /// cells of corridor to a room that goes nowhere (a camping spot may be that far off),
@@ -140,6 +144,7 @@ impl Default for Options {
             galleries: 0,
             holes: 0.0,
             cellars: 0.0,
+            angled: 0.0,
             dead_ends: true,
             dead_corridor: 8,
             dead_walk: 20,

@@ -79,8 +79,10 @@ Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
   holes and spans through platforms, and more drops between rooms (arena `towering9h`). Then
   cellars (`--cellars P`): a room under a hall, a hatch down and a ladder up (arena `cellars40`).
   AUTOLEVEL.md, "Drops". Next asked about: a large base kind, bases shared by two halls.
-  AUTOLEVEL.md, "Atriums". Angled catwalks were discussed with it and left for later (a feature
-  of their own).
+  AUTOLEVEL.md, "Atriums". Then angled catwalks (`--angled P`, 2026-11-19): an island reached only
+  by angled spokes, and shortcuts across a hall's air between catwalks and platforms (arena
+  `angled9`); AUTOLEVEL.md, "Angled catwalks". Next: angled ramps between storeys, platforms left
+  floating for them.
 
 - **Blank levels: your edit wins** (the user's, 2026-11-18; designed, chosen as the next step):
   start empty, draw rooms, and the generator remakes the rest round each edit, offering

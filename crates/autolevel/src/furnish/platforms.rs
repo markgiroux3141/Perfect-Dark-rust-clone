@@ -38,7 +38,7 @@ const SPREAD: f64 = 3.0;
 const WINDOW: i64 = 2;
 
 /// The room's half cells as a grid, with how many of any rectangle's are set, at once.
-struct Sums {
+pub(super) struct Sums {
     x0: i32,
     y0: i32,
     w: i32,
@@ -48,7 +48,7 @@ struct Sums {
 }
 
 impl Sums {
-    fn new(it: &Interior, set: &Cells) -> Sums {
+    pub(super) fn new(it: &Interior, set: &Cells) -> Sums {
         let (w, d) = (it.w, it.d);
         let mut s = vec![0; ((w + 1) * (d + 1)) as usize];
         for y in 0..d {
@@ -62,7 +62,7 @@ impl Sums {
     }
 
     /// How many of a rectangle's cells are set (the part of it inside the room).
-    fn count(&self, r: Rect) -> i32 {
+    pub(super) fn count(&self, r: Rect) -> i32 {
         let x0 = (r.0 - self.x0).clamp(0, self.w);
         let y0 = (r.1 - self.y0).clamp(0, self.d);
         let x1 = (r.2 - self.x0).clamp(0, self.w);
@@ -75,7 +75,7 @@ impl Sums {
     }
 
     /// How many of a rectangle's cells are inside the room.
-    fn inside(&self, r: Rect) -> i32 {
+    pub(super) fn inside(&self, r: Rect) -> i32 {
         let span = |a: i32, b: i32, lo: i32, n: i32| ((b - lo).clamp(0, n) - (a - lo).clamp(0, n)).max(0);
         span(r.0, r.2, self.x0, self.w) * span(r.1, r.3, self.y0, self.d)
     }
@@ -128,8 +128,9 @@ impl Interior {
     /// What stands in the air of the storeys above the floor (all of them, or with `near` those
     /// within `WINDOW` of that one): (soft, hard). Soft is deck, which a platform may stand
     /// beside; hard is everything a platform keeps a cell clear of (pods' blocks and roofs, ramps
-    /// and their landings, piers, and, on every storey, where a drop or a beam falls).
-    fn built(&self, near: Option<i32>) -> (Cells, Cells) {
+    /// and their landings, piers, angled catwalks, and, on every storey, where a drop or a beam
+    /// falls).
+    pub(super) fn built(&self, near: Option<i32>) -> (Cells, Cells) {
         let at = |z: i32| index(z) as i64;
         let (lo, hi) = near.map_or((i64::MIN, i64::MAX), |z| (at(z) - WINDOW, at(z) + WINDOW));
         let within = |a: i64, b: i64| a <= hi && lo <= b;
@@ -139,6 +140,7 @@ impl Interior {
             soft.extend(self.deck[&z].iter().copied());
             hard.extend(self.shell[&z].iter().copied());
             hard.extend(self.roof[&z].iter().copied());
+            hard.extend(self.spanned(z)); // under an angled catwalk
         }
         for r in self.ramps.iter().filter(|r| within(at(r.lo), at(r.hi))) {
             hard.extend(r.cells());

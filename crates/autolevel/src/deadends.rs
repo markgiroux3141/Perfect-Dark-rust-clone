@@ -71,7 +71,7 @@ pub struct Way {
     /// Place keys.
     pub a: String,
     pub b: String,
-    /// corridor, stub, vent, ramp, pod or drop.
+    /// corridor, stub, vent, ramp, pod, drop, ladder or angled.
     pub kind: &'static str,
     /// Cells walked along it.
     pub length: f64,
@@ -352,6 +352,14 @@ pub fn graph(sp: &[Space], net: &Network, interiors: &[(String, Arc<Interior>)],
             if nav.piece.contains_key(&a) && nav.piece.contains_key(&b) {
                 let (foot, top) = (places.of(sp, &nav, key, b), places.of(sp, &nav, key, a));
                 ways.push(Way { a: foot, b: top, kind: "ramp", length: RAMP_CELLS, pa: b, pb: a, oneway: false, route: None });
+            }
+        }
+        // an angled catwalk (`furnish::angled`)
+        for s in &it.angled {
+            let (first, second) = (s.ends[0].node, s.ends[1].node);
+            if nav.piece.contains_key(&first) && nav.piece.contains_key(&second) {
+                let (a, b) = (places.of(sp, &nav, key, second), places.of(sp, &nav, key, first));
+                ways.push(Way { a, b, kind: "angled", length: s.cells(), pa: second, pb: first, oneway: false, route: None });
             }
         }
         let pods = it.pods.iter().filter(|p| it.access_of(&p.key).is_some());

@@ -169,6 +169,31 @@ pub fn walks(lv: &mut Level) -> Result<(), String> {
             set(&mut walks, pit_name(it, n), out);
         }
     }
+    // from a door of its band to an end of each angled catwalk (by any way but that catwalk),
+    // across it, and onto its island if it is a spoke
+    for (_, it) in &lv.interiors {
+        for (n, s) in it.angled.iter().enumerate() {
+            let mut grid = it.nav();
+            let (a, b) = (s.ends[0].node, s.ends[1].node);
+            for (p, q) in [(a, b), (b, a)] {
+                if let Some(next) = grid.get_mut(&p) {
+                    next.retain(|m| *m != q);
+                }
+            }
+            let band = it.band_of(s.z);
+            let Some(start) = it.door_nodes().into_iter().flatten().find(|d| it.band_of(d.2) == band) else { continue };
+            // (a spoke from its catwalk; a shortcut from whichever end is walked to)
+            let Some((mut path, far)) = [(b, a), (a, b)].into_iter().find_map(|(near, far)| Interior::path_in(&grid, start, near).map(|p| (p, far))) else {
+                continue;
+            };
+            path.push(far);
+            let mut wp = it.waypoints(&path);
+            if s.kind == "spoke" {
+                wp.push(island_middle(it, s.z));
+            }
+            set(&mut walks, angled_name(it, n), passing(&wp));
+        }
+    }
     // the glass (or the rail) is not walked through
     for w in &lv.windows {
         let (s, it) = (lv.space(&w.hall), lv.interior(&w.hall));
@@ -313,6 +338,19 @@ pub fn views(lv: &mut Level) {
             }
         }
     }
+    // each angled catwalk from one end, looking along it: a spoke from its catwalk to its island
+    for (_, it) in &lv.interiors {
+        for (n, s) in it.angled.iter().enumerate() {
+            let (fx, fy, _) = middle(s.ends[1].node);
+            let (x, y) = if s.kind == "spoke" {
+                let (x, y, _) = island_middle(it, s.z);
+                (x, y)
+            } else {
+                (s.ends[0].at.0 / 2.0, s.ends[0].at.1 / 2.0)
+            };
+            set(&mut views, angled_name(it, n), (fx, fy, s.z, x, y));
+        }
+    }
     // through the opening from the corridor
     for w in &lv.windows {
         let (dx, dy) = (DIRS[w.d].0 as f64, DIRS[w.d].1 as f64);
@@ -354,6 +392,20 @@ pub fn views(lv: &mut Level) {
         }
     }
     lv.views = views;
+}
+
+/// An angled catwalk's name in the walks and views: `angled_<room>_<storey>_<n>`, n from 1 on its
+/// storey.
+fn angled_name(it: &Interior, n: usize) -> String {
+    let s = &it.angled[n];
+    let k = it.angled[..n].iter().filter(|q| q.z == s.z).count();
+    format!("angled_{}_{}_{}", it.s.key, s.z, k + 1)
+}
+
+/// The middle of the island on storey `z`, (x cells, y cells, z).
+fn island_middle(it: &Interior, z: i32) -> (f64, f64, i32) {
+    let r = it.islands.iter().find(|(iz, _)| *iz == z).map_or((0, 0, 0, 0), |(_, r)| *r);
+    ((r.0 + r.2) as f64 / 4.0, (r.1 + r.3) as f64 / 4.0, z)
 }
 
 /// A pit's name in the walks and views: `pit_<room>_<storey>` (`_2` for a second on that storey).

@@ -105,6 +105,9 @@ pub struct Report {
     pub spans: usize,
     /// Cellars with their hatch (`Space::cellar`).
     pub cellars: usize,
+    /// Islands (`furnish::angled`), and the angled catwalks: their spokes and the shortcuts.
+    pub islands: usize,
+    pub angled: usize,
     pub empty_air: f64,
     pub largest_void: f64,
 }
@@ -203,6 +206,8 @@ pub fn report(lv: &Level) -> Report {
         holes: its().map(|it| it.pits.len()).sum(),
         spans: its().flat_map(|it| &it.pits).filter(|p| !p.planks.is_empty()).count(),
         cellars: lv.drops.iter().filter(|d| d.3.is_some() && lv.space(&d.1).cellar.is_some()).count(),
+        islands: its().map(|it| it.islands.len()).sum(),
+        angled: its().map(|it| it.angled.len()).sum(),
         empty_air: 0.0,
         largest_void: 0.0,
     };

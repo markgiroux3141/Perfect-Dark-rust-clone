@@ -74,6 +74,14 @@ impl Interior {
                 g.get_mut(&b).expect("just seen").push(a);
             }
         }
+        // across an angled catwalk, between the blocks just inside its ends (`angled`)
+        for s in &self.angled {
+            let (a, b) = (s.ends[0].node, s.ends[1].node);
+            if g.contains_key(&a) && g.contains_key(&b) {
+                g.get_mut(&a).expect("just seen").push(b);
+                g.get_mut(&b).expect("just seen").push(a);
+            }
+        }
         g
     }
 
@@ -195,6 +203,29 @@ impl Interior {
             keep.push(nodes[j]);
             i = j;
         }
-        keep.iter().map(|n| ((n.0 + 1) as f64 / 2.0, (n.1 + 1) as f64 / 2.0, n.2)).collect()
+        let mut out = Vec::new();
+        for (i, n) in keep.iter().enumerate() {
+            out.push(((n.0 + 1) as f64 / 2.0, (n.1 + 1) as f64 / 2.0, n.2));
+            // across an angled catwalk: onto its middle line a half cell inside the deck it
+            // leaves, and off it as far inside the one it reaches (its end blocks are beside
+            // that line, not on it)
+            let Some(m) = keep.get(i + 1) else { continue };
+            for s in &self.angled {
+                let (a, b) = (s.ends[0].node, s.ends[1].node);
+                let from_isle = (*n, *m) == (a, b);
+                if !from_isle && (*n, *m) != (b, a) {
+                    continue;
+                }
+                let u = s.way();
+                let inside = |k: usize| {
+                    let (at, sg) = (s.ends[k].at, if k == 0 { -1.0 } else { 1.0 });
+                    ((at.0 + sg * u.0) / 2.0, (at.1 + sg * u.1) / 2.0, s.z)
+                };
+                let (p, q) = if from_isle { (inside(0), inside(1)) } else { (inside(1), inside(0)) };
+                out.extend([p, q]);
+                break;
+            }
+        }
+        out
     }
 }
