@@ -45,6 +45,7 @@ impl Interior {
                     }
                 }
             }
+            let open = self.unrailed(z); // a pit's open side and its planks' sides
             let mut under = Cells::new();
             if !floor {
                 for r in self.ramps.iter().filter(|r| r.lo == z) {
@@ -62,7 +63,7 @@ impl Interior {
                 }
                 for (d, &(dx, dy)) in DIRS.iter().enumerate() {
                     let n = (c.0 + dx, c.1 + dy);
-                    if !self.inside(n) || walk.contains(&n) || self.shell[&z].contains(&n) || arrive.contains(&(c, d)) {
+                    if !self.inside(n) || walk.contains(&n) || self.shell[&z].contains(&n) || arrive.contains(&(c, d)) || open.contains(&(c, d)) {
                         continue;
                     }
                     if floor && (!pits.contains(&n) || (self.hole.contains(&n) && Some(d) == enter)) {

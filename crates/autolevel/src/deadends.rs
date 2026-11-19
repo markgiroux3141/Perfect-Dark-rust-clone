@@ -395,6 +395,17 @@ pub fn graph(sp: &[Space], net: &Network, interiors: &[(String, Arc<Interior>)],
             ways.push(Way { a, b, kind: "drop", length: 0.0, pa: top, pb: land, oneway: true, route: None });
         }
     }
+    // a drop inside a room, through one of its platforms (`furnish::pits`)
+    for (key, it) in interiors {
+        let Some(nav) = navs.get(key).cloned() else { continue };
+        for p in &it.pits {
+            let land = nav.nearest(p.to.0, p.to.1, p.land);
+            if let (true, Some(land)) = (nav.piece.contains_key(&p.from), land) {
+                let (a, b) = (places.of(sp, &nav, key, p.from), places.of(sp, &nav, key, land));
+                ways.push(Way { a, b, kind: "drop", length: 0.0, pa: p.from, pb: land, oneway: true, route: None });
+            }
+        }
+    }
     Graph { places: places.list, ways, navs, at: places.at }
 }
 

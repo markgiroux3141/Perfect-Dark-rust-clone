@@ -124,6 +124,44 @@ mod tests {
     }
 
     #[test]
+    fn a_towering_towers_storeys_take_turns_and_every_catwalk_is_reached() {
+        use std::collections::{BTreeSet, HashSet, VecDeque};
+        let (mut towers, mut kinds) = (0, BTreeSet::new());
+        for seed in 1..=10 {
+            for galleries in [0, 2] {
+                let mut o = Options { galleries, ..Options::default() };
+                o.siting.scale = Scale::Towering;
+                let Ok(lv) = generate(seed, &o) else { continue };
+                for (key, it) in &lv.interiors {
+                    if it.s.kind == "tower" && it.s.towers() && it.attempt < 4 {
+                        towers += 1;
+                        assert!(it.shapes.windows(2).all(|w| w[0].1 != w[1].1), "seed {seed}: {key}'s storeys {:?}", it.shapes);
+                        kinds.extend(it.shapes.iter().map(|(_, k)| *k));
+                    }
+                    // every block of catwalk is walked to from a door
+                    let g = it.nav();
+                    let mut seen: HashSet<(i32, i32, i32)> = it.door_nodes().into_iter().flatten().collect();
+                    let mut todo: VecDeque<(i32, i32, i32)> = seen.iter().copied().collect();
+                    while let Some(n) = todo.pop_front() {
+                        for &m in g.get(&n).into_iter().flatten() {
+                            if seen.insert(m) {
+                                todo.push_back(m);
+                            }
+                        }
+                    }
+                    for &z in &it.upper {
+                        let deck = &it.deck[&z];
+                        let on = |c: &(i32, i32)| [(0, 0), (1, 0), (0, 1), (1, 1)].iter().all(|(dx, dy)| deck.contains(&(c.0 + dx, c.1 + dy)));
+                        let lost = it.blocks(z).into_iter().filter(|c| on(c) && !seen.contains(&(c.0, c.1, z))).count();
+                        assert_eq!(lost, 0, "seed {seed} galleries {galleries}: {key}@{z} has catwalk nobody walks to");
+                    }
+                }
+            }
+        }
+        assert!(towers >= 10 && kinds.len() == crate::furnish::SHAPES.len(), "{towers} towers, shapes {kinds:?}");
+    }
+
+    #[test]
     fn a_gallery_is_a_high_storey_of_catwalk_climbed_to_from_outside() {
         use crate::level::GALLERY_GAP;
         use crate::storeys::index;
@@ -151,6 +189,11 @@ mod tests {
                     let doors = lv.net.doors(&s.key).iter().filter(|d| d.level == z).count();
                     assert!(doors >= 1 && !it.deck[&z].is_empty(), "seed {seed}: {}@{z}: {doors} doors and no catwalk", s.key);
                     through += usize::from(doors >= 2);
+                    // the hall's own catwalk over a gallery: none (it could not be reached)
+                    for &up in it.upper.iter().filter(|&&up| up > z && !s.high.contains(&up)) {
+                        let doors_up = lv.net.doors(&s.key).iter().any(|d| d.level == up);
+                        assert!(it.deck[&up].is_empty() || doors_up, "seed {seed}: {}@{up} has catwalk over the gallery at {z} and no door", s.key);
+                    }
                     let c = cs.iter().find(|c| c.gallery && c.hall == s.key && c.storey == z);
                     let c = c.unwrap_or_else(|| panic!("seed {seed}: no way up to {}@{z}", s.key));
                     assert!(c.way.len() >= 3 && c.way[0] == s.key && c.way[c.way.len() - 1] == s.key);

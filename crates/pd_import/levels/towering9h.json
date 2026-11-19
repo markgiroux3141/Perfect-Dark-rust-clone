@@ -1,0 +1,25 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "towering9h",
+  "name": "Towering 9 Drops",
+  "group": "Autolevel",
+  "stagenum": 108,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 9,
+      "options": {
+        "scale": "towering",
+        "platforms": 1.0,
+        "galleries": 2,
+        "holes": 1.0
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

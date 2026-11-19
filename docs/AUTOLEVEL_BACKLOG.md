@@ -75,8 +75,9 @@ Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
 - **Empty air and platforms** (2026-11-19): measured (`empty_air`, `largest_void` in the report)
   and filled with big platforms off the catwalks (`--platforms N`, arena `towering9p`).
   AUTOLEVEL.md, "Platforms". Then galleries (`--galleries N`): high storeys with no base given a
-  catwalk of their own, climbed to from outside (arena `towering9g`). Next asked about: a large
-  base kind, bases shared by two halls.
+  catwalk of their own, climbed to from outside (arena `towering9g`). Then drops (`--holes P`):
+  holes and spans through platforms, and more drops between rooms (arena `towering9h`).
+  AUTOLEVEL.md, "Drops". Next asked about: a large base kind, bases shared by two halls.
   AUTOLEVEL.md, "Atriums". Angled catwalks were discussed with it and left for later (a feature
   of their own).
 

@@ -100,6 +100,9 @@ pub struct Report {
     pub platforms: usize,
     /// Galleries (`Space::galleries`).
     pub galleries: usize,
+    /// Drops through platforms (`furnish::pits`), and of them spans.
+    pub holes: usize,
+    pub spans: usize,
     pub empty_air: f64,
     pub largest_void: f64,
 }
@@ -195,6 +198,8 @@ pub fn report(lv: &Level) -> Report {
         score: 0.0,
         platforms: its().map(|it| it.platforms.len()).sum(),
         galleries: sp.iter().map(|s| s.galleries.len()).sum(),
+        holes: its().map(|it| it.pits.len()).sum(),
+        spans: its().flat_map(|it| &it.pits).filter(|p| !p.planks.is_empty()).count(),
         empty_air: 0.0,
         largest_void: 0.0,
     };

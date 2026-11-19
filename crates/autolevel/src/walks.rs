@@ -150,6 +150,19 @@ pub fn walks(lv: &mut Level) -> Result<(), String> {
             set(&mut walks, format!("drop_{up}_{low}"), out);
         }
     }
+    // walk to a pit's open side (or onto a span's plank), step off, land on what is under it
+    for (_, it) in &lv.interiors {
+        for (n, p) in it.pits.iter().enumerate() {
+            let band = it.band_of(p.z);
+            let start = it.door_nodes().into_iter().flatten().find(|d| it.band_of(d.2) == band);
+            let Some(path) = start.and_then(|s| it.path(s, p.from)).filter(|path| !path.is_empty()) else { continue };
+            let wp = it.waypoints(&path);
+            let mut out = vec![Step::at(wp[0])];
+            out.extend(wp[1..].iter().map(|q| Step::by(*q, 1)));
+            out.push(Step::at(((p.to.0 + 1) as f64 / 2.0, (p.to.1 + 1) as f64 / 2.0, p.land)));
+            set(&mut walks, pit_name(it, n), out);
+        }
+    }
     // the glass (or the rail) is not walked through
     for w in &lv.windows {
         let (s, it) = (lv.space(&w.hall), lv.interior(&w.hall));
@@ -264,6 +277,14 @@ pub fn views(lv: &mut Level) {
             }
         }
     }
+    // each pit from where it is stepped off, looking across it
+    for (_, it) in &lv.interiors {
+        for (n, p) in it.pits.iter().enumerate() {
+            let (x, y) = ((p.hole.0 + p.hole.2) as f64 / 4.0, (p.hole.1 + p.hole.3) as f64 / 4.0);
+            let (fx, fy, _) = middle(p.from);
+            set(&mut views, pit_name(it, n), (fx, fy, p.z, x, y));
+        }
+    }
     // each platform from the far end of its storey's catwalk (none in the Python's levels)
     for (key, it) in &lv.interiors {
         for (n, &(z, r)) in it.platforms.iter().enumerate() {
@@ -318,4 +339,15 @@ pub fn views(lv: &mut Level) {
         }
     }
     lv.views = views;
+}
+
+/// A pit's name in the walks and views: `pit_<room>_<storey>` (`_2` for a second on that storey).
+fn pit_name(it: &crate::furnish::Interior, n: usize) -> String {
+    let p = &it.pits[n];
+    let k = it.pits[..n].iter().filter(|q| q.z == p.z).count();
+    if k == 0 {
+        format!("pit_{}_{}", it.s.key, p.z)
+    } else {
+        format!("pit_{}_{}_{}", it.s.key, p.z, k + 1)
+    }
 }

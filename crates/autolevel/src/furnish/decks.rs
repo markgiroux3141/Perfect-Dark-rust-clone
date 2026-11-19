@@ -7,8 +7,15 @@
 use super::{components, meets, runs, touching, Interior, Pad, RampIn, GALLERIES_MIN, MEZZANINE_MIN, RING_MIN};
 use crate::cells::{rect_cells, Cell, Cells};
 use crate::py;
+use crate::pyrand::PyRandom;
 use crate::space::door_pad;
 use std::collections::BTreeSet;
+
+/// A towering tower's storey shapes: a ring round all four walls, two walls meeting at a corner,
+/// one long wall, one short wall (an end).
+pub const SHAPES: [&str; 4] = ["ring", "corner", "side", "end"];
+/// Attempts at furnishing a room that draw its tower's shapes.
+const VARIED_ATTEMPTS: usize = 4;
 
 impl Interior {
     /// Perimeter positions of a cell next to a wall (a corner cell has two).
@@ -140,6 +147,12 @@ impl Interior {
         let ring_kind = self.s.kind == "tower" && self.tower == "ring";
         let ends = self.s.kind == "tower" && self.tower == "ends";
         let short = if d >= w { [0, 2] } else { [1, 3] }; // the walls at the ends of its long axis
+                                                          // a towering hall's tower: each storey's own deck one of `SHAPES`, never the one under it
+                                                          // (new in the Rust; the Python's ring tower is a ring on every storey). Its first attempts
+                                                          // only: later ones lay rings or ends, as the Python's towers are, so a room that can't be
+                                                          // ramped as drawn is still furnished.
+        let varied = self.s.kind == "tower" && self.s.towers() && self.attempt < VARIED_ATTEMPTS;
+        let mut below: Option<usize> = None;
         for (n, &z) in upper.iter().enumerate() {
             let mut need: BTreeSet<i32> = BTreeSet::new();
             let mut cells = Cells::new();
@@ -172,8 +185,13 @@ impl Interior {
                     need.extend(self.wall(side).filter(|t| !blocked.contains(t)));
                 }
             }
-            let own = self.top.is_none_or(|top| z <= top); // may this storey have deck nothing arrives on?
-            let mut ring = ring_kind && w.min(d) >= 12 && own;
+            // may this storey have deck nothing arrives on? Not over the cap, nor (in a towering
+            // hall) over one of its high storeys unless it is one: the room's own storeys, which
+            // its ramps join, can't climb past a place of its own (`Space::high`), so a ring there
+            // would be reached by nothing
+            let past_high = self.s.high.iter().any(|&h| h < z) && !self.s.high.contains(&z);
+            let own = self.top.is_none_or(|top| z <= top) && !past_high;
+            let mut ring = ring_kind && w.min(d) >= 12 && own && !varied;
             let lay = if n == 0 && own { self.layout } else { None };
             if lay == Some("ring") && w.min(d) >= RING_MIN {
                 ring = true;
@@ -191,7 +209,27 @@ impl Interior {
                 }
                 cells.extend(mz);
             }
-            if ends && own {
+            if varied && own {
+                let mut rng = PyRandom::named(&format!("{}/shape/{}/{z}", self.stream, self.attempt));
+                let choices: Vec<usize> = (0..SHAPES.len()).filter(|&k| below != Some(k)).collect();
+                let shape = *rng.choice(&choices);
+                let wall = rng.below(4) as usize;
+                let sides: Vec<usize> = match SHAPES[shape] {
+                    "ring" => {
+                        ring = true;
+                        Vec::new()
+                    }
+                    "corner" => vec![wall, (wall + 1) % 4],
+                    "side" => vec![long_walls[wall % 2]],
+                    _ => vec![short[wall % 2]],
+                };
+                for side in sides {
+                    need.extend(self.wall(side).filter(|t| !blocked.contains(t)));
+                }
+                below = Some(shape);
+                self.shapes.push((z, SHAPES[shape]));
+            }
+            if ends && own && !varied {
                 // a deck across one end, the other end next storey up
                 let end: BTreeSet<i32> = self.wall(short[n % 2]).filter(|t| !blocked.contains(t)).collect();
                 if end.len() >= 4 {

@@ -15,6 +15,8 @@
 //! - shape: a single-storey room may have a corner filled in (an L) or a cross wall;
 //! - platforms: big squares of deck off the catwalks into a hall's emptiest air (by
 //!   `Setup::platforms`; new in the Rust, none by default);
+//! - pits: drops through the platforms to what stands under them (`Setup::holes`; new in the
+//!   Rust, none by default);
 //! - cover: pillars, crates or nothing, never in front of a door or cutting the floor in two;
 //! - rails: on every edge that drops, except where a ramp arrives, and down ramps' open sides;
 //! - nav: every door must reach every other on foot, through spaces a player fits.
@@ -37,6 +39,7 @@ mod cover;
 mod decks;
 mod mend;
 mod nav;
+mod pits;
 mod plans;
 mod platforms;
 mod pod;
@@ -45,7 +48,9 @@ mod ramps;
 #[cfg(test)]
 mod tests;
 
+pub use decks::SHAPES;
 pub use nav::{Nav, Node};
+pub use pits::{Pit, MAX_FALL};
 pub use platforms::Void;
 pub use pod::{pod_interior, Glass, PodDoor, PodPlan};
 pub use rails::Rail;
@@ -278,6 +283,12 @@ pub struct Setup {
     /// Platforms off the catwalks into the empty air (`lay_platforms`): one for each 100 cells
     /// of it, times this. 0 (the default, and every seed's level): none.
     pub platforms: f64,
+    /// The chance each platform has a drop through it (`lay_pits`). 0 (the default): none.
+    pub holes: f64,
+    /// The room's own stream's name ("{seed}/{key}"), which the pits draw theirs from.
+    pub stream: String,
+    /// Which attempt at furnishing the room this is (the first is 0).
+    pub attempt: usize,
 }
 
 impl Default for Setup {
@@ -296,6 +307,9 @@ impl Default for Setup {
             top: None,
             band: 2,
             platforms: 0.0,
+            holes: 0.0,
+            stream: String::new(),
+            attempt: 0,
         }
     }
 }
@@ -359,6 +373,14 @@ pub struct Interior {
     /// `Setup::platforms`, and the platforms laid: (storey, rectangle h).
     pub platform_share: f64,
     pub platforms: Vec<(i32, Rect)>,
+    /// `Setup::holes` and `Setup::stream`, and the drops laid through the platforms.
+    pub hole_share: f64,
+    pub stream: String,
+    pub pits: Vec<Pit>,
+    /// `Setup::attempt`, and a towering tower's storey shapes as drawn: (storey, one of
+    /// `decks::SHAPES`).
+    pub attempt: usize,
+    pub shapes: Vec<(i32, &'static str)>,
 }
 
 impl std::fmt::Debug for Interior {
@@ -432,13 +454,18 @@ impl Interior {
             top: how.top,
             platform_share: how.platforms,
             platforms: Vec::new(),
+            hole_share: how.holes,
+            stream: how.stream,
+            pits: Vec::new(),
+            attempt: how.attempt,
+            shapes: Vec::new(),
         }
     }
 
     /// Which band of the room storey `z` is in: storeys joined by ramps inside the room are one
     /// band. A towering hall's high storeys (`Space::high`) are each a band of their own, reached
     /// from outside and never ramped down; their band is their floor, the room's own `i32::MIN`.
-    pub(crate) fn band_of(&self, z: i32) -> i32 {
+    pub fn band_of(&self, z: i32) -> i32 {
         if self.s.high.contains(&z) {
             z
         } else {
@@ -493,6 +520,7 @@ impl Interior {
         }
         self.clear_under_ramps();
         self.lay_platforms();
+        self.lay_pits();
         self.lay_cover();
         self.rails = self.lay_rails();
         Ok(self)

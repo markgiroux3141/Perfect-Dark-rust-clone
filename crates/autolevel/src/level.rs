@@ -75,6 +75,9 @@ pub struct Options {
     /// Galleries in each towering hall, at most: high storeys with no pod given a catwalk of their
     /// own, reached from outside (`galleries`; 0: none, as the Python). New in the Rust.
     pub galleries: usize,
+    /// The chance each platform has a drop through it to what stands under it (`furnish::pits`;
+    /// 0: none, as the Python). New in the Rust.
+    pub holes: f64,
     /// Join up, or cut short, every dead end longer than these (false: leave them):
     pub dead_ends: bool,
     /// cells of corridor to a room that goes nowhere (a camping spot may be that far off),
@@ -132,6 +135,7 @@ impl Default for Options {
             grates: 3,
             platforms: 0.0,
             galleries: 0,
+            holes: 0.0,
             dead_ends: true,
             dead_corridor: 8,
             dead_walk: 20,

@@ -63,6 +63,9 @@ pub enum Fix {
     Dropped { room: String },
 }
 
+/// Every room furnished (`Build::furnish_all`): (the interiors, the rooms that went without their hole).
+type Furnished = (Vec<(String, Arc<Interior>)>, Vec<String>);
+
 /// A drop: (upper room, lower room, cells). A hole two cells square in the upper room's floor.
 pub type DropHole = (String, String, Rect);
 /// A drop with the side it is stepped into from (None: railed all round, a lightwell).
@@ -152,6 +155,9 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
         holed.insert(up);
         lit.insert(low);
     }
+    if o.holes > 0.0 {
+        more_drops(seed, net, o, &rooms, &mut drops, &mut holed, &mut lit);
+    }
     // (not tall, piece, room, z, the places it could go)
     let mut cand: Vec<(bool, &str, &str, i32, Vec<Rect>)> = Vec::new();
     for r in net.routes() {
@@ -204,6 +210,106 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
         lit.insert(low);
     }
     (drops, grates)
+}
+
+/// More drops than the Python's (`Options::holes`; new in the Rust, after its own are chosen, so
+/// they stay as they were): every pair of rooms one over the other, the lower no spiral or basin
+/// (tall or not: what it builds over the drop's column is looked at once it is furnished,
+/// `Build::refresh`), with no more than `MAX_FALL` storeys from the upper's floor to the lower's
+/// and no room between, takes one with that chance. A hole two or three cells each way, a cell in
+/// from both rooms' walls and clear of the upper room's doors. Each pair draws from its own stream
+/// ("{seed}/{up}/{low}/hole"); a room still has one hole at most, and is lit from above once.
+fn more_drops<'a>(
+    seed: u64,
+    net: &Network,
+    o: &Options,
+    rooms: &[&'a Space],
+    drops: &mut Vec<DropHole>,
+    holed: &mut BTreeSet<&'a str>,
+    lit: &mut BTreeSet<&'a str>,
+) {
+    use crate::storeys::index;
+    let grid = &net.grid;
+    for up in rooms {
+        if up.decks.is_some() || up.pool.is_some() || holed.contains(up.key.as_str()) || lit.contains(up.key.as_str()) {
+            continue;
+        }
+        let mut aprons = Cells::new();
+        for d in net.doors(&up.key).iter().filter(|d| d.level == up.floor) {
+            aprons.extend(door_pad(up, d, 6, 1));
+        }
+        for low in rooms {
+            if holed.contains(up.key.as_str()) {
+                break;
+            }
+            if low.key == up.key || low.pool.is_some() || low.decks.is_some() || lit.contains(low.key.as_str()) || holed.contains(low.key.as_str()) {
+                continue;
+            }
+            if up.floor - low.top <= 0 || index(up.floor) - index(low.floor) > crate::furnish::MAX_FALL {
+                continue;
+            }
+            // (they must overlap by a hole two cells square and a cell round it)
+            if up.x1.min(low.x1) - up.x0.max(low.x0) < 4 || up.y1.min(low.y1) - up.y0.max(low.y0) < 4 {
+                continue;
+            }
+            let mut rng = PyRandom::named(&format!("{seed}/{}/{}/hole", up.key, low.key));
+            if rng.random() >= o.holes {
+                continue;
+            }
+            let (w, d) = *rng.choice(&[(2, 2), (2, 3), (3, 2), (3, 3)]);
+            let (x0, y0) = (up.x0.max(low.x0) + 1, up.y0.max(low.y0) + 1);
+            let (x1, y1) = (up.x1.min(low.x1) - 1, up.y1.min(low.y1) - 1);
+            let between: Vec<i32> = LEVELS.iter().copied().filter(|&z| low.top < z && storey(z).1 < up.floor).collect();
+            let fits = |w: i32, d: i32| -> Vec<(i32, i32)> {
+                let mut out = Vec::new();
+                for x in x0..=x1 - w {
+                    for y in y0..=y1 - d {
+                        if rect_cells((2 * x, 2 * y, 2 * x + 2 * w, 2 * y + 2 * d)).is_disjoint(&aprons)
+                            && !between.iter().any(|&z| (x - 1..x + w + 1).any(|i| (y - 1..y + d + 1).any(|j| grid.owner_at(i, j, z) != 0)))
+                        {
+                            out.push((x, y));
+                        }
+                    }
+                }
+                out
+            };
+            let (mut w, mut d) = (w, d);
+            let mut spots = fits(w, d);
+            if spots.is_empty() {
+                (w, d) = (2, 2);
+                spots = fits(2, 2);
+            }
+            if spots.is_empty() {
+                continue;
+            }
+            let (x, y) = *rng.choice(&spots);
+            drops.push((up.key.clone(), low.key.clone(), (x, y, x + w, y + d)));
+            holed.insert(up.key.as_str());
+            lit.insert(low.key.as_str());
+        }
+    }
+}
+
+/// Is the column under a drop clear through a tall lower room (`low`) down to its floor, where
+/// a player can stand all over it? (A drop into a single-storey room needs no look.)
+fn lands_clear(low: &Interior, r: Rect) -> bool {
+    let col = rect_cells((2 * r.0, 2 * r.1, 2 * r.2, 2 * r.3));
+    if low.upper.is_empty() {
+        return true;
+    }
+    let mut built = Cells::new();
+    for z in &low.upper {
+        built.extend(low.deck[z].iter().copied());
+        built.extend(low.shell[z].iter().copied());
+        built.extend(low.roof[z].iter().copied());
+    }
+    for ramp in &low.ramps {
+        built.extend(ramp.cells());
+    }
+    for q in &low.piers {
+        built.extend(rect_cells((q.0, q.1, q.2, q.3)));
+    }
+    col.is_disjoint(&built) && col.is_subset(&low.stand(low.levels[0]))
 }
 
 /// What stands in a room and what shape it is: `Interior`'s cover, clutter, shape and pillar.
@@ -468,6 +574,31 @@ impl Build {
     /// `Failed`) if a room can't be furnished; the build is then as it was.
     pub fn refresh(&mut self) -> Result<(), String> {
         let (mut drops, grates) = openings(self.seed, &self.net, &self.o);
+        // (a drop into a tall room whose column that room built in is taken away, and the rooms
+        // furnished again: `lands_clear`. Only `more_drops` makes such a drop.)
+        loop {
+            let (interiors, unholed) = self.furnish_all(&drops, &grates)?;
+            let blocked: Vec<String> = drops
+                .iter()
+                .filter(|d| !unholed.contains(&d.0))
+                .filter(|(_, low, r)| interiors.iter().find(|(k, _)| k == low).is_some_and(|(_, under)| !lands_clear(under, *r)))
+                .map(|d| d.0.clone())
+                .collect();
+            if !blocked.is_empty() {
+                drops.retain(|d| !blocked.contains(&d.0));
+                continue;
+            }
+            drops.retain(|d| !unholed.contains(&d.0));
+            self.interiors = interiors;
+            self.drops = drops;
+            self.grates = grates;
+            return Ok(());
+        }
+    }
+
+    /// Every room furnished with these openings: (the interiors, the rooms that could not take
+    /// their hole and went without it).
+    fn furnish_all(&mut self, drops: &[DropHole], grates: &[Grate]) -> Result<Furnished, String> {
         let h = |r: Rect| (2 * r.0, 2 * r.1, 2 * r.2, 2 * r.3);
         let holes: Vec<(String, Rect)> = drops.iter().map(|(u, _, r)| (u.clone(), h(*r))).collect();
         let mut keeps: Vec<(&str, Rect)> = drops.iter().map(|(_, low, r)| (low.as_str(), h(*r))).collect();
@@ -504,11 +635,7 @@ impl Build {
                 unholed.push(key.clone()); // the room can't take the hole: go without it
             }
         }
-        drops.retain(|d| !unholed.contains(&d.0));
-        self.interiors = interiors;
-        self.drops = drops;
-        self.grates = grates;
-        Ok(())
+        Ok((interiors, unholed))
     }
 
     /// The room's inside and whether it has its hole, or why not (`_furnish`). Each attempt has
@@ -564,6 +691,9 @@ impl Build {
                     top: self.caps.get(key).copied(),
                     band: self.o.band(),
                     platforms: self.o.platforms,
+                    holes: self.o.holes,
+                    stream: stream("pits"),
+                    attempt,
                 };
                 match Interior::new(s, doors, pods, rng, &self.access, setup).build() {
                     Ok(it) => return Ok((it, h.is_some())),
@@ -813,6 +943,33 @@ mod tests {
         let same: Vec<bool> = first.iter().zip(&b.interiors).map(|(was, is)| Arc::ptr_eq(&was.1, &is.1)).collect();
         assert_eq!(same, [false, true, true]);
         assert_eq!((b.interior("a").unwrap().top, b.interior("b").unwrap().top), (Some(0), None));
+    }
+
+    #[test]
+    fn holes_add_drops_into_rooms_a_storey_or_more_below_and_land_them_clear() {
+        use crate::level::generate;
+        use crate::place::Scale;
+        let (mut before, mut after, mut deep) = (0, 0, 0);
+        for (scale, seeds) in [(Scale::Towering, 1..=10), (Scale::Grand, 1..=10)] {
+            for seed in seeds {
+                let mut o = Options::default();
+                o.siting.scale = scale;
+                let plain = generate(seed, &o);
+                o.holes = 1.0;
+                let lv = generate(seed, &o);
+                assert_eq!(plain.is_ok(), lv.is_ok(), "seed {seed}: holes change whether a level is made");
+                let (Ok(plain), Ok(lv)) = (plain, lv) else { continue };
+                before += plain.drops.len();
+                after += lv.drops.len();
+                for (up, low, r, side) in &lv.drops {
+                    assert!(side.is_some(), "seed {seed}: the drop {up} -> {low} has no open side");
+                    assert!(lands_clear(lv.interior(low), *r), "seed {seed}: the drop {up} -> {low} lands on something");
+                    assert!(lv.walks.iter().any(|(k, _)| k == &format!("drop_{up}_{low}")), "seed {seed}: no walk for {up} -> {low}");
+                    deep += usize::from(lv.space(up).floor - lv.space(low).floor > 600);
+                }
+            }
+        }
+        assert!(after > before && deep >= 2, "{before} drops without, {after} with, {deep} more than two storeys");
     }
 
     #[test]

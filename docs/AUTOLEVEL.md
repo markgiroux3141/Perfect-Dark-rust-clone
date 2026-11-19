@@ -2018,6 +2018,77 @@ needs a pod.
 - The gallery's storey must be one another room has a door on, so a hall's highest storeys get
   one only where a spire or a loft reaches them.
 
+### Drops: holes through platforms and floors (2026-11-19)
+
+**The user's ask (2026-11-19):** drop-downs to what is below, as regular rectangular holes and as
+holes spanned by catwalks with no rails, on floors and platforms, made with some chance wherever
+there is something to fall onto a reasonable distance below.
+
+What there was: the Python's drop (`build::openings`, `--drops N`, 2): a hole two cells square in
+a room's floor into a single-storey room at most one empty storey below, railed on three sides.
+Seeds 1-20: 13 in 20 grand levels, 3 in 18 towering ones.
+
+- **`--holes P`** (the recipe's `holes`, the editor's slider; 0 by default: every seed as it was).
+- **Pits** (`furnish::pits`, laid after the platforms, before the cover and the rails): each
+  platform, with chance P (its own stream, "{seed}/{key}/pits/pit/{z}/{x}/{y}"), gets a **hole**
+  (2 by 2 cells, 2 by 3 in a big platform; railed on three sides, open towards the catwalk it hangs
+  off) or a **span** (the platform's middle open a cell in from its edges, crossed by one or two
+  unrailed catwalks a cell wide, `planks`), where everything under the opening is standing room
+  within `MAX_FALL` (4) storeys with nothing between (a catwalk, a platform, the hall's floor; no
+  other opening). The rails leave the open side and the planks' sides out (`Interior::unrailed`);
+  nothing stands where it lands (`keep`). Each has a walk (`pit_<room>_<storey>`: from a door of its
+  band to the edge, off it, to the landing), so the importer links it one way for simulants
+  (`towering9h`: 3 linked, 2 already joined), a view of the same name, and a one-way way in the
+  dead-end graph. Report: `holes`, `spans`.
+- **More drops between rooms** (`build::more_drops`, after the Python's are chosen): any pair of
+  rooms overlapping by four cells or more, one over the other with no room between and no more
+  than `MAX_FALL` storeys from floor to floor, the lower no spiral or basin and **tall or not**,
+  takes a drop with chance P (stream "{seed}/{up}/{low}/hole"), 2 or 3 cells each way. A drop into a
+  tall room must land clear (`lands_clear`: nothing it built in the column, its floor standing
+  room there); `Build::refresh` takes one that does not away and furnishes again until none is
+  left (it used to re-furnish one room by hand, which left an `Arc` the nav cache, keyed by
+  address, could see again: a panic in `Places::of`).
+- **Seeds 1-20 with `--holes 1`:** drops between rooms, grand 13 to 18, towering 3 to 10. With
+  `--platforms 1 --galleries 2 --holes 0.5`: towering 18 levels, 39 pits (15 spans), 5 drops between
+  rooms; grand 20 levels, 26 pits (7 spans), 15 drops. Every walk passes. (Towering seeds 4 and 14
+  make no level with or without any of this: "no set of ramps".)
+- **Tests:** `pits::tests`, `build::tests::holes_add_drops_into_rooms_a_storey_or_more_below_and_land_them_clear`.
+- **Arena:** `towering9h` (stage 108): seed 9 towering, platforms 1, galleries 2, holes 1: 5 pits
+  (one a span).
+
+**Rough, and next:**
+- Drops between rooms stay rare: the scatter seldom puts one room over another (grand seeds 1-10:
+  three pairs overlap at all). More would need the scatter to stack rooms on purpose.
+- A span in a room's floor (between rooms) is not made: the floor hole is one rectangle all through
+  (`Setup::hole`, the plan's shaft, `Sided`). Spans are only in platforms.
+- A drop off a catwalk's open edge (an unrailed stretch) is not made.
+
+### Towers: unreached rings, and a shape per storey (2026-11-19)
+
+**The user's report (2026-11-19):** in `towering9h` a tower's top ring and the third from the top
+could not be reached; and a ring at every storey, all alike, is dull (the opposite of the sparse
+hall).
+
+- **Unreached rings** (a galleries bug): `tower2` of seed 9 (8 storeys, a ring tower, galleries at
+  1102 and 1654) had a ring on every storey; its own storeys' ramps can't join a gallery's band,
+  so the rings at 1378 and 1929 were reached by nothing. Now a storey over one of the hall's high
+  storeys gets no deck of the room's own unless it is high itself (`lay_decks`: `past_high`). Seeds
+  1-20 with galleries: 10 such storeys in 6 of 12 seeds before, none after. `--example room --
+  RECIPE (KEY | X,Y | list | orphans)` prints a room storey by storey, or every storey whose
+  catwalk no door reaches (grand seeds 1-20: none; what seemed so were pods' roofs beside a deck).
+  Towering seed 20's colossal hall has a 3-block pocket at 276 with or without any of this.
+- **Why the stack:** a `tower` (towering: 4, 5 or 8 storeys), the furnishing's coin for "ring" over
+  "ends" (`Setup::tower`, each attempt), and a ring tower six cells across or more takes a ring on
+  every storey it may deck, one ramp between each: eight alike. (Vast halls and basins: a 30% ring
+  on any storey with deck.)
+- **A shape per storey** (`decks::SHAPES`, towering towers only, their first 4 attempts): each
+  storey's own deck is a ring, a corner (two walls), a side (a long wall) or an end (a short wall),
+  never the shape of the storey under it, the wall drawn too, from "{seed}/{key}/pits/shape/{attempt}/{z}".
+  Later attempts lay rings or ends as before. `Interior::shapes` lists them. Towering seeds 1-60:
+  54 levels with and without galleries (as before: 4, 14, 43, 46, 49, 55 fail either way); seeds
+  1-20 with platforms, galleries and holes: every walk passes.
+- **Test:** `climbs::tests::a_towering_towers_storeys_take_turns_and_every_catwalk_is_reached`.
+
 - The user's other questions with this (2026-11-19): a large base kind (the pod kinds are 3-5 by
   3-4 cells and 2-3 by 2; the scatter's rule allows a fifth of a hall's floor), and a base shared
   by two halls a cell apart (a pod has one host now). Not started.
