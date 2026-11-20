@@ -257,6 +257,10 @@ impl Interior {
         no_ramp.extend(self.cut.iter().copied());
         no_top.extend(self.cut.iter().copied());
         no_foot.extend(self.cut.iter().copied());
+        // (nor in a sunken floor, or by it)
+        let sunk = self.sunk_clear();
+        no_ramp.extend(sunk.iter().copied());
+        no_foot.extend(sunk.iter().copied());
         if floor {
             no_foot.extend(self.pool.iter().copied());
             no_foot.extend(self.bridge.iter().copied());

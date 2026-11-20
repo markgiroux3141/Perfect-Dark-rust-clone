@@ -98,7 +98,7 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
         }
     }
     for up in &rooms {
-        if up.decks.is_some() || up.pool.is_some() || up.flood.is_some() || !up.cuts.is_empty() || o.drops == 0 {
+        if up.decks.is_some() || up.pool.is_some() || up.flood.is_some() || !up.cuts.is_empty() || up.sunk.is_some() || o.drops == 0 {
             continue;
         }
         let mut aprons = Cells::new();
@@ -112,6 +112,7 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
                 || low.pool.is_some()
                 || low.flood.is_some()
                 || !low.cuts.is_empty()
+                || low.sunk.is_some()
                 || low.decks.is_some()
                 || !(0 < up.floor - low.top && up.floor - low.top <= 320)
             {
@@ -184,7 +185,7 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
             for (z, cells) in &pc.cells {
                 for low in &rooms {
                     // (none into a shaped room: its cut is solid)
-                    if !(0 < z - low.top && z - low.top <= 40 && low.cuts.is_empty()) {
+                    if !(0 < z - low.top && z - low.top <= 40 && low.cuts.is_empty() && low.sunk.is_none()) {
                         continue;
                     }
                     let pods: Vec<Rect> = sp.iter().filter(|q| q.host == low.key).map(|q| q.rect()).collect();
@@ -252,6 +253,7 @@ fn more_drops<'a>(
             || up.pool.is_some()
             || up.flood.is_some()
             || !up.cuts.is_empty()
+            || up.sunk.is_some()
             || holed.contains(up.key.as_str())
             || lit.contains(up.key.as_str())
         {
@@ -269,6 +271,7 @@ fn more_drops<'a>(
                 || low.pool.is_some()
                 || low.flood.is_some()
                 || !low.cuts.is_empty()
+                || low.sunk.is_some()
                 || low.decks.is_some()
                 || lit.contains(low.key.as_str())
                 || holed.contains(low.key.as_str())
@@ -387,7 +390,7 @@ pub fn dress(s: &Space, o: &Options, rng: &mut PyRandom) -> Dress {
         cover = if s.towers() { "none" } else { "lanes" };
     }
     let mut shape = None;
-    if o.shapes && !s.tall() && s.host.is_empty() && s.pool.is_none() && s.flood.is_none() && s.cuts.is_empty() && s.area() >= 20 {
+    if o.shapes && !s.tall() && s.host.is_empty() && s.pool.is_none() && s.flood.is_none() && s.cuts.is_empty() && s.sunk.is_none() && s.area() >= 20 {
         let x = rng.random();
         shape = if x < 0.3 {
             Some("notch")

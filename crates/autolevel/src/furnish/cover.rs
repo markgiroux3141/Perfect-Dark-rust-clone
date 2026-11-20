@@ -120,10 +120,11 @@ impl Interior {
         for &k in &self.keep {
             clear.extend(rect_cells(grow(k, 2)));
         }
+        clear.extend(self.sunk_clear());
         for p in &self.piers {
             clear.extend(rect_cells(grow((p.0, p.1, p.2, p.3), 2)));
         }
-        let floor: Cells = self.room.iter().filter(|c| !self.pool.contains(c) && !self.hole.contains(c)).copied().collect();
+        let floor: Cells = self.room.iter().filter(|c| !self.pool.contains(c) && !self.hole.contains(c) && !self.sunk_cells.contains(c)).copied().collect();
         let above: Vec<(i32, Cells)> = self.upper.iter().map(|&zz| (zz, self.deck[&zz].union(&self.roof[&zz]).copied().collect())).collect();
         let mut no_pillar = Cells::new();
         for zz in &self.upper {

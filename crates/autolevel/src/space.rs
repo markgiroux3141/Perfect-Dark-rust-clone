@@ -60,6 +60,9 @@ pub struct Space {
     /// solid on every storey. Its footprint is the rest (an L, a U). Empty for every other room.
     /// New in the Rust.
     pub cuts: Vec<crate::cells::Rect>,
+    /// A sunken floor (`level::sinks`): (x0, y0, x1, y1) in cells, `level::SUNK_DEPTH` under the
+    /// room's floor, its pit kept from the storey under it. New in the Rust.
+    pub sunk: Option<crate::cells::Rect>,
 }
 
 /// A cellar: a room a storey under a hall, inside its footprint, joined to it by a hatch in the
@@ -297,6 +300,7 @@ pub fn spaces(lots: &[Lot]) -> Vec<Space> {
             cellar: None,
             flood: None,
             cuts: Vec::new(),
+            sunk: None,
         })
         .collect();
     // a towering hall's high storeys: the ones of its pods over the storeys ramped inside it

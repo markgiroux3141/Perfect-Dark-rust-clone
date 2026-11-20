@@ -61,9 +61,10 @@ cargo build --release -p pd_import          # also builds target/release/autolev
                                             #   and between rooms; `--cellars P`: a room under a hall, a hatch down, a
                                             #   ladder up; `--angled P`: angled catwalks, an island reached only by them
                                             #   and shortcuts across a hall's air; `--flooded P` (0.1 by default): a room's
-                                            #   floor water under railed walkways; `--shaped P` (0.1): rooms an L or a U
+                                            #   floor water under railed walkways; `--shaped P` (0.1): rooms an L or a U;
+                                            #   `--sunken P` (0.1): a pit a cell deep in a hall's floor, a ramp down into it
                                             #   (docs/AUTOLEVEL.md, "Platforms", "Galleries", "Drops", "Cellars",
-                                            #   "Angled catwalks", "Flooded rooms", "Shaped rooms")
+                                            #   "Angled catwalks", "Flooded rooms", "Shaped rooms", "Sunken floors")
                                             #   also `sweep`, `plan`, `batch`, `walk`, `deadends`, `--recipe FILE`; `autolevel --help`
 cargo run --release -p autolevel_edit -- --seed 40 --shot out.png [--empty] [--storey Z] [--pick ROOM@STOREY [--join N]] [--remove KEY]
                                             #   the generator's editor: its plan view as a PNG with no window (how to look at a

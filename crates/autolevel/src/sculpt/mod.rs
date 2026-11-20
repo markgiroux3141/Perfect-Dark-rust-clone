@@ -381,6 +381,7 @@ fn finish(
                 cellar: None,
                 flood: None,
                 cuts: Vec::new(),
+                sunk: None,
             })
         })
         .collect();

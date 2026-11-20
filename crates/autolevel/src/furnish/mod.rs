@@ -53,6 +53,7 @@ mod pod;
 mod rails;
 mod ramps;
 mod shape;
+mod sunken;
 #[cfg(test)]
 mod tests;
 
@@ -64,6 +65,7 @@ pub use pits::{Pit, MAX_FALL};
 pub use platforms::Void;
 pub use pod::{pod_interior, Glass, PodDoor, PodPlan};
 pub use rails::Rail;
+pub use sunken::Sunk;
 
 /// How far in front of a door nothing at all may stand, h.
 pub const CLEAR: i32 = 4;
@@ -418,6 +420,9 @@ pub struct Interior {
     pub cut: Cells,
     /// The ladders up the pillars whose tops are clear (`cover::lay_ladders`).
     pub ladders: Vec<Ladder>,
+    /// A sunken floor (`Space::sunk`) as laid, and its pit's cells: not the floor's (`sunken`).
+    pub sunk: Option<Sunk>,
+    pub sunk_cells: Cells,
 }
 
 impl std::fmt::Debug for Interior {
@@ -513,6 +518,8 @@ impl Interior {
             cuts,
             cut,
             ladders: Vec::new(),
+            sunk: None,
+            sunk_cells: s.sunk.map_or_else(Cells::new, |r| rect_cells((2 * r.0, 2 * r.1, 2 * r.2, 2 * r.3))),
         }
     }
 
@@ -570,6 +577,7 @@ impl Interior {
         self.lay_pool()?;
         self.lay_decks();
         self.shape_decks();
+        self.lay_sunk();
         self.place_ramps(40)?;
         if !self.connected() {
             return Err(format!("{}: doors don't all join", self.s.key));

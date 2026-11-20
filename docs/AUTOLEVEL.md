@@ -415,14 +415,18 @@ longer writes it byte for byte; it still writes every case a later rule did not 
   a side drawn from the room's own stream `{seed}/{key}/ladders` among those with standing room
   a cell deep in front. It is the cellar's ladder (the kit's "ladder", Complex's grille, flagged
   `GEOFLAG_LADDER` by the importer; a glTF material whose `extras.pd` is "ladder" is too), a cell
-  wide from the floor to the pillar's top, between two stiles of "plain" standing 8 units out:
-  on a "column" pillar the grille alone is its own face again (`geometry::pillar_ladder`). Players
+  wide from the floor to the pillar's top (`geometry::pillar_ladder`; at first between two stiles
+  of "plain", which the user found not needed, 2026-11-20). Players
   climb it, and so do simulants: the importer's waypoints link a ladder's foot to its top
   (`pd_sim::nav::gen`), so a top has waypoints of its own, dropped down from. Each has a walk and a view (`pillar_<room>_<n>`),
   and the report counts them (`ladders`). Nothing else in a level moves; seed 40 (by
-  `Options::python`) has 5: 90 triangles and 90 tiles more (15,085, 12,940; 13,328 with a ring),
+  `Options::python`) has 5: 10 triangles and 10 tiles more (15,005, 12,860; 13,248 with a ring),
   5 walks (76) and views (44) more, and a 19th material. Seeds 1-20, grand and towering: 2 to 17
   a level (none in towering 17), every walk passes, and every one fails from the pillar's far side.
+
+- **Sunken floors are on by default** (2026-11-19, the user's call): `Options::sunken` is 0.1 (a
+  room's floor a cell lower in a rectangle, a floor ramp down into it, no railing; "Sunken
+  floors"). `Options::python` leaves them out, so no key moved.
 
 - **Flooded rooms are on by default** (2026-11-19, the user's call): `Options::flooded` is 0.1
   (`level::FLOODED`), so a seed's level now has a flooded room where one falls (see "Flooded
@@ -2335,6 +2339,51 @@ are as they were; a union of lots in the scatter would change everything from se
 inner walls); one cut a room (a T, a cross, a Z would take two); the layouts that assume a rectangle
 (galleries, a mezzanine) are clipped, not reshaped; the editor's plan view draws the lot's whole
 rectangle (the cut shows as air) and its room tool draws rectangles only.
+
+### Sunken floors: a pit with a ramp down (2026-11-19)
+
+**The user's ask (2026-11-19):** where a room's floor is flat and open, a pit with a ramp into it:
+not deep, a recessed area with no railing round it, and no railing on its ramp either. The user's
+calls: a cell deep (118), and on by default at a low chance.
+
+- **`--sunken P`** (the recipe's `sunken`, the editor's slider; **0.1 by default**, `level::SUNKEN`):
+  each room with that chance (its own stream "{seed}/{key}/sunken") has a rectangle of its floor
+  `SUNK_DEPTH` (118) lower (`level::sinks`, `Space::sunk`): its sides `SUNK_SIDE` (4 to 7) cells,
+  `SUNK_INSET` (3) cells clear of the room's walls (the floor in front of its doors, the catwalks'
+  ramps along the walls) and two cells clear of its pods' blocks and their ways in, with nothing
+  under it where its pit would be (as a flooded room's). Ten tries, then none. Not a pod, tower,
+  spire, basin, atrium, cellar or cellar's hall, nor a flooded or shaped room, nor any room of an
+  empty start; a room is 10 cells across or more, so nearly every one is a hall's floor.
+- **Its pit is the room's** in the router (`route`: marked on the storey under it, as a pool's
+  pit), and in the plan it is a box of the room's air under its floor (`plans::boxes`): its walls
+  are the carver's, and nothing goes round its edge.
+- **The ramp** (`furnish::sunken`, `lay_sunk`, after the decks and before the ramps): from the
+  middle of one of the pit's sides, its top on the edge, `RUN` (4 h, two cells: 26.6 degrees)
+  down into the pit, a catwalk's width (`band`). The side is drawn from the room's own stream
+  ("{seed}/{key}/sunken") among those with standing room in front of the ramp's top. It is a
+  plan ramp of kind "plate" (`csg::plate_ramp`), as the sculpted levels' floor ramps: a sheet of
+  diamond plate with a lip (`GRATE_EDGE`, 16) down each open side, no railing. (At first its sides
+  hung all the way to the pit's floor, a solid wedge; the user found them ugly, 2026-11-19.)
+- **The pit is not the floor's** (`Interior::sunk_cells`): not walkable to the furnisher
+  (`walk`), so nothing stands in it or a cell round it (`sunk_clear`: cover, the ramps' feet and
+  bodies keep out, and its ramp's way in), no drop lands in it, no drop or grate goes into or out
+  of the room, and the room's nav goes round it. The importer's waypoints are the game's
+  (`pd_sim::nav::gen`): simulants go down into it and back up.
+- **Walks:** `sunk_<room>` from a door to the ramp's top, down it (a stop at its foot: running
+  down it, PD's feet lag the slope by more than a pass-through point allows), across the pit,
+  and back up; `!sunk_<room>` from the pit's far side straight at the floor past its wall, which
+  must fail. **View:** `sunk_<room>`, from two cells past the far side, looking at the ramp.
+  Report: `sunken`.
+- **Seeds 1-20, grand and towering:** with `--sunken 1`, 46 sunken floors; by default, 3; every
+  walk passes either way (towering 4 and 14 make no level either way).
+- **The tests pin `Options::python`**, which leaves sunken floors out too (with flooded and
+  shaped rooms): no key or pinned count moved.
+- **Test:** `sunken::tests::a_sunken_floor_is_a_pit_a_cell_deep_with_a_ramp_down_and_nothing_round_it`.
+- **Arena:** `sunken1` (stage 113): seed 1 grand, sunken 1 (its colossal and vast halls).
+
+**Rough, and next:** one a room, rectangles only, and only rooms 10 cells across (a room of one
+storey would take one with a smaller inset);
+nothing is put in a pit (cover, a weapon's spot is the editor's).
 
 ## Risks
 

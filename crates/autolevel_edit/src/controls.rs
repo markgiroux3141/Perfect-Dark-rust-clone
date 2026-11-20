@@ -70,6 +70,9 @@ pub fn control(name: &str) -> (Control, &'static str) {
         ),
         "flooded" => (Share { lo: 0.0, hi: 1.0, step: 0.05 }, "the chance a room's floor is water, under railed walkways joining its doors"),
         "shaped" => (Share { lo: 0.0, hi: 1.0, step: 0.05 }, "the chance each room where it fits is an L or a U: a corner or a side's middle cut from it"),
+        "sunken" => {
+            (Share { lo: 0.0, hi: 1.0, step: 0.05 }, "the chance each room with open floor enough has a sunken floor: a cell lower, a ramp down into it")
+        }
         "dead_ends" => (Switch, "join up or cut short every dead end longer than the three limits below; off leaves them as they fall"),
         "dead_corridor" => (Whole { lo: 1, hi: 30, off: false }, "a room that goes nowhere may be this many cells of corridor off a main area"),
         "dead_walk" => (Whole { lo: 1, hi: 60, off: false }, "and this many cells' walk to its far end, ramps and decks too"),

@@ -12,7 +12,8 @@ fn box_h(r: Rect, z0: i32, z1: i32) -> Box3 {
 }
 
 impl Interior {
-    /// The room's air: its box with the pods' blocks cut out, and the pit under its water.
+    /// The room's air: its box with the pods' blocks cut out, the pit under its water, and its sunken
+    /// floor's pit.
     pub fn boxes(&self) -> Vec<Box3> {
         let s = &self.s;
         let main = box3(s.x0 as f64, s.y0 as f64, s.x1 as f64, s.y1 as f64, s.floor, s.top);
@@ -35,6 +36,9 @@ impl Interior {
             let pit = box3(s.x0 as f64, s.y0 as f64, s.x1 as f64, s.y1 as f64, water, s.floor);
             let under: Vec<Box3> = self.pods.iter().filter(|p| p.floor == s.floor).map(|p| box_h(shell_rect(p, s), water, s.floor)).collect();
             out.extend(if under.is_empty() { vec![pit] } else { subtract(pit, &under) });
+        }
+        if let Some(sk) = &self.sunk {
+            out.push(box_h(sk.rect, sk.z, s.floor));
         }
         out
     }
@@ -83,6 +87,18 @@ impl Interior {
                 width: units(self.band as f64 / 2.0),
                 kind: "open",
                 open_sides,
+            });
+        }
+        if let Some(sk) = &self.sunk {
+            // the sunken floor's: a floor ramp, a lip down each side and no railing (the user's
+            // call: sides run down to the pit's floor were ugly)
+            let ((tx, ty), (fx, fy)) = sk.line();
+            out.push(Ramp {
+                start: (units(fx), units(fy), sk.z),
+                end: (units(tx), units(ty), self.s.floor),
+                width: units(self.band as f64 / 2.0),
+                kind: "plate",
+                open_sides: vec![-1, 1],
             });
         }
         out

@@ -89,6 +89,8 @@ Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
   round the cut (arena `shaped1`); AUTOLEVEL.md, "Shaped rooms". Then the pillars (the user's,
   2026-11-19): they stop at the first storey, and tall rooms take fewer (a rule of the Rust's own);
   and a pillar with a clear top has a ladder up one side (AUTOLEVEL.md, Rules of the Rust's own).
+  Then sunken floors (`--sunken P`, 0.1 by default, the user's call): a rectangle of a room's floor
+  a cell lower, a floor ramp down into it, no railing (arena `sunken1`); AUTOLEVEL.md, "Sunken floors".
 
 - **Blank levels: your edit wins** (the user's, 2026-11-18; designed, chosen as the next step):
   start empty, draw rooms, and the generator remakes the rest round each edit, offering

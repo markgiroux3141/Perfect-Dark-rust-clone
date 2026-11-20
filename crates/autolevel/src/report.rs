@@ -115,6 +115,8 @@ pub struct Report {
     pub shaped_rooms: usize,
     /// Ladders up pillars to their tops (`furnish::Ladder`).
     pub ladders: usize,
+    /// Sunken floors (`furnish::Sunk`).
+    pub sunken: usize,
     pub empty_air: f64,
     pub largest_void: f64,
 }
@@ -219,6 +221,7 @@ pub fn report(lv: &Level) -> Report {
         rafts: its().map(|it| it.rafts.len()).sum(),
         shaped_rooms: its().filter(|it| !it.cut.is_empty()).count(),
         ladders: its().map(|it| it.ladders.len()).sum(),
+        sunken: its().filter(|it| it.sunk.is_some()).count(),
         empty_air: 0.0,
         largest_void: 0.0,
     };

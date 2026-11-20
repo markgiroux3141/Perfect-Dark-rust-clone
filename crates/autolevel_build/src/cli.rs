@@ -92,6 +92,8 @@ What kind of level (sweep, plan, build, batch and deadends all take these):
                              doors, with platforms and angled catwalks over it
   --shaped P                 the chance each room big enough for it is an L or a U: a rectangle cut from
                              it (default 0.1; 0: none)
+  --sunken P                 the chance each room with open floor enough for it has a sunken floor: a
+                             rectangle a cell lower, open all round, a ramp down into it (default 0.1)
   --site WxH                 cells; default 80x60 for grand, 64x48 for standard
   --dead-corridor N          a room that goes nowhere may be this many cells of corridor off a main area (8);
   --dead-walk N              and this many cells' walk in all, ramps and decks too (20);
@@ -619,6 +621,7 @@ pub fn report_json(r: &Report) -> Json {
         ("rafts", json!(r.rafts)),
         ("shaped_rooms", json!(r.shaped_rooms)),
         ("ladders", json!(r.ladders)),
+        ("sunken", json!(r.sunken)),
         ("empty_air", json!(r.empty_air)),
         ("largest_void", json!(r.largest_void)),
     ]) else {
@@ -636,8 +639,22 @@ pub fn report_json(r: &Report) -> Json {
 }
 
 /// The report's keys that are the Rust's own, after the Python's (which end with the score).
-pub const RUSTS_OWN: [&str; 13] =
-    ["platforms", "galleries", "holes", "spans", "cellars", "islands", "angled", "flooded", "rafts", "shaped_rooms", "ladders", "empty_air", "largest_void"];
+pub const RUSTS_OWN: [&str; 14] = [
+    "platforms",
+    "galleries",
+    "holes",
+    "spans",
+    "cellars",
+    "islands",
+    "angled",
+    "flooded",
+    "rafts",
+    "shaped_rooms",
+    "ladders",
+    "sunken",
+    "empty_air",
+    "largest_void",
+];
 
 /// A level's walks as walks.json holds them: name -> `[[x, y, z], [x, y, z, flags], ...]`.
 pub fn walks_json(lv: &Level) -> Json {

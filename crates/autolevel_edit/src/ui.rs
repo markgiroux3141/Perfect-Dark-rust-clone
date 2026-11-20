@@ -1573,7 +1573,7 @@ mod tests {
     /// An editor on a command line, its level made (by `Options::python`: the Rust's own rooms on by
     /// default left out, so a seed's level is the one these tests pin).
     fn editor(line: &str) -> Editor {
-        let words: Vec<String> = format!("{line} --flooded 0 --shaped 0").split_whitespace().map(str::to_string).collect();
+        let words: Vec<String> = format!("{line} --flooded 0 --shaped 0 --sunken 0").split_whitespace().map(str::to_string).collect();
         let mut ed = Editor::new(cli::parse(&words, &|path| Err(format!("{path}: no files here"))).unwrap());
         ed.tick(); // (starts the job)
         while !ed.settled() {

@@ -504,7 +504,7 @@ mod tests {
         // (drawn with no word of what was chosen: the room's inside itself differs)
         let drawn = |line: &str| {
             // (as the fixture is made: `Options::python`)
-            let recipe = run(&args(&format!("{line} --flooded 0 --shaped 0"))).unwrap().recipe;
+            let recipe = run(&args(&format!("{line} --flooded 0 --shaped 0 --sunken 0"))).unwrap().recipe;
             assert_eq!(recipe.edits.len(), 1, "{line}");
             picture(&crate::deadlist::make(&recipe).unwrap().level, &View::default())
         };

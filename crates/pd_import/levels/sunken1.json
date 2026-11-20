@@ -1,0 +1,22 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "sunken1",
+  "name": "Grand 1 Sunken",
+  "group": "Autolevel",
+  "stagenum": 113,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 1,
+      "options": {
+        "sunken": 1.0
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

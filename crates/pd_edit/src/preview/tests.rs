@@ -64,8 +64,8 @@ fn a_preview_is_made_from_a_recipe_and_loads_from_a_scratch_folder_that_goes_wit
     let pv = seed40(&root);
     // the generator's 61 rooms (and PD's room 0), its 91 openings, a tile for each triangle that is one:
     // what `autolevel import` makes of seed 40 (pd_import::autowalk's test)
-    assert_eq!((pv.stage.rooms.roomcount(), pv.stage.rooms.portals.len(), pv.level.geom.polys.len()), (62, 91, 12940));
-    assert!(pv.line().starts_with("61 rooms, 91 portals, 12940 tiles, made in "), "{}", pv.line());
+    assert_eq!((pv.stage.rooms.roomcount(), pv.stage.rooms.portals.len(), pv.level.geom.polys.len()), (62, 91, 12860));
+    assert!(pv.line().starts_with("61 rooms, 91 portals, 12860 tiles, made in "), "{}", pv.line());
     // no waypoints, no spawns: the geometry alone
     assert!(pv.stage.waypoints.is_empty() && pv.stage.spawn_pads.is_empty());
     // the level's own rooms and views

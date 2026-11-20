@@ -156,6 +156,25 @@ pub fn walks(lv: &mut Level) -> Result<(), String> {
         let (foot, top) = (middle(c.foot(lv.space(low).floor)), middle(lv.interior(up).hole_approach(*side)));
         set(&mut walks, format!("ladder_{low}_{up}"), vec![Step::at(foot), Step::at((top.0, top.1, lv.space(up).floor))]);
     }
+    // down each sunken floor's ramp from a door, across it and back up; and not out over its far side
+    for (key, it) in &lv.interiors {
+        let Some(sk) = &it.sunk else { continue };
+        let z0 = it.levels[0];
+        let a = sk.approach();
+        let way = ((a.0 + a.2).div_euclid(2) - 1, (a.1 + a.3).div_euclid(2) - 1, z0);
+        let start = it.door_nodes().into_iter().flatten().find(|d| d.2 == z0);
+        let Some(path) = start.and_then(|s| it.path(s, way)).filter(|p| !p.is_empty()) else { continue };
+        let wp = it.waypoints(&path);
+        let (((tx, ty), (fx, fy)), (far, out)) = (sk.line(), sk.far());
+        let mut steps = vec![Step::at(wp[0])];
+        steps.extend(wp[1..].iter().map(|q| Step::by(*q, 1)));
+        // (a stop at the ramp's foot: running down it, PD's feet lag the slope by more than a pass
+        // through point allows)
+        steps.extend([Step::by((tx, ty, z0), 1), Step::at((fx, fy, sk.z)), Step::at((far.0, far.1, sk.z))]);
+        steps.extend([Step::by((fx, fy, sk.z), 1), Step::by((tx, ty, z0), 1), Step::at(middle(way))]);
+        set(&mut walks, format!("sunk_{key}"), steps);
+        set(&mut walks, format!("!sunk_{key}"), vec![Step::at((far.0, far.1, sk.z)), Step::at((out.0, out.1, z0))]);
+    }
     // up each pillar's ladder (`furnish::Ladder`), from the floor in front of it to its top
     for (key, it) in &lv.interiors {
         for (n, l) in it.ladders.iter().enumerate() {
@@ -356,6 +375,13 @@ pub fn views(lv: &mut Level) {
         let (lx, ly) = ((ax + bx) / 2.0, (ay + by) / 2.0);
         let back = (((s.x1 - s.x0).min(s.y1 - s.y0)) as f64 - 1.0).min(3.0);
         set(&mut views, format!("ladder_{low}"), (lx + dx as f64 * back, ly + dy as f64 * back, s.floor, lx, ly));
+    }
+    // each sunken floor from across it, two cells back from its far side, looking at its ramp
+    for (key, it) in &lv.interiors {
+        let Some(sk) = &it.sunk else { continue };
+        let (((tx, ty), (fx, fy)), (_, out)) = (sk.line(), sk.far());
+        let (bx, by) = [(0.0, 1.0), (-1.0, 0.0), (0.0, -1.0), (1.0, 0.0)][sk.side];
+        set(&mut views, format!("sunk_{key}"), (out.0 + bx, out.1 + by, it.levels[0], (tx + fx) / 2.0, (ty + fy) / 2.0));
     }
     // each pillar's ladder from a few cells out
     for (key, it) in &lv.interiors {

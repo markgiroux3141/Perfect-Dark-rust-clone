@@ -177,7 +177,7 @@ fn the_3d_view_follows_the_recipe_and_keeps_the_last_level_while_it_is_made_agai
     assert!(!space.follow(&seed(40)) && space.busy() && space.preview().is_none());
     assert!(space.status(&seed(40)).0.starts_with("making the 3D view... "));
     assert!(space.settle(&seed(40)), "it arrives: the window then loads its BG");
-    assert!(space.current(&seed(40)) && !space.busy() && space.made == 1 && tiles(&space) == 12940);
+    assert!(space.current(&seed(40)) && !space.busy() && space.made == 1 && tiles(&space) == 12860);
     let line = space.preview().unwrap().line();
     assert_eq!(space.status(&seed(40)), (line, false));
     // the first preview places the camera: in the biggest hall, at a door
@@ -191,9 +191,9 @@ fn the_3d_view_follows_the_recipe_and_keeps_the_last_level_while_it_is_made_agai
     assert!(!space.follow(&ring()) && space.busy() && !space.current(&ring()));
     let (text, warn) = space.status(&ring());
     assert!(text.starts_with("bringing the 3D view up to the plan... ") && text.ends_with("(the last level stays)") && warn, "{text}");
-    assert_eq!(tiles(&space), 12940);
+    assert_eq!(tiles(&space), 12860);
     assert!(space.settle(&ring()));
-    assert!(space.current(&ring()) && space.made == 2 && tiles(&space) == 13328, "the ring's decks and ramps are in it");
+    assert!(space.current(&ring()) && space.made == 2 && tiles(&space) == 13248, "the ring's decks and ramps are in it");
     // the camera is where it was
     assert_eq!((space.cam.pos, space.cam.yaw, space.cam.pitch), (Vec3::new(1000.0, 400.0, -3000.0), 1.0, -0.2));
     // one scratch folder: the old preview's went with it
@@ -202,7 +202,7 @@ fn the_3d_view_follows_the_recipe_and_keeps_the_last_level_while_it_is_made_agai
     // A recipe that makes no level (seed 25): the last one stays, with the generator's reason.
     assert!(!space.settle(&seed(25)));
     assert_eq!(space.status(&seed(25)), ("this recipe makes no level, so the last one stays: seed 25: colossal: no set of ramps joins its storeys".to_string(), true));
-    assert!(space.made == 2 && tiles(&space) == 13328 && left(&root) == 1);
+    assert!(space.made == 2 && tiles(&space) == 13248 && left(&root) == 1);
     // it is not tried again while the recipe is that one
     assert!(!space.follow(&seed(25)) && !space.busy());
     // undone: the level on show is the recipe's own again, and nothing is made
@@ -238,7 +238,7 @@ fn the_bar_switches_to_3d_and_walk_g_and_escape_go_between_walking_and_flying() 
     assert!(said.iter().filter(|t| t.starts_with("making the 3D view... ")).count() == 2, "in the bar and in the middle: {said:?}");
     assert!(rig.settle());
     let said = rig.frame(Vec::new());
-    assert!(is(&said, "Walk") && has(&said, "61 rooms, 91 portals, 12940 tiles, made in ") && has(&said, "Right button: look, WASD: fly, Q/E down and up, Shift faster, wheel: speed. G: walk from here"), "{said:?}");
+    assert!(is(&said, "Walk") && has(&said, "61 rooms, 91 portals, 12860 tiles, made in ") && has(&said, "Right button: look, WASD: fly, Q/E down and up, Shift faster, wheel: speed. G: walk from here"), "{said:?}");
     assert!(has(&said, "(2539, 159, -1831) yaw 213° pitch 0° · cell 21.5, 15.5 in colossal · speed 800 cm/s"), "{said:?}");
 
     // "Walk": a player on the floor under the camera, and the view is the player's.
@@ -329,7 +329,7 @@ fn a_level_made_again_under_a_walker_puts_it_back_on_a_floor_or_ends_the_walk() 
     }
     let (feet, note) = (rig.space.walker.as_ref().unwrap().feet(), rig.space.note.clone());
     rig.recipe = ring();
-    assert!(rig.settle() && tiles(&rig.space) == 13328);
+    assert!(rig.settle() && tiles(&rig.space) == 13248);
     assert!(rig.space.walking() && rig.space.walker.as_ref().unwrap().feet() == feet && rig.space.note == note);
     // and walks on, on the new level's tiles
     for _ in 0..60 {

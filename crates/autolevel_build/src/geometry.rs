@@ -367,29 +367,9 @@ pub fn pillar_ladder(kit: &Kit, it: &autolevel::furnish::Interior, l: &autolevel
     let surf = kit.surface("ladder", None, None)?;
     let (v0, v1) = (z0 as f64 / 118.11, z1 as f64 / 118.11);
     let quad = [at(ax, ay, z0), at(bx, by, z0), at(bx, by, z1), at(ax, ay, z1)];
-    let mut out = vec![csg::oriented(&quad, [dx as f64, dy as f64, 0.0], surf, zone, Some(&[(0.0, v0), (1.0, v0), (1.0, v1), (0.0, v1)]))];
-    // a stile down each edge, standing out from the face: the grille alone is the column's own
-    // face again, and no ladder to look at
-    let stile = kit.surface("plain", Some(z0 as f64), None)?;
-    let (n, (zb, zt)) = ([dx as f64, dy as f64], (z0 as f64, z1 as f64));
-    let (pa, pb) = ([C(ax) as f64, C(ay) as f64], [C(bx) as f64, C(by) as f64]);
-    let len = (pb[0] - pa[0]).hypot(pb[1] - pa[1]);
-    let u = [(pb[0] - pa[0]) / len, (pb[1] - pa[1]) / len];
-    for (end, inward) in [(pa, 1.0), (pb, -1.0)] {
-        let p = |along: f64, out: f64, z: f64| [end[0] + u[0] * along * inward + n[0] * out, end[1] + u[1] * along * inward + n[1] * out, z];
-        let side = [u[0] * inward, u[1] * inward, 0.0];
-        let (o, i) = (0.0, STILE);
-        out.push(csg::oriented(&[p(o, STILE_OUT, zb), p(i, STILE_OUT, zb), p(i, STILE_OUT, zt), p(o, STILE_OUT, zt)], [n[0], n[1], 0.0], stile, zone, None));
-        out.push(csg::oriented(&[p(i, 0.0, zb), p(i, STILE_OUT, zb), p(i, STILE_OUT, zt), p(i, 0.0, zt)], side, stile, zone, None));
-        out.push(csg::oriented(&[p(o, 0.0, zb), p(o, STILE_OUT, zb), p(o, STILE_OUT, zt), p(o, 0.0, zt)], [-side[0], -side[1], 0.0], stile, zone, None));
-        out.push(csg::oriented(&[p(o, 0.0, zt), p(i, 0.0, zt), p(i, STILE_OUT, zt), p(o, STILE_OUT, zt)], [0.0, 0.0, 1.0], stile, zone, None));
-    }
-    Ok(out)
+    // (no stiles: the user's call, 2026-11-20, they were not needed)
+    Ok(vec![csg::oriented(&quad, [dx as f64, dy as f64, 0.0], surf, zone, Some(&[(0.0, v0), (1.0, v0), (1.0, v1), (0.0, v1)]))])
 }
-
-/// A pillar's ladder's stiles: how wide each is, and how far it stands out from the pillar, units.
-pub const STILE: f64 = 10.0;
-pub const STILE_OUT: f64 = 8.0;
 
 /// Every polygon of the level: the plan in Complex's grammar, the lit rooms cut along their
 /// beams, the floor grates, the glass and the ramps' rails. Returns the polygons and the beams

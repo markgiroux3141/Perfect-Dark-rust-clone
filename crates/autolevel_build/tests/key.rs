@@ -34,9 +34,9 @@ fn key(name: &str) -> &'static Value {
 
 /// A case's `"options"` as the level's options (as the layout's own key test reads them).
 fn options(options: &Value) -> Options {
-    // (the Python's levels have no flooded or shaped rooms, which the Rust lays by default:
-    // `level::FLOODED`, `level::SHAPED`)
-    let mut o = Options { flooded: 0.0, shaped: 0.0, ..Options::default() };
+    // (the Python's levels have no flooded, shaped or sunken rooms, which the Rust lays by default:
+    // `level::FLOODED`, `level::SHAPED`, `level::SUNKEN`)
+    let mut o = Options { flooded: 0.0, shaped: 0.0, sunken: 0.0, ..Options::default() };
     for (name, v) in options.as_object().unwrap() {
         let whole = || v.as_i64().unwrap();
         match name.as_str() {

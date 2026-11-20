@@ -327,6 +327,12 @@ impl Grid {
                     g.mark(cut, z, c);
                 }
             }
+            if let Some(r) = s.sunk {
+                // the pit under a sunken floor
+                if let Some(&below) = LEVELS.iter().rfind(|&&z| z < s.floor) {
+                    g.mark(r, below, i);
+                }
+            }
             if s.flood.is_some() {
                 // (a flooded room's, all of it)
                 if let Some(&below) = LEVELS.iter().rfind(|&&z| z < s.floor) {
@@ -1043,6 +1049,7 @@ pub(crate) mod tests {
             cellar: None,
             flood: None,
             cuts: Vec::new(),
+            sunk: None,
         }
     }
 

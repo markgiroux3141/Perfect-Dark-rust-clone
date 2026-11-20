@@ -91,6 +91,10 @@ pub struct Options {
     /// The chance each room where it fits is shaped: an L or a U cut from its rectangle
     /// (`shapes`; `SHAPED` by default; 0: none, as the Python). New in the Rust.
     pub shaped: f64,
+    /// The chance each room with open floor enough for it has a sunken floor: a rectangle of it a
+    /// cell lower, open all round, a ramp down into it (`sinks`, `furnish::sunken`; `SUNKEN` by
+    /// default; 0: none, as the Python). New in the Rust.
+    pub sunken: f64,
     /// Join up, or cut short, every dead end longer than these (false: leave them):
     pub dead_ends: bool,
     /// cells of corridor to a room that goes nowhere (a camping spot may be that far off),
@@ -153,6 +157,7 @@ impl Default for Options {
             angled: 0.0,
             flooded: FLOODED,
             shaped: SHAPED,
+            sunken: SUNKEN,
             dead_ends: true,
             dead_corridor: 8,
             dead_walk: 20,
@@ -166,11 +171,12 @@ impl Default for Options {
 }
 
 impl Options {
-    /// The defaults with the Rust's own rooms that are on by default left out (flooded and shaped:
-    /// `FLOODED`, `SHAPED`): a seed's level by the Python's rules, and the Rust's own that are
-    /// always on. What a test pins a seed's level by, so that a feature on by default moves no pin.
+    /// The defaults with the Rust's own rooms that are on by default left out (flooded, shaped and
+    /// sunken: `FLOODED`, `SHAPED`, `SUNKEN`): a seed's level by the Python's rules, and the Rust's
+    /// own that are always on. What a test pins a seed's level by, so that a feature on by default
+    /// moves no pin.
     pub fn python() -> Options {
-        Options { flooded: 0.0, shaped: 0.0, ..Options::default() }
+        Options { flooded: 0.0, shaped: 0.0, sunken: 0.0, ..Options::default() }
     }
 
     /// A catwalk's depth from its wall, in half cells.
@@ -274,6 +280,7 @@ pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
     galleries(seed, o, &mut sp);
     shapes(seed, o, &mut sp, &access);
     floods(seed, o, &mut sp);
+    sinks(seed, o, &mut sp);
     Spaces { sp, spin, access, dropped }
 }
 
@@ -397,6 +404,72 @@ pub fn floods(seed: u64, o: &Options, sp: &mut [Space]) {
         let under = all.iter().any(|b| b.key != s.key && b.floor < s.floor && b.top + 39 > water - 40 && crate::scatter::rect_gap(pit, b.rect()) == (0, 0));
         if !under && PyRandom::named(&format!("{seed}/{}/flooded", s.key)).random() < o.flooded {
             s.flood = Some(water);
+        }
+    }
+}
+
+/// The chance a room with open floor enough for it has a sunken floor unless told otherwise
+/// (`Options::sunken`; the user's call, 2026-11-19: on by default, low).
+pub const SUNKEN: f64 = 0.1;
+/// How far a sunken floor lies under the room's, units (a cell: the user's call, 2026-11-19).
+pub const SUNK_DEPTH: i32 = 118;
+/// A sunken floor's sides, cells (the least is the ramp's run and two cells of floor), and how far
+/// it keeps from the room's walls (the floor in front of its doors and along its catwalks' ramps).
+pub const SUNK_SIDE: (i32, i32) = (4, 7);
+pub const SUNK_INSET: i32 = 3;
+
+/// Sunken floors (`Options::sunken`): each room with that chance from its own stream
+/// ("{seed}/{key}/sunken") has a rectangle of its floor `SUNK_DEPTH` lower (`Space::sunk`), its
+/// sides `SUNK_SIDE` cells, `SUNK_INSET` clear of the walls and two cells clear of its pods' blocks,
+/// with nothing under it where its pit would be. Not a pod, tower, spire, basin, atrium, cellar or
+/// cellar's hall, nor a flooded or shaped room; none in an empty start. Ten tries, then none. The
+/// furnisher lays its ramp (`furnish::sunken`). New in the Rust.
+pub fn sinks(seed: u64, o: &Options, sp: &mut [Space]) {
+    if o.sunken <= 0.0 || o.start == Start::Empty {
+        return;
+    }
+    let halls: Vec<String> = sp.iter().filter_map(|s| s.cellar.as_ref().map(|c| c.hall.clone())).collect();
+    let all: Vec<Space> = sp.to_vec();
+    for s in sp.iter_mut() {
+        let (w, d) = (s.x1 - s.x0, s.y1 - s.y0);
+        let room = SUNK_SIDE.0 + 2 * SUNK_INSET;
+        let fits = s.host.is_empty()
+            && s.decks.is_none()
+            && s.pool.is_none()
+            && s.flood.is_none()
+            && s.cellar.is_none()
+            && s.cuts.is_empty()
+            && !halls.contains(&s.key)
+            && !matches!(s.kind, "spire" | "basin")
+            && s.kind != crate::place::ATRIUM.name
+            && w.min(d) >= room;
+        if !fits {
+            continue;
+        }
+        let mut rng = PyRandom::named(&format!("{seed}/{}/sunken", s.key));
+        if rng.random() >= o.sunken {
+            continue;
+        }
+        // what it keeps clear of: its pods' blocks and their ways in (half cells)
+        let mut keep = crate::cells::Cells::new();
+        for p in all.iter().filter(|p| p.host == s.key) {
+            keep.extend(crate::cells::rect_cells(crate::furnish::grow(crate::space::shell_rect(p, s), 4)));
+        }
+        let bottom = s.floor - SUNK_DEPTH;
+        for _ in 0..10 {
+            let sw = rng.randint(SUNK_SIDE.0 as i64, SUNK_SIDE.1.min(w - 2 * SUNK_INSET) as i64) as i32;
+            let sd = rng.randint(SUNK_SIDE.0 as i64, SUNK_SIDE.1.min(d - 2 * SUNK_INSET) as i64) as i32;
+            let x = rng.randint((s.x0 + SUNK_INSET) as i64, (s.x1 - SUNK_INSET - sw) as i64) as i32;
+            let y = rng.randint((s.y0 + SUNK_INSET) as i64, (s.y1 - SUNK_INSET - sd) as i64) as i32;
+            let r = (x, y, x + sw, y + sd);
+            let clear = crate::cells::rect_cells((2 * r.0, 2 * r.1, 2 * r.2, 2 * r.3)).is_disjoint(&keep);
+            let pit = (r.0 - 1, r.1 - 1, r.2 + 1, r.3 + 1);
+            let under =
+                all.iter().any(|b| b.key != s.key && b.floor < s.floor && b.top + 39 > bottom - 40 && crate::scatter::rect_gap(pit, b.rect()) == (0, 0));
+            if clear && !under {
+                s.sunk = Some(r);
+                break;
+            }
         }
     }
 }
