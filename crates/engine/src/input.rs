@@ -33,6 +33,9 @@ pub struct Input {
     mouse: HashSet<MouseButton>,
     mouse_pressed: HashSet<MouseButton>,
     mouse_delta: (f64, f64),
+    /// Held keys the game took for itself ([`Input::swallow`]): not down to
+    /// anything else until they are released.
+    swallowed: HashSet<KeyCode>,
     /// Gamepads, if the backend started.
     pub pads: Option<Gamepads>,
 }
@@ -49,6 +52,17 @@ impl Input {
             }
         } else {
             self.keys.remove(&key);
+            self.swallowed.remove(&key);
+        }
+    }
+
+    /// Take this press of `key` out of the input: it is neither pressed this
+    /// tick nor down until it is released (for a key the game acted on
+    /// itself, such as one that leaves full screen).
+    pub fn swallow(&mut self, key: KeyCode) {
+        self.pressed.remove(&key);
+        if self.keys.contains(&key) {
+            self.swallowed.insert(key);
         }
     }
 
@@ -71,10 +85,11 @@ impl Input {
     pub fn clear(&mut self) {
         self.keys.clear();
         self.mouse.clear();
+        self.swallowed.clear();
     }
 
     pub fn key_down(&self, key: KeyCode) -> bool {
-        self.keys.contains(&key)
+        self.keys.contains(&key) && !self.swallowed.contains(&key)
     }
 
     /// Went down since the last tick.
@@ -255,5 +270,27 @@ impl Gamepads {
     pub fn pad(&self, i: usize) -> Option<PadView<'_>> {
         let state = self.pads.get(i)?;
         self.gilrs.gamepad(state.id).is_connected().then_some(PadView { gilrs: &self.gilrs, state })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_swallowed_key_is_not_down_until_released() {
+        let mut inp = Input::default();
+        inp.key_event(KeyCode::Escape, true);
+        assert!(inp.key_pressed(KeyCode::Escape) && inp.key_down(KeyCode::Escape));
+        inp.swallow(KeyCode::Escape);
+        assert!(!inp.key_pressed(KeyCode::Escape) && !inp.key_down(KeyCode::Escape));
+        // Key repeat while it is held is still nothing.
+        inp.end_tick();
+        inp.key_event(KeyCode::Escape, true);
+        assert!(!inp.key_pressed(KeyCode::Escape) && !inp.key_down(KeyCode::Escape));
+        // Released and pressed again: an ordinary press.
+        inp.key_event(KeyCode::Escape, false);
+        inp.key_event(KeyCode::Escape, true);
+        assert!(inp.key_pressed(KeyCode::Escape) && inp.key_down(KeyCode::Escape));
     }
 }

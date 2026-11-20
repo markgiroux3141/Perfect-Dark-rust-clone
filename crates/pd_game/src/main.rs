@@ -19,7 +19,9 @@
 //! weapon found (and doesn't keep the Game Pak either). `--play <code>` (the
 //! level editor's "Play now") starts a match on that arena at once, player 1
 //! alone on the default setup, and comes back to the Combat Simulator when it
-//! ends. F1 toggles the developer panel.
+//! ends. F1 toggles the developer panel. F11 (or the panel's button) fills the
+//! screen with the game alone, PD's 4:3 picture between black bars; Esc leaves
+//! full screen (that press is not B or the mouse's release).
 
 mod audio;
 mod controls;
@@ -104,6 +106,9 @@ struct PdGame {
     target: Option<RenderTarget>,
     presenter: Option<Presenter>,
     show_panel: bool,
+    /// Whether the panel showed before full screen hid it (it comes back
+    /// when full screen is left).
+    panel_before_fullscreen: bool,
     /// Quantise the framebuffer to RGBA5551, as the N64's is.
     n64_colour: bool,
     match_assets: MatchAssets,
@@ -155,6 +160,7 @@ impl PdGame {
             target: None,
             presenter: None,
             show_panel: true,
+            panel_before_fullscreen: true,
             n64_colour: true,
             renderer: None,
             loaded_stage: None,
@@ -468,6 +474,22 @@ impl PdGame {
     }
 }
 
+impl PdGame {
+    /// Full screen hides the panel; leaving it puts the panel back as it was.
+    fn set_fullscreen(&mut self, ctx: &mut Ctx, on: bool) {
+        if on == ctx.is_fullscreen() {
+            return;
+        }
+        if on {
+            self.panel_before_fullscreen = self.show_panel;
+            self.show_panel = false;
+        } else {
+            self.show_panel = self.panel_before_fullscreen;
+        }
+        ctx.set_fullscreen(on);
+    }
+}
+
 impl Game for PdGame {
     fn init(&mut self, ctx: &mut Ctx) {
         self.target = Some(RenderTarget::new(ctx.gpu, FB_W as u32, FB_H as u32, wgpu::TextureFormat::Rgba8Unorm, false));
@@ -479,6 +501,14 @@ impl Game for PdGame {
     fn tick(&mut self, ctx: &mut Ctx) {
         if ctx.input.key_pressed(KeyCode::F1) {
             self.show_panel = !self.show_panel;
+        }
+        if ctx.input.key_pressed(KeyCode::F11) {
+            self.set_fullscreen(ctx, !ctx.is_fullscreen());
+        } else if ctx.is_fullscreen() && ctx.input.key_pressed(KeyCode::Escape) {
+            // Esc leaves full screen and does nothing else: not B in the
+            // menus, not the mouse's release in a match.
+            self.set_fullscreen(ctx, false);
+            ctx.input.swallow(KeyCode::Escape);
         }
         let n = self.rate as i32;
         self.lv.frametime_apply(n, 4 * n);
@@ -535,10 +565,15 @@ impl Game for PdGame {
         let (mut rate, mut profile, mut kb) = (self.rate, self.profile, self.controls.kb_player);
         let mut restart = false;
         let mut end = false;
+        let (mut hide, mut fullscreen) = (false, false);
         egui::SidePanel::left("pd").resizable(false).default_width(250.0).show(egui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.heading("PERFECT DARK");
                 ui.label(egui::RichText::new("Combat Simulator, from the decomp").weak());
+                ui.horizontal(|ui| {
+                    hide = ui.button("Hide this panel").on_hover_text("F1 brings it back").clicked();
+                    fullscreen = ui.button("Full screen").on_hover_text("F11; Esc leaves it").clicked();
+                });
                 ui.label(format!("{fps:.0} fps · {pads} pad(s)"));
                 ui.label(format!("root {} · {dialog}", self.menu.menudata.root));
                 if let Screen::StandIn { setup, .. } = &self.screen {
@@ -549,7 +584,7 @@ impl Game for PdGame {
                 }
                 end = self.match_panel(ui);
                 ui.separator();
-                ui.label("Menus: arrows/WASD D-pad · Enter A · Esc B · Space START · Z Z · Q/E L/R · Backspace delete · F1 panel · F2-F4 START on 2-4");
+                ui.label("Menus: arrows/WASD D-pad · Enter A · Esc B · Space START · Z Z · Q/E L/R · Backspace delete · F1 panel · F11 full screen (Esc leaves it) · F2-F4 START on 2-4");
                 ui.separator();
                 egui::ComboBox::from_label("frame rate").selected_text(rate.label()).show_ui(ui, |ui| {
                     for r in [Rate::Hz60, Rate::Hz30, Rate::Hz20] {
@@ -618,6 +653,12 @@ impl Game for PdGame {
             ctx.clock.set_tick_hz(60.0 / rate as i32 as f64);
         }
         self.controls.kb_player = kb;
+        if hide {
+            self.show_panel = false;
+        }
+        if fullscreen {
+            self.set_fullscreen(ctx, true);
+        }
         // A change of unlocks powers on again from the saved Game Pak (the
         // pretend unlocks must not reach it).
         if profile != self.profile {

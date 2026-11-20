@@ -80,6 +80,15 @@ impl Ctx<'_> {
             false
         }
     }
+
+    /// Borderless full screen on the window's monitor, or back to the window.
+    pub fn set_fullscreen(&self, on: bool) {
+        self.window.set_fullscreen(on.then_some(winit::window::Fullscreen::Borderless(None)));
+    }
+
+    pub fn is_fullscreen(&self) -> bool {
+        self.window.fullscreen().is_some()
+    }
 }
 
 pub trait Game: 'static {

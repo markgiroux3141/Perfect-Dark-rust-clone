@@ -17,7 +17,8 @@
 //! Keyboard (menus; it drives controller [`Controls::kb_player`]): arrows / WASD
 //! D-pad · Enter A · Esc B · Space START · Z Z · Q / E L / R · Backspace the name
 //! keyboard's delete. F2-F4 press START on controllers 2-4, so a second player
-//! can join without a second pad.
+//! can join without a second pad. In full screen (F11), Esc leaves full screen
+//! instead (`main.rs`), so the keyboard's B is a pad's there.
 //!
 //! Source: the old repo's `pd_menu/app.rs` `poll_input` and `pd_guns/app.rs`
 //! `input` / `merge_pad`.
