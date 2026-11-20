@@ -465,8 +465,10 @@ impl Ord for Item {
     }
 }
 
-/// Lattice distances from `sources` up to `limit`.
-fn dijkstra(adj: &[Vec<(usize, f32)>], sources: &[usize], limit: f32) -> Vec<(f32, usize)> {
+/// Distances along `adj` (each node's neighbours and the cost to them) from
+/// `sources` up to `limit`: for each node, its distance and which source
+/// (an index into `sources`) is nearest; infinite past the limit.
+pub fn dijkstra(adj: &[Vec<(usize, f32)>], sources: &[usize], limit: f32) -> Vec<(f32, usize)> {
     let mut dist = vec![(f32::INFINITY, usize::MAX); adj.len()];
     let mut heap = BinaryHeap::new();
     for (k, &s) in sources.iter().enumerate() {

@@ -52,7 +52,7 @@ or `addon/` are that repo's.
 | Lighting bake | `build.bake_lighting`, `cx.bake`, `add_beam`, `glow` (Blender) | `autolevel_build/bake.rs`, `bake/trace.rs` | `autolevel_compare.py --light`: tolerance, not exact | done: within 1 of 255 everywhere, in 55 ms |
 | Command line | `scripts/autolevel.py`, `scripts/plan_walks.py`, `plan.write_svg` | `autolevel_build`: `cli.rs`, `svg.rs`, `walk.rs`, `textures.rs`; `autolevel/deadlist.rs`; the binary is `pd_import`'s (`src/bin/autolevel.rs`) | the Python's files and output; walks pass | done: the binary `autolevel` |
 | Walking in this process | pd-walk (`viewer/`) | `pd_import::autowalk` (`SimWalk`, on `pd_sim`'s player and the importer's own tiles) | every route of six levels, the same outcome as pd-walk | done (2026-11-16) |
-| As an arena | new | `autolevel import`: `pd_import::autolevel` (a source of its own: the level made again from its recipe, its rooms and openings as PD's rooms and portals, Complex's materials on the pool's textures) and `pd_import::autonav` (the generator's ways put into the waypoints) | tests in `pd_import` (rooms, portals, textures, tiles, sight, the repair); `pd_snapshot stage autolevel40`; `autolevel shots` | done (2026-11-17); nobody has played one |
+| As an arena | new | `autolevel import`: `pd_import::autolevel` (a source of its own: the level made again from its recipe, its rooms and openings as PD's rooms and portals, Complex's materials on the pool's textures) and `pd_import::autonav` (the generator's ways put into the waypoints) and `pd_import::autoplace` (spawns, weapons and ammo by the generator's floors, 2026-11-20) | tests in `pd_import` (rooms, portals, textures, tiles, sight, the repair); `pd_snapshot stage autolevel40`; `autolevel shots` | done (2026-11-17); nobody has played one |
 | Kits (what a level is dressed in) | new | `autolevel_build/kit.rs` (`Kit`: palette, schemes, solid tags, tints, brightness targets, the arena whose material rows the import uses); Complex is `complex::KIT`, passed to `geometry`, `mesh`, `bake`, `obj`, `glb`, `Built` and `pd_import::autolevel` | the keys; seed 40's build byte for byte the same as before | Complex only (2026-11-17). A level's shape (storeys, doors, ramps, the module) is still the planner's and Complex's; `built::make` always takes `complex::KIT` until a recipe names its kit |
 | Felicity-style levels | new (not a port) | `autolevel/felicity.rs` (the planner), `autolevel_build/felicity.rs` (the kit and its polygons), `pd_import::autolevel::doors` | `felicity` unit tests (40 seeds: plan check, the same twice, one piece, door shares, stairs, types; 60 seeds: the circulation targets); `autolevel build N --style felicity` walks every route of seeds 1-40 | second planner (2026-11-17): corridors first, rooms as offshoots; nobody has played one. See "Felicity" |
 | Sculpted levels | new (not a port) | `autolevel/sculpt/` (`vox`, `shape`, `layout`, `nav`, `repair`, `mod`), `autolevel_build/sculpt.rs` (Complex's kit under its own name) | `sculpt` unit tests (the grid, a room the same twice and one piece, a platform dropped from and not climbed, ramps and a switchback joining floors, a corridor climbing between two rooms, seeds 1-4 plan-checked); `autolevel build N --style sculpt` walks | first version (2026-11-18): rooms sculpted from boxes, repaired with ramps and catwalks; seeds 1 and 2 imported (`sculpt1`, `sculpt2`, stages 101 and 102); nobody has played one. See "Sculpt" |
@@ -2025,8 +2025,8 @@ happening. Both are new in the Rust, and off by default: every seed's level is a
 - A platform hangs off catwalk that is already there (above): galleries (below) give the high
   storeys some.
 - Nothing stands under a platform but what the cover puts there; it floats as the catwalks do.
-- Nothing is placed on platforms yet (weapons, spawns): the importer's placement treats them as
-  any floor.
+- Platforms are a risky place for location 5, after islands and pillar tops ("Placement", below);
+  nothing else is placed on them by design.
 ### Galleries: high catwalks of their own (2026-11-19)
 
 **The user's idea (2026-11-19):** a high catwalk and its platforms can be a place of their own, as
@@ -2240,7 +2240,7 @@ platforms of any kind, are as welcome.
 - Islands are rare where platforms are on (the platforms fill the air first); a platform could be
   left floating on purpose and reached by angled catwalks only.
 - Its ends cut along one edge each: none meets a deck at a corner, and none crosses another.
-- Nothing is placed on islands yet (weapons, spawns): the importer's placement treats them as any floor.
+- An island is the riskiest place there is: location 5 goes on one when the level has it ("Placement").
 
 ### Flooded rooms: water under railed walkways (2026-11-19)
 
@@ -2469,6 +2469,76 @@ are made):
   without the rescue).
 - Simulants: the importer's waypoints are repaired from the walks with a chr's probe, as the
   cellars' ladders are; nobody has watched one use a chute.
+
+## Placement: what the generator knows of its floors (2026-11-20)
+
+**The user (2026-11-20):** weapons and ammo stood on slopes, and a weapon's ammo could be far from
+it; now that the levels are ours, placement should make sense. Agreed order: (1) the generator
+labels its floors and nothing stands off flat floor; (2) distances by walking, ammo in its
+weapon's room; (3) rules per item (against walls, one weapon per room first, a pickup in a pod off
+the path, hills in halls, bases in rooms with two ways in, cover behind the generator's own cover)
+and fairness numbers in the report; (4) waygroups from the generator's rooms; (5) sparse waypoints
+from the plan. **Location 5 (the set's sixth slot, the power weapon) goes somewhere risky, and
+spawns stay out of corridors** (the user's answers). Steps 1 and 2 are done.
+
+**Before** (seed 40, the plain placement, judged by the same audit): 6 of 46 items off flat
+floor, 14 on a ramp, in a doorway or by a hole, 3 of 16 spawns in corridors, ammo a 19.7 m walk
+from its weapon on average (68 m at most; 8 of 20 crates in another room), location 5 anywhere.
+**After:** 0, 0, 0, ammo 5.2 m on average (15 m at most; 2 of 20 in another room), location 5 on a
+pillar top. Seeds 1, 7 and 1 at size 4: 0, 0, 0, 4.4 to 5.3 m. Seed 2 with `angled 1, cellars 1`:
+location 5 on its island.
+
+- **The hints** (`pd_import::autoplace::hints`, from the built level, read after it is made: no
+  draw of the generator's, so no key moves):
+  - each PD room's kind by its number (the plan's `room_id`): `hub`, `room`, `corridor`, `ramp`,
+    `vent`, `perch`;
+  - **clear zones**, where nothing stands: every ramp of the plan (`Room::ramps`, the furnished
+    rooms', spirals', risers', sunken floors', ducts') from half a cell before its foot to half a
+    cell past its top and 30 units out of its sides; every opening of `Built::openings`, a
+    doorway's mouth 150 units either side of its plane and 30 past its jambs, a hole 100 round its
+    edge; every pit through a platform (`Interior::pits`) and a half cell round it;
+  - **risky zones**, riskiest first (`autoplace::RISKY`): islands, pillar tops with a ladder
+    (`Interior::ladders`: the pillar's top), platforms, galleries (the deck of `Space::galleries`'
+    storeys), perches (rooms of kind `perch`), cellars, sunken floors.
+- **The guided placement** (`autoplace::Guide`, used by `place::place` when the source is a
+  generated level and the layout doesn't place that kind):
+  - every usable waypoint (the largest strongly connected part, no crouch or duck spot) is
+    **settled** on flat floor: its floor, or a point up to 50 cm off in sight of it at knee and pad
+    height, whose ground and that of every point of a ring 45 cm round it is the same floor within
+    3 cm (`autoplace::flat`: a 4 degree slope, a ledge, a step, a hole or a wall in the ring fails
+    it). Of the rest, those in a clear zone are dropped. Seed 40: 693 of 941 spots kept, 77 off flat
+    floor, 135 by a doorway, 36 by a ramp;
+  - **location 5** first: the riskiest kind of place the level has, its zone nearest the level's
+    middle, the spot nearest that zone's middle;
+  - **spawns** by farthest-point sampling on walking distance (`pd_sim::nav::gen::dijkstra`, now
+    public, over the graph's links), 5 m apart, 10 m from location 5, out of corridors, ramps,
+    vents and the risky places; corridors let in only if the rest has no room (the report says how
+    many). Facing their most open way, as before;
+  - **weapons** the same way, 6 m apart and 5 m from the spawns, out of ramps and vents, corridors
+    only if the rooms are full; location 5 swapped into the sixth slot;
+  - **ammo**: two crates per weapon (PD fills a crate for the MP location set just before it,
+    `setup.c:1710`, so each crate is that weapon's ammo), in the weapon's PD room 2 to 5 m walking
+    from it, else 1.5 to 9 m in its room, else anywhere 1.5 to 15 m; 1.5 m apart, 2 m from anything
+    placed.
+  - Hills, Capture the Case and cover are placed as before (step 3).
+- **The audit** (`autoplace::audit`, a `placement audit:` line in the report) judges whatever was
+  placed, the plain placement too: items off flat floor (a 30 cm ring), items in a clear zone,
+  spawns in corridors, the walk from each crate to its weapon, crates outside their weapon's room,
+  what location 5 stands on.
+- **`plain_placement`** in a recipe's `source` (`"plain_placement": true`) places as on any custom
+  level and only audits. A layout (the editor's) still wins over both.
+- **Tests:** `autoplace::tests` (the hints of seed 40 and of seed 2 with islands; seed 40 imported,
+  its report's lines). `probe_placement` (ignored): any recipe's placement lines,
+  `PD_RECIPE='{"format": 1, "seed": 2, "options": {"angled": 1}}' cargo test -p pd_import --release
+  probe_placement -- --ignored --nocapture`.
+
+**Rough, and next:**
+- Weapons stand anywhere on a room's flat floor; step 3 puts them against walls and in corners.
+- Every default level's riskiest place is a pillar top (the mixed cover's pillars take ladders);
+  the zone nearest the middle wins, so location 5 is often in the big hall.
+- Waygroups: seed 40 has 986 waypoints in 815 groups (the maker's 2 m radius), nearly one each;
+  step 4 makes them the generator's rooms.
+- Nobody has played it.
 
 ## Risks
 

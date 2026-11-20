@@ -49,6 +49,7 @@
 
 pub mod autolevel;
 pub mod autonav;
+pub mod autoplace;
 pub mod autowalk;
 pub mod batch;
 pub mod bsp;
@@ -385,7 +386,13 @@ fn finish(r: &Recipe, paths: &Paths, dir: &Path, data: SourceData, layout: &Layo
         }
         _ => layout,
     };
-    let placed = place::place(r, &stage, &level, &graph, data.fixed, layout, &placement, &models)?;
+    // A generated level's floors, for its spawns, weapons and ammo (only
+    // audited where the recipe asks for the plain placement).
+    let hints = match (&r.source, &built) {
+        (Source::Autolevel(a), Some(b)) => Some(autoplace::Hints { guide: !a.plain_placement, ..autoplace::hints(b, r.scale) }),
+        _ => None,
+    };
+    let placed = place::place(r, &stage, &level, &graph, data.fixed, layout, &placement, &models, hints.as_ref())?;
     report.extend(placed.report);
     write::write_pads(dir, r, &placed.gameplay)?;
     write::write_setup(dir, r, &placed.gameplay)?;

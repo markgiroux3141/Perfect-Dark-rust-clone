@@ -30,6 +30,7 @@ use pd_sim::nav::NavGraph;
 use pd_sim::stage::{directed_links, Stage, TileLevel};
 use serde_json::json;
 
+use crate::autoplace::{Guide, Hints};
 use crate::layout::Layout;
 use crate::recipe::Recipe;
 use crate::source::{Marker, MarkerKind};
@@ -53,6 +54,8 @@ pub struct Placed {
 /// A waypoint the placement may use: its pad's position and room.
 #[derive(Clone, Copy)]
 struct Node {
+    /// Its waypoint.
+    w: usize,
     pos: Vec3,
     room: Option<u16>,
 }
@@ -115,7 +118,7 @@ fn strong_components(n: usize, links: &[(usize, usize, bool)]) -> Vec<Vec<usize>
 /// Farthest-point sampling: add to `chosen` the candidate furthest from
 /// everything chosen (and from `keep_away`, which must stay `away` off),
 /// until `count` are chosen or the best is nearer than `gap`.
-fn farthest(cands: &[Vec3], chosen: &mut Vec<Vec3>, count: usize, gap: f32, keep_away: &[Vec3], away: f32) {
+pub(crate) fn farthest(cands: &[Vec3], chosen: &mut Vec<Vec3>, count: usize, gap: f32, keep_away: &[Vec3], away: f32) {
     while chosen.len() < count {
         let best = cands
             .iter()
@@ -224,7 +227,7 @@ fn usable(graph: &NavGraph, starts: Option<&[Vec3]>, report: &mut Vec<String>) -
             let f = graph.waypoint_flags(w);
             !f.crouch && !f.duck
         })
-        .map(|&w| Node { pos: graph.waypoint_pos(w), room: graph.waypoint_room(w) })
+        .map(|&w| Node { w, pos: graph.waypoint_pos(w), room: graph.waypoint_room(w) })
         .collect())
 }
 
@@ -313,9 +316,11 @@ fn v3(p: [f32; 3]) -> Vec3 {
 /// Place the gameplay data on `stage`, after what the source brings in
 /// `fixed` (its pads and props keep their numbers): every kind `layout` holds
 /// exactly as it holds it, the rest as `how` says; then `graph`'s waypoints.
-/// `models`: `MODEL_*` by stem, for the layout's doors.
+/// `models`: `MODEL_*` by stem, for the layout's doors. `hints`: a
+/// generated level's, which place its spawns, weapons and ammo
+/// ([`crate::autoplace`]) unless they say only to audit.
 #[allow(clippy::too_many_arguments)]
-pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fixed: Gameplay, layout: &Layout, how: &How, models: &std::collections::HashMap<String, i32>) -> Result<Placed, String> {
+pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fixed: Gameplay, layout: &Layout, how: &How, models: &std::collections::HashMap<String, i32>, hints: Option<&Hints>) -> Result<Placed, String> {
     let mut report = Vec::new();
     let starts: Option<Vec<Vec3>> = match how {
         How::Generate(m) if r.play_area == crate::recipe::PlayArea::Starts => Some(m.iter().filter(|m| m.kind == MarkerKind::Spawn).map(|m| m.pos).collect()),
@@ -329,6 +334,23 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
     };
     let mut g = fixed;
     strip(&mut g, layout);
+    // A generated level's own placement, where nothing else places.
+    let guide = hints.filter(|h| h.guide && gen).map(|h| {
+        let ws: Vec<usize> = nodes.iter().map(|n| n.w).collect();
+        let guide = Guide::new(h, level, graph, &ws);
+        let cleared: Vec<String> = guide.cleared.iter().map(|(what, n)| format!("{n} by a {what}")).collect();
+        report.push(format!(
+            "placement by the generator's floors: {} of {} waypoints' spots on flat floor out of the way ({} off flat floor, {})",
+            guide.len(),
+            nodes.len(),
+            guide.sloped,
+            if cleared.is_empty() { "none cleared".to_string() } else { cleared.join(", ") }
+        ));
+        guide
+    });
+    let guide = guide.filter(|g| !g.is_empty());
+    // Its power weapon (the MP location 5) in its riskiest place.
+    let prize: Option<(Vec3, &str)> = guide.as_ref().filter(|_| layout.weapons.is_none()).and_then(|g| g.prize());
     let tag = |explicit: bool| if explicit { " (the layout's)" } else { "" };
     // A source marker as the nearest usable waypoint, if one is close.
     let snap = |p: Vec3| -> Option<Vec3> {
@@ -355,9 +377,14 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
     // ── Spawns: (pad position, facing in radians) ──────────────────────────
     // Not on the source's treasures: those are for the weapons.
     let prizes: Vec<Vec3> = markers.iter().filter(|m| m.kind == MarkerKind::Prize).filter_map(|m| snap(m.pos)).collect();
-    let spawns: Vec<(Vec3, f32)> = match &layout.spawns {
-        Some(v) => v.iter().map(|s| (v3(s.pos), s.facing.to_radians())).collect(),
-        None if gen => {
+    let spawns: Vec<(Vec3, f32)> = match (&layout.spawns, &guide) {
+        (Some(v), _) => v.iter().map(|s| (v3(s.pos), s.facing.to_radians())).collect(),
+        (None, Some(guide)) => {
+            let (spawns, in_corridors) = guide.spawns(r.spawns, prize.map(|p| p.0));
+            report.push(format!("spawns: {} out of corridors, ramps, vents and the risky places ({in_corridors} let into corridors)", spawns.len()));
+            spawns.into_iter().map(|s| (s, open_facing(level, s))).collect()
+        }
+        (None, None) if gen => {
             let mut spawns: Vec<Vec3> = Vec::new();
             let mut spawn_facing: Vec<Option<f32>> = Vec::new();
             for kind in [MarkerKind::Spawn, MarkerKind::Person] {
@@ -378,7 +405,7 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
             // to a waypoint beside where the source put it can face one).
             spawns.iter().zip(spawn_facing).map(|(s, f)| (*s, f.filter(|&f| reach(level, *s, f) >= 300.0).unwrap_or_else(|| open_facing(level, *s)))).collect()
         }
-        None => Vec::new(),
+        (None, None) => Vec::new(),
     };
     if layout.spawns.is_some() {
         report.push(format!("spawns: {}{}", spawns.len(), tag(true)));
@@ -386,9 +413,18 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
     let spawn_pos: Vec<Vec3> = spawns.iter().map(|s| s.0).chain(stage.spawn_pads.iter().filter_map(|&p| g.pads.get(p)).map(|p| p.pos)).collect();
 
     // ── Weapons (position, MP location) and their ammo (position, weapon) ──
-    let weapons: Vec<(Vec3, u8)> = match &layout.weapons {
-        Some(v) => v.iter().map(|w| (v3(w.pos), w.location)).collect(),
-        None if gen => {
+    let weapons: Vec<(Vec3, u8)> = match (&layout.weapons, &guide) {
+        (Some(v), _) => v.iter().map(|w| (v3(w.pos), w.location)).collect(),
+        (None, Some(guide)) => {
+            let mut weapons = guide.weapons(r.weapons, &prize.iter().map(|p| p.0).collect::<Vec<_>>(), &spawn_pos);
+            if prize.is_some() && !weapons.is_empty() {
+                let slot = 5.min(weapons.len() - 1);
+                weapons.swap(0, slot);
+            }
+            report.push(format!("weapons: {} locations, location 5 {}", weapons.len(), prize.map_or("spread as the rest (no risky place)".to_string(), |p| format!("on {} {}", if p.1.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" }, p.1))));
+            weapons.into_iter().enumerate().map(|(i, w)| (w, i as u8)).collect()
+        }
+        (None, None) if gen => {
             let mut weapons: Vec<Vec3> = Vec::new();
             let mut prize = None;
             for kind in [MarkerKind::Prize, MarkerKind::Item] {
@@ -412,14 +448,32 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
             report.push(format!("weapons: {} locations ({} at the source's pickups)", weapons.len(), seeded));
             weapons.into_iter().enumerate().map(|(i, w)| (w, i as u8)).collect()
         }
-        None => Vec::new(),
+        (None, None) => Vec::new(),
     };
     if layout.weapons.is_some() {
         report.push(format!("weapons: {} locations{}", weapons.len(), tag(true)));
     }
-    let ammo: Vec<(Vec3, usize)> = match &layout.ammo {
-        Some(v) => v.iter().map(|a| (v3(a.pos), a.weapon)).collect(),
-        None => {
+    let ammo: Vec<(Vec3, usize)> = match (&layout.ammo, &guide) {
+        (Some(v), _) => v.iter().map(|a| (v3(a.pos), a.weapon)).collect(),
+        (None, Some(guide)) => {
+            // Two crates in each weapon's room, a short walk from it.
+            let mut placed: Vec<Vec3> = spawn_pos.iter().chain(&kept).copied().chain(weapons.iter().map(|w| w.0)).collect();
+            let (mut ammo, mut wide) = (Vec::new(), 0);
+            for (i, (w, _)) in weapons.iter().enumerate() {
+                let (pair, far) = guide.ammo(*w, &placed);
+                wide += far as usize;
+                if pair.len() < 2 {
+                    report.push(format!("ammo: room for {} of 2 crates near the weapon at {w}", pair.len()));
+                }
+                placed.extend(&pair);
+                ammo.extend(pair.into_iter().map(|a| (a, i)));
+            }
+            if wide > 0 {
+                report.push(format!("ammo: {wide} weapons' crates looked for outside their room"));
+            }
+            ammo
+        }
+        (None, None) => {
             // Two crates a few metres off each weapon placed here, as PD's
             // arenas pair them.
             let mut placed: Vec<Vec3> = spawn_pos.iter().chain(&kept).copied().chain(weapons.iter().map(|w| w.0)).collect();
@@ -606,6 +660,11 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
     let used = used_pads(&g);
     let far: Vec<usize> = used.iter().copied().filter(|&p| g.pads.get(p).is_some_and(|pad| nodes.iter().all(|n| n.pos.distance(pad.pos) > 300.0))).collect();
     report.push(format!("the setup: {} pads, {} of them over 3 m from a reachable waypoint {far:?}", used.len(), far.len()));
+    if let Some(h) = hints {
+        let spawns: Vec<Vec3> = spawns.iter().map(|s| s.0).collect();
+        let weapons: Vec<Vec3> = weapons.iter().map(|w| w.0).collect();
+        report.push(crate::autoplace::audit(h, level, graph, &spawns, &weapons, &ammo));
+    }
     emit_graph(&mut g, graph);
     Ok(Placed { gameplay: g, report })
 }

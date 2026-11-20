@@ -89,6 +89,11 @@ pub struct AutolevelSource {
     /// own level ([`crate::autonav`]).
     #[serde(default)]
     pub plain_waypoints: bool,
+    /// Place the spawns, weapons and ammo as on any custom level
+    /// ([`crate::place`]), without what the generator knows of its floors
+    /// ([`crate::autoplace`]; the report still audits them by it).
+    #[serde(default)]
+    pub plain_placement: bool,
 }
 
 /// A Jedi Academy map ([`crate::jka`]): a compiled `.bsp`, with the game's
