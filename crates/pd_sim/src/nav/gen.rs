@@ -721,6 +721,12 @@ fn emit(
 /// with PD's direction flags, and the waygroups ([`group_nodes`], `radius`).
 /// The generator's last step, and what a hand-edited graph is rebuilt with.
 pub fn graph_from_links(pads: Vec<NavPad>, fwd: &[Vec<usize>], group_radius: f32) -> NavGraph {
+    graph_from_links_grouped(pads, fwd, group_radius, false)
+}
+
+/// [`graph_from_links`], its waygroups with `by_room` kept each inside one
+/// room (a waypoint's `room`): none spans a doorway.
+pub fn graph_from_links_grouped(pads: Vec<NavPad>, fwd: &[Vec<usize>], group_radius: f32, by_room: bool) -> NavGraph {
     let n = pads.len();
     // Neighbour lists with PD's direction flags: a one-way u → v is OUTWARDSONLY in
     // u's list and INWARDSONLY in v's.
@@ -740,7 +746,7 @@ pub fn graph_from_links(pads: Vec<NavPad>, fwd: &[Vec<usize>], group_radius: f32
         }
     }
 
-    let groups = group_nodes(&pads, fwd, group_radius);
+    let groups = group_nodes(&pads, fwd, group_radius, by_room);
     let mut groupnum = vec![usize::MAX; n];
     for (g, members) in groups.iter().enumerate() {
         for &k in members {
@@ -782,13 +788,27 @@ pub fn graph_from_links(pads: Vec<NavPad>, fwd: &[Vec<usize>], group_radius: f32
     NavGraph::new(pads, waypoints, waygroups)
 }
 
+/// `graph` with its waygroups made again ([`group_nodes`]: within `radius` of
+/// each group's seed and, with `by_room`, in its room), its waypoints and links
+/// as they were.
+pub fn regroup(graph: &NavGraph, radius: f32, by_room: bool) -> NavGraph {
+    let n = graph.waypoints.len();
+    let pads: Vec<NavPad> = (0..n).map(|w| graph.pads[graph.waypoints[w].padnum].clone()).collect();
+    let mut fwd = vec![Vec::new(); n];
+    for (a, b, _) in graph.links() {
+        fwd[a].push(b);
+    }
+    graph_from_links_grouped(pads, &fwd, radius, by_room)
+}
+
 /// Waygroups. PD routes group by group first (fewest groups), then waypoint by
 /// waypoint inside each group, so a group should be compact — then "fewest
 /// groups" tracks distance — and must be strongly connected, or PD's in-group
 /// search can't reach the group's exit. Each group grows from the lowest unassigned
 /// node over **two-way** links (which makes it strongly connected), taking nodes
-/// within `radius` of that seed. Rooms aren't needed.
-fn group_nodes(pads: &[NavPad], fwd: &[Vec<usize>], radius: f32) -> Vec<Vec<usize>> {
+/// within `radius` of that seed. Rooms aren't needed; with `by_room`, a group
+/// takes only its seed's room's nodes.
+fn group_nodes(pads: &[NavPad], fwd: &[Vec<usize>], radius: f32, by_room: bool) -> Vec<Vec<usize>> {
     let n = pads.len();
     let mut group = vec![usize::MAX; n];
     let mut groups: Vec<Vec<usize>> = Vec::new();
@@ -802,7 +822,7 @@ fn group_nodes(pads: &[NavPad], fwd: &[Vec<usize>], radius: f32) -> Vec<Vec<usiz
         let mut queue = VecDeque::from([seed]);
         while let Some(u) = queue.pop_front() {
             for &v in &fwd[u] {
-                if group[v] == usize::MAX && fwd[v].contains(&u) && pads[v].pos.distance(pads[seed].pos) <= radius {
+                if group[v] == usize::MAX && fwd[v].contains(&u) && pads[v].pos.distance(pads[seed].pos) <= radius && (!by_room || pads[v].room == pads[seed].room) {
                     group[v] = g;
                     members.push(v);
                     queue.push_back(v);

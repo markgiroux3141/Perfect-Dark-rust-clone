@@ -169,3 +169,86 @@ fn a_doorways_mouth_is_cleared_and_its_axis_given_waypoints() {
     let (same, none) = doorways(&made, &w.level, &[]);
     assert_eq!((none.doorways, same.waypoints.len()), (0, made.waypoints.len()));
 }
+
+/// How well PD's router walks a converted level's graph under other
+/// waygroups: for random pairs of waypoints, the walk a simulant makes (a
+/// route of `MAX_CHRWAYPOINTS`, walked to its end, routed again) against the
+/// shortest walk along the links, and the time it takes. On an imported
+/// stage (`PD_STAGE`, `autolevel40` by default, from `custom/`):
+/// `cargo test -p pd_import --release probe_waygroups -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn probe_waygroups() {
+    use pd_core::rng::Rng;
+    use pd_sim::nav::gen::{dijkstra, regroup};
+    use pd_sim::nav::{NavSeed, MAX_CHRWAYPOINTS};
+    use std::path::Path;
+    let code = std::env::var("PD_STAGE").unwrap_or_else(|_| "autolevel40".to_string());
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    let assets = pd_core::assets::AssetDir::new(root.join("assets")).with_custom_dir(root.join("custom"));
+    let stage = pd_sim::stage::Stage::load(&assets, &code).unwrap();
+    let level = TileLevel::for_stage(&stage);
+    let base = NavGraph::from_stage(&stage, &level);
+    let n = base.waypoints.len();
+    let pos: Vec<Vec3> = (0..n).map(|w| base.waypoint_pos(w)).collect();
+    let mut adj = vec![Vec::new(); n];
+    for (a, b, _) in base.links() {
+        adj[a].push((b, pos[a].distance(pos[b])));
+    }
+    let mut rng = Rng::new(7);
+    let pairs: Vec<(usize, usize)> = (0..400).map(|_| (rng.random() as usize % n, rng.random() as usize % n)).filter(|(a, b)| a != b).collect();
+    let shortest: Vec<f32> = pairs.iter().map(|&(a, b)| dijkstra(&adj, &[a], f32::INFINITY)[b].0).collect();
+    println!("{code}: {n} waypoints, {} pairs", pairs.len());
+    let variants: Vec<(String, NavGraph)> = vec![
+        ("as imported".to_string(), base.clone()),
+        ("2 m".to_string(), regroup(&base, 200.0, false)),
+        ("4 m, by room".to_string(), regroup(&base, 400.0, true)),
+        ("6 m, by room".to_string(), regroup(&base, 600.0, true)),
+        ("8 m, by room".to_string(), regroup(&base, 800.0, true)),
+        ("12 m, by room".to_string(), regroup(&base, 1200.0, true)),
+        ("a room each".to_string(), regroup(&base, f32::INFINITY, true)),
+        ("8 m".to_string(), regroup(&base, 800.0, false)),
+    ];
+    for (name, g) in &variants {
+        let t = std::time::Instant::now();
+        let (mut ratios, mut stuck, mut routes) = (Vec::new(), 0, 0usize);
+        for (k, &(a, b)) in pairs.iter().enumerate() {
+            if !shortest[k].is_finite() {
+                continue;
+            }
+            let (mut cur, mut len, mut done) = (a, 0.0f32, false);
+            for _ in 0..2000 {
+                if cur == b {
+                    done = true;
+                    break;
+                }
+                let (r, _) = g.nav_find_route(cur, b, MAX_CHRWAYPOINTS, NavSeed(1 + k as u32, 3), &mut rng);
+                routes += 1;
+                if r.len() < 2 {
+                    break;
+                }
+                len += r.windows(2).map(|w| pos[w[0]].distance(pos[w[1]])).sum::<f32>();
+                cur = *r.last().unwrap();
+            }
+            if done {
+                ratios.push(len / shortest[k].max(1.0));
+            } else {
+                stuck += 1;
+            }
+        }
+        ratios.sort_by(f32::total_cmp);
+        let q = |f: f32| ratios.get(((ratios.len() as f32 - 1.0) * f) as usize).copied().unwrap_or(f32::NAN);
+        let sizes: Vec<usize> = g.waygroups.iter().map(|w| w.waypoints.len()).collect();
+        println!(
+            "{name:>14}: {:4} groups ({:.1} each, largest {:3}); walk / shortest: median {:.2}, 90% {:.2}, worst {:.2}; {stuck} stuck; {routes} routes in {:.0} ms ({:.1} us each)",
+            g.waygroups.len(),
+            n as f32 / g.waygroups.len() as f32,
+            sizes.iter().max().unwrap_or(&0),
+            q(0.5),
+            q(0.9),
+            q(1.0),
+            t.elapsed().as_secs_f64() * 1000.0,
+            t.elapsed().as_secs_f64() * 1e6 / routes.max(1) as f64
+        );
+    }
+}

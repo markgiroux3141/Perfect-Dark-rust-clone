@@ -2578,14 +2578,45 @@ Seeds 1, 7, 1 at size 4, 2 (`angled 1, cellars 1`: location 5 on its island) and
 `platforms 1, galleries 2`): every spawn within 25 m of a weapon, every crate in its weapon's room,
 hills all in halls and rooms, bases all with two ways in or more.
 
+### Step 4: waygroups from rooms, measured and not done (2026-11-20)
+
+PD's router (`padhalllv.c:630`, `NavGraph::nav_find_route`) finds the fewest **group** hops first
+(a breadth-first search over the groups), then leaves each group by whichever of its links into the
+next group it meets last (or where the coin stops: not the one nearest the chr), and walks inside the
+group by fewest waypoint hops; a simulant carries five waypoints (`MAX_CHRWAYPOINTS`) and routes
+again. Nothing else reads the groups (the decomp's only uses are in `padhalllv.c`). So a group's size
+is a trade: tiny groups make the group search a fewest-hops search over the waypoints (on an even
+lattice, near the shortest walk); big ones make a big hall one hop, the same as a pod.
+
+`autonav::tests::probe_waygroups` (ignored; `PD_STAGE`, `autolevel40` by default, read from
+`custom/`) regroups the imported graph (`pd_sim::nav::gen::regroup`: the maker's grouping, within a
+radius of each group's seed, and with `by_room` inside one room) and walks 399 random pairs as a
+simulant does, against the shortest walk along the links:
+
+| groups (seed 40, 956 waypoints) | groups | waypoints each | median | 90% | worst | a route |
+|---|---|---|---|---|---|---|
+| as imported (the maker's 2 m) | 790 | 1.2 | 1.02 | 1.07 | 1.41 | 12 us |
+| 4 m, inside a room | 274 | 3.5 | 1.06 | 1.17 | 1.67 | 5 us |
+| 6 m, inside a room | 180 | 5.3 | 1.05 | 1.20 | 1.58 | 3 us |
+| 8 m, inside a room | 126 | 7.6 | 1.05 | 1.27 | 1.86 | 2 us |
+| 12 m, inside a room | 86 | 11.1 | 1.06 | 1.41 | 2.04 | 2 us |
+| a room each | 66 | 14.5 | 1.09 | 2.04 | 5.10 | 3 us |
+| 8 m, rooms ignored | 98 | 9.8 | 1.06 | 1.27 | 1.78 | 2 us |
+
+(PD's arenas have 2.5 to 32 waypoints a group, mostly 4 to 8, over 100 to 370 waypoints.) Every
+coarser grouping walks further, a room each worst of all (the 10% worst routes twice the shortest);
+the only gain is speed, 12 us a route to 2 or 3, nothing at six simulants. **The waygroups stay as
+the maker makes them.** `graph_from_links_grouped` (`by_room`) and `regroup` stay for the probe.
+
 **Rough, and next:**
 - Most dead ends stay empty (seed 40: 5 of 7; seed 1 at size 4: 16 of 19): too small, too cramped by
   doorways, or the third used up.
 - Every default level's riskiest place is a pillar top (the mixed cover's pillars take ladders),
   ahead of platforms and galleries; the zone nearest the middle wins, so location 5 is often in the
   big hall.
-- Waygroups: seed 40 has 986 waypoints in 815 groups (the maker's 2 m radius), nearly one each;
-  step 4 makes them the generator's rooms.
+- Waygroups stay as they are (step 4, above: coarser groups make simulants walk further), and
+  step 5 (sparse waypoints from the plan) is dropped (the user, 2026-11-20: the goal was where the
+  weapons, ammo and spawns go; the waypoints are fine as they are).
 - Nobody has played it.
 
 ## Risks
