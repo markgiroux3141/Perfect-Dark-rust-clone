@@ -21,7 +21,7 @@ use crate::build::{Build, Fix, Grate, Sided};
 use crate::cells::{Cell, Rect};
 use crate::deadends::DeadEnd;
 use crate::furnish::{pod_interior, Interior, PodPlan};
-use crate::network::{components, connect, Connect, Network};
+use crate::network::{connect, pieces, Connect, Network};
 use crate::place::{lots, Siting};
 use crate::plan::{Plan, Point3};
 use crate::pods::{pod_access, Access};
@@ -95,6 +95,10 @@ pub struct Options {
     /// cell lower, open all round, a ramp down into it (`sinks`, `furnish::sunken`; `SUNKEN` by
     /// default; 0: none, as the Python). New in the Rust.
     pub sunken: f64,
+    /// A room no set of ramps can join, on every attempt, is furnished once more with ladders and
+    /// bridges (`furnish::stitch`; false: the level is given up there, as the Python's is). New in
+    /// the Rust, on by default: it changes no level that could be made without it.
+    pub rescue: bool,
     /// Join up, or cut short, every dead end longer than these (false: leave them):
     pub dead_ends: bool,
     /// cells of corridor to a room that goes nowhere (a camping spot may be that far off),
@@ -158,6 +162,7 @@ impl Default for Options {
             flooded: FLOODED,
             shaped: SHAPED,
             sunken: SUNKEN,
+            rescue: true,
             dead_ends: true,
             dead_corridor: 8,
             dead_walk: 20,
@@ -590,8 +595,22 @@ pub fn stage_network(seed: u64, o: &Options, sp: &[Space]) -> Result<Network, St
         }
         net = connect(sp, o.band(), &how);
     }
-    if components(&net) != 1 {
-        return Err(format!("seed {seed}: rooms cut off ({} links found no corridor)", net.failed.len()));
+    // (new in the Rust) a room no corridor could reach, as a loft alone far over the rest: left
+    // out, with its pods, if the rest is most of the level. The Python stops here.
+    let ps = pieces(&net);
+    if ps.len() != 1 {
+        let rooms = |p: &Vec<String>| p.iter().filter(|k| net.spaces().iter().any(|s| s.key == **k && s.host.is_empty())).count();
+        let main = ps.iter().max_by_key(|p| rooms(p)).expect("a level has rooms");
+        let all: usize = ps.iter().map(rooms).sum();
+        if 2 * rooms(main) <= all {
+            return Err(format!("seed {seed}: rooms cut off ({} links found no corridor)", net.failed.len()));
+        }
+        let out: Vec<String> = net.spaces().iter().filter(|s| s.host.is_empty() && !main.contains(&s.key)).map(|s| s.key.clone()).collect();
+        for key in &out {
+            net.drop(key);
+        }
+        net.failed.retain(|(a, b)| !out.contains(a) && !out.contains(b));
+        net.cut_off = out;
     }
     Ok(net)
 }

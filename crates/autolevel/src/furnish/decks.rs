@@ -322,6 +322,9 @@ impl Interior {
         if !roof.is_empty() && (self.claim.contains(&z) || touching(roof, &out, 2)) {
             out.extend(roof.iter().copied());
         }
+        if let Some(landed) = self.landed.get(&z) {
+            out.extend(landed.iter().copied()); // (the rescue's: `stitch::land_roofs`)
+        }
         out
     }
 

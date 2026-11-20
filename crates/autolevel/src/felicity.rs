@@ -2067,7 +2067,7 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
     Ok(Level {
         seed,
         options: o.clone(),
-        net: Network { grid: Grid::new(spaces, 2), pods: Vec::new(), hatches: Vec::new(), failed: Vec::new() },
+        net: Network { grid: Grid::new(spaces, 2), pods: Vec::new(), hatches: Vec::new(), failed: Vec::new(), cut_off: Vec::new() },
         interiors: Vec::new(),
         pods: Vec::new(),
         plan,

@@ -1,0 +1,22 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "rescueladder4",
+  "name": "Rescue Ladder 4",
+  "group": "Autolevel",
+  "stagenum": 114,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 4,
+      "options": {
+        "scale": "towering"
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

@@ -95,8 +95,11 @@ fn a_preview_is_made_from_a_recipe_and_loads_from_a_scratch_folder_that_goes_wit
     let dir = pv.dir().to_path_buf();
     drop(pv);
     assert!(!dir.exists() && left(&root) == 0);
-    // a recipe that makes no level leaves nothing either, and says why in the generator's words
-    let why = Preview::make(&gen::Recipe::new(25), &assets(), &root).err().unwrap();
+    // a recipe that makes no level (seed 25 with no rescue) leaves nothing either, and says why in
+    // the generator's words
+    let mut none = gen::Recipe::new(25);
+    none.options.rescue = false;
+    let why = Preview::make(&none, &assets(), &root).err().unwrap();
     assert_eq!(why, "seed 25: colossal: no set of ramps joins its storeys");
     assert_eq!(left(&root), 0);
     let _ = std::fs::remove_dir_all(&root);

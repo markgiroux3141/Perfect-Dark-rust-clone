@@ -31,6 +31,13 @@ impl Interior {
                 }
             }
         }
+        for c in self.chutes.iter().filter(|c| c.foot.2 == z) {
+            // a rescue's ladder stands from its foot to the deck's edge: nobody walks through it
+            // where it stands (on the storeys it passes, it has only air on its far side)
+            for (h, _) in c.lip() {
+                out.remove(&h);
+            }
+        }
         for &(x0, y0, x1, y1, a, b) in &self.piers {
             // a pod's pier stands through every deck below the pod
             if a <= z && z < b {
@@ -49,7 +56,7 @@ impl Interior {
     }
 
     /// Every storey's blocks.
-    fn all_blocks(&self) -> BTreeMap<i32, Cells> {
+    pub(super) fn all_blocks(&self) -> BTreeMap<i32, Cells> {
         self.levels.iter().map(|&z| (z, self.blocks(z))).collect()
     }
 
@@ -59,7 +66,7 @@ impl Interior {
     }
 
     /// `nav` over blocks already worked out.
-    fn nav_over(&self, blocks: &BTreeMap<i32, Cells>) -> Nav {
+    pub(super) fn nav_over(&self, blocks: &BTreeMap<i32, Cells>) -> Nav {
         let mut g = Nav::new();
         for (&z, bs) in blocks {
             for c in bs {
@@ -72,6 +79,13 @@ impl Interior {
             if g.contains_key(&a) && g.contains_key(&b) {
                 g.get_mut(&a).expect("just seen").push(b);
                 g.get_mut(&b).expect("just seen").push(a);
+            }
+        }
+        // up and down the rescue's ladders (`stitch`)
+        for c in &self.chutes {
+            if g.contains_key(&c.top) && g.contains_key(&c.foot) {
+                g.get_mut(&c.top).expect("just seen").push(c.foot);
+                g.get_mut(&c.foot).expect("just seen").push(c.top);
             }
         }
         // across an angled catwalk, between the blocks just inside its ends (`angled`)
@@ -102,7 +116,7 @@ impl Interior {
     }
 
     /// `door_nodes` over blocks already worked out.
-    fn door_nodes_over(&self, blocks: &BTreeMap<i32, Cells>) -> Vec<Option<Node>> {
+    pub(super) fn door_nodes_over(&self, blocks: &BTreeMap<i32, Cells>) -> Vec<Option<Node>> {
         let none = Cells::new();
         self.targets()
             .into_iter()

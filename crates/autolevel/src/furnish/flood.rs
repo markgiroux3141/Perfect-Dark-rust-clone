@@ -74,10 +74,13 @@ impl Interior {
     }
 
     /// What a walkway on the floor may not run through: the pods' blocks, the ramps from the floor,
-    /// the piers.
+    /// the piers, the rescue's ladders (`stitch`).
     fn wet_blocked(&self) -> Cells {
         let z0 = self.levels[0];
         let mut out = self.shell[&z0].clone();
+        for c in self.chutes.iter().filter(|c| c.foot.2 == z0) {
+            out.extend(c.lip().into_iter().map(|(h, _)| h));
+        }
         for r in self.ramps.iter().filter(|r| r.lo == z0) {
             out.extend(r.cells());
         }
@@ -98,6 +101,16 @@ impl Interior {
         let mut targets: Vec<Cells> = self.targets().into_iter().filter(|(c, z)| *z == z0 && !c.is_empty()).map(|(c, _)| c).collect();
         for r in self.ramps.iter().filter(|r| r.lo == z0) {
             targets.push(r.foot.clone());
+        }
+        // (the foot of each of the rescue's ladders from the floor, and the block past it)
+        for c in self.chutes.iter().filter(|c| c.foot.2 == z0) {
+            let (dx, dy) = DIRS[c.side];
+            targets.push(rect_cells((
+                c.foot.0.min(c.foot.0 + 2 * dx),
+                c.foot.1.min(c.foot.1 + 2 * dy),
+                c.foot.0.max(c.foot.0 + 2 * dx) + 2,
+                c.foot.1.max(c.foot.1 + 2 * dy) + 2,
+            )));
         }
         let mut walk = Cells::new();
         if !targets.is_empty() {

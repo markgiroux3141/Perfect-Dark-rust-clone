@@ -24,7 +24,10 @@
 //!   Rust, none by default);
 //! - cover: pillars, crates or nothing, never in front of a door or cutting the floor in two;
 //! - rails: on every edge that drops, except where a ramp arrives, and down ramps' open sides;
-//! - nav: every door must reach every other on foot, through spaces a player fits.
+//! - nav: every door must reach every other on foot, through spaces a player fits;
+//! - rescue: a room no set of ramps joins, on every attempt, is furnished once more with ladders
+//!   up the edges of the decks no ramp reaches and short bridges to pieces of deck left apart
+//!   (`stitch`; new in the Rust: where the Python gives up, so no level that was made changes).
 //!
 //! `Interior::new(..).build()` is the room, or why it can't be furnished. The files here follow
 //! the Python's sections: `decks`, `ramps`, `nav`, `cover`, `rails`, `plans` (what the room gives
@@ -53,6 +56,7 @@ mod pod;
 mod rails;
 mod ramps;
 mod shape;
+mod stitch;
 mod sunken;
 #[cfg(test)]
 mod tests;
@@ -65,6 +69,7 @@ pub use pits::{Pit, MAX_FALL};
 pub use platforms::Void;
 pub use pod::{pod_interior, Glass, PodDoor, PodPlan};
 pub use rails::Rail;
+pub use stitch::Chute;
 pub use sunken::Sunk;
 
 /// How far in front of a door nothing at all may stand, h.
@@ -309,6 +314,9 @@ pub struct Setup {
     /// The side of the hole that stays open, if it is a cellar's hatch (the ladder's: a player
     /// climbs out there). None: the furnisher chooses (`hole_side`).
     pub hole_side: Option<usize>,
+    /// The rescue: ladders and bridges where ramps can't join the room (`stitch`). Only once
+    /// every attempt without it has failed (`Build::furnish`).
+    pub rescue: bool,
 }
 
 impl Default for Setup {
@@ -332,6 +340,7 @@ impl Default for Setup {
             stream: String::new(),
             attempt: 0,
             hole_side: None,
+            rescue: false,
         }
     }
 }
@@ -423,6 +432,15 @@ pub struct Interior {
     /// A sunken floor (`Space::sunk`) as laid, and its pit's cells: not the floor's (`sunken`).
     pub sunk: Option<Sunk>,
     pub sunk_cells: Cells,
+    /// `Setup::rescue`; the ladders and bridges it put up (`stitch`; a bridge's cells are the
+    /// deck's too, or the floor's bridge on the ground), the pieces of deck the ramps were let off
+    /// (a ladder or a bridge joins them after), and pods' roofs it made a floor (a pod's door onto
+    /// one), by storey.
+    pub rescue: bool,
+    pub chutes: Vec<Chute>,
+    pub crossings: Vec<(i32, Cells)>,
+    stranded: Vec<Cells>,
+    pub landed: BTreeMap<i32, Cells>,
 }
 
 impl std::fmt::Debug for Interior {
@@ -520,6 +538,11 @@ impl Interior {
             ladders: Vec::new(),
             sunk: None,
             sunk_cells: s.sunk.map_or_else(Cells::new, |r| rect_cells((2 * r.0, 2 * r.1, 2 * r.2, 2 * r.3))),
+            rescue: how.rescue,
+            chutes: Vec::new(),
+            crossings: Vec::new(),
+            stranded: Vec::new(),
+            landed: BTreeMap::new(),
         }
     }
 
@@ -561,12 +584,19 @@ impl Interior {
     /// All of it: the pool, the decks, the ramps, the platforms, the cover and the rails. Err says why the room
     /// can't be furnished (the Python's `Unfurnishable`).
     pub fn build(mut self) -> Result<Interior, String> {
+        let targets = if self.rescue { self.targets() } else { Vec::new() };
         for p in &self.pods {
             let Some(acc) = self.access.iter().find(|(k, _)| *k == p.key).map(|(_, a)| a) else { continue };
             if acc.island && p.x1 - p.x0 >= 2 && p.y1 - p.y0 >= 2 {
                 let (cx, cy) = ((p.x0 + p.x1).div_euclid(2), (p.y0 + p.y1).div_euclid(2));
                 // (in a flooded room, from the water up)
-                self.piers.push((2 * cx - 2, 2 * cy - 2, 2 * cx + 2, 2 * cy + 2, self.flood.unwrap_or(self.s.floor), shell_z(p, &self.s).0));
+                let pier = (2 * cx - 2, 2 * cy - 2, 2 * cx + 2, 2 * cy + 2, self.flood.unwrap_or(self.s.floor), shell_z(p, &self.s).0);
+                // (the rescue's: none through where a door is stepped through; the pod floats)
+                let cells = rect_cells((pier.0, pier.1, pier.2, pier.3));
+                if targets.iter().any(|(pad, z)| pier.4 <= *z && *z < pier.5 && !pad.is_disjoint(&cells)) {
+                    continue;
+                }
+                self.piers.push(pier);
             }
         }
         for d in &self.doors {
@@ -578,7 +608,13 @@ impl Interior {
         self.lay_decks();
         self.shape_decks();
         self.lay_sunk();
+        if self.rescue {
+            self.land_roofs();
+        }
         self.place_ramps(40)?;
+        if self.rescue {
+            self.stitch()?;
+        }
         if !self.connected() {
             return Err(format!("{}: doors don't all join", self.s.key));
         }

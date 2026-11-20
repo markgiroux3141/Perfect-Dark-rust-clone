@@ -72,9 +72,9 @@ fn a_rooms_box_is_listed_moved_tried_and_refused() {
     assert!(err.starts_with(&format!("autolevel_edit: {why}")), "{err}");
     assert!(bytes(&no).starts_with(b"\x89PNG") && bytes(&no) != bytes(&rooms) && bytes(&no) != bytes(&tried));
     assert!(!std::path::Path::new(&none).exists());
-    // a seed that makes no level: its boxes alone are drawn, and it fails saying why
+    // a seed that makes no level (with no rescue): its boxes alone are drawn, and it fails saying why
     let bare = at("bare.png");
-    let (out, err) = fails(&["--seed", "25", "--rooms", "--shot", &bare, "--width", "900"]);
+    let (out, err) = fails(&["--seed", "25", "--no-rescue", "--rooms", "--shot", &bare, "--width", "900"]);
     assert!(out.starts_with(&format!("shot: {bare} (900 x ")) && out.ends_with(")\nno level: seed 25: colossal: no set of ramps joins its storeys\n"), "{out}");
     assert_eq!(err, "autolevel_edit: no level: seed 25: colossal: no set of ramps joins its storeys");
     assert!(bytes(&bare).starts_with(b"\x89PNG"));
@@ -142,8 +142,8 @@ fn a_rooms_choices_are_made_listed_refused_and_taken_back() {
     assert!(out.starts_with(&format!("shot: {no} (900 x ")) && out.contains(&format!("\n{why}\nautolevel seed 40: ")), "{out}");
     assert_eq!(err, format!("autolevel_edit: {why}"));
     assert!(bytes(&no).starts_with(b"\x89PNG") && bytes(&no) != bytes(&chosen) && !std::path::Path::new(&none).exists());
-    // a ring the basin can't be furnished with: no level, said, and it fails
-    let (out, err) = fails(&["--seed", "40", "--layout", "basin@ring", "--list"]);
+    // a ring the basin can't be furnished with (with no rescue): no level, said, and it fails
+    let (out, err) = fails(&["--seed", "40", "--no-rescue", "--layout", "basin@ring", "--list"]);
     let why = "no level: seed 40: basin cannot be furnished with a ring (basin: no set of ramps joins its storeys)";
     assert!(out.starts_with(&format!("choice: basin: layout ring\n{why}\nautolevel seed 40: 29 rooms")), "{out}");
     assert_eq!(err, format!("autolevel_edit: {why}"));

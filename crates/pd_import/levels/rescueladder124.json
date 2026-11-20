@@ -1,0 +1,22 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "rescueladder124",
+  "name": "Rescue Ladder Across 124",
+  "group": "Autolevel",
+  "stagenum": 116,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 124,
+      "options": {
+        "scale": "towering"
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

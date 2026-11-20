@@ -288,6 +288,12 @@ pub fn finish(lv: &Level, kit: &Kit, planned: Vec<Poly>) -> Result<(Vec<Poly>, V
             out.extend(pillar_ladder(kit, it, l, key)?);
         }
     }
+    // the rescue's ladders up the edges of decks (`furnish::Chute`)
+    for (key, it) in &lv.interiors {
+        for c in &it.chutes {
+            out.extend(chute_ladder(kit, c, key)?);
+        }
+    }
     // the angled catwalks (`furnish::angled`), which the plan can't hold
     let mut any = false;
     for (key, it) in &lv.interiors {
@@ -368,6 +374,21 @@ pub fn pillar_ladder(kit: &Kit, it: &autolevel::furnish::Interior, l: &autolevel
     let (v0, v1) = (z0 as f64 / 118.11, z1 as f64 / 118.11);
     let quad = [at(ax, ay, z0), at(bx, by, z0), at(bx, by, z1), at(ax, ay, z1)];
     // (no stiles: the user's call, 2026-11-20, they were not needed)
+    Ok(vec![csg::oriented(&quad, [dx as f64, dy as f64, 0.0], surf, zone, Some(&[(0.0, v0), (1.0, v0), (1.0, v1), (0.0, v1)]))])
+}
+
+/// A ladder the rescue put up the edge of a deck (`furnish::Chute`): the cellar's grille, a cell
+/// wide, from the storey below to the deck's top, on the edge itself. (Not `LADDER_OFF` out, as a
+/// pillar's is: a player stepping off the deck to climb down must come out in front of it, where a
+/// move away from it is a climb down, `bondwalk.c:1614`; 2 units out, they are behind it and hang
+/// there. The walks `chutedown_*` go down each.)
+pub fn chute_ladder(kit: &Kit, c: &autolevel::furnish::Chute, zone: &str) -> Result<Vec<Poly>, String> {
+    let ((ax, ay), (bx, by), (dx, dy)) = c.line();
+    let ((_, _, z0), (_, _, z1)) = c.ends();
+    let at = |x: f64, y: f64, z: i32| [C(x) as f64, C(y) as f64, z as f64];
+    let surf = kit.surface("ladder", None, None)?;
+    let (v0, v1) = (z0 as f64 / 118.11, z1 as f64 / 118.11);
+    let quad = [at(ax, ay, z0), at(bx, by, z0), at(bx, by, z1), at(ax, ay, z1)];
     Ok(vec![csg::oriented(&quad, [dx as f64, dy as f64, 0.0], surf, zone, Some(&[(0.0, v0), (1.0, v0), (1.0, v1), (0.0, v1)]))])
 }
 

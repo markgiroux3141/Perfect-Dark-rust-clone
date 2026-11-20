@@ -45,6 +45,9 @@ impl Interior {
                     }
                 }
             }
+            for c in self.chutes.iter().filter(|c| c.top.2 == z) {
+                arrive.extend(c.lip()); // where the rescue's ladder comes up (`stitch`)
+            }
             let open = self.unrailed(z); // a pit's open side and its planks' sides
             let mut under = Cells::new();
             if !floor {

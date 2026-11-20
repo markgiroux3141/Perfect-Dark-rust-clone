@@ -620,8 +620,9 @@ between (medium1 is at 48, 41 to 55, 46, from 0 to 512; small3 is at ...)".
   with no window), 9 in `boxes`, 3 in `doc`/`planview`; the pictures in `out/autolevel/edit/`
   (`rooms`, `selected`, `moved`, `try`, `refused`, `added`, `deleted`, `pinned`, `storey276`,
   `bare`, `left_out`) read. A trial takes 2 to 9 ms a room with its eight pin trials.
-- **Worth knowing:** seed 25 makes no level ("colossal: no set of ramps joins its storeys")
-  and `--delete colossal` cures it: the tests' no-level case. A trial that passes does not
+- **Worth knowing:** seed 25 with `--no-rescue` makes no level ("colossal: no set of ramps
+  joins its storeys") and `--delete colossal` cures it: the tests' no-level case. (By default the
+  rescue makes it a level: "Rescue", below.) A trial that passes does not
   promise the room survives: moved far off, a room can be left out by the dead-end pass
   (`--move small7@74,54` on seed 40), which the text and the plan then say. Bad options
   (`--walkway 3`) refuse every room change with the option's words.
@@ -1976,7 +1977,7 @@ generator already has. So the atrium's rules were made general and given to the 
 - Most climbs are short (one room out: a spire beside the hall). Longer ones need fewer rooms at
   the high storeys near the hall, or a preference for joining a high storey from further away.
 - The six failures in 60 seeds are the generator's old kinds (a basin's ramps, a colossal hall's,
-  rooms cut off): not looked at.
+  rooms cut off): made since by the rescue ("Rescue", below).
 - In the import's one-minute check six simulants on `towering9` met almost never (0 kills): 89
   rooms over fifteen storeys is a lot of level for six.
 
@@ -2384,6 +2385,90 @@ calls: a cell deep (118), and on by default at a low chance.
 **Rough, and next:** one a room, rectangles only, and only rooms 10 cells across (a room of one
 storey would take one with a smaller inset);
 nothing is put in a pit (cover, a weapon's spot is the editor's).
+
+## Rescue: every seed makes a level (2026-11-20)
+
+**The user's ask (2026-11-20):** some seeds never build (towering 4 and 14 among them): why, and
+could a last step join what is left apart, with a climbable chute or the like, so that no seed
+fails? Seeds 1-100, grand and towering: 17 of 200 failed; seeds 1-300 at all three scales, 73 of
+900. Three kinds, none of them parts of the level that can't be joined to each other:
+
+- **"no set of ramps joins its storeys"** (nearly all): one hall can't join its own storeys. A
+  piece of deck upstairs with nowhere below for a ramp to land (a basin's pool and pods under it;
+  towering 4's basin), a door's or pod's landing alone on a high storey a pod cuts off from its
+  catwalk (towering 14), a door onto a pod's roof no deck touches (grand 25), a ramp across a
+  landing, a pier through one, a tall tower's ramps out of tries. Every attempt fails alike, and
+  the level is given up.
+- **"rooms cut off"** (towering 43, 49): a loft alone far over everything else (1378, 3307) that
+  no corridor reaches.
+- **"was furnished without its door"** (towering 46): a room kept from before the dead-end pass
+  (its inside is cached by its doors' places, `Sig`) knew a door by the key of the corridor that
+  had been there.
+
+**What was done** (all new in the Rust, and none of it runs where the level could be made
+without it: **seeds 1-300 at three scales, the 827 levels made before are byte for byte as they
+were** (`report.json` aside, which has `chutes: 0`, `crossings: 0`, `cut_off: []` now; walks,
+views, plan the same), the 73 others
+are made):
+
+- **`Options::rescue`** (on by default; the recipe's `rescue`, `--no-rescue`, the editor's
+  switch). A room that every attempt fails to furnish is furnished once more, attempt by attempt,
+  with `Setup::rescue` (`Build::furnish`; the error, if that fails too, is the first pass's):
+  - a door onto a lone pod's roof makes that roof a floor (`stitch::land_roofs`), and an island
+    pod's pier through a landing is left out (the pod floats);
+  - the ramps are laid as before, but a piece no ramp can reach (or the tries run out) is let be
+    (`ramps::strand`), so long as every door still has somewhere to stand;
+  - then **`stitch`** joins the pieces: while some door does not reach the others of its band, the
+    cheapest join from the first door's piece: a **chute**, a ladder a cell wide up the edge of a
+    deck from a storey below (`furnish::Chute`, `CHUTE_COST` 24 a storey), or a **bridge**, deck a
+    cell wide over one storey's air (or a basin's water), as straight as it can be (`TURN` 6 a
+    turn, up to `BRIDGE_MAX` 64 steps), round what stands in the way. A high storey is its own
+    band, so it is bridged; only where a pod as wide as the storey cuts its catwalk in two
+    (towering 124) is it climbed to from the hall. Then any piece of deck no door reaches is
+    joined too if it can be.
+- **A chute** stands clear of ramps and door landings on every storey it passes, with a second
+  block of floor out from its foot to step off onto; its foot is kept clear (`keep`), nobody
+  walks through it on its foot's storey (`stand`), a flooded floor's walkways reach it, its top's
+  rail is open, and the nav joins its ends both ways. It is built **on the deck's edge**, not
+  `LADDER_OFF` out as a pillar's (a player stepping off the deck must come out in front of it to
+  climb down: `bondwalk.c:1614`, a move away from a ladder is a climb down; 2 units out, behind
+  it, they hang there). Walks: `chute_<room>_<n>` up, `chutedown_<room>_<n>` down, and every other
+  walk down one stops at its lip first (run off the deck at it, PD's player moves away too fast
+  to climb, and hangs). View `chute_<room>_<n>`. Report: `chutes`. The editor's plan draws it (the
+  ladder on the edge, an arrow up it).
+- **No rescue in a join's trial** (`Build::trial`): the dead-end pass takes back a join a room
+  can't be furnished with; were the rescue to furnish it, the join would stay and a level made
+  before would change (grand 237 did, before this). The cache's key says whether the rescue was
+  allowed.
+- **A bridge** is deck like any other (the floor's `bridge` on the ground), and is kept in
+  `Interior::crossings` too: report `crossings`, and the editor's plan outlines it in the
+  ladder's cyan.
+- **Rooms cut off** (`level::stage_network`): the rooms outside the level's largest piece are
+  left out (`Network::drop`, with their pods), if that piece is most of the level. They are kept
+  in `Network::cut_off`: report `cut_off`, and the editor's room boxes say "left out" by them.
+- **A kept room's door** is found by where it is when its key is another's (`walks::inside`).
+- **Seeds 1-300, grand, standard and towering:** 900 of 900 make a level; 48 have chutes.
+  The 73 made now, built and walked: 5200 of 5200 walks pass (the chutes up and down too).
+- **Tests:** `build::tests::a_room_no_ramp_can_join_is_rescued_with_a_ladder`,
+  `a_room_that_cannot_be_furnished_fails_the_level` (a room too small even for a ladder); the
+  recipe's, editor's and `pd_edit`'s no-level cases now say `--no-rescue` (`rescue: false`), and
+  the recipe's check that a rescued room keeps a layout chosen by hand.
+- **To look at, one of each** (imported arenas, `crates/pd_import/levels/rescue*.json`, stages
+  114-117): `rescueladder4` (towering 4: a chute up the basin's west catwalk at 276),
+  `rescuebridge140` (standard 140: a bridge in the vast hall at 276, by small15),
+  `rescueladder124` (towering 124: tower1's chutes, one from the floor to its high band at 1378),
+  `rescuecutoff221` (towering 221: loft6, alone at 3307, left out). The door found by its place:
+  towering 46, nothing to see.
+
+**Rough, and next:**
+- A rescued room spends its time failing first: every attempt's ramp search runs out before the
+  rescue starts, and again each time the dead-end pass furnishes it anew (grand 46: 12 s to plan,
+  0.1 s of it the rescue). Only rescued seeds pay it.
+- A bridge across a hall at a high storey can be long (towering 14: twenty cells, straight across
+  the hall at 1378); some rescued levels keep dead ends the pass can't fix (its joins are tried
+  without the rescue).
+- Simulants: the importer's waypoints are repaired from the walks with a chr's probe, as the
+  cellars' ladders are; nobody has watched one use a chute.
 
 ## Risks
 

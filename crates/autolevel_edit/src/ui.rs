@@ -2569,8 +2569,13 @@ mod tests {
 
     #[test]
     fn a_choice_that_makes_no_level_can_be_undone_where_the_reason_is() {
-        // seed 40's basin can take a ring by its size, but no attempt furnishes it with one
-        let (mut ed, egui) = inside("basin");
+        // seed 40's basin can take a ring by its size, but no attempt furnishes it with one (with
+        // no rescue: by default ladders and bridges join it)
+        let (mut ed, egui) = (editor("--seed 40 --no-rescue"), egui::Context::default());
+        ed.set_tool(Tool::Rooms);
+        pass(&mut ed, &egui, Vec::new());
+        ed.select(Some("basin"));
+        frame(&mut ed, &egui, Vec::new());
         press(&mut ed, &egui, "layout ring");
         assert_eq!(edits(&ed), ["basin: layout ring"]);
         settle(&mut ed);

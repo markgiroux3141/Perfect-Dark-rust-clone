@@ -422,9 +422,10 @@ mod tests {
         let listed = run(&args("--seed 7 --walkway 3 --lots")).unwrap();
         assert!(listed.text.starts_with("lots (29), on a site of 80 x 60 cells: ") && listed.text.lines().count() == 30, "{}", listed.text);
         assert!(listed.shot.is_none() && listed.failed.is_none());
-        // seed 25 makes no level. With the boxes to draw it has a picture of them, and fails after
+        // seed 25 makes no level with no rescue. With the boxes to draw it has a picture of them,
+        // and fails after
         let why = "seed 25: colossal: no set of ramps joins its storeys";
-        let done = run(&args("--seed 25 --select tower --shot plan.png --width 900")).unwrap();
+        let done = run(&args("--seed 25 --no-rescue --select tower --shot plan.png --width 900")).unwrap();
         assert_eq!((done.failed.as_deref(), done.refused.as_deref()), (Some(why), None));
         assert_eq!(done.text, format!("no level: {why}\n"));
         // (the bare plan is framed on the site, and draws its edge)
@@ -435,13 +436,14 @@ mod tests {
         };
         assert_eq!(png(&done), shot::render_bare(25, why, &view, 900).png().unwrap());
         // one storey of it, with a change made first
-        let one = run(&args("--seed 25 --delete tiny1 --storey 276 --shot plan.png --width 900")).unwrap();
+        let one = run(&args("--seed 25 --no-rescue --delete tiny1 --storey 276 --shot plan.png --width 900")).unwrap();
         assert!(one.failed.as_deref() == Some(why) && one.text == format!("room: delete tiny1\nno level: {why}\n") && png(&one) != png(&done), "{}", one.text);
         assert_eq!(one.recipe.edits, [Edit::Delete { room: "tiny1".into() }]);
         // without the boxes it is the error it was
-        assert_eq!(run(&args("--seed 25 --shot plan.png")).err().unwrap(), why);
-        // and with the hall that can't be furnished deleted, the seed makes a level
-        let cured = run(&args("--seed 25 --delete colossal --list")).unwrap();
+        assert_eq!(run(&args("--seed 25 --no-rescue --shot plan.png")).err().unwrap(), why);
+        // and with the hall that can't be furnished deleted, the seed makes a level (as it does
+        // with the rescue: `Options::rescue`)
+        let cured = run(&args("--seed 25 --no-rescue --delete colossal --list")).unwrap();
         assert!(
             cured.failed.is_none()
                 && cured.text.starts_with("room: delete colossal; its pods go with it: small3, small6, small7, tiny4\nautolevel seed 25: 24 rooms, "),
@@ -541,15 +543,16 @@ mod tests {
         assert_eq!(refused("--seed 40 --brightness vast@300"), "brightness: 0 to 255, not 300");
         assert_eq!(refused("--seed 40 --ceiling vast@glass"), "ceiling: one of ('plain', 'ceiling_tile', 'ceiling_dark', 'grille')");
         assert_eq!(refused("--seed 40 --cover attic@none"), "cover: no room attic");
-        // a ring the basin could take by its size, but no inside can be furnished with: no level.
-        // The choice is taken back, the picture is the level as it was with the reason by the room
-        let done = run(&args("--seed 40 --layout basin@ring --cover vast@none --shot plan.png --width 900")).unwrap();
+        // a ring the basin could take by its size, but no inside can be furnished with (with no
+        // rescue): no level. The choice is taken back, the picture is the level as it was with the
+        // reason by the room
+        let done = run(&args("--seed 40 --no-rescue --layout basin@ring --cover vast@none --shot plan.png --width 900")).unwrap();
         let why = "seed 40: basin cannot be furnished with a ring (basin: no set of ramps joins its storeys)";
         assert_eq!((done.failed.as_deref(), done.refused.as_deref()), (Some(why), None));
         assert!(done.text.starts_with(&format!("choice: basin: layout ring\nno level: {why}\nautolevel seed 40: 29 rooms, 44 links")), "{}", done.text);
         assert!(done.recipe.edits.is_empty() && !done.text.contains("cover none"));
-        let plain = run(&args("--seed 40 --shot plan.png --width 900")).unwrap();
-        assert!(png(&done) != png(&plain) && png(&done) != png(&run(&args("--seed 40 --rooms --shot plan.png --width 900")).unwrap()));
+        let plain = run(&args("--seed 40 --no-rescue --shot plan.png --width 900")).unwrap();
+        assert!(png(&done) != png(&plain) && png(&done) != png(&run(&args("--seed 40 --no-rescue --rooms --shot plan.png --width 900")).unwrap()));
         // after a room change that is refused, no choice is made either
         let done = run(&args("--seed 40 --move medium1@48,41 --cover vast@none")).unwrap();
         assert!(done.refused.is_some() && !done.text.contains("choice:") && done.recipe.edits.is_empty(), "{}", done.text);

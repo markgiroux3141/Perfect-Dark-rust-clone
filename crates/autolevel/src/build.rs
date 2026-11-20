@@ -527,6 +527,8 @@ struct Sig {
     preset: usize,
     /// What was chosen for it by hand.
     choice: Choice,
+    /// May it be rescued (`Options::rescue`, and no join being tried)?
+    rescue: bool,
 }
 
 /// A room's inside and whether it has its hole, or why it can't be furnished.
@@ -562,6 +564,9 @@ pub struct Build {
     navs: NavCache,
     /// Every (room, storey, other room) a join has been asked for.
     tried: BTreeSet<(String, i32, String)>,
+    /// A join is being tried (`join`): no room is rescued (`Options::rescue`), so a join the
+    /// rooms can't be furnished with is taken back, as it was before the rescue.
+    trial: bool,
 }
 
 impl Build {
@@ -582,6 +587,7 @@ impl Build {
             made: Vec::new(),
             navs: NavCache::new(),
             tried: BTreeSet::new(),
+            trial: false,
         }
     }
 
@@ -656,6 +662,7 @@ impl Build {
                 cap: self.caps.get(key).copied(),
                 preset: s.preset.len(),
                 choice: self.choices.get(key).cloned().unwrap_or_default(),
+                rescue: self.o.rescue && !self.trial,
             };
             let made = match self.made.iter().find(|(g, _)| *g == sig) {
                 Some((_, made)) => made.clone(),
@@ -708,40 +715,47 @@ impl Build {
         }
         let mut last = "None".to_string();
         let holes = if hole.is_some() { vec![hole, None] } else { vec![None] };
-        for h in holes {
-            for attempt in 0..self.o.tries {
-                let mut rng = PyRandom::named(&stream(&attempt.to_string()));
-                let tower = ["ring", "ends"][((rng.random() < 0.5) as usize) ^ (attempt % 2)];
-                let (balcony, lay) = layout(s, doors, pods, &mut rng, attempt);
-                let (balcony, lay) = match pick.layout {
-                    None => (balcony, lay),
-                    // (a balcony is drawn only when no layout was: it stays if so)
-                    Some(None) => (if lay.is_none() { balcony } else { None }, None),
-                    Some(chosen) => (None, chosen),
-                };
-                let setup = Setup {
-                    balcony,
-                    tower,
-                    cover: how.cover,
-                    clutter: how.clutter,
-                    layout: lay,
-                    fixed: pick.layout.is_some(),
-                    shape: how.shape,
-                    pillar: how.pillar,
-                    hole: h,
-                    keep: keep.to_vec(),
-                    top: self.caps.get(key).copied(),
-                    band: self.o.band(),
-                    platforms: self.o.platforms,
-                    holes: self.o.holes,
-                    angled: self.o.angled,
-                    stream: stream("pits"),
-                    attempt,
-                    hole_side: self.spaces().iter().find_map(|c| c.cellar.as_ref().filter(|c| c.hall == *key && h.is_some()).map(|c| c.side)),
-                };
-                match Interior::new(s, doors, pods, rng, &self.access, setup).build() {
-                    Ok(it) => return Ok((it, h.is_some())),
-                    Err(why) => last = why,
+        // (the rescue, ladders and bridges where ramps can't join it, only once every attempt
+        // without it has failed: new in the Rust, so a room furnished before is as it was)
+        let rescues: &[bool] = if self.o.rescue && !self.trial { &[false, true] } else { &[false] };
+        for &rescue in rescues {
+            for &h in &holes {
+                for attempt in 0..self.o.tries {
+                    let mut rng = PyRandom::named(&stream(&attempt.to_string()));
+                    let tower = ["ring", "ends"][((rng.random() < 0.5) as usize) ^ (attempt % 2)];
+                    let (balcony, lay) = layout(s, doors, pods, &mut rng, attempt);
+                    let (balcony, lay) = match pick.layout {
+                        None => (balcony, lay),
+                        // (a balcony is drawn only when no layout was: it stays if so)
+                        Some(None) => (if lay.is_none() { balcony } else { None }, None),
+                        Some(chosen) => (None, chosen),
+                    };
+                    let setup = Setup {
+                        balcony,
+                        tower,
+                        cover: how.cover,
+                        clutter: how.clutter,
+                        layout: lay,
+                        fixed: pick.layout.is_some(),
+                        shape: how.shape,
+                        pillar: how.pillar,
+                        hole: h,
+                        keep: keep.to_vec(),
+                        top: self.caps.get(key).copied(),
+                        band: self.o.band(),
+                        platforms: self.o.platforms,
+                        holes: self.o.holes,
+                        angled: self.o.angled,
+                        stream: stream("pits"),
+                        attempt,
+                        hole_side: self.spaces().iter().find_map(|c| c.cellar.as_ref().filter(|c| c.hall == *key && h.is_some()).map(|c| c.side)),
+                        rescue,
+                    };
+                    match Interior::new(s, doors, pods, rng, &self.access, setup).build() {
+                        Ok(it) => return Ok((it, h.is_some())),
+                        Err(why) if !rescue => last = why,
+                        Err(_) => {}
+                    }
                 }
             }
         }
@@ -882,8 +896,12 @@ impl Build {
             }
             let Some(r) = r else { continue };
             self.net.grid.commit(r.clone());
-            // (a room that can't be furnished with the new door is no help either)
-            let helped = self.refresh().is_ok() && {
+            // (a room that can't be furnished with the new door is no help either; nor one only
+            // the rescue can furnish: a join that wasn't made before is not made now)
+            self.trial = true;
+            let furnished = self.refresh().is_ok();
+            self.trial = false;
+            let helped = furnished && {
                 let (g2, ends) = self.ends();
                 let still: BTreeSet<(&str, i32)> =
                     ends.iter().filter(|x| !x.allowed).flat_map(|x| &x.places).map(|k| g2.place(k)).map(|p| (p.room.as_str(), p.level)).collect();
@@ -1089,7 +1107,7 @@ mod tests {
             let r = grid.route(grid.space(a), grid.space(b), &Terms::default()).unwrap();
             grid.commit(r);
         }
-        let mut b = Build::new(5, o, Network { grid, pods: Vec::new(), hatches: Vec::new(), failed: Vec::new() }, Vec::new(), Vec::new());
+        let mut b = Build::new(5, o, Network { grid, pods: Vec::new(), hatches: Vec::new(), failed: Vec::new(), cut_off: Vec::new() }, Vec::new(), Vec::new());
         b.refresh().unwrap();
         b
     }
@@ -1137,7 +1155,7 @@ mod tests {
         let mut b = Build::new(
             5,
             Options::default(),
-            Network { grid, pods: Vec::new(), hatches: Vec::new(), failed: Vec::new() },
+            Network { grid, pods: Vec::new(), hatches: Vec::new(), failed: Vec::new(), cut_off: Vec::new() },
             Vec::new(),
             vec![("spire".into(), (0, 1))],
         );
@@ -1152,11 +1170,24 @@ mod tests {
     }
 
     #[test]
-    fn a_room_that_cannot_be_furnished_fails_the_level() {
+    fn a_room_no_ramp_can_join_is_rescued_with_a_ladder() {
         let mut b = build(vec![space("t", (0, 0, 4, 4), 0, 512, "medium"), room("b", (8, 0, 14, 6))], Options::default());
         b.refresh().unwrap();
-        // an upstairs door, and no floor for a ramp to it
+        assert!(b.interior("t").unwrap().chutes.is_empty());
+        // an upstairs door, and no floor for a ramp to it: a ladder up to its landing (`stitch`)
         b.net.grid.doors[0].1.push(Door { room: "t".into(), side: 'N', a: 1, level: 276, width: 1, to: String::new() });
+        b.refresh().unwrap();
+        let it = b.interior("t").unwrap();
+        assert!(it.rescue && it.ramps.is_empty() && it.connected());
+        assert_eq!(it.chutes.iter().map(|c| (c.foot.2, c.top.2)).collect::<Vec<_>>(), [(0, 276)]);
+    }
+
+    #[test]
+    fn a_room_that_cannot_be_furnished_fails_the_level() {
+        let mut b = build(vec![space("t", (0, 0, 2, 2), 0, 512, "medium"), room("b", (8, 0, 14, 6))], Options::default());
+        b.refresh().unwrap();
+        // an upstairs door, and no floor for a ramp to it, nor room for a ladder
+        b.net.grid.doors[0].1.push(Door { room: "t".into(), side: 'N', a: 0, level: 276, width: 1, to: String::new() });
         assert_eq!(b.refresh().unwrap_err(), "seed 5: t: no set of ramps joins its storeys");
         assert_eq!(b.interiors.len(), 2); // the build is as it was
     }

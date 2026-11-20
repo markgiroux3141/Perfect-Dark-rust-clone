@@ -199,12 +199,14 @@ fn the_3d_view_follows_the_recipe_and_keeps_the_last_level_while_it_is_made_agai
     // one scratch folder: the old preview's went with it
     assert_eq!(left(&root), 1);
 
-    // A recipe that makes no level (seed 25): the last one stays, with the generator's reason.
-    assert!(!space.settle(&seed(25)));
-    assert_eq!(space.status(&seed(25)), ("this recipe makes no level, so the last one stays: seed 25: colossal: no set of ramps joins its storeys".to_string(), true));
+    // A recipe that makes no level (seed 25 with no rescue): the last one stays, with the
+    // generator's reason.
+    let none = gen::Recipe { options: autolevel::level::Options { rescue: false, ..autolevel::level::Options::python() }, ..seed(25) };
+    assert!(!space.settle(&none));
+    assert_eq!(space.status(&none), ("this recipe makes no level, so the last one stays: seed 25: colossal: no set of ramps joins its storeys".to_string(), true));
     assert!(space.made == 2 && tiles(&space) == 13248 && left(&root) == 1);
     // it is not tried again while the recipe is that one
-    assert!(!space.follow(&seed(25)) && !space.busy());
+    assert!(!space.follow(&none) && !space.busy());
     // undone: the level on show is the recipe's own again, and nothing is made
     assert!(!space.follow(&ring()) && !space.busy() && space.current(&ring()));
     assert!(!space.status(&ring()).1);

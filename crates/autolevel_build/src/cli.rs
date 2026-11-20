@@ -100,6 +100,8 @@ What kind of level (sweep, plan, build, batch and deadends all take these):
   --dead-climb N             and no climb of this many storeys may end on a deck with no room (2). Anything
                              longer is joined to a room near it, or cut short
   --keep-dead-ends           leave them all as they fall
+  --no-rescue                a room no set of ramps can join fails the level, as it did before (by default
+                             it is furnished once more with ladders and bridges: docs/AUTOLEVEL.md, Rescue)
   (also the recipe's other options by name: --second --loops --shift --level-change --tries)
   --recipe FILE              plan, build, deadends: the level of a recipe (a seed, options and the edits made
                              in the editor) in place of SEED; options on the line then change it
@@ -168,7 +170,7 @@ pub struct Args {
 }
 
 /// The options that are yes or no: named alone, they are yes.
-const FLAGS: [&str; 4] = ["crates", "shapes", "dead_ends", "washroom"];
+const FLAGS: [&str; 5] = ["crates", "shapes", "dead_ends", "washroom", "rescue"];
 
 /// Does the command `cmd` take the flag `name` (underscores for its hyphens)?
 fn takes(cmd: &str, name: &str) -> bool {
@@ -183,7 +185,10 @@ fn takes(cmd: &str, name: &str) -> bool {
         "recipe" => matches!(cmd, "plan" | "build" | "deadends"),
         "pd_walk" => builds || matches!(cmd, "walk" | "shots"),
         // (a trek's options are its own: `trek::OPTIONS`)
-        _ => !matches!(cmd, "walk" | "shots" | "trek") && (matches!(name, "no_shapes" | "keep_dead_ends" | "no_washroom") || recipe::OPTIONS.contains(&name)),
+        _ => {
+            !matches!(cmd, "walk" | "shots" | "trek")
+                && (matches!(name, "no_shapes" | "keep_dead_ends" | "no_washroom" | "no_rescue") || recipe::OPTIONS.contains(&name))
+        }
     }
 }
 
@@ -256,6 +261,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
             "no_shapes" => (out.recipe.options.shapes, took) = (false, 1),
             "no_washroom" => (out.recipe.options.washroom, took) = (false, 1),
             "keep_dead_ends" => (out.recipe.options.dead_ends, took) = (false, 1),
+            "no_rescue" => (out.recipe.options.rescue, took) = (false, 1),
             _ if FLAGS.contains(&name.as_str()) && !matches!(args.get(n + 1).map(String::as_str), Some("true" | "false")) => {
                 recipe::set_option(&mut out.recipe.options, &name, "true")?;
                 took = 1;
@@ -622,6 +628,9 @@ pub fn report_json(r: &Report) -> Json {
         ("shaped_rooms", json!(r.shaped_rooms)),
         ("ladders", json!(r.ladders)),
         ("sunken", json!(r.sunken)),
+        ("chutes", json!(r.chutes)),
+        ("crossings", json!(r.crossings)),
+        ("cut_off", json!(r.cut_off)),
         ("empty_air", json!(r.empty_air)),
         ("largest_void", json!(r.largest_void)),
     ]) else {
@@ -639,7 +648,7 @@ pub fn report_json(r: &Report) -> Json {
 }
 
 /// The report's keys that are the Rust's own, after the Python's (which end with the score).
-pub const RUSTS_OWN: [&str; 14] = [
+pub const RUSTS_OWN: [&str; 17] = [
     "platforms",
     "galleries",
     "holes",
@@ -652,6 +661,9 @@ pub const RUSTS_OWN: [&str; 14] = [
     "shaped_rooms",
     "ladders",
     "sunken",
+    "chutes",
+    "crossings",
+    "cut_off",
     "empty_air",
     "largest_void",
 ];

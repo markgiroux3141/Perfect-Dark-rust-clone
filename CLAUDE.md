@@ -65,6 +65,8 @@ cargo build --release -p pd_import          # also builds target/release/autolev
                                             #   `--sunken P` (0.1): a pit a cell deep in a hall's floor, a ramp down into it
                                             #   (docs/AUTOLEVEL.md, "Platforms", "Galleries", "Drops", "Cellars",
                                             #   "Angled catwalks", "Flooded rooms", "Shaped rooms", "Sunken floors")
+                                            #   a room no ramps can join is rescued with ladders and bridges, so every seed makes a
+                                            #   level (`--no-rescue`: it fails as it did; docs/AUTOLEVEL.md, "Rescue")
                                             #   also `sweep`, `plan`, `batch`, `walk`, `deadends`, `--recipe FILE`; `autolevel --help`
 cargo run --release -p autolevel_edit -- --seed 40 --shot out.png [--empty] [--storey Z] [--pick ROOM@STOREY [--join N]] [--remove KEY]
                                             #   the generator's editor: its plan view as a PNG with no window (how to look at a

@@ -24,6 +24,9 @@ pub struct Network {
     pub hatches: Vec<(String, String)>,
     /// Spanning-tree pairs that found no corridor.
     pub failed: Vec<(String, String)>,
+    /// Rooms no corridor could reach, left out with their pods (new in the Rust:
+    /// `level::stage_network`).
+    pub cut_off: Vec<String>,
 }
 
 impl Network {
@@ -382,11 +385,16 @@ pub fn connect(sp: Vec<Space>, band: i32, c: &Connect) -> Network {
     let pods = pods.iter().map(|&e| name(&g, e)).collect();
     let failed = failed.iter().map(|&e| name(&g, e)).collect();
     let hatches = hatches.into_iter().map(|(a, b)| (g.sp[a].key.clone(), g.sp[b].key.clone())).collect();
-    Network { grid: g, pods, hatches, failed }
+    Network { grid: g, pods, hatches, failed, cut_off: Vec::new() }
 }
 
 /// How many pieces the level is in (1: every room reaches every other).
 pub fn components(net: &Network) -> usize {
+    pieces(net).len()
+}
+
+/// The level's pieces: the rooms (pods too) each reaches, in the order of the first room of each.
+pub fn pieces(net: &Network) -> Vec<Vec<String>> {
     let edges = net.edges();
     let mut nb: BTreeMap<&str, BTreeSet<&str>> = net.spaces().iter().map(|s| (s.key.as_str(), BTreeSet::new())).collect();
     for (a, b) in &edges {
@@ -394,20 +402,22 @@ pub fn components(net: &Network) -> usize {
         nb.get_mut(b.as_str()).unwrap_or_else(|| panic!("no room {b}")).insert(a);
     }
     let mut seen: BTreeSet<&str> = BTreeSet::new();
-    let mut n = 0;
+    let mut out = Vec::new();
     for s in net.spaces() {
         if seen.contains(s.key.as_str()) {
             continue;
         }
-        n += 1;
+        let mut piece = Vec::new();
         let mut todo = vec![s.key.as_str()];
         while let Some(q) = todo.pop() {
             if seen.insert(q) {
+                piece.push(q.to_string());
                 todo.extend(nb[q].iter().copied());
             }
         }
+        out.push(piece);
     }
-    n
+    out
 }
 
 #[cfg(test)]

@@ -29,7 +29,9 @@ impl Interior {
 
     fn solve(&mut self, hi_i: usize, left: &mut i32) -> bool {
         if hi_i == 0 {
-            return self.connected(); // a ramp laid over a catwalk can cut it in two
+            // a ramp laid over a catwalk can cut it in two. (The rescue joins what is left apart
+            // afterwards, `stitch`, but a ramp still may not stand where a door is stepped through.)
+            return if self.rescue { self.door_nodes().iter().all(Option::is_some) } else { self.connected() };
         }
         let (hi, lo) = (self.levels[hi_i], self.levels[hi_i - 1]);
         if self.band_of(hi) != self.band_of(lo) {
@@ -40,7 +42,10 @@ impl Interior {
             served.extend(r.top.iter().copied());
         }
         let claimed = self.claim.contains(&hi);
-        let todo: Vec<Cells> = components(&self.walk(hi)).into_iter().filter(|c| !meets(c, &served) && (meets(c, &self.deck[&hi]) || claimed)).collect();
+        let todo: Vec<Cells> = components(&self.walk(hi))
+            .into_iter()
+            .filter(|c| !meets(c, &served) && (meets(c, &self.deck[&hi]) || claimed) && !self.stranded.iter().any(|s| meets(c, s)))
+            .collect();
         // (pieces come in no order: ties are broken by place)
         let Some(comp) = py::first_max(todo, |c| (c.len(), *c.first().expect("a piece has cells"))) else {
             return self.solve(hi_i - 1, left);
@@ -53,7 +58,8 @@ impl Interior {
             // nowhere for a ramp to arrive: run a gangway on to the nearest wall
             let added = if !self.extended.contains(&comp) && self.extended.len() < 8 { self.gangway(&comp, hi, 12) } else { Cells::new() };
             if added.is_empty() {
-                return false;
+                // (the rescue lets it be: a ladder or a bridge joins it once the ramps are down)
+                return self.rescue && self.strand(comp, hi_i, left);
             }
             self.extended.insert(comp.clone());
             self.deck.get_mut(&hi).expect("a storey of the room").extend(added.iter().copied());
@@ -66,7 +72,8 @@ impl Interior {
         }
         for r in options {
             if *left <= 0 {
-                return false;
+                // (out of tries: the rescue lets it be, as a piece no ramp can reach)
+                return self.rescue && self.strand(comp.clone(), hi_i, left);
             }
             *left -= 1;
             let saved = (self.deck.clone(), self.ramps.len());
@@ -83,6 +90,17 @@ impl Interior {
             self.deck = saved.0;
             self.ramps.truncate(saved.1);
         }
+        false
+    }
+
+    /// The rescue's way past a piece of deck the ramps can't join (`stitch` joins it after): the
+    /// rest of the storeys solved without it, or false (and it is a piece again).
+    fn strand(&mut self, comp: Cells, hi_i: usize, left: &mut i32) -> bool {
+        self.stranded.push(comp);
+        if self.solve(hi_i, left) {
+            return true;
+        }
+        self.stranded.pop();
         false
     }
 

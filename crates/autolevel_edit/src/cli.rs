@@ -30,9 +30,9 @@ pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
   --empty               an empty start: no rooms but those --add makes; the seed only decorates them
   --recipe FILE         a recipe (seed, options, edits) instead; --seed and options then change it
   --NAME VALUE          an option, by its name in the recipe: scale size site cover clutter walkway
-                        crates shapes risers second vents windows drops grates platforms galleries holes cellars angled flooded shaped sunken dead-ends
-                        dead-corridor dead-walk dead-climb loops shift level-change tries
-                        (also --no-shapes, --keep-dead-ends, and --crates alone)
+                        crates shapes risers second vents windows drops grates platforms galleries holes cellars angled flooded shaped sunken rescue
+                        dead-ends dead-corridor dead-walk dead-climb loops shift level-change tries
+                        (also --no-shapes, --keep-dead-ends, --no-rescue, and --crates alone)
   --shot FILE.png       write the plan view and print the dead-end list; no window, no GPU
   --storey Z            the snapshot shows one storey, by its floor (-276 0 276 551 ...; default all)
   --width W             the snapshot's width in pixels (default 1600)
@@ -197,7 +197,7 @@ fn added(v: &str) -> Result<Change, String> {
 }
 
 /// The options that are yes or no: named alone, they are yes.
-const FLAGS: [&str; 3] = ["crates", "shapes", "dead_ends"];
+const FLAGS: [&str; 4] = ["crates", "shapes", "dead_ends", "rescue"];
 
 /// Read the arguments (the program's name left off). `read` is how a recipe file is read.
 pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> Result<Args, String> {
@@ -332,6 +332,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
             }
             "no_shapes" => (out.recipe.options.shapes, took) = (false, 1),
             "keep_dead_ends" => (out.recipe.options.dead_ends, took) = (false, 1),
+            "no_rescue" => (out.recipe.options.rescue, took) = (false, 1),
             _ if FLAGS.contains(&name.as_str()) && !matches!(args.get(n + 1).map(String::as_str), Some("true" | "false")) => {
                 recipe::set_option(&mut out.recipe.options, &name, "true")?;
                 took = 1;

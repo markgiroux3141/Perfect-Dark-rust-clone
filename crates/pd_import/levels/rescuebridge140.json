@@ -1,0 +1,22 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "rescuebridge140",
+  "name": "Rescue Bridge 140",
+  "group": "Autolevel",
+  "stagenum": 115,
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 140,
+      "options": {
+        "scale": "standard"
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

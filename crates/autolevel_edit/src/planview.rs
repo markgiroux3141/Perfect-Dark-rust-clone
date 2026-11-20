@@ -116,6 +116,8 @@ pub mod colour {
     pub const WALL: Rgba = [8, 9, 12, 255];
     pub const DOOR: Rgba = [255, 255, 255, 255];
     pub const RAMP_ARROW: Rgba = [255, 226, 96, 255];
+    /// The rescue's ladders up the edges of decks (`furnish::Chute`), and its bridges' outlines.
+    pub const LADDER: Rgba = [80, 255, 220, 255];
     pub const VENT: Rgba = [255, 150, 235, 255];
     pub const POOL: Rgba = [36, 104, 224, 255];
     pub const POOL_EDGE: Rgba = [140, 190, 255, 255];
@@ -819,6 +821,19 @@ impl Pic<'_> {
             let (dx, dy) = ((b.0 - a.0).signum() * 0.3, (b.1 - a.1).signum() * 0.3);
             self.arrow((a.0 + dx, a.1 + dy), (b.0 - dx, b.1 - dy), colour::RAMP_ARROW, 2.5, 0.7);
         }
+        // the rescue's bridges, outlined over their deck; its ladders: the ladder on the deck's
+        // edge, and an arrow up it from its foot
+        for (_, it) in &lv.interiors {
+            for (_, cells) in it.crossings.iter().filter(|(z, _)| touches(*z, *z)) {
+                self.outline(cells, 0.5, colour::LADDER, 2.5);
+            }
+            for c in it.chutes.iter().filter(|c| touches(c.foot.2, c.top.2)) {
+                let ((ax, ay), (bx, by), _) = c.line();
+                self.line((ax as f32, ay as f32), (bx as f32, by as f32), colour::LADDER, 5.0);
+                let ((fx, fy, _), (tx, ty, _)) = c.ends();
+                self.arrow((fx as f32, fy as f32), (tx as f32, ty as f32), colour::LADDER, 2.5, 0.5);
+            }
+        }
     }
 
     /// A room that is only air on the storey shown: hollow, with its outline.
@@ -1171,7 +1186,8 @@ pub fn bare(view: &View) -> Picture {
 /// with commas), or "left out" for a room the generator itself left out of the level.
 pub fn differs(lv: &Level, a: &Lot) -> Option<String> {
     let Some(s) = lv.spaces().iter().find(|s| s.key == a.key) else {
-        let out = lv.dropped.contains(&a.key) || lv.fixes.iter().any(|f| matches!(f, Fix::Dropped { room } if *room == a.key));
+        let out =
+            lv.dropped.contains(&a.key) || lv.net.cut_off.contains(&a.key) || lv.fixes.iter().any(|f| matches!(f, Fix::Dropped { room } if *room == a.key));
         return Some(if out { "left out" } else { "new" }.to_string());
     };
     let mut said: Vec<String> = Vec::new();
@@ -1467,9 +1483,14 @@ pub fn legend(lv: &Level, view: &View) -> Vec<Key> {
         out.push(key(Swatch::Fill, colour::VOID, "air of a room below"));
         out.push(key(Swatch::Line, colour::RAIL, "rail"));
     }
+    out.extend([key(Swatch::Line, colour::DOOR, "door"), key(Swatch::Line, colour::RAMP_ARROW, "ramp, uphill (sw: a switchback)")]);
+    if lv.interiors.iter().any(|(_, it)| !it.chutes.is_empty()) {
+        out.push(key(Swatch::Line, colour::LADDER, "ladder up a deck's edge (the rescue's), uphill"));
+    }
+    if lv.interiors.iter().any(|(_, it)| !it.crossings.is_empty()) {
+        out.push(key(Swatch::Line, colour::LADDER, "bridge's outline (the rescue's)"));
+    }
     out.extend([
-        key(Swatch::Line, colour::DOOR, "door"),
-        key(Swatch::Line, colour::RAMP_ARROW, "ramp, uphill (sw: a switchback)"),
         key(Swatch::Line, colour::VENT, "vent (crawl)"),
         key(Swatch::Line, colour::GLASS, "window"),
         key(Swatch::Line, colour::BALCONY, "open balcony"),

@@ -44,7 +44,14 @@ fn inside(lv: &Level, d: &Door) -> Result<(f64, f64, i32), String> {
     }
     let it = lv.interior(&d.room);
     let door = same(lv, d);
-    let i = it.doors.iter().position(|q| q == door).ok_or_else(|| format!("seed {}: {} was furnished without its door to {}", lv.seed, d.room, door.to))?;
+    // (a room furnished before the dead-end pass, and kept, knows a door by where it is: a
+    // corridor that took an old one's place has another key. New in the Rust; the Python stops)
+    let i = it
+        .doors
+        .iter()
+        .position(|q| q == door)
+        .or_else(|| it.doors.iter().position(|q| (q.side, q.a, q.level, q.width) == (door.side, door.a, door.level, door.width)))
+        .ok_or_else(|| format!("seed {}: {} was furnished without its door to {}", lv.seed, d.room, door.to))?;
     let n = it.door_nodes()[i].ok_or_else(|| format!("seed {}: no standing room at {}'s door to {}", lv.seed, d.room, door.to))?;
     Ok(middle(n))
 }
@@ -182,6 +189,14 @@ pub fn walks(lv: &mut Level) -> Result<(), String> {
             set(&mut walks, format!("pillar_{key}_{n}"), vec![Step::at(foot), Step::at(top)]);
         }
     }
+    // up each of the rescue's ladders (`furnish::Chute`), from its foot onto the deck
+    for (key, it) in &lv.interiors {
+        for (n, c) in it.chutes.iter().enumerate() {
+            let (foot, top) = c.ends();
+            set(&mut walks, format!("chute_{key}_{n}"), vec![Step::at(foot), Step::at(top)]);
+            set(&mut walks, format!("chutedown_{key}_{n}"), vec![Step::at(top), Step::at(foot)]);
+        }
+    }
     // walk to a pit's open side (or onto a span's plank), step off, land on what is under it
     for (_, it) in &lv.interiors {
         for (n, p) in it.pits.iter().enumerate() {
@@ -290,6 +305,24 @@ pub fn walks(lv: &mut Level) -> Result<(), String> {
             set(&mut walks, format!("!flood_{key}"), vec![Step::at(middle(from)), Step::at((to.0, to.1, water))]);
         }
     }
+    // a stop at the lip of each of the rescue's ladders before going down it, a little inside the
+    // deck's edge: run at it from further back, PD's player comes off the deck moving away from the
+    // ladder too fast to climb down (`bondwalk.c:1614`) and hangs there. (New in the Rust, as the
+    // ladders are: no walk changes in a level without one.)
+    let downs: Vec<(Point, Point)> = lv.interiors.iter().flat_map(|(_, it)| it.chutes.iter().map(|c| (c.ends().1, c.ends().0))).collect();
+    if !downs.is_empty() {
+        for (_, steps) in walks.iter_mut() {
+            let mut out: Vec<Step> = Vec::with_capacity(steps.len());
+            for (i, s) in steps.iter().enumerate() {
+                out.push(*s);
+                let Some(b) = steps.get(i + 1) else { continue };
+                if let Some((t, f)) = downs.iter().find(|(t, f)| (s.x, s.y, s.z) == *t && (b.x, b.y, b.z) == *f) {
+                    out.push(Step::at((t.0 + (f.0 - t.0) * 0.4, t.1 + (f.1 - t.1) * 0.4, t.2)));
+                }
+            }
+            *steps = out;
+        }
+    }
     lv.walks = walks;
     Ok(())
 }
@@ -389,6 +422,14 @@ pub fn views(lv: &mut Level) {
             let ((ax, ay), (bx, by), (dx, dy)) = it.ladder_line(l);
             let (lx, ly) = ((ax + bx) / 2.0, (ay + by) / 2.0);
             set(&mut views, format!("pillar_{key}_{n}"), (lx + dx as f64 * 3.0, ly + dy as f64 * 3.0, it.levels[0], lx, ly));
+        }
+    }
+    // each of the rescue's ladders from three cells out, at its foot
+    for (key, it) in &lv.interiors {
+        for (n, c) in it.chutes.iter().enumerate() {
+            let ((ax, ay), (bx, by), (dx, dy)) = c.line();
+            let (lx, ly) = ((ax + bx) / 2.0, (ay + by) / 2.0);
+            set(&mut views, format!("chute_{key}_{n}"), (lx + dx as f64 * 3.0, ly + dy as f64 * 3.0, c.foot.2, lx, ly));
         }
     }
     // each pit from where it is stepped off, looking across it

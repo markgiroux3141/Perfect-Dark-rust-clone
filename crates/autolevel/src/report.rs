@@ -117,6 +117,12 @@ pub struct Report {
     pub ladders: usize,
     /// Sunken floors (`furnish::Sunk`).
     pub sunken: usize,
+    /// The rescue's ladders up the edges of decks (`furnish::Chute`), where no ramp could go.
+    pub chutes: usize,
+    /// The rescue's bridges over a storey's air (`furnish::Interior::crossings`).
+    pub crossings: usize,
+    /// Rooms no corridor could reach, left out with their pods (`Network::cut_off`).
+    pub cut_off: Vec<String>,
     pub empty_air: f64,
     pub largest_void: f64,
 }
@@ -222,6 +228,9 @@ pub fn report(lv: &Level) -> Report {
         shaped_rooms: its().filter(|it| !it.cut.is_empty()).count(),
         ladders: its().map(|it| it.ladders.len()).sum(),
         sunken: its().filter(|it| it.sunk.is_some()).count(),
+        chutes: its().map(|it| it.chutes.len()).sum(),
+        crossings: its().map(|it| it.crossings.len()).sum(),
+        cut_off: lv.net.cut_off.clone(),
         empty_air: 0.0,
         largest_void: 0.0,
     };

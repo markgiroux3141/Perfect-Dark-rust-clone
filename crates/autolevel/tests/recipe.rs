@@ -61,6 +61,15 @@ fn err(seed: u64, edits: Vec<Edit>) -> String {
     }
 }
 
+/// `err` with no rescue (`Options::rescue`): where a room no set of ramps can join fails the level.
+fn err_unrescued(seed: u64, edits: Vec<Edit>) -> String {
+    let r = Recipe { options: Options { rescue: false, ..Options::python() }, ..recipe(seed, edits) };
+    match r.generate() {
+        Ok(_) => panic!("a level, where an error was expected"),
+        Err(why) => why,
+    }
+}
+
 /// The lots after the lot edits, or why they may not stand so (no level is made).
 fn lots(seed: u64, edits: Vec<Edit>) -> Result<Placed, String> {
     recipe(seed, edits).placed()
@@ -187,8 +196,11 @@ fn a_move_that_breaks_the_rule_says_which_lots_and_why() {
     assert_eq!(why(vec![delete("tiny4"), mv("tiny4", (1, 1))]), "move: tiny4 was deleted by an earlier edit");
     // a room over another needs the scatter's slab, 40 units: 512 to 551 is 39
     assert!(lots(40, vec![mv("small8", (60, 40)), mv("small8", (50, 30))]).is_err_and(|why| why.starts_with("medium1 and small8 overlap")));
-    // and whatever the lots, the level is the generator's to refuse
-    assert_eq!(err(40, vec![mv("small4", (40, 22)), pin("small4", 276)]), "seed 40: vast: no set of ramps joins its storeys");
+    // and whatever the lots, the level is the generator's to refuse (or, by default, to rescue:
+    // a room no set of ramps can join is joined with ladders and bridges)
+    let high = vec![mv("small4", (40, 22)), pin("small4", 276)];
+    assert_eq!(err_unrescued(40, high.clone()), "seed 40: vast: no set of ramps joins its storeys");
+    made(40, high); // (the dead-end pass then changes vast's doors: its last inside needs no rescue)
 }
 
 // ---------------------------------------------------------------- resize
@@ -451,9 +463,17 @@ fn a_halls_layout_is_chosen_and_never_swapped_for_another() {
     assert_eq!(err(40, vec![layout("small8", "ring")]), "layout: small8 is a pod of vast: it is not furnished by itself");
     assert_eq!(err(40, vec![layout("attic", "ring")]), "layout: no room attic");
     // one that fits the rules but not the room, with its doors and its pool, is refused by name
-    assert_eq!(err(40, vec![layout("basin", "ring")]), "seed 40: basin cannot be furnished with a ring (basin: no set of ramps joins its storeys)");
+    // (with no rescue; by default the room keeps it, joined by ladders and bridges)
+    assert_eq!(err_unrescued(40, vec![layout("basin", "ring")]), "seed 40: basin cannot be furnished with a ring (basin: no set of ramps joins its storeys)");
+    let basin = made(40, vec![layout("basin", "ring")]);
+    assert!(basin.interior("basin").layout == Some("ring") && basin.interior("basin").rescue);
     // (so is none, where the hall's upstairs doors can only be joined by one: seed 12's)
-    assert_eq!(err(12, vec![layout("colossal", "none")]), "seed 12: colossal cannot be furnished with no layout (colossal: no set of ramps joins its storeys)");
+    assert_eq!(
+        err_unrescued(12, vec![layout("colossal", "none")]),
+        "seed 12: colossal cannot be furnished with no layout (colossal: no set of ramps joins its storeys)"
+    );
+    let colossal = made(12, vec![layout("colossal", "none")]);
+    assert!(colossal.interior("colossal").layout.is_none() && colossal.interior("colossal").rescue);
     // and so is one a cut then takes down again (seed 7's basin has no door upstairs)
     let cut = Edit::Cut { room: s("basin"), above: 0 };
     assert!(made(7, vec![layout("basin", "galleries")]).interior("basin").layout == Some("galleries"));
