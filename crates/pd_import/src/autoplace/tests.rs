@@ -66,13 +66,29 @@ fn seed_40_is_placed_on_flat_floor_out_of_corridors_with_its_ammo_by_it() {
     std::fs::remove_dir_all(&custom).unwrap();
     let line = |start: &str| report.iter().find(|l| l.starts_with(start)).unwrap_or_else(|| panic!("no {start:?} in {report:#?}")).clone();
     assert_eq!(line("spawns:"), "spawns: 16 out of corridors, ramps, vents and the risky places (0 let into corridors)");
-    assert_eq!(line("weapons:"), "weapons: 10 locations, location 5 on a pillar top");
+    let weapons = line("weapons:");
+    assert!(weapons.starts_with("weapons: 10 locations, location 5 on a pillar top, ") && !weapons.ends_with(" 0 in dead ends"), "{weapons}");
     let audit = line("placement audit:");
     assert!(audit.starts_with("placement audit: 0 of 46 items off flat floor, 0 on a ramp or in a doorway or by a hole, 0 of 16 spawns in corridors"), "{audit}");
     assert!(audit.ends_with("location 5 on pillar top"), "{audit}");
     // the crates a short walk from their weapons: 5.2 m on average, 15 m at most
     let num = |after: &str| audit.split(after).nth(1).and_then(|t| t.split(' ').next()).and_then(|n| n.trim_start_matches('(').parse::<f32>().ok()).unwrap();
     assert!(num("ammo ") < 600.0 && num("on average (") < 1600.0, "{audit}");
+    // every crate in its weapon's room; every spawn within a 25 m walk of a
+    // weapon (89 m when the spawns were placed before the weapons); the hills in
+    // halls and rooms, the bases in rooms with two ways in
+    assert!(audit.contains("; 0 of 20 crates not in their weapon's room"), "{audit}");
+    let fair = line("placement fairness:");
+    assert!(num_before(&fair, " cm (") <= 2500.0, "{fair}");
+    assert!(fair.contains(", at most 1 weapons in a room, 0 of 5 hills not in a hall or a room, 0 of 4 bases with one way in"), "{fair}");
+    for start in ["hills: 5 in rooms", "capture the case: bases at", "cover: 120 spots"] {
+        line(start);
+    }
+}
+
+/// The number just before the first `before` in `line`.
+fn num_before(line: &str, before: &str) -> f32 {
+    line.split(before).next().and_then(|t| t.rsplit(' ').next()).and_then(|n| n.parse::<f32>().ok()).unwrap_or_else(|| panic!("no number before {before:?} in {line}"))
 }
 
 /// The placement lines of any generated level, imported into a scratch

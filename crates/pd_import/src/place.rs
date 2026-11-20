@@ -374,13 +374,25 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
     // Where the source's own rows stand (kept ones): new items keep off them.
     let kept: Vec<Vec3> = used_pads(&g).iter().filter_map(|&p| g.pads.get(p).map(|x| x.pos)).collect();
 
+    // A generated level's weapons come first, and its spawns then stand a
+    // short walk from one (away from a layout's spawns, if it has them).
+    let guided_weapons: Option<(Vec<Vec3>, usize)> = guide.as_ref().filter(|_| layout.weapons.is_none()).map(|g| {
+        let spawns: Vec<Vec3> = layout.spawns.iter().flatten().map(|s| v3(s.pos)).collect();
+        g.weapons(r.weapons, &prize.iter().map(|p| p.0).collect::<Vec<_>>(), &spawns)
+    });
+
     // ── Spawns: (pad position, facing in radians) ──────────────────────────
     // Not on the source's treasures: those are for the weapons.
     let prizes: Vec<Vec3> = markers.iter().filter(|m| m.kind == MarkerKind::Prize).filter_map(|m| snap(m.pos)).collect();
     let spawns: Vec<(Vec3, f32)> = match (&layout.spawns, &guide) {
         (Some(v), _) => v.iter().map(|s| (v3(s.pos), s.facing.to_radians())).collect(),
         (None, Some(guide)) => {
-            let (spawns, in_corridors) = guide.spawns(r.spawns, prize.map(|p| p.0));
+            let weapons: Vec<Vec3> = match (&guided_weapons, &layout.weapons) {
+                (Some(w), _) => w.0.clone(),
+                (None, Some(v)) => v.iter().map(|w| v3(w.pos)).collect(),
+                (None, None) => Vec::new(),
+            };
+            let (spawns, in_corridors) = guide.spawns(r.spawns, prize.map(|p| p.0), &weapons);
             report.push(format!("spawns: {} out of corridors, ramps, vents and the risky places ({in_corridors} let into corridors)", spawns.len()));
             spawns.into_iter().map(|s| (s, open_facing(level, s))).collect()
         }
@@ -416,12 +428,16 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
     let weapons: Vec<(Vec3, u8)> = match (&layout.weapons, &guide) {
         (Some(v), _) => v.iter().map(|w| (v3(w.pos), w.location)).collect(),
         (None, Some(guide)) => {
-            let mut weapons = guide.weapons(r.weapons, &prize.iter().map(|p| p.0).collect::<Vec<_>>(), &spawn_pos);
+            let (mut weapons, dead_ends) = guided_weapons.clone().unwrap_or_else(|| guide.weapons(r.weapons, &prize.iter().map(|p| p.0).collect::<Vec<_>>(), &spawn_pos));
             if prize.is_some() && !weapons.is_empty() {
                 let slot = 5.min(weapons.len() - 1);
                 weapons.swap(0, slot);
             }
-            report.push(format!("weapons: {} locations, location 5 {}", weapons.len(), prize.map_or("spread as the rest (no risky place)".to_string(), |p| format!("on {} {}", if p.1.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" }, p.1))));
+            report.push(format!(
+                "weapons: {} locations, location 5 {}, {dead_ends} in dead ends",
+                weapons.len(),
+                prize.map_or("spread as the rest (no risky place)".to_string(), |p| format!("on {} {}", if p.1.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" }, p.1))
+            ));
             weapons.into_iter().enumerate().map(|(i, w)| (w, i as u8)).collect()
         }
         (None, None) if gen => {
@@ -500,9 +516,10 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
     }
 
     // ── Hills: the most spread-out rooms with room to stand in ─────────────
-    let hills: Vec<Vec3> = match &layout.hills {
-        Some(v) => v.iter().map(|h| v3(h.pos)).collect(),
-        None if gen => {
+    let hills: Vec<Vec3> = match (&layout.hills, &guide) {
+        (Some(v), _) => v.iter().map(|h| v3(h.pos)).collect(),
+        (None, Some(guide)) => guide.hills(r.hills),
+        (None, None) if gen => {
             let nrooms = stage.rooms.roomcount();
             let mut room_nodes: Vec<Vec<Vec3>> = vec![Vec::new(); nrooms];
             for n in &nodes {
@@ -523,27 +540,39 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
                 })
                 .collect()
         }
-        None => Vec::new(),
+        (None, None) => Vec::new(),
     };
     if gen || layout.hills.is_some() {
         report.push(format!("hills: {} in rooms {:?}{}", hills.len(), hills.iter().map(|h| stage.rooms.bg_find_rooms_by_pos(*h, 4).0).collect::<Vec<_>>(), tag(layout.hills.is_some())));
     }
 
     // ── Capture the Case: bases far apart, six respawns around each ────────
-    let bases: Vec<(Vec3, f32, u8)> = match &layout.bases {
-        Some(v) => v.iter().map(|b| (v3(b.pos), b.facing.to_radians(), b.team)).collect(),
-        None if gen => {
+    let bases: Vec<(Vec3, f32, u8)> = match (&layout.bases, &guide) {
+        (Some(v), _) => v.iter().map(|b| (v3(b.pos), b.facing.to_radians(), b.team)).collect(),
+        (None, Some(guide)) => guide.bases(CTC_TEAMS).into_iter().enumerate().map(|(i, b)| (b, open_facing(level, b), i as u8)).collect(),
+        (None, None) if gen => {
             let centre = cands.iter().copied().sum::<Vec3>() / cands.len() as f32;
             let first = *cands.iter().max_by(|a, b| a.distance(centre).total_cmp(&b.distance(centre))).unwrap();
             let mut bases = vec![first];
             farthest(&cands, &mut bases, CTC_TEAMS, 0.0, &[], 0.0);
             bases.iter().enumerate().map(|(i, b)| (*b, open_facing(level, *b), i as u8)).collect()
         }
-        None => Vec::new(),
+        (None, None) => Vec::new(),
     };
-    let respawns: Vec<(Vec3, f32, u8)> = match &layout.respawns {
-        Some(v) => v.iter().map(|s| (v3(s.pos), s.facing.to_radians(), s.team)).collect(),
-        None if gen || layout.bases.is_some() => {
+    let respawns: Vec<(Vec3, f32, u8)> = match (&layout.respawns, &guide) {
+        (Some(v), _) => v.iter().map(|s| (v3(s.pos), s.facing.to_radians(), s.team)).collect(),
+        (None, Some(guide)) => {
+            let at: Vec<Vec3> = bases.iter().map(|b| b.0).collect();
+            let mut out = Vec::new();
+            for (i, (near, (b, _, team))) in guide.respawns(&at, CTC_RESPAWNS).into_iter().zip(&bases).enumerate() {
+                if near.len() < CTC_RESPAWNS {
+                    return Err(format!("base {i} at {b}: only {} respawn spots near it", near.len()));
+                }
+                out.extend(near.into_iter().map(|s| (s, open_facing(level, s), *team)));
+            }
+            out
+        }
+        (None, None) if gen || layout.bases.is_some() => {
             let mut out = Vec::new();
             for (i, (b, _, team)) in bases.iter().enumerate() {
                 let near: Vec<Vec3> = cands
@@ -560,7 +589,7 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
             }
             out
         }
-        None => Vec::new(),
+        (None, None) => Vec::new(),
     };
     if !bases.is_empty() || layout.respawns.is_some() {
         report.push(format!(
@@ -579,7 +608,8 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
             report.push(format!("cover: {} spots{}", g.cover.len(), tag(true)));
         }
         (None, How::Generate(_)) => {
-            g.cover = cover(level, &cands, &[]);
+            // (a generated level's on the spots out of the way)
+            g.cover = cover(level, &guide.as_ref().map_or_else(|| cands.clone(), |g| g.pads()), &[]);
             report.push(format!("cover: {} spots", g.cover.len()));
         }
         (None, How::Keep(rooms)) => {
@@ -663,7 +693,9 @@ pub fn place(r: &Recipe, stage: &Stage, level: &TileLevel, graph: &NavGraph, fix
     if let Some(h) = hints {
         let spawns: Vec<Vec3> = spawns.iter().map(|s| s.0).collect();
         let weapons: Vec<Vec3> = weapons.iter().map(|w| w.0).collect();
-        report.push(crate::autoplace::audit(h, level, graph, &spawns, &weapons, &ammo));
+        let bases: Vec<Vec3> = bases.iter().map(|b| b.0).collect();
+        let placed = crate::autoplace::Placement { spawns: &spawns, weapons: &weapons, ammo: &ammo, hills: &hills, bases: &bases };
+        report.extend(crate::autoplace::audit(h, level, graph, &placed));
     }
     emit_graph(&mut g, graph);
     Ok(Placed { gameplay: g, report })

@@ -2479,7 +2479,8 @@ weapon's room; (3) rules per item (against walls, one weapon per room first, a p
 the path, hills in halls, bases in rooms with two ways in, cover behind the generator's own cover)
 and fairness numbers in the report; (4) waygroups from the generator's rooms; (5) sparse waypoints
 from the plan. **Location 5 (the set's sixth slot, the power weapon) goes somewhere risky, and
-spawns stay out of corridors** (the user's answers). Steps 1 and 2 are done.
+spawns stay out of corridors** (the user's answers). Steps 1 and 2 are done (committed
+2026-11-20, `3d6eadf`), and step 3 (below, "Step 3").
 
 **Before** (seed 40, the plain placement, judged by the same audit): 6 of 46 items off flat
 floor, 14 on a ramp, in a doorway or by a hole, 3 of 16 spawns in corridors, ammo a 19.7 m walk
@@ -2520,7 +2521,7 @@ location 5 on its island.
     `setup.c:1710`, so each crate is that weapon's ammo), in the weapon's PD room 2 to 5 m walking
     from it, else 1.5 to 9 m in its room, else anywhere 1.5 to 15 m; 1.5 m apart, 2 m from anything
     placed.
-  - Hills, Capture the Case and cover are placed as before (step 3).
+  - Hills, Capture the Case and cover: step 3, below.
 - **The audit** (`autoplace::audit`, a `placement audit:` line in the report) judges whatever was
   placed, the plain placement too: items off flat floor (a 30 cm ring), items in a clear zone,
   spawns in corridors, the walk from each crate to its weapon, crates outside their weapon's room,
@@ -2532,10 +2533,57 @@ location 5 on its island.
   `PD_RECIPE='{"format": 1, "seed": 2, "options": {"angled": 1}}' cargo test -p pd_import --release
   probe_placement -- --ignored --nocapture`.
 
+### Step 3: a rule for each kind of thing (2026-11-20)
+
+- **Weapons before spawns.** With the spawns first, farthest-point sampling sent them to the
+  level's ends (the dead ends) and the weapons, kept 5 m off them, went elsewhere: a spawn's walk to
+  its nearest weapon was 52 to 133 m at most. Now location 5, then the weapons, then the spawns
+  (`place::place` computes the guided weapons before the spawns; a layout's spawns still keep
+  them off).
+- **Weapons** (`Guide::weapons`), each pass after the last until there are enough:
+  1. against a wall (a wall within 1 m at knee height in one of eight ways: `Spot::wall`; a
+     catwalk's railing counts) in a **dead end** (a room linked with one other room, by the
+     waypoints' links either way: `Walker::ways`), with 4 spots or more, up to a third of them;
+  2. against a wall in any room (not a corridor, ramp or vent) with 8 spots or more (room for the
+     crates: a 1-spot room on seed 7 left a weapon with none), as many to a room as it takes (one,
+     and one more for each 150 spots: the big hall takes more);
+  3. anywhere in those rooms, as many as each takes; 4. anywhere in them; 5. in any room but a
+     ramp or a vent; 6. corridors too.
+- **Spawns** (`Guide::spawns`): 5 m from every weapon, 10 m from location 5, and within a 25 m walk
+  **to** a weapon (the reversed links, `Walker::walk_to`: a drop is quick one way only; walked from
+  the weapon, seed 2 had a spawn 77 m from one), else 50 m, else anywhere; out of corridors as
+  before.
+- **Hills** (`Guide::hills`): the middle of a hall or room (`hub`, `room`) with 8 spots or more,
+  spread by walking: the open spot (no wall beside it, not a risky place) nearest the middle of its
+  spots on its lowest floor (`Guide::middles`).
+- **Capture the Case** (`Guide::bases`, `Guide::respawns`): bases in the middles of halls and rooms
+  with two ways in or more and 24 spots (a smaller room on seed 1 at size 4 had no room for six
+  respawn pads), as far apart as walking allows; each base's six respawn pads nearer it (walking)
+  than any other base, within 15 m of it (else 30 m), out of corridors and the risky places.
+- **Cover** (`place::cover` as before) on the guided spots only: none on a ramp or in a doorway.
+- **The fairness line** (`placement fairness:`): a spawn's walk to its nearest weapon (least,
+  most, mean), the dead ends with a weapon, the most weapons in a room, hills not in a hall or a
+  room, bases with one way in.
+
+| seed 40 | plain | steps 1-2 | step 3 |
+|---|---|---|---|
+| items off flat floor / on a ramp, doorway, hole | 6 / 14 | 0 / 0 | 0 / 0 |
+| spawns in corridors | 3 of 16 | 0 | 0 |
+| ammo walk from its weapon, mean (most) | 19.7 m (68) | 5.2 m (15) | 4.9 m (9) |
+| crates out of their weapon's room | 8 of 20 | 2 | 0 |
+| a spawn's walk to its nearest weapon, most (mean) | | 89 m (34) | 25 m (17) |
+| dead ends with a weapon | | 1 of 7 | 2 of 7 |
+
+Seeds 1, 7, 1 at size 4, 2 (`angled 1, cellars 1`: location 5 on its island) and 5 (towering,
+`platforms 1, galleries 2`): every spawn within 25 m of a weapon, every crate in its weapon's room,
+hills all in halls and rooms, bases all with two ways in or more.
+
 **Rough, and next:**
-- Weapons stand anywhere on a room's flat floor; step 3 puts them against walls and in corners.
-- Every default level's riskiest place is a pillar top (the mixed cover's pillars take ladders);
-  the zone nearest the middle wins, so location 5 is often in the big hall.
+- Most dead ends stay empty (seed 40: 5 of 7; seed 1 at size 4: 16 of 19): too small, too cramped by
+  doorways, or the third used up.
+- Every default level's riskiest place is a pillar top (the mixed cover's pillars take ladders),
+  ahead of platforms and galleries; the zone nearest the middle wins, so location 5 is often in the
+  big hall.
 - Waygroups: seed 40 has 986 waypoints in 815 groups (the maker's 2 m radius), nearly one each;
   step 4 makes them the generator's rooms.
 - Nobody has played it.
