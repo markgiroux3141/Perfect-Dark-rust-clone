@@ -72,9 +72,9 @@ fn the_generators_rooms_and_doorways_are_pds_rooms_and_portals() {
     let openings = b.openings();
     // One room for each of the plan's, one portal for each opening.
     assert_eq!((own.boxes.len(), own.portals.len(), openings.len()), (61, 91, 91));
-    assert!(report[0].starts_with("autolevel: seed 40, 61 rooms (0 with nothing drawn), 91 openings between them, 18 materials of the complex kit's (arena ref) on 16 pool textures, baked"), "{report:?}");
+    assert!(report[0].starts_with("autolevel: seed 40, 61 rooms (0 with nothing drawn), 91 openings between them, 19 materials of the complex kit's (arena ref) on 16 pool textures, baked"), "{report:?}");
     // Every triangle and tile names its room, and lies in its box.
-    assert_eq!(src.tris.len(), 14995); // (15,303 before the Rust's pillars stopped at the first storey)
+    assert_eq!(src.tris.len(), 15085); // (15,303 before the Rust's pillars stopped at the first storey; 14,995 before their ladders)
     for (room, pts) in src.tris.iter().map(|t| (t.room, t.v.map(|v| v.pos).to_vec())).chain(src.collision.iter().map(|p| (p.room, p.verts.clone()))) {
         assert!((1..=61).contains(&room), "room {room}");
         let (lo, hi) = own.boxes[room as usize - 1];
@@ -210,7 +210,7 @@ fn the_level_is_drawn_on_the_pools_textures_with_complexs_materials() {
     // 14,995 drawn (15,303 before the Rust's pillars stopped at the first
     // storey), and 30 more where the translucent layers' block trees cut a
     // railing or window across another's plane (`crate::bsp`).
-    assert_eq!(bg["batches"].as_array().unwrap().iter().map(|b| b["nidx"].as_u64().unwrap()).sum::<u64>(), 15025 * 3);
+    assert_eq!(bg["batches"].as_array().unwrap().iter().map(|b| b["nidx"].as_u64().unwrap()).sum::<u64>(), 15115 * 3);
     let xlu: Vec<&Value> = bg["nodes"].as_array().unwrap().iter().filter(|n| n["layer"] == "xlu").collect();
     assert!(!xlu.is_empty() && xlu.iter().all(|n| n["tree"].is_array()), "every translucent layer is ordered by a block tree");
     // A floor triangle's texels: 32 to every 39.37 units, in s and in t.
@@ -248,7 +248,7 @@ fn its_tiles_are_pds_rules_and_these_levels_three() {
     // and the rest are PD's: opaque floors block sight and shots, and carry their colour
     let floors = count(&|p| p.flags & floor != 0 && p.flags & GEOFLAG_BLOCK_SIGHT != 0 && p.flags & GEOFLAG_BLOCK_SHOOT != 0);
     assert!(floors > 2500 && count(&|p| p.flags & floor != 0 && p.floorcol != 0) > floors / 2, "{floors} floors");
-    assert_eq!(src.collision.len(), 12850);
+    assert_eq!(src.collision.len(), 12940);
 }
 
 #[test]

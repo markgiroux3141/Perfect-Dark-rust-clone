@@ -618,6 +618,7 @@ pub fn report_json(r: &Report) -> Json {
         ("flooded", json!(r.flooded)),
         ("rafts", json!(r.rafts)),
         ("shaped_rooms", json!(r.shaped_rooms)),
+        ("ladders", json!(r.ladders)),
         ("empty_air", json!(r.empty_air)),
         ("largest_void", json!(r.largest_void)),
     ]) else {
@@ -635,8 +636,8 @@ pub fn report_json(r: &Report) -> Json {
 }
 
 /// The report's keys that are the Rust's own, after the Python's (which end with the score).
-pub const RUSTS_OWN: [&str; 12] =
-    ["platforms", "galleries", "holes", "spans", "cellars", "islands", "angled", "flooded", "rafts", "shaped_rooms", "empty_air", "largest_void"];
+pub const RUSTS_OWN: [&str; 13] =
+    ["platforms", "galleries", "holes", "spans", "cellars", "islands", "angled", "flooded", "rafts", "shaped_rooms", "ladders", "empty_air", "largest_void"];
 
 /// A level's walks as walks.json holds them: name -> `[[x, y, z], [x, y, z, flags], ...]`.
 pub fn walks_json(lv: &Level) -> Json {
@@ -1327,20 +1328,20 @@ mod tests {
         let number = |name: &str| report.iter().find(|(k, _)| k == name).unwrap().1.clone();
         assert_eq!(
             (report.len(), number("cover"), number("walks"), number("score"), number("extent")),
-            (54 + RUSTS_OWN.len(), json!(13), json!(71), json!(37.85), json!([65, 50]))
+            (54 + RUSTS_OWN.len(), json!(13), json!(76), json!(37.85), json!([65, 50]))
         );
         // the walks, in the level's order, are the routes a walker is given
         let routes = routes_from(&file("walks.json")).unwrap();
         assert_eq!(routes.iter().map(|(k, _)| k).collect::<Vec<_>>(), lv.walks.iter().map(|(k, _)| k).collect::<Vec<_>>());
         assert_eq!(
             (routes.len(), routes[0].0.as_str(), walk::route_string(&routes[0].1).as_str()),
-            (71, "link_c01_medium4_colossal", "2539,0,-1476;2539,0,-1654,1;2539,0,-1831")
+            (76, "link_c01_medium4_colossal", "2539,0,-1476;2539,0,-1654,1;2539,0,-1831")
         );
         assert_eq!(routes.iter().filter(|(k, _)| walk::must_fail(k)).map(|(k, _)| k.as_str()).collect::<Vec<_>>(), ["!window_c26b_medium1", "!pool_basin"]);
         let views = in_order(&file("views.json")).unwrap();
         assert_eq!(
             (views.len(), views[0].0.as_str(), walk::view_from(&views[0].1).map(|v| walk::spawn_string(&v))),
-            (39, "colossal_door", Ok("2539,0,-1831,146.8".to_string()))
+            (44, "colossal_door", Ok("2539,0,-1831,146.8".to_string()))
         );
         assert_eq!(file("options.json"), options_json(&Options::default()).dump(None));
         assert_eq!(recipe::load(&file("recipe.json")), Ok(recipe));

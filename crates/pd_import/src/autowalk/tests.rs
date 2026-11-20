@@ -45,14 +45,14 @@ fn seed_40_is_built_and_every_route_walks_in_this_process() {
     let open = |d: &Path| -> Result<Box<dyn Walker>, String> { Ok(Box::new(SimWalk::open(d, &assets, res.clone())?)) };
     assert_eq!(cli::run(&args, &env, Some(&open)), Ok(true), "seed 40 is built, and every walk comes out as expected");
     let results: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("walk_results.json")).unwrap()).unwrap();
-    assert!(results.as_object().is_some_and(|r| r.len() == 71 && r.values().all(|ok| ok == &Value::Bool(true))), "{results}");
+    assert!(results.as_object().is_some_and(|r| r.len() == 76 && r.values().all(|ok| ok == &Value::Bool(true))), "{results}");
 
     // The level as the game loads it, and nothing left behind in the folder.
     let w = SimWalk::open(&dir, &assets, res.clone()).unwrap();
     assert!(std::fs::read_dir(&dir).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().starts_with(".simwalk")));
     let polys = &w.level.geom.polys;
     // (a tile for each triangle that is one, in the generator's 61 rooms and PD's room 0)
-    assert_eq!((polys.len(), w.stage.rooms.roomcount(), w.stage.rooms.portals.len()), (12850, 62, 91));
+    assert_eq!((polys.len(), w.stage.rooms.roomcount(), w.stage.rooms.portals.len()), (12940, 62, 91));
     let flags = |f: u32| polys.iter().filter(|p| p.geoflags == f).count();
     let (grates, ramp_walls) = (flags(GEOFLAG_FLOOR1 | GEOFLAG_FLOOR2), polys.iter().filter(|p| p.geoflags & GEOFLAG_RAMPWALL != 0).count());
     let low = polys.iter().filter(|p| p.wall && p.normal.y < -0.49).count();
@@ -61,7 +61,7 @@ fn seed_40_is_built_and_every_route_walks_in_this_process() {
     // Every route, on threads: the ones named `!...` (glass, water) stop short, the rest arrive.
     let routes = cli::routes_from(&std::fs::read_to_string(dir.join("walks.json")).unwrap()).unwrap();
     let outcomes = walk::walk_all(&w, &routes, 4);
-    assert_eq!(outcomes.len(), 71);
+    assert_eq!(outcomes.len(), 76);
     for (o, (name, pts)) in outcomes.iter().zip(&routes) {
         let walked = o.walked.as_ref().unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(walked.reached, !walk::must_fail(name), "{}", cli::outcome_line(o, pts));

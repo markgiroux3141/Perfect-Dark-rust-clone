@@ -87,7 +87,8 @@ Each is noted under "Rough" in AUTOLEVEL.md's "As built" sections.
   `flooded13`); AUTOLEVEL.md, "Flooded rooms". Then a first try at shaped rooms (`--shaped P`,
   0.1 by default, the user's call): any room big enough an L or a U cut from its lot, its catwalks
   round the cut (arena `shaped1`); AUTOLEVEL.md, "Shaped rooms". Then the pillars (the user's,
-  2026-11-19): they stop at the first storey, and tall rooms take fewer (a rule of the Rust's own).
+  2026-11-19): they stop at the first storey, and tall rooms take fewer (a rule of the Rust's own);
+  and a pillar with a clear top has a ladder up one side (AUTOLEVEL.md, Rules of the Rust's own).
 
 - **Blank levels: your edit wins** (the user's, 2026-11-18; designed, chosen as the next step):
   start empty, draw rooms, and the generator remakes the rest round each edit, offering

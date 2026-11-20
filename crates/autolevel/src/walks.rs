@@ -156,6 +156,13 @@ pub fn walks(lv: &mut Level) -> Result<(), String> {
         let (foot, top) = (middle(c.foot(lv.space(low).floor)), middle(lv.interior(up).hole_approach(*side)));
         set(&mut walks, format!("ladder_{low}_{up}"), vec![Step::at(foot), Step::at((top.0, top.1, lv.space(up).floor))]);
     }
+    // up each pillar's ladder (`furnish::Ladder`), from the floor in front of it to its top
+    for (key, it) in &lv.interiors {
+        for (n, l) in it.ladders.iter().enumerate() {
+            let (foot, top) = it.ladder_ends(l);
+            set(&mut walks, format!("pillar_{key}_{n}"), vec![Step::at(foot), Step::at(top)]);
+        }
+    }
     // walk to a pit's open side (or onto a span's plank), step off, land on what is under it
     for (_, it) in &lv.interiors {
         for (n, p) in it.pits.iter().enumerate() {
@@ -349,6 +356,14 @@ pub fn views(lv: &mut Level) {
         let (lx, ly) = ((ax + bx) / 2.0, (ay + by) / 2.0);
         let back = (((s.x1 - s.x0).min(s.y1 - s.y0)) as f64 - 1.0).min(3.0);
         set(&mut views, format!("ladder_{low}"), (lx + dx as f64 * back, ly + dy as f64 * back, s.floor, lx, ly));
+    }
+    // each pillar's ladder from a few cells out
+    for (key, it) in &lv.interiors {
+        for (n, l) in it.ladders.iter().enumerate() {
+            let ((ax, ay), (bx, by), (dx, dy)) = it.ladder_line(l);
+            let (lx, ly) = ((ax + bx) / 2.0, (ay + by) / 2.0);
+            set(&mut views, format!("pillar_{key}_{n}"), (lx + dx as f64 * 3.0, ly + dy as f64 * 3.0, it.levels[0], lx, ly));
+        }
     }
     // each pit from where it is stepped off, looking across it
     for (_, it) in &lv.interiors {

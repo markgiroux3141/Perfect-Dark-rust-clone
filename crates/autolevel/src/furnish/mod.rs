@@ -57,6 +57,7 @@ mod shape;
 mod tests;
 
 pub use angled::{Angled, End as AngledEnd};
+pub use cover::Ladder;
 pub use decks::SHAPES;
 pub use nav::{Nav, Node};
 pub use pits::{Pit, MAX_FALL};
@@ -415,6 +416,8 @@ pub struct Interior {
     /// (`shape`).
     pub cuts: Vec<Rect>,
     pub cut: Cells,
+    /// The ladders up the pillars whose tops are clear (`cover::lay_ladders`).
+    pub ladders: Vec<Ladder>,
 }
 
 impl std::fmt::Debug for Interior {
@@ -509,6 +512,7 @@ impl Interior {
             rafts: Vec::new(),
             cuts,
             cut,
+            ladders: Vec::new(),
         }
     }
 
@@ -580,6 +584,7 @@ impl Interior {
         self.lay_tanks();
         self.lay_pits();
         self.lay_cover();
+        self.lay_ladders();
         let rails = self.lay_rails();
         self.rails = self.cut_rails(rails);
         Ok(self)

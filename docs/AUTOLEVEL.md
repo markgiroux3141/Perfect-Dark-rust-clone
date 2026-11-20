@@ -409,6 +409,21 @@ longer writes it byte for byte; it still writes every case a later rule did not 
   counts: 15,303 triangles to 14,995, 13,119 tiles to 12,850 (13,507 to 13,238 with a ring), the
   plan's 371 rectangles to 363. Seeds 1-20 at the defaults: the same levels, every walk passes.
 
+- **A pillar with a clear top has a ladder up it** (2026-11-19, the user's call). A pillar that
+  stops at the first storey's ceiling with 200 units or more clear over it (no deck, pod's roof
+  or block, or angled catwalk) gets a ladder up one side (`cover::lay_ladders`, `furnish::Ladder`):
+  a side drawn from the room's own stream `{seed}/{key}/ladders` among those with standing room
+  a cell deep in front. It is the cellar's ladder (the kit's "ladder", Complex's grille, flagged
+  `GEOFLAG_LADDER` by the importer; a glTF material whose `extras.pd` is "ladder" is too), a cell
+  wide from the floor to the pillar's top, between two stiles of "plain" standing 8 units out:
+  on a "column" pillar the grille alone is its own face again (`geometry::pillar_ladder`). Players
+  climb it, and so do simulants: the importer's waypoints link a ladder's foot to its top
+  (`pd_sim::nav::gen`), so a top has waypoints of its own, dropped down from. Each has a walk and a view (`pillar_<room>_<n>`),
+  and the report counts them (`ladders`). Nothing else in a level moves; seed 40 (by
+  `Options::python`) has 5: 90 triangles and 90 tiles more (15,085, 12,940; 13,328 with a ring),
+  5 walks (76) and views (44) more, and a 19th material. Seeds 1-20, grand and towering: 2 to 17
+  a level (none in towering 17), every walk passes, and every one fails from the pillar's far side.
+
 - **Flooded rooms are on by default** (2026-11-19, the user's call): `Options::flooded` is 0.1
   (`level::FLOODED`), so a seed's level now has a flooded room where one falls (see "Flooded
   rooms"). The keys did not move: they are the Python's levels, which have none, and both key tests

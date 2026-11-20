@@ -72,7 +72,7 @@ mod tests {
     fn a_recipe_is_built_with_its_rooms_and_openings() {
         let b = make(&Recipe::python(40), true).unwrap();
         // the Blender build of seed 40: 61 rooms, 15,303 triangles (14,995 with the Rust's shorter pillars)
-        assert_eq!((b.rooms.len(), b.rooms.iter().map(Room::triangles).sum::<usize>()), (61, 14995));
+        assert_eq!((b.rooms.len(), b.rooms.iter().map(Room::triangles).sum::<usize>()), (61, 15085)); // (and 90 for its five pillars' ladders)
         assert!(b.baked && b.rooms.iter().any(|r| r.faces.iter().any(|f| f.colors.iter().any(|c| *c != [255; 3]))), "baked colours");
         assert_eq!(b.presets().len(), 16);
         // every opening joins two rooms that have meshes

@@ -113,6 +113,8 @@ pub struct Report {
     pub rafts: usize,
     /// Shaped rooms (`furnish::shape`; the Python's `shaped` is its notched and partitioned rooms).
     pub shaped_rooms: usize,
+    /// Ladders up pillars to their tops (`furnish::Ladder`).
+    pub ladders: usize,
     pub empty_air: f64,
     pub largest_void: f64,
 }
@@ -216,6 +218,7 @@ pub fn report(lv: &Level) -> Report {
         flooded: its().filter(|it| it.flood.is_some()).count(),
         rafts: its().map(|it| it.rafts.len()).sum(),
         shaped_rooms: its().filter(|it| !it.cut.is_empty()).count(),
+        ladders: its().map(|it| it.ladders.len()).sum(),
         empty_air: 0.0,
         largest_void: 0.0,
     };

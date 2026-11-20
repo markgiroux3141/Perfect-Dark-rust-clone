@@ -21,7 +21,8 @@
 //!   named with `-nocol` draws without colliding, `-colonly` collides without
 //!   drawing (invisible walls, simple collision), `-ladder` makes its upright
 //!   triangles a ladder (`GEOFLAG_LADDER`); `extras.pd` may say the same
-//!   (`"nocol"`, `"colonly"`, `"ladder"`). A level made to be walked as PD's
+//!   (`"nocol"`, `"colonly"`, `"ladder"`), and a material's `extras.pd`
+//!   `"ladder"` makes every upright triangle drawn with it one. A level made to be walked as PD's
 //!   own are asks for more in its recipe (each off unless named): `grates`
 //!   (a translucent triangle facing up is a floor), `low_ceilings` (a ceiling
 //!   under a standing head's height is a wall, so a vent is squatted through)
@@ -74,6 +75,8 @@ struct Mat {
     textured: bool,
     texcoord: usize,
     xlu: bool,
+    /// Its `extras.pd` is "ladder": its upright triangles are ladders.
+    ladder: bool,
 }
 
 fn wrap(mode: u64) -> Wrap {
@@ -173,7 +176,14 @@ pub fn load(r: &Recipe, src: &GltfSource, path: &Path, report: &mut Vec<String>)
             surface: pd_sim::stage::bghit::SURFACETYPE_DEFAULT,
             pd: None,
         });
-        mats.push(Mat { index: materials.len() - 1, factor, textured: texture.is_some(), texcoord: bct["texCoord"].as_u64().unwrap_or(0) as usize, xlu: blend == Blend::Translucent });
+        mats.push(Mat {
+            index: materials.len() - 1,
+            factor,
+            textured: texture.is_some(),
+            texcoord: bct["texCoord"].as_u64().unwrap_or(0) as usize,
+            xlu: blend == Blend::Translucent,
+            ladder: gm["extras"]["pd"].as_str().is_some_and(|t| t.eq_ignore_ascii_case("ladder")),
+        });
     }
 
     // ── Every node's triangles ─────────────────────────────────────────────
@@ -283,7 +293,7 @@ pub fn load(r: &Recipe, src: &GltfSource, path: &Path, report: &mut Vec<String>)
                     }
                     continue;
                 };
-                if t.ladder && flags & GEOFLAG_WALL != 0 {
+                if (t.ladder || m.ladder) && flags & GEOFLAG_WALL != 0 {
                     flags |= GEOFLAG_LADDER;
                 }
                 collision.push(ColPoly { verts: p.to_vec(), flags, floortype: FLOORTYPE_DEFAULT, grab: src.climb_ledges, floorcol, room: 0 });

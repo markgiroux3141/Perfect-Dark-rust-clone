@@ -7,10 +7,25 @@
 //! of one, and nothing that cuts the floor in two.
 
 use super::{bounds, grow, meets, overlap, Cover, Interior, CLEAR};
-use crate::cells::{rect_cells, Cells};
+use crate::cells::{rect_cells, Cells, Rect};
 use crate::py;
+use crate::pyrand::PyRandom;
 use crate::space::door_pad;
 use crate::storeys::storey;
+
+/// A ladder up the side of a pillar to its top: a pillar in a room of more than one storey stops
+/// at the first storey's ceiling (`reach`), and where nothing is over it its top is a place to
+/// stand, climbed to by this. New in the Rust (the user's call, 2026-11-19).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Ladder {
+    /// The pillar: an index into `Interior::cover`.
+    pub pillar: usize,
+    /// The side of it the ladder is on (0 south, 1 east, 2 north, 3 west).
+    pub side: usize,
+}
+
+/// The least headroom over a pillar's top for a ladder to it, units (a player is 1.6 m tall).
+const HEADROOM: i32 = 200;
 
 /// A line between two doors on the floor: its length, and the middle of each door's pad, h.
 type Lane = (f64, (f64, f64), (f64, f64));
@@ -186,6 +201,64 @@ impl Interior {
         }
     }
 
+    /// A ladder up each pillar that stops at the first storey's ceiling with headroom over it, on a
+    /// side chosen at random (the room's own stream, "{seed}/{key}/ladders") from those whose floor
+    /// in front is standing room. In a room of one storey a pillar runs to the ceiling: none.
+    pub(super) fn lay_ladders(&mut self) {
+        let z = self.levels[0];
+        if self.upper.is_empty() {
+            return;
+        }
+        let first = storey(z).1 - z;
+        let stand = self.stand(z);
+        let mut rng = PyRandom::named(&format!("{}/ladders", self.stream));
+        let mut out = Vec::new();
+        for (n, &(x0, y0, x1, y1, h, tag)) in self.cover.iter().enumerate() {
+            if tag != self.pillar || h != first || z + h + HEADROOM > self.s.top {
+                continue;
+            }
+            // nothing over its top (the first storey's deck is the only one `reach` keeps it from)
+            let top = rect_cells((x0, y0, x1, y1));
+            let over = self.upper.iter().any(|zz| {
+                zz - 40 < z + h + HEADROOM && [&self.deck[zz], &self.roof[zz], &self.shell[zz], &self.spanned(*zz)].iter().any(|c| !c.is_disjoint(&top))
+            });
+            if over {
+                continue;
+            }
+            let mut sides = [0, 1, 2, 3];
+            rng.shuffle(&mut sides);
+            if let Some(&side) = sides.iter().find(|&&side| rect_cells(front((x0, y0, x1, y1), side)).is_subset(&stand)) {
+                out.push(Ladder { pillar: n, side });
+            }
+        }
+        self.ladders = out;
+    }
+
+    /// A ladder's two ends on its pillar's side, cells, one cell wide in its middle (as a cellar's:
+    /// `Cellar::ladder`), and the way it faces (out of the pillar).
+    pub fn ladder_line(&self, l: &Ladder) -> ((f64, f64), (f64, f64), (i32, i32)) {
+        let (x0, y0, x1, y1, _, _) = self.cover[l.pillar];
+        let (x0, y0, x1, y1) = (x0 as f64 / 2.0, y0 as f64 / 2.0, x1 as f64 / 2.0, y1 as f64 / 2.0);
+        let (mx, my) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        match l.side {
+            0 => ((mx - 0.5, y0), (mx + 0.5, y0), (0, -1)),
+            1 => ((x1, my - 0.5), (x1, my + 0.5), (1, 0)),
+            2 => ((mx - 0.5, y1), (mx + 0.5, y1), (0, 1)),
+            _ => ((x0, my - 0.5), (x0, my + 0.5), (-1, 0)),
+        }
+    }
+
+    /// Where a ladder is climbed from (the middle of the cell in front of it, on the floor) and
+    /// where it ends (the middle of its pillar's top), cells.
+    pub fn ladder_ends(&self, l: &Ladder) -> ((f64, f64, i32), (f64, f64, i32)) {
+        let (x0, y0, x1, y1, h, _) = self.cover[l.pillar];
+        let f = front((x0, y0, x1, y1), l.side);
+        let z = self.levels[0];
+        let mid = |r: Rect| ((r.0 + r.2) as f64 / 4.0, (r.1 + r.3) as f64 / 4.0);
+        let ((fx, fy), (tx, ty)) = (mid(f), mid((x0, y0, x1, y1)));
+        ((fx, fy, z), (tx, ty, z + h))
+    }
+
     /// Rows of pillars down the room's long axis: one row for each seven cells of width, a
     /// pillar every three to six cells (by `clutter`), two cells square in the widest halls; in a
     /// room of more than one storey, one row for each fourteen cells and half as far again apart.
@@ -258,5 +331,77 @@ impl Interior {
                 }
             }
         }
+    }
+}
+
+/// The floor in front of a pillar's side, h: a cell deep, its width.
+fn front((x0, y0, x1, y1): Rect, side: usize) -> Rect {
+    match side {
+        0 => (x0, y0 - 2, x1, y0),
+        1 => (x1, y0, x1 + 2, y1),
+        2 => (x0, y1, x1, y1 + 2),
+        _ => (x0 - 2, y0, x0, y1),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::level::{generate, Options};
+    use crate::place::Scale;
+
+    #[test]
+    fn a_pillar_that_stops_at_the_first_storey_has_a_ladder_up_to_its_clear_top() {
+        let (mut ladders, mut sides) = (0, [0; 4]);
+        for (scale, seeds) in [(Scale::Grand, 1..=6), (Scale::Towering, 1..=3)] {
+            for seed in seeds {
+                let mut o = Options::python();
+                o.siting.scale = scale;
+                let lv = generate(seed, &o).unwrap();
+                for (key, it) in &lv.interiors {
+                    let z = it.levels[0];
+                    if it.upper.is_empty() {
+                        assert!(it.ladders.is_empty(), "seed {seed}: {key}: a pillar to the ceiling");
+                        continue;
+                    }
+                    let first = storey(z).1 - z;
+                    let stand = it.stand(z);
+                    for l in &it.ladders {
+                        let at = format!("seed {seed}: {key}: pillar {}", l.pillar);
+                        let (x0, y0, x1, y1, h, tag) = it.cover[l.pillar];
+                        assert_eq!((h, tag), (first, it.pillar), "{at}");
+                        // the floor in front is standing room, and nothing is over the top
+                        assert!(rect_cells(front((x0, y0, x1, y1), l.side)).is_subset(&stand), "{at}");
+                        let top = rect_cells((x0, y0, x1, y1));
+                        for zz in &it.upper {
+                            if zz - 40 < z + h + HEADROOM {
+                                assert!(it.deck[zz].is_disjoint(&top) && it.roof[zz].is_disjoint(&top) && it.shell[zz].is_disjoint(&top), "{at}");
+                            }
+                        }
+                        let ((_, _, fz), (tx, ty, tz)) = it.ladder_ends(l);
+                        assert_eq!((fz, tz), (z, z + first), "{at}");
+                        assert!(tx > x0 as f64 / 2.0 && tx < x1 as f64 / 2.0 && ty > y0 as f64 / 2.0 && ty < y1 as f64 / 2.0, "{at}");
+                        assert!(lv.walks.iter().any(|(name, _)| name.starts_with(&format!("pillar_{key}_"))), "{at}: no walk up it");
+                        ladders += 1;
+                        sides[l.side] += 1;
+                    }
+                    // every pillar with a clear top has one, unless no side of it has floor in front
+                    let laddered: Vec<usize> = it.ladders.iter().map(|l| l.pillar).collect();
+                    for (n, c) in it.cover.iter().enumerate() {
+                        if c.5 == it.pillar && c.4 == first && !laddered.contains(&n) {
+                            let open = (0..4).any(|side| rect_cells(front((c.0, c.1, c.2, c.3), side)).is_subset(&stand));
+                            let top = rect_cells((c.0, c.1, c.2, c.3));
+                            let over = it.upper.iter().any(|zz| {
+                                zz - 40 < z + c.4 + HEADROOM
+                                    && [&it.deck[zz], &it.roof[zz], &it.shell[zz], &it.spanned(*zz)].iter().any(|o| !o.is_disjoint(&top))
+                            });
+                            assert!(!open || over || z + c.4 + HEADROOM > it.s.top, "seed {seed}: {key}: pillar {n} has no ladder");
+                        }
+                    }
+                }
+            }
+        }
+        // the sides are the stream's: every one is drawn
+        assert!(ladders >= 40 && sides.iter().all(|&n| n >= 5), "{ladders} ladders, by side {sides:?}");
     }
 }

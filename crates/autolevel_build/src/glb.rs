@@ -389,6 +389,9 @@ pub fn bytes(rooms: &[Room], kit: &Kit, name: &str, textures: Option<&Path>) -> 
         if paint.flags.contains(&"CullBoth") {
             mat["doubleSided"] = json!(true);
         }
+        if paint.role == "ladder" {
+            mat["extras"]["pd"] = json!("ladder"); // (climbed: `pd_import::gltf`'s tags)
+        }
         if paint.flags.contains(&"Transparent") {
             mat["alphaMode"] = json!("BLEND");
             clear += 1;
@@ -812,8 +815,8 @@ mod tests {
         // as the Blender build of seed 40: 61 rooms, 15,303 triangles; 18 materials, three of them
         // see-through (the Blender build's 17 and two: its railings and floor grates were one, the
         // mesh, and the railings are now Complex's metal railing, the glass strips' texture)
-        assert_eq!(check(&gltf, &bin), 14995); // (15,303 before the Rust's pillars stopped at the first storey)
-        assert_eq!((report.rooms, report.materials, list(&gltf, "nodes").len(), list(&gltf, "meshes").len()), (61, 18, 61, 61));
+        assert_eq!(check(&gltf, &bin), 15085); // (15,303 before the Rust's pillars stopped at the first storey; 14,995 before their ladders)
+        assert_eq!((report.rooms, report.materials, list(&gltf, "nodes").len(), list(&gltf, "meshes").len()), (61, 19, 61, 61)); // (19: the pillars' ladders)
         assert_eq!(gltf["asset"]["extras"]["transparent_materials"], 3);
         assert_eq!(gltf["nodes"][0]["name"], "Room_01");
         let numbers: Vec<u64> = list(&gltf, "nodes").iter().map(|n| n["extras"]["ge_room"].as_u64().unwrap()).collect();

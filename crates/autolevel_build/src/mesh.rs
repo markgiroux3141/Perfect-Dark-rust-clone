@@ -223,7 +223,7 @@ mod tests {
         // the Blender build of seed 40 reports 61 rooms, 15,303 triangles; the Rust's pillars stop at
         // the first storey's ceiling, so fewer faces are split up the halls: 14,995
         assert_eq!(rooms.len(), 61);
-        assert_eq!(rooms.iter().map(Room::triangles).sum::<usize>(), 14995);
+        assert_eq!(rooms.iter().map(Room::triangles).sum::<usize>(), 15085); // (90 of them its five pillars' ladders)
         let mut flat = 0;
         for r in &rooms {
             assert_eq!(r.name, format!("Room_{:02X}", r.number));
