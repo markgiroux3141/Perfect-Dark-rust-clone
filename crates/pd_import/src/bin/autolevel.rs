@@ -5,7 +5,7 @@
 //! routes walked in this process, on `pd_sim`'s player and the tiles the
 //! importer makes of the level, unless pd-walk is named), and one command:
 //!
-//! `autolevel import DIR [--code C] [--name N] [--stagenum N] [--root DIR]
+//! `autolevel import DIR [--code C] [--name N] [--root DIR]
 //! [--gltf]`: the level built in DIR (`autolevel build SEED`) into the game.
 //! It writes the level's recipe, `crates/pd_import/levels/<code>.json` (code
 //! `autolevel<seed>`, name `Autolevel <seed>`, stage number 124 unless
@@ -113,7 +113,6 @@ struct Import {
     dir: PathBuf,
     code: Option<String>,
     name: Option<String>,
-    stagenum: u8,
     root: Option<PathBuf>,
     /// By the glTF source, from the folder's `.glb`.
     gltf: bool,
@@ -121,7 +120,7 @@ struct Import {
 
 impl Import {
     fn parse(args: &[String]) -> Result<Import, String> {
-        let mut job = Import { dir: PathBuf::new(), code: None, name: None, stagenum: autowalk::STAGENUM, root: None, gltf: false };
+        let mut job = Import { dir: PathBuf::new(), code: None, name: None, root: None, gltf: false };
         let mut dirs = Vec::new();
         let mut n = 0;
         while n < args.len() {
@@ -140,7 +139,7 @@ impl Import {
             match arg {
                 "--code" => job.code = Some(value.clone()),
                 "--name" => job.name = Some(value.clone()),
-                "--stagenum" => job.stagenum = value.parse().ok().filter(|s| pd_core::assets::CUSTOM_STAGENUMS.contains(s)).ok_or_else(|| format!("--stagenum: a custom stage number (124 to 127 are free), not {value}"))?,
+                "--stagenum" => return Err("--stagenum: no longer needed (the game numbers custom levels as it starts)".to_string()),
                 "--root" => job.root = Some(PathBuf::from(value)),
                 _ => return Err(format!("{arg}: not an option of import (see --help)")),
             }
@@ -182,7 +181,7 @@ impl Import {
         let name = self.name.clone().unwrap_or_else(|| format!("Autolevel {seed}"));
         let levels = root.join("crates").join("pd_import").join("levels");
         let path = levels.join(format!("{code}.json"));
-        let text = autowalk::recipe_text(&code, &name, self.stagenum, via);
+        let text = autowalk::recipe_text(&code, &name, via);
         if let Ok(old) = std::fs::read_to_string(&path) {
             let group = serde_json::from_str::<serde_json::Value>(&old).ok().and_then(|v| v["group"].as_str().map(str::to_owned));
             if group.as_deref() != Some(autowalk::GROUP) {
@@ -191,18 +190,15 @@ impl Import {
         }
         std::fs::write(&path, &text).map_err(|e| format!("{}: {e}", path.display()))?;
         println!("{}", path.display());
-        for other in shared_stagenum(&levels, &code, self.stagenum) {
-            println!("note: {other} has stage number {} too, and the arena menu lists one level a number: --stagenum N (124 to 127 are free)", self.stagenum);
-        }
         let r = pd_import::recipe::Recipe::load(&path)?;
         let layout = pd_import::layout::Layout::load(&pd_import::layout::Layout::path_for(&path))?.unwrap_or_else(pd_import::layout::Layout::new);
         let custom = std::env::var_os("PD_CUSTOM").map_or_else(|| root.join("custom"), PathBuf::from);
-        let paths = pd_import::Paths { assets: assets_dir(&root), custom: custom.clone(), src };
+        let paths = pd_import::Paths { assets: assets_dir(&root), custom: custom.clone(), src, levels: Some(levels.clone()) };
         let t = Instant::now();
         for line in pd_import::import(&r, &paths, &layout)? {
             println!("{line}");
         }
-        println!("imported in {:.1}s: {} (stage {}, \"{name}\" in the arena menu's {} group)", t.elapsed().as_secs_f64(), custom.join("stages").join(&code).display(), self.stagenum, autowalk::GROUP);
+        println!("imported in {:.1}s: {} (\"{name}\" in the arena menu's {} group)", t.elapsed().as_secs_f64(), custom.join("stages").join(&code).display(), autowalk::GROUP);
         println!("look:  cargo run --release -p pd_tools --bin pd_snapshot -- out/autolevel/snap stage {code}   (PNGs from its spawn pads; --at x,y,z,theta for one view)");
         println!("again: cargo run --release -p pd_import --bin pd_import -- {code}");
         Ok(())
@@ -306,17 +302,3 @@ impl Shots {
     }
 }
 
-/// The other recipes in `levels` with stage number `stagenum`, by code.
-fn shared_stagenum(levels: &Path, code: &str, stagenum: u8) -> Vec<String> {
-    let mut out: Vec<String> = std::fs::read_dir(levels)
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_name().to_string_lossy().ends_with(".json") && !e.file_name().to_string_lossy().ends_with(".layout.json"))
-        .filter_map(|e| serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(e.path()).ok()?).ok())
-        .filter(|v| v["stagenum"].as_u64() == Some(stagenum as u64) && v["code"].as_str() != Some(code))
-        .filter_map(|v| v["code"].as_str().map(str::to_owned))
-        .collect();
-    out.sort();
-    out
-}

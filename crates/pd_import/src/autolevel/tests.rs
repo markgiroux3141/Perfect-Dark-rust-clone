@@ -32,7 +32,7 @@ const RECIPE_40: &str = "{\n  \"format\": 1,\n  \"seed\": 40,\n  \"options\": {\
 
 /// The level's recipe, as `autolevel import` writes it.
 fn recipe40() -> Recipe {
-    autowalk::recipe("autolevel40", "Autolevel 40", autowalk::STAGENUM, Via::Recipe(RECIPE_40)).unwrap()
+    autowalk::recipe("autolevel40", "Autolevel 40", Via::Recipe(RECIPE_40)).unwrap()
 }
 
 fn source40() -> (LevelSource, Vec<String>) {
@@ -198,7 +198,7 @@ fn the_level_is_drawn_on_the_pools_textures_with_complexs_materials() {
     // in the pool's texels with the bake's bytes as they were.
     let custom = std::env::temp_dir().join(format!("pd_import_autolevel_bg_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&custom);
-    let paths = crate::Paths { assets: assets(), custom: custom.clone(), src: None };
+    let paths = crate::Paths { assets: assets(), custom: custom.clone(), src: None, levels: None };
     let (stage_dir, _) = crate::geometry(&recipe40(), &paths).unwrap();
     assert_eq!(std::fs::read_dir(stage_dir.join("tex")).map_or(0, |d| d.count()), 0, "texture files written");
     let bg: Value = serde_json::from_str(&std::fs::read_to_string(stage_dir.join("bg.json")).unwrap()).unwrap();

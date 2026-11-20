@@ -282,6 +282,22 @@ impl Editor {
         }
     }
 
+    /// An empty start (no rooms but the ones drawn; the seed only decorates them), or the
+    /// seed's own rooms: what the panel's "empty" switch does.
+    pub fn set_empty(&mut self, empty: bool) {
+        let gone = self.doc.set_start(if empty { Start::Empty } else { Start::Seed });
+        self.drop_drag();
+        self.look = None; // (framed again: on the site, or on the seed's level)
+        if empty {
+            self.set_tool(Tool::Rooms);
+        }
+        let begun = if empty { "an empty start: draw a room (New room, below)" } else { "the seed's own rooms" };
+        self.status = match gone {
+            0 => begun.to_string(),
+            n => format!("{begun}; {n} edits set aside (Undo brings them back)"),
+        };
+    }
+
     /// Is the level on show the recipe's own (made, or found impossible), and anything picked
     /// looked into?
     pub fn settled(&self) -> bool {
@@ -662,17 +678,7 @@ impl Editor {
             let switch = ui.checkbox(&mut empty, "empty").on_hover_text(does);
             self.spots.push(("empty".to_string(), switch.rect));
             if switch.changed() {
-                let gone = self.doc.set_start(if empty { Start::Empty } else { Start::Seed });
-                self.drop_drag();
-                self.look = None; // (framed again: on the site, or on the seed's level)
-                if empty {
-                    self.set_tool(Tool::Rooms);
-                }
-                let begun = if empty { "an empty start: draw a room (New room, below)" } else { "the seed's own rooms" };
-                self.status = match gone {
-                    0 => begun.to_string(),
-                    n => format!("{begun}; {n} edits set aside (Undo brings them back)"),
-                };
+                self.set_empty(empty);
             }
         });
         if let Some(job) = &self.job {

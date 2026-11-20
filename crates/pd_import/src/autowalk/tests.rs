@@ -128,11 +128,11 @@ fn a_generated_levels_recipe_holds_the_generators_own() {
     use crate::recipe::Source;
     // as `autolevel build` writes a seed's recipe, and one with options and an edit
     let plain = autolevel::recipe::save(&autolevel::recipe::Recipe::new(40));
-    let text = recipe_text("autolevel40", "Autolevel 40", STAGENUM, Via::Recipe(&plain));
-    assert!(text.starts_with("{\n  \"format\": \"pd-import-recipe/1\",\n  \"code\": \"autolevel40\",\n  \"name\": \"Autolevel 40\",\n  \"group\": \"Autolevel\",\n  \"stagenum\": 124,\n") && text.ends_with("}\n"), "{text}");
+    let text = recipe_text("autolevel40", "Autolevel 40", Via::Recipe(&plain));
+    assert!(text.starts_with("{\n  \"format\": \"pd-import-recipe/1\",\n  \"code\": \"autolevel40\",\n  \"name\": \"Autolevel 40\",\n  \"group\": \"Autolevel\",\n  \"scale\": 1.0,\n") && text.ends_with("}\n"), "{text}");
     assert!(text.contains("  \"source\": {\n    \"game\": \"autolevel\",\n    \"recipe\": {\n      \"format\": 1,\n      \"seed\": 40"), "{text}");
-    let r = recipe("autolevel40", "Autolevel 40", STAGENUM, Via::Recipe(&plain)).unwrap();
-    assert_eq!((r.code.as_str(), r.name.as_str(), r.group.as_deref(), r.stagenum, r.scale), ("autolevel40", "Autolevel 40", Some(GROUP), 124, 1.0));
+    let r = recipe("autolevel40", "Autolevel 40", Via::Recipe(&plain)).unwrap();
+    assert_eq!((r.code.as_str(), r.name.as_str(), r.group.as_deref(), r.scale), ("autolevel40", "Autolevel 40", Some(GROUP), 1.0));
     // no split to ask for: the rooms are the level's own
     assert_eq!((r.rooms, r.spawns, r.weapons, r.hills), (0, 16, 10, 5));
     let Source::Autolevel(a) = &r.source else { panic!("an autolevel source") };
@@ -141,7 +141,7 @@ fn a_generated_levels_recipe_holds_the_generators_own() {
     let back = autolevel::recipe::load(&crate::autolevel::recipe_text(a, None).unwrap()).unwrap();
     assert_eq!(back, autolevel::recipe::Recipe::new(40));
     let edited = "{ \"format\": 1, \"seed\": 7, \"options\": { \"cover\": \"pillars\" },\n  \"edits\": [ { \"edit\": \"keep\", \"room\": \"spire1\" } ] }\n";
-    let Source::Autolevel(a) = recipe("x", "x", 125, Via::Recipe(edited)).unwrap().source else { panic!("an autolevel source") };
+    let Source::Autolevel(a) = recipe("x", "x", Via::Recipe(edited)).unwrap().source else { panic!("an autolevel source") };
     assert_eq!(autolevel::recipe::load(&crate::autolevel::recipe_text(&a, None).unwrap()).unwrap(), autolevel::recipe::load(edited).unwrap());
     // a recipe may name the generator's by its file or its build folder instead, and --src does
     let dir = std::env::temp_dir().join(format!("pd_import_autowalk_recipe_{}", std::process::id()));
@@ -155,19 +155,18 @@ fn a_generated_levels_recipe_holds_the_generators_own() {
     std::fs::remove_dir_all(&dir).unwrap();
     assert!(built_recipe(&dir).unwrap_err().starts_with("no built level in "));
     assert!(crate::autolevel::recipe_text(&by_path, None).unwrap_err().contains("autolevel build SEED"));
-    assert!(pd_core::assets::CUSTOM_STAGENUMS.contains(&STAGENUM));
     // a name with a quote in it is still JSON
-    assert_eq!(recipe("x", "The \"Pit\"", 125, Via::Recipe(&plain)).unwrap().name, "The \"Pit\"");
+    assert_eq!(recipe("x", "The \"Pit\"", Via::Recipe(&plain)).unwrap().name, "The \"Pit\"");
 }
 
 #[test]
 fn a_generated_levels_gltf_recipe_turns_its_tile_rules_on() {
     use crate::recipe::Source;
-    let r = recipe("autolevel40", "Autolevel 40", STAGENUM, Via::Gltf("out/autolevel/seed40/autolevel_40.glb")).unwrap();
-    assert_eq!((r.code.as_str(), r.group.as_deref(), r.stagenum, r.rooms, r.spawns, r.weapons, r.hills), ("autolevel40", Some(GROUP), 124, 60, 16, 10, 5));
+    let r = recipe("autolevel40", "Autolevel 40", Via::Gltf("out/autolevel/seed40/autolevel_40.glb")).unwrap();
+    assert_eq!((r.code.as_str(), r.group.as_deref(), r.rooms, r.spawns, r.weapons, r.hills), ("autolevel40", Some(GROUP), 60, 16, 10, 5));
     let Source::Gltf(g) = &r.source else { panic!("a glTF source") };
     assert_eq!((g.path.as_str(), g.grates, g.low_ceilings, g.ramp_walls, g.climb_ledges), ("out/autolevel/seed40/autolevel_40.glb", true, true, true, false));
-    assert_eq!(recipe("x", "x", 125, Via::Gltf("C:\\levels\\x.glb")).unwrap().code, "x");
+    assert_eq!(recipe("x", "x", Via::Gltf("C:\\levels\\x.glb")).unwrap().code, "x");
 }
 
 #[test]

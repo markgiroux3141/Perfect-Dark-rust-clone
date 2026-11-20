@@ -985,8 +985,8 @@ Moved on 2026-11-16. What changed with the move, and what is here that was not t
 - **As an arena: a source of its own** (2026-11-17). `autolevel import out/autolevel/seed40`
   writes `crates/pd_import/levels/autolevel40.json` with the generator's recipe in it
   (`"source": {"game": "autolevel", "recipe": {"format": 1, "seed": 40, ...}}`; group
-  "Autolevel", stage 124 unless `--stagenum`: 124 to 127 are the free ones, and a second level
-  on a number drops the first from the menu) and imports it. `pd_import::autolevel` makes the
+  "Autolevel"; since M22 a custom level has no stage number of its own: the game numbers them
+  as it starts, in `custom/levels.json`'s order, so there is no `--stagenum`) and imports it. `pd_import::autolevel` makes the
   level again from that recipe in this process (`autolevel_build::built::make`: a level is the
   same every time, half a second) and reads no file of it, so that one JSON remakes the arena
   on any machine (`pd_import autolevel40`):
@@ -1882,8 +1882,8 @@ trek's length measured, (4) a searched trek, a second way down (a drop from the 
   the base (each piece of the trek is walked; the whole trek is not one walk).
 - **Messages** still say a pod is on one of "its hall's first two upper storeys", an atrium's top
   one aside. The editor's floor buttons are now 17.
-- **Not imported as an arena** yet, and nobody has played one. The stage numbers are the limit
-  (124 to 127; see AUTOLEVEL_BACKLOG.md).
+- **Not imported as an arena** yet, and nobody has played one. (The stage numbers were the limit
+  then, 124 to 127; since M22 the game numbers custom levels itself, 160 of them.)
 - Next is step 3, the helix trek planner (above).
 
 ### As built (step 3: the trek planner, 2026-11-19)

@@ -28,9 +28,18 @@ pub struct AssetDir {
     custom: Option<PathBuf>,
 }
 
-/// The stage numbers custom levels take: past PD's last (`STAGE_TEST_OLD`,
-/// 0x5d), within the 7 bits an MP setup file keeps the stage in.
-pub const CUSTOM_STAGENUMS: std::ops::RangeInclusive<u8> = 0x60..=0x7f;
+/// The stage numbers custom levels are handed at run time, in
+/// `custom/levels.json`'s order: past PD's last (`STAGE_4MBMENU`, 0x5d), up
+/// to what a stage number's byte holds, so 160 custom arenas are listed. A
+/// custom level is known by its code everywhere it is kept (its recipe,
+/// `levels.json`, a saved MP setup: `pd_menu::files`), never by its number,
+/// which another run may give another level.
+///
+/// SUBST: PD's stage numbers are fixed, and an MP setup file keeps one in 7
+/// bits / custom levels' numbers are given as the game starts, past 0x7f too,
+/// so more arenas than 7 bits allow can be listed (a saved setup on one keeps
+/// its code beside the file instead).
+pub const CUSTOM_STAGENUMS: std::ops::RangeInclusive<u8> = 0x60..=0xff;
 
 /// The `MODEL_*` numbers custom models take: past PD's last (`MODEL_*` runs to
 /// 0x1bd), so a setup row names one as it names PD's.
@@ -41,7 +50,10 @@ pub const CUSTOM_MODELNUMS: std::ops::RangeInclusive<i32> = 0x1000..=0x1fff;
 pub struct CustomLevel {
     /// Its directory, `custom/stages/<code>/`.
     pub code: String,
-    /// Its `STAGE_*` number, from [`CUSTOM_STAGENUMS`].
+    /// Its `STAGE_*` number for this run, from [`CUSTOM_STAGENUMS`] in the
+    /// file's order ([`AssetDir::custom_levels`]). A row's own `stagenum`
+    /// (written before 2026-11-20) is ignored.
+    #[serde(skip)]
     pub stagenum: u8,
     /// The arena menu's name for it.
     pub name: String,
@@ -52,9 +64,31 @@ pub struct CustomLevel {
 }
 
 /// The custom levels in the arena menu's order: the "Custom" group's (no
-/// group) first, then each named group's by name; by stage number within.
+/// group) first, then each named group's by name; by stage number (the
+/// file's order) within.
 pub fn sort_custom_levels(levels: &mut [CustomLevel]) {
     levels.sort_by(|a, b| (!a.group.is_empty(), &a.group, a.stagenum).cmp(&(!b.group.is_empty(), &b.group, b.stagenum)));
+}
+
+/// The levels in order, numbered from [`CUSTOM_STAGENUMS`]: a code already
+/// listed, a code that is one of PD's, and those past the last number are
+/// left out (logged).
+fn number_custom_levels(levels: Vec<CustomLevel>, path: &Path) -> Vec<CustomLevel> {
+    let mut out: Vec<CustomLevel> = Vec::with_capacity(levels.len());
+    let mut numbers = CUSTOM_STAGENUMS;
+    for mut l in levels {
+        if out.iter().any(|o| o.code == l.code) || crate::ids::STAGE_CODES.iter().any(|(_, c)| *c == l.code) {
+            log::warn!("{}: {:?} is listed twice or is one of PD's stages; left out", path.display(), l.code);
+            continue;
+        }
+        let Some(n) = numbers.next() else {
+            log::warn!("{}: more than {} custom levels; {:?} and those after it are left out", path.display(), CUSTOM_STAGENUMS.count(), l.code);
+            break;
+        };
+        l.stagenum = n;
+        out.push(l);
+    }
+    out
 }
 
 #[derive(Deserialize)]
@@ -89,8 +123,10 @@ impl AssetDir {
         self.custom.as_deref()
     }
 
-    /// `custom/levels.json`'s levels (none without a custom tree). A malformed
-    /// index is logged and ignored: the arenas still play.
+    /// `custom/levels.json`'s levels (none without a custom tree), each handed
+    /// its stage number in the file's order. A level past the last number, or
+    /// a code listed twice, is logged and left out; a malformed index is
+    /// logged and ignored: the arenas still play.
     pub fn custom_levels(&self) -> Vec<CustomLevel> {
         let Some(dir) = &self.custom else { return Vec::new() };
         let path = dir.join("levels.json");
@@ -98,7 +134,7 @@ impl AssetDir {
             return Vec::new();
         }
         match self.read_json::<CustomLevelsFile>(&path) {
-            Ok(f) if f.format == "pd-custom-levels/1" => f.levels.into_iter().filter(|l| CUSTOM_STAGENUMS.contains(&l.stagenum)).collect(),
+            Ok(f) if f.format == "pd-custom-levels/1" => number_custom_levels(f.levels, &path),
             Ok(f) => {
                 log::warn!("{}: format {:?}, expected pd-custom-levels/1", path.display(), f.format);
                 Vec::new()
@@ -113,6 +149,12 @@ impl AssetDir {
     /// A stage's code: PD's (`ids::stage_code`), else a custom level's.
     pub fn stage_code(&self, stagenum: u8) -> Option<String> {
         crate::ids::stage_code(stagenum).map(str::to_owned).or_else(|| self.custom_levels().into_iter().find(|l| l.stagenum == stagenum).map(|l| l.code))
+    }
+
+    /// A stage's number from its code: PD's (`ids::STAGE_CODES`), else the
+    /// one a custom level is handed this run.
+    pub fn stage_num(&self, code: &str) -> Option<u8> {
+        crate::ids::STAGE_CODES.iter().find(|(_, c)| *c == code).map(|(n, _)| *n).or_else(|| self.custom_levels().into_iter().find(|l| l.code == code).map(|l| l.stagenum))
     }
 
     /// `rel` in the custom tree if it is there, else under the root.
@@ -245,7 +287,9 @@ mod tests {
     use super::*;
 
     /// A custom tree lays its stages and files over the assets, lists its
-    /// levels, and resolves their stage numbers; PD's codes win.
+    /// levels numbered in the file's order (a row's own number ignored; a
+    /// code twice, or one of PD's, left out), and resolves numbers and codes
+    /// both ways; PD's codes win.
     #[test]
     fn custom_levels_are_laid_over_the_assets() {
         let dir = std::env::temp_dir().join(format!("pd_custom_test_{}", std::process::id()));
@@ -253,19 +297,28 @@ mod tests {
         std::fs::create_dir_all(dir.join("stages").join("kok")).unwrap();
         std::fs::write(
             dir.join("levels.json"),
-            r#"{"format":"pd-custom-levels/1","levels":[{"code":"kok","stagenum":96,"name":"Kok"},{"code":"bad","stagenum":31,"name":"Clash"}]}"#,
+            r#"{"format":"pd-custom-levels/1","levels":[{"code":"kok","stagenum":127,"name":"Kok"},{"code":"ref","name":"Clash"},{"code":"two","stagenum":31,"name":"Two","group":"G"},{"code":"kok","name":"Again"}]}"#,
         )
         .unwrap();
         std::fs::write(dir.join("stages").join("kok").join("tex.png"), b"x").unwrap();
         let a = AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR")).with_custom_dir(&dir);
-        assert_eq!(a.custom_levels(), vec![CustomLevel { code: "kok".into(), stagenum: 96, name: "Kok".into(), group: String::new() }], "a PD stage number is refused");
+        let level = |code: &str, stagenum: u8, name: &str, group: &str| CustomLevel { code: code.into(), stagenum, name: name.into(), group: group.into() };
+        assert_eq!(a.custom_levels(), vec![level("kok", 0x60, "Kok", ""), level("two", 0x61, "Two", "G")]);
         assert_eq!(a.stage("kok"), dir.join("stages").join("kok"));
         assert_eq!(a.path("stages/kok/tex.png"), dir.join("stages/kok/tex.png"));
         assert_eq!(a.stage("ref"), a.root().join("stages").join("ref"));
-        assert_eq!(a.stage_code(96).as_deref(), Some("kok"));
+        assert_eq!((a.stage_code(0x60).as_deref(), a.stage_code(0x61).as_deref(), a.stage_code(0x62)), (Some("kok"), Some("two"), None));
         assert_eq!(a.stage_code(crate::ids::STAGE_MP_COMPLEX).as_deref(), Some("ref"));
-        assert_eq!(a.stage_code(97), None);
+        assert_eq!((a.stage_num("two"), a.stage_num("ref"), a.stage_num("gone")), (Some(0x61), Some(crate::ids::STAGE_MP_COMPLEX), None));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// 160 custom levels are listed, numbered 0x60 to 0xff; the next is left out.
+    #[test]
+    fn custom_levels_run_to_the_last_stage_number() {
+        let rows: Vec<CustomLevel> = (0..161).map(|i| CustomLevel { code: format!("l{i}"), stagenum: 0, name: String::new(), group: String::new() }).collect();
+        let listed = number_custom_levels(rows, Path::new("levels.json"));
+        assert_eq!((listed.len(), listed[0].stagenum, listed[159].stagenum, listed[159].code.as_str()), (160, 0x60, 0xff, "l159"));
     }
 
     /// A custom tree's models are listed beside PD's: one with a custom

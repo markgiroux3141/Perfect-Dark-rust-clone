@@ -84,6 +84,11 @@ impl Space {
     }
 
     /// Is a preview being made?
+    /// Nothing is being made, and what the view wants is on show.
+    pub fn settled(&self) -> bool {
+        self.job.is_none() && (!self.wanted() || self.shown.is_some() || self.failed.is_some())
+    }
+
     pub fn busy(&self) -> bool {
         self.job.is_some()
     }

@@ -600,6 +600,11 @@ impl MenuSystem {
                 errno = self.paks.pak_save_at_guid(device, fileid, filetypes[(fileop - 6) as usize], &body, Some(&mut newfileid));
                 self.fm().copybuf = body;
                 self.filelists.var80075bd0[(fileop - 6) as usize] = true;
+                // Not PD: a copied setup file takes its custom arena with it.
+                if errno == 0 && fileop == FILEOP_WRITE_MPSETUP {
+                    let code = self.custom_setups.code(self.filemgr.filetocopy).map(str::to_owned);
+                    self.custom_setups.set(FileGuid { fileid: newfileid, deviceserial: serial }, code.as_deref());
+                }
             }
             FILEOP_LOAD_GAME => errno = self.gamefile_load(device),
             FILEOP_LOAD_MPPLAYER => {

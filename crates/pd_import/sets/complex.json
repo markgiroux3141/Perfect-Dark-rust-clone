@@ -1,0 +1,8 @@
+{
+  "format": "pd-arena-set/1",
+  "name": "Complex",
+  "arenas": [
+    "level_1",
+    "level_2"
+  ]
+}

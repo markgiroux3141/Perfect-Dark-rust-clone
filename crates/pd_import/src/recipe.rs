@@ -14,8 +14,8 @@ pub struct Recipe {
     /// The arena menu's group ("Jedi Academy"); else "Custom".
     #[serde(default)]
     pub group: Option<String>,
-    /// Its `STAGE_*` number, from `pd_core::assets::CUSTOM_STAGENUMS`.
-    pub stagenum: u8,
+    // A recipe written before 2026-11-20 has a "stagenum": ignored, as the
+    // game hands custom levels their numbers (`pd_core::assets::CUSTOM_STAGENUMS`).
     /// Source units to PD centimetres.
     pub scale: f32,
     pub source: Source,
@@ -321,9 +321,6 @@ impl Recipe {
         let r: Recipe = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
         if r.format != "pd-import-recipe/1" {
             return Err(format!("{}: format {:?}, expected pd-import-recipe/1", path.display(), r.format));
-        }
-        if !pd_core::assets::CUSTOM_STAGENUMS.contains(&r.stagenum) {
-            return Err(format!("{}: stage number {:#x} is outside the custom range", path.display(), r.stagenum));
         }
         if pd_core::ids::STAGE_CODES.iter().any(|(_, c)| *c == r.code) {
             return Err(format!("{}: {:?} is one of PD's stage codes", path.display(), r.code));

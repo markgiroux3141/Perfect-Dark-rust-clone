@@ -719,8 +719,10 @@ pub fn mp_menu_text_mpconfig_marquee(pd: &mut MenuSystem, _item: &'static MenuIt
         return String::new();
     }
     let (filename, numsims, stagenum, scenarionum) = MenuSystem::mpsetupfile_get_overview(&f.name);
-    // PD's arenanum search over g_MpArenas, and the custom levels (not PD).
-    let arena = pd.arena_name(stagenum as u8);
+    // PD's arenanum search over g_MpArenas, and the custom levels (not PD:
+    // a custom arena's code is kept beside the file).
+    let stagenum = pd.saved_setup_stage(stagenum as u8, pd_core::savebuffer::FileGuid { fileid: f.fileid, deviceserial: f.deviceserial });
+    let arena = pd.arena_name(stagenum);
     if let (true, Some(arena)) = (scenarionum <= 5 && !filename.is_empty() && numsims as i32 <= MAX_BOTS, arena) {
         let fmt = pd.lang(tx(B_MPMENU, 140));
         let scen = pd.lang(MP_SCENARIO_OVERVIEWS[scenarionum as usize].name);

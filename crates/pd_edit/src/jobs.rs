@@ -30,10 +30,10 @@ pub enum Work {
 impl Work {
     pub fn label(self) -> &'static str {
         match self {
-            Work::Import => "Importing (the waypoints take up to a minute)",
-            Work::Place { fresh: false } => "Placing",
-            Work::Place { fresh: true } => "Generating waypoints",
-            Work::Check => "Playing a check match",
+            Work::Import => "Building the arena (up to a minute)",
+            Work::Place { fresh: false } => "Saving",
+            Work::Place { fresh: true } => "Making the simulant paths",
+            Work::Check => "Running the simulant test",
             Work::GeDoors => "Extracting GoldenEye's doors",
         }
     }
@@ -43,6 +43,8 @@ pub struct Done {
     pub work: Work,
     /// The report, and the stage loaded again (none for a check).
     pub result: Result<(Vec<String>, Option<Scene>), String>,
+    /// A check's numbers.
+    pub stats: Option<pd_import::CheckStats>,
 }
 
 pub struct Job {
@@ -63,13 +65,17 @@ impl Job {
                 let scene = Scene::load(&paths.asset_dir(), &recipe.code, res.clone(), weapons)?;
                 Ok((report, Some(scene)))
             };
+            let mut stats = None;
             let result = match work {
                 Work::Import => pd_import::import(&recipe, &ip, &layout).and_then(reload),
                 Work::Place { fresh } => pd_import::replace(&recipe, &ip, &layout, pd_import::Finish { check: false, fresh_graph: fresh }).and_then(reload),
-                Work::Check => pd_import::check(&paths.asset_dir(), &recipe.code).map(|r| (r, None)),
+                Work::Check => pd_import::check_stats(&paths.asset_dir(), &recipe.code).map(|(r, s)| {
+                    stats = Some(s);
+                    (r, None)
+                }),
                 Work::GeDoors => pd_import::doors::extract_ge(&ip, &paths.levels).map(|r| (r, None)),
             };
-            let _ = tx.send(Done { work, result });
+            let _ = tx.send(Done { work, result, stats });
         });
         Job { work, started: Instant::now(), layout: placed, rx }
     }

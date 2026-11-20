@@ -94,17 +94,7 @@ pub fn jka(base: &Path, out: &Path, levels: &Path, paths: &crate::Paths, opts: &
         return Err(format!("{}: no maps/mp/*.bsp in its packages", base.display()));
     }
 
-    // Stage numbers: a map's own if its recipe exists, else the next free.
     let recipe_path = |stem: &str| levels.join(format!("jka_{stem}.json"));
-    let mut taken: Vec<u8> = Vec::new();
-    for e in std::fs::read_dir(levels).map_err(|e| format!("{}: {e}", levels.display()))?.flatten() {
-        let p = e.path();
-        if p.extension().is_some_and(|x| x == "json") && !p.to_string_lossy().ends_with(".layout.json") {
-            if let Ok(r) = Recipe::load(&p) {
-                taken.push(r.stagenum);
-            }
-        }
-    }
     std::fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
     std::fs::write(out.join("README.txt"), README.replace('\n', "\r\n")).map_err(|e| format!("{}: {e}", out.display()))?;
 
@@ -115,16 +105,8 @@ pub fn jka(base: &Path, out: &Path, levels: &Path, paths: &crate::Paths, opts: &
         let result = (|| -> Result<Vec<String>, String> {
             let bytes = vfs.read(&format!("maps/mp/{stem}.bsp"))?.ok_or("not readable")?;
             let name = title(stem, crate::jka::map_title(&bytes));
-            let stagenum = match Recipe::load(&rp) {
-                Ok(r) => r.stagenum,
-                Err(_) => {
-                    let n = pd_core::assets::CUSTOM_STAGENUMS.clone().find(|n| !taken.contains(n)).ok_or("no custom stage number left (0x60-0x7f)")?;
-                    taken.push(n);
-                    n
-                }
-            };
             if !rp.exists() {
-                std::fs::write(&rp, recipe_text(stem, &name, stagenum, base)).map_err(|e| format!("{}: {e}", rp.display()))?;
+                std::fs::write(&rp, recipe_text(stem, &name, base)).map_err(|e| format!("{}: {e}", rp.display()))?;
             }
             let r = Recipe::load(&rp)?;
             let dir = out.join(folder(stem, &r.name));
@@ -157,7 +139,7 @@ pub fn jka(base: &Path, out: &Path, levels: &Path, paths: &crate::Paths, opts: &
 }
 
 /// A map's recipe, laid out as the hand-written ones are.
-pub fn recipe_text(stem: &str, name: &str, stagenum: u8, base: &Path) -> String {
+pub fn recipe_text(stem: &str, name: &str, base: &Path) -> String {
     let q = |s: &str| serde_json::to_string(s).unwrap_or_default();
     let base = q(&base.to_string_lossy().replace('\\', "/"));
     let name = q(name);
@@ -167,7 +149,6 @@ pub fn recipe_text(stem: &str, name: &str, stagenum: u8, base: &Path) -> String 
   "code": "jka_{stem}",
   "name": {name},
   "group": "Jedi Academy",
-  "stagenum": {stagenum},
   "scale": 2.65,
   "source": {{
     "game": "jka",
@@ -199,9 +180,9 @@ mod tests {
         assert_eq!(title("siege_korriban", Some("@siege_korr_loc_10".into())), "SIEGE_KORRIBAN");
         assert_eq!(title("duel8", None), "DUEL8");
         assert_eq!(folder("ffa3", "Tatooine: FFA!"), "ffa3 - Tatooine_ FFA_");
-        let text = recipe_text("ffa1", "Vjun \"Sentinel\"", 0x66, Path::new(r"D:\x\base"));
+        let text = recipe_text("ffa1", "Vjun \"Sentinel\"", Path::new(r"D:\x\base"));
         let v: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!((v["code"].as_str(), v["name"].as_str(), v["group"].as_str(), v["stagenum"].as_u64()), (Some("jka_ffa1"), Some("Vjun \"Sentinel\""), Some("Jedi Academy"), Some(0x66)));
+        assert_eq!((v["code"].as_str(), v["name"].as_str(), v["group"].as_str(), v.get("stagenum")), (Some("jka_ffa1"), Some("Vjun \"Sentinel\""), Some("Jedi Academy"), None));
         assert_eq!(v["source"]["base"], "D:/x/base");
     }
 }

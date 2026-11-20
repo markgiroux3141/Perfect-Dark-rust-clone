@@ -106,18 +106,17 @@ pub struct Highlight {
 }
 
 fn item_label(doc: &Doc, it: Item) -> String {
+    const TEAMS: [&str; 4] = ["red", "yellow", "blue", "magenta"];
+    let team = |t: Option<u8>| TEAMS[t.unwrap_or(0) as usize % 4];
     match it.kind {
-        Kind::Spawn => format!("Spawn {}", it.index),
-        Kind::Weapon => format!("Weapon {} (loc {})", it.index, doc.location(it).unwrap_or(0)),
-        Kind::Ammo => format!("Ammo for W{}", doc.crate_weapon(it).unwrap_or(0)),
-        Kind::Hill => format!("Hill {}", it.index),
-        Kind::Base => format!("Base, team {}", doc.team(it).unwrap_or(0)),
-        Kind::Respawn => format!("Respawn, team {}", doc.team(it).unwrap_or(0)),
-        Kind::Cover => format!("Cover {}", it.index),
-        Kind::Door => {
-            let d = doc.door(it.index);
-            format!("Door {}: {} ({})", it.index, d.model, d.motion.name())
-        }
+        Kind::Spawn => format!("Spawn {}", it.index + 1),
+        Kind::Weapon => format!("Weapon spot {}", it.index + 1),
+        Kind::Ammo => format!("Ammo for spot {}", doc.crate_weapon(it).unwrap_or(0) + 1),
+        Kind::Hill => format!("Hill {}", it.index + 1),
+        Kind::Base => format!("Base ({})", team(doc.team(it))),
+        Kind::Respawn => format!("Team spawn ({})", team(doc.team(it))),
+        Kind::Cover => format!("Cover {}", it.index + 1),
+        Kind::Door => format!("Door {}", it.index + 1),
     }
 }
 

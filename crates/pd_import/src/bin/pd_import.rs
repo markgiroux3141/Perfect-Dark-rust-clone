@@ -57,7 +57,7 @@ fn run(args: &[String]) -> Result<(), String> {
     let custom = opt("--custom").or_else(|| std::env::var_os("PD_CUSTOM").map(PathBuf::from)).unwrap_or_else(|| repo.join("custom"));
     let positional: Vec<&String> = args.iter().enumerate().filter(|(i, a)| !a.starts_with("--") && (*i == 0 || !matches!(args[i - 1].as_str(), "--src" | "--custom" | "--check" | "--place" | "--adopt" | "--ge64" | "--rooms" | "--light" | "--texels" | "--jka" | "--base" | "--only"))).map(|(_, a)| a).collect();
     let recipe_path = |which: &str| if which.ends_with(".json") { PathBuf::from(which) } else { manifest.join("levels").join(format!("{which}.json")) };
-    let paths = pd_import::Paths { assets: assets.clone(), custom: custom.clone(), src: opt("--src") };
+    let paths = pd_import::Paths { assets: assets.clone(), custom: custom.clone(), src: opt("--src"), levels: Some(manifest.join("levels")) };
     if let Some(which) = opt("--place") {
         let rp = recipe_path(&which.to_string_lossy());
         let r = pd_import::recipe::Recipe::load(&rp)?;

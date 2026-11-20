@@ -215,7 +215,7 @@ pub fn run(outdir: &Path, args: &[String]) -> Result<Vec<PathBuf>, String> {
                 .iter()
                 .map(|a| a.stagenum as u8)
                 .find(|&n| pd_core::ids::stage_code(n) == Some(code.as_str()))
-                .or_else(|| assets.custom_levels().iter().find(|l| &l.code == code).map(|l| l.stagenum))
+                .or_else(|| assets.custom_levels().into_iter().find(|l| &l.code == code).map(|l| l.stagenum))
                 .ok_or_else(|| format!("--stage {code}: no such arena"))?,
         };
         let mp = &mut menu.mp;

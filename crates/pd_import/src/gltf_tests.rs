@@ -142,7 +142,6 @@ fn recipe(path: &std::path::Path) -> Recipe {
         format: "pd-import-recipe/1".into(),
         code: "test_gltf".into(),
         name: "Test glTF".into(),
-        stagenum: 0x7e,
         scale: 100.0,
         source: Source::Gltf(GltfSource { path: path.to_string_lossy().into_owned(), sky: None, sun: None, climb_ledges: false, max_texture: 8, grates: false, low_ceilings: false, ramp_walls: false }),
         rooms: 4,
@@ -259,7 +258,7 @@ fn a_gltf_level_is_placed_by_its_layout() {
     let path = dir.join("yard.glb");
     write_yard(&path);
     let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("assets");
-    let paths = crate::Paths { assets: assets.clone(), custom: dir.join("custom"), src: None };
+    let paths = crate::Paths { assets: assets.clone(), custom: dir.join("custom"), src: None, levels: None };
     let r = recipe(&path);
     let report = crate::import(&r, &paths, &Layout::new()).unwrap();
     assert!(report.iter().any(|l| l.starts_with("check: a minute")), "{report:#?}");

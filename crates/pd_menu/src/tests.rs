@@ -226,6 +226,30 @@ fn start_game_hands_back_the_match_setup() {
     assert_eq!(cur(&pd), "g_MpAdvancedSetupMenuDialog");
 }
 
+/// The level editor's "Play now" (not PD): from the Combat Simulator, a match on
+/// the arena asked for, player 1 alone, mp_init's options and weapon set, no
+/// limits; the setup the menus had (simulants, another arena) is back after it.
+#[test]
+fn a_walkabout_starts_a_match_and_puts_the_setup_back() {
+    let script = super::script::Script::parse(&["--combat", "w40"]).unwrap();
+    let mut pd = script.start(&AssetDir::from_manifest_dir(env!("CARGO_MANIFEST_DIR"))).unwrap();
+    script.run(&mut pd, |_, _| Ok(())).unwrap();
+    pd.mp.setup.stagenum = pd_core::ids::STAGE_MP_COMPLEX;
+    pd.mp.setup.chrslots = 0b11_0001;
+    pd.mp.setup.timelimit = 4;
+    let before = pd.mp.setup.clone();
+    let was = pd.start_walkabout(pd_core::ids::STAGE_MP_SKEDAR);
+    let Some(super::Outcome::StartMatch(m)) = pd.take_outcome() else { panic!("no match started") };
+    assert!(pd.in_match);
+    assert_eq!((m.stagenum, m.scenario, m.options), (pd_core::ids::STAGE_MP_SKEDAR, pd_core::ids::MPSCENARIO_COMBAT, super::mpstate::MP_INIT_OPTIONS));
+    assert_eq!((m.players.len(), m.simulants.len()), (1, 0));
+    assert_eq!((m.timelimit, m.scorelimit, m.teamscorelimit), (60, 100, 400));
+    assert_eq!(gd::MP_WEAPONS[m.weapons[0] as usize].weaponnum, pd_core::ids::WEAPON_FALCON2 as i32);
+    pd.return_from_match();
+    pd.end_walkabout(was);
+    assert_eq!((pd.mp.setup.stagenum, pd.mp.setup.chrslots, pd.mp.setup.timelimit), (before.stagenum, before.chrslots, before.timelimit));
+}
+
 /// On a new save some weapons are locked, so a slot's option index is not its
 /// `g_MpWeapons` index: the match summary must still name what the Weapons
 /// dialog shows.

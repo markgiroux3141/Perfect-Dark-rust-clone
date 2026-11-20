@@ -165,7 +165,7 @@ impl Preview {
     pub fn make(recipe: &gen::Recipe, assets: &Path, root: &Path) -> Result<Preview, String> {
         let started = Instant::now();
         let scratch = Scratch::new(root)?;
-        let r = autowalk::recipe(CODE, "Preview", autowalk::STAGENUM, Via::Recipe(&gen::save(recipe)))?;
+        let r = autowalk::recipe(CODE, "Preview", Via::Recipe(&gen::save(recipe)))?;
         // (a recipe the generator stops dead on is an error here, as in its own editor)
         let (stage, level) = autowalk::geometry_only(&r, assets, scratch.path())?;
         // The level itself, for its views and rooms: the importer has just

@@ -89,3 +89,49 @@ impl DebugUi {
         }
     }
 }
+
+/// egui drawn into a texture with no window: a tool's picture of its panels.
+/// The texture is cleared to transparent first, so the picture can be laid
+/// over another (what the panels leave free shows through).
+pub struct OffscreenUi {
+    renderer: egui_wgpu::Renderer,
+}
+
+impl OffscreenUi {
+    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> OffscreenUi {
+        OffscreenUi { renderer: egui_wgpu::Renderer::new(device, format, None, 1, false) }
+    }
+
+    /// Paint one pass's output (`ctx.run`'s) into `view`, `size` pixels.
+    pub fn paint(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, view: &wgpu::TextureView, size: (u32, u32), ctx: &egui::Context, out: egui::FullOutput) {
+        let jobs = ctx.tessellate(out.shapes, out.pixels_per_point);
+        let screen = egui_wgpu::ScreenDescriptor { size_in_pixels: [size.0, size.1], pixels_per_point: out.pixels_per_point };
+        self.update_textures(device, queue, &out.textures_delta);
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("offscreen-ui") });
+        self.renderer.update_buffers(device, queue, &mut encoder, &jobs, &screen);
+        {
+            let mut rp = encoder
+                .begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("offscreen-ui"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment { view, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store } })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                })
+                .forget_lifetime();
+            self.renderer.render(&mut rp, &jobs, &screen);
+        }
+        queue.submit([encoder.finish()]);
+    }
+
+    /// A pass's texture changes (the font atlas is made in the first): every
+    /// pass's, painted or not, so the one painted has what it draws with.
+    pub fn update_textures(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, delta: &egui::TexturesDelta) {
+        for (id, d) in &delta.set {
+            self.renderer.update_texture(device, queue, *id, d);
+        }
+        for id in &delta.free {
+            self.renderer.free_texture(id);
+        }
+    }
+}

@@ -50,11 +50,11 @@ pub const USAGE: &str = "autolevel: Complex-style levels from a seed, with no mo
                                                         and a helix of rooms round it that is the only way up: laid
                                                         as a recipe (DIR/recipe.json, for the editor), then built
                                                         and walked as `build` does; DIR is out/autolevel/trek<SEED>
-  autolevel import DIR [--code C] [--name N] [--stagenum N] [--gltf]
+  autolevel import DIR [--code C] [--name N] [--gltf]
                                                         a built level into the game, by its recipe (the generator's
                                                         rooms and doorways as rooms and portals; --gltf: its .glb as
-                                                        any glTF): crates/pd_import/levels/<code>.json (autolevel<seed>,
-                                                        stage 124 unless named) and custom/stages/<code>
+                                                        any glTF): crates/pd_import/levels/<code>.json (autolevel<seed>
+                                                        unless named) and custom/stages/<code>
 
 What kind of level (sweep, plan, build, batch and deadends all take these):
   --scale grand|standard|towering

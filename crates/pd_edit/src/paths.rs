@@ -33,7 +33,7 @@ impl EditPaths {
     }
 
     pub fn import_paths(&self) -> pd_import::Paths {
-        pd_import::Paths { assets: self.assets.clone(), custom: self.custom.clone(), src: None }
+        pd_import::Paths { assets: self.assets.clone(), custom: self.custom.clone(), src: None, levels: Some(self.levels.clone()) }
     }
 
     /// `assets/` with the custom tree over it, as the game loads a stage.

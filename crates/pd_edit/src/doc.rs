@@ -134,6 +134,14 @@ impl Doc {
         self.push();
     }
 
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
     pub fn undo(&mut self) -> bool {
         match self.undo.pop() {
             Some(l) => {

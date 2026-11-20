@@ -68,6 +68,7 @@ pub mod place;
 pub mod q3shader;
 pub mod recipe;
 pub mod rooms;
+pub mod sets;
 pub mod source;
 pub mod waypoints;
 pub mod write;
@@ -98,6 +99,10 @@ pub struct Paths {
     pub custom: PathBuf,
     /// A source directory in place of the recipe's.
     pub src: Option<PathBuf>,
+    /// The recipes' folder (`crates/pd_import/levels`): with it, a finished
+    /// import joins the active arena set (`sets`), which writes the game's
+    /// list; without (tests, scratch trees), it is added to `levels.json`.
+    pub levels: Option<PathBuf>,
 }
 
 impl Paths {
@@ -263,7 +268,7 @@ pub fn export_ge64(r: &Recipe, paths: &Paths, out: &Path, opts: &ge64::Options, 
 }
 
 fn title(r: &Recipe) -> String {
-    format!("{} ({}, stage {:#x}), scale {}", r.name, r.code, r.stagenum, r.scale)
+    format!("{} ({}), scale {}", r.name, r.code, r.scale)
 }
 
 /// `custom/stages/<code>/`, emptied: the importer writes a stage from scratch.
@@ -396,7 +401,7 @@ fn finish(r: &Recipe, paths: &Paths, dir: &Path, data: SourceData, layout: &Layo
     report.extend(placed.report);
     write::write_pads(dir, r, &placed.gameplay)?;
     write::write_setup(dir, r, &placed.gameplay)?;
-    write::register(&paths.custom, r)?;
+    write::register(&paths.custom, r, paths.levels.as_deref())?;
 
     if how.check {
         report.extend(check(&assets, &r.code)?);
@@ -406,7 +411,34 @@ fn finish(r: &Recipe, paths: &Paths, dir: &Path, data: SourceData, layout: &Layo
     Ok(report)
 }
 
+/// The simulant test's numbers ([`check_stats`]), for the editor's Test &
+/// play step.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CheckStats {
+    /// In the minute of six Normal simulants.
+    pub kills: u32,
+    pub shots: u32,
+    pub hits: u32,
+    /// Times a simulant stood stuck (`harness::abtest`'s stalls).
+    pub stalls: u32,
+    /// Falls of more than a metre off a ledge (not the hops down ramps).
+    pub ledge_falls: u32,
+    /// The rooms a walk could reach (those holding a pad), and how many of
+    /// them a simulant stood in.
+    pub rooms: usize,
+    pub visited: usize,
+    /// A spot in each room nobody reached (its first pad), to look at.
+    pub unvisited: Vec<Vec3>,
+}
+
+/// The import's check: every spawn on a floor, the rooms' lighting, and a
+/// minute of six simulants (the report's lines).
 pub fn check(assets: &AssetDir, code: &str) -> Result<Vec<String>, String> {
+    check_stats(assets, code).map(|(lines, _)| lines)
+}
+
+/// [`check`], with its numbers.
+pub fn check_stats(assets: &AssetDir, code: &str) -> Result<(Vec<String>, CheckStats), String> {
     let stage = Arc::new(Stage::load(assets, code)?);
     let level = Arc::new(TileLevel::for_stage(&stage));
     let mut report = Vec::new();
@@ -440,7 +472,7 @@ pub fn check(assets: &AssetDir, code: &str) -> Result<Vec<String>, String> {
     // the falls apart: a chr running down a 30° ramp leaves the ground at
     // its top and lands half-way down, a metre lower, twice a ramp, and the
     // harness counts each landing as a ledge fall. Those are not falls.
-    let hops = ramp_hops(pd_sim::world::World::new(setup, stage.clone(), level.clone(), res, 1)?, &level, 60);
+    let (hops, been) = walk(pd_sim::world::World::new(setup, stage.clone(), level.clone(), res, 1)?, &level, 60);
     report.push(format!(
         "check: a minute of six Normal simulants: {} kills, {} shots ({} hits), {} stalls, {} ledge falls ({} of them hops down ramps, {} off ledges)",
         m.kills,
@@ -451,20 +483,50 @@ pub fn check(assets: &AssetDir, code: &str) -> Result<Vec<String>, String> {
         hops.min(m.ledge_falls),
         m.ledge_falls.saturating_sub(hops)
     ));
-    Ok(report)
+    // The rooms a walk could reach: those holding a pad; the first pad of
+    // each, a spot in it.
+    let mut walkable: Vec<(u16, Vec3)> = Vec::new();
+    for pad in &stage.pads {
+        if let Some(r) = pad.room.filter(|r| !walkable.iter().any(|(w, _)| w == r)) {
+            walkable.push((r, pad.pos));
+        }
+    }
+    let unvisited: Vec<Vec3> = walkable.iter().filter(|(r, _)| !been.contains(r)).map(|(_, p)| *p).collect();
+    report.push(format!("rooms: simulants stood in {} of the {} rooms with pads", walkable.len() - unvisited.len(), walkable.len()));
+    let stats = CheckStats {
+        kills: m.kills,
+        shots: m.shots,
+        hits: m.hits,
+        stalls: m.stalls,
+        ledge_falls: m.ledge_falls.saturating_sub(hops),
+        rooms: walkable.len(),
+        visited: walkable.len() - unvisited.len(),
+        unvisited,
+    };
+    Ok((report, stats))
 }
 
 /// Of the landings the harness counts as ledge falls in `seconds` of the
 /// match `w` (more than a metre below where the fall began,
 /// `harness::abtest::run_match`), how many began or ended on a ramp: a chr
-/// running down one, in the air between its top and its foot.
-fn ramp_hops(mut w: pd_sim::world::World, level: &TileLevel, seconds: u32) -> u32 {
+/// running down one, in the air between its top and its foot. With them,
+/// the rooms the simulants stood in (looked at every sixth of a second).
+fn walk(mut w: pd_sim::world::World, level: &TileLevel, seconds: u32) -> (u32, std::collections::BTreeSet<u16>) {
     let on_ramp = |p: Vec3| level.cd_find_ground_at_cyl(p + Vec3::Y * 20.0, 20.0).1.is_some_and(|i| level.geom.polys[i].floor_kind() == Some(pd_sim::stage::FloorKind::Ramp));
     let (first, n) = (w.players.len(), w.chrs.len());
     let mut fall_top: Vec<Option<Vec3>> = vec![None; n];
     let mut hops = 0;
-    for _ in 0..60 * seconds {
+    let mut been = std::collections::BTreeSet::new();
+    for tick in 0..60 * seconds {
         pd_sim::harness::step_idle(&mut w);
+        if tick % 10 == 0 {
+            for k in first..n {
+                if !w.chr_is_dead(k) {
+                    let (inrooms, _, near) = w.stage.rooms.bg_find_rooms_by_pos(w.chrs[k].pos, 4);
+                    been.extend(inrooms.first().copied().or(near));
+                }
+            }
+        }
         for (k, top) in fall_top.iter_mut().enumerate().skip(first) {
             if w.chr_is_dead(k) {
                 *top = None;
@@ -483,6 +545,6 @@ fn ramp_hops(mut w: pd_sim::world::World, level: &TileLevel, seconds: u32) -> u3
             }
         }
     }
-    hops
+    (hops, been)
 }
 

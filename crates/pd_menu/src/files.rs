@@ -14,8 +14,65 @@ use pd_core::ids::*;
 use pd_core::music::MusicCall;
 use pd_core::savebuffer::{cstr, cstr_to_string, pak_has_bitflag, pak_set_bitflag, FileGuid, SaveBuffer};
 
+use serde::{Deserialize, Serialize};
+
 use super::generated::{BOT_PROFILES, B_MISC, B_OPTIONS, CONTROLMODE_11, MPLOCKTYPE_NONE};
 use super::MenuSystem;
+
+/// Not PD: what a setup file on a custom arena keeps in its 7-bit stage
+/// field (no stage of PD's has it); the arena's code is kept by file in
+/// [`CustomSetups`].
+pub const SAVED_CUSTOM_STAGE: u8 = 0x7f;
+
+/// Not PD: the custom arena of each saved setup file whose stage field is
+/// [`SAVED_CUSTOM_STAGE`], by the file's guid. The game keeps it in a file
+/// beside the Game Pak's EEPROM (`pd_game::save`), so the EEPROM's bytes stay
+/// PD's: a setup file's 0x31 bytes have no room for a code, and custom
+/// levels' stage numbers are handed out afresh each run
+/// (`pd_core::assets::CUSTOM_STAGENUMS`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomSetups {
+    pub setups: Vec<CustomSetup>,
+    /// Changed since [`CustomSetups::take_written`].
+    #[serde(skip)]
+    written: bool,
+}
+
+/// One setup file's custom arena.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomSetup {
+    pub deviceserial: u16,
+    pub fileid: i32,
+    /// The arena's code (`custom/levels.json`).
+    pub code: String,
+}
+
+impl CustomSetups {
+    /// The custom arena saved with the file `guid`, if any.
+    pub fn code(&self, guid: FileGuid) -> Option<&str> {
+        self.setups.iter().find(|s| s.fileid == guid.fileid && s.deviceserial == guid.deviceserial).map(|s| s.code.as_str())
+    }
+
+    /// The file `guid` is on the custom arena `code`, or (None) on none.
+    pub fn set(&mut self, guid: FileGuid, code: Option<&str>) {
+        let at = self.setups.iter().position(|s| s.fileid == guid.fileid && s.deviceserial == guid.deviceserial);
+        match (at, code) {
+            (Some(i), Some(c)) if self.setups[i].code == c => return,
+            (Some(i), Some(c)) => self.setups[i].code = c.to_owned(),
+            (Some(i), None) => {
+                self.setups.remove(i);
+            }
+            (None, Some(c)) => self.setups.push(CustomSetup { deviceserial: guid.deviceserial, fileid: guid.fileid, code: c.to_owned() }),
+            (None, None) => return,
+        }
+        self.written = true;
+    }
+
+    /// Was it changed since the last call? (Then it wants writing.)
+    pub fn take_written(&mut self) -> bool {
+        std::mem::take(&mut self.written)
+    }
+}
 
 /// `NUM_SOLOSTAGES` (`constants.h:42`).
 pub const NUM_SOLOSTAGES: usize = 21;
@@ -773,6 +830,8 @@ impl MenuSystem {
         buffer.read_string(&mut name, false);
         self.mp.setup.name = name_of(&name);
         buffer.read_bits(4);
+        // A custom arena's marker (SAVED_CUSTOM_STAGE) is resolved by
+        // mpsetupfile_load, which knows the file.
         self.mp.setup.stagenum = buffer.read_bits(7) as u8;
         self.mp.setup.scenario = buffer.read_bits(3) as u8;
         self.scenario_init();
@@ -813,7 +872,11 @@ impl MenuSystem {
         buffer.write_string(&name);
         let numsims = (0..8).filter(|i| self.mp.setup.chrslots & (1 << (i + 4)) != 0).count();
         buffer.write_bits(numsims as u32, 4);
-        buffer.write_bits(self.mp.setup.stagenum as u32, 7);
+        // SUBST: PD writes the stage number / a custom arena's number is this
+        // run's alone, and may not fit 7 bits: SAVED_CUSTOM_STAGE is written,
+        // and mpsetupfile_save keeps the arena's code beside the file.
+        let stagenum = if pd_core::assets::CUSTOM_STAGENUMS.contains(&self.mp.setup.stagenum) { SAVED_CUSTOM_STAGE } else { self.mp.setup.stagenum };
+        buffer.write_bits(stagenum as u32, 7);
         buffer.write_bits(self.mp.setup.scenario as u32, 3);
         self.scenario_write_save(buffer);
         buffer.write_bits(self.mp.setup.options, 21);
@@ -849,6 +912,30 @@ impl MenuSystem {
         }
     }
 
+    /// Not PD: a custom arena's code, by its number this run.
+    pub fn custom_arena_code(&self, stagenum: u8) -> Option<&str> {
+        self.custom_arenas.iter().find(|c| c.stagenum == stagenum).map(|c| c.code.as_str())
+    }
+
+    /// Not PD: the stage a setup file's 7-bit field `saved` names. PD's
+    /// arenas are themselves; past them (the custom marker, or a number a
+    /// custom level had before they were handed out each run) it is the
+    /// custom arena kept beside the file, as numbered this run, else (its
+    /// level gone, or none kept) `mp_init`'s arena.
+    pub fn saved_setup_stage(&self, saved: u8, guid: FileGuid) -> u8 {
+        if saved < *pd_core::assets::CUSTOM_STAGENUMS.start() {
+            return saved;
+        }
+        let code = self.custom_setups.code(guid);
+        match code.and_then(|code| self.custom_arenas.iter().find(|c| c.code == code)) {
+            Some(c) => c.stagenum,
+            None => {
+                log::warn!("setup file {:#x}: its custom arena {:?} is not listed; on mp_init's arena instead", guid.fileid, code.unwrap_or("(not kept)"));
+                STAGE_MP_SKEDAR
+            }
+        }
+    }
+
     /// `mpsetupfile_get_overview` (`mplayer.c:3922`): a setup file's name,
     /// simulant count, arena and scenario from its first 15 bytes.
     pub fn mpsetupfile_get_overview(body: &[u8]) -> (String, u16, u16, u16) {
@@ -874,6 +961,13 @@ impl MenuSystem {
         self.filelists.var80075bd0[FILETYPE_MPSETUP as usize] = true;
         if ret == 0 {
             self.mp.setup.fileguid = FileGuid { fileid: newfileid, deviceserial };
+            // Not PD: the custom arena's code, beside the file (the file it
+            // replaced keeps none).
+            if newfileid != fileid {
+                self.custom_setups.set(FileGuid { fileid, deviceserial }, None);
+            }
+            let code = self.custom_arena_code(self.mp.setup.stagenum).map(str::to_owned);
+            self.custom_setups.set(FileGuid { fileid: newfileid, deviceserial }, code.as_deref());
             return 0;
         }
         self.filemgr.lastpakerror = ret;
@@ -890,6 +984,7 @@ impl MenuSystem {
         if ret == 0 {
             self.mp.setup.fileguid = FileGuid { fileid, deviceserial };
             self.mpsetupfile_load_wad(&mut buffer);
+            self.mp.setup.stagenum = self.saved_setup_stage(self.mp.setup.stagenum, FileGuid { fileid, deviceserial });
             return 0;
         }
         self.filemgr.lastpakerror = ret;

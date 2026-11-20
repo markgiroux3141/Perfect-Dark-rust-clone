@@ -220,6 +220,20 @@ impl Default for MpState {
     }
 }
 
+/// The options `mp_init` (mplayer.c:461) gives the setup.
+pub const MP_INIT_OPTIONS: u32 = (MPOPTION_DISPLAYTEAM
+    | MPOPTION_KILLSSCORE
+    | MPOPTION_HTB_HIGHLIGHTBRIEFCASE
+    | MPOPTION_HTB_SHOWONRADAR
+    | MPOPTION_CTC_SHOWONRADAR
+    | MPOPTION_KOH_HILLONRADAR
+    | MPOPTION_KOH_MOBILEHILL
+    | MPOPTION_00010000
+    | MPOPTION_HTM_HIGHLIGHTTERMINAL
+    | MPOPTION_HTM_SHOWONRADAR
+    | MPOPTION_PAC_HIGHLIGHTTARGET
+    | MPOPTION_PAC_SHOWONRADAR) as u32;
+
 impl MenuSystem {
     pub fn lang(&self, t: Tx) -> String {
         self.draw.res.lang.get(t).to_string()
@@ -751,18 +765,7 @@ impl MenuSystem {
     pub fn mp_init(&mut self) {
         self.mp.setup.scenario = MPSCENARIO_COMBAT as u8;
         self.mp.setup.stagenum = STAGE_MP_SKEDAR as u8;
-        self.mp.setup.options = (MPOPTION_DISPLAYTEAM
-            | MPOPTION_KILLSSCORE
-            | MPOPTION_HTB_HIGHLIGHTBRIEFCASE
-            | MPOPTION_HTB_SHOWONRADAR
-            | MPOPTION_CTC_SHOWONRADAR
-            | MPOPTION_KOH_HILLONRADAR
-            | MPOPTION_KOH_MOBILEHILL
-            | MPOPTION_00010000
-            | MPOPTION_HTM_HIGHLIGHTTERMINAL
-            | MPOPTION_HTM_SHOWONRADAR
-            | MPOPTION_PAC_HIGHLIGHTTARGET
-            | MPOPTION_PAC_SHOWONRADAR) as u32;
+        self.mp.setup.options = MP_INIT_OPTIONS;
         self.vars.mphilltime = 10;
         self.mp_init_limits();
         self.mp.setup.fileguid = FileGuid::default();

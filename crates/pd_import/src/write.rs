@@ -355,7 +355,8 @@ pub fn write_pads(dir: &Path, r: &Recipe, g: &Gameplay) -> Result<(), String> {
     )
 }
 
-/// `setup.json`. The stage table row carries what the world reads
+/// `setup.json`. Its stage number is a placeholder: the game hands a custom
+/// level its own (`pd_sim::stage::Stage::load`). The stage table row carries what the world reads
 /// (`eraserpropdist`, `unk30`: the arenas' 400, 0); the background AI list is
 /// the arenas' one (every MP setup's simulant set-up, `mp_setupref.c`).
 pub fn write_setup(dir: &Path, r: &Recipe, g: &Gameplay) -> Result<(), String> {
@@ -364,25 +365,38 @@ pub fn write_setup(dir: &Path, r: &Recipe, g: &Gameplay) -> Result<(), String> {
     write_json(
         &dir.join("setup.json"),
         &json!({"format": "pd-setup/1", "source": format!("{}: pd_import", r.code), "exporter": EXPORTER,
-                "stage": {"name": name, "num": r.stagenum, "code": r.code, "table": {"id": name, "eraserpropdist": 400, "unk30": 0}},
+                "stage": {"name": name, "num": *pd_core::assets::CUSTOM_STAGENUMS.start(), "code": r.code, "table": {"id": name, "eraserpropdist": 400, "unk30": 0}},
                 "intro": g.intro, "props": g.props, "bgai": bgai}),
     )
 }
 
-/// Add (or replace) the level in `custom/levels.json`.
-pub fn register(root: &Path, r: &Recipe) -> Result<(), String> {
+/// The level into the game's list: with the recipes' folder, it joins the
+/// active arena set, from which the list is written (`sets`); without, it is
+/// added to the end of `custom/levels.json` (or its row replaced where it is):
+/// the file's order is the arena menu's, and the game numbers the levels by
+/// it. The `stagenum` older rows carry is dropped.
+pub fn register(root: &Path, r: &Recipe, levels: Option<&Path>) -> Result<(), String> {
+    if let Some(levels) = levels {
+        return crate::sets::join_active(&crate::sets::dir_for(levels), root, levels, &r.code);
+    }
     let path = root.join("levels.json");
     let mut levels: Vec<Value> = match std::fs::read_to_string(&path) {
         Ok(t) => serde_json::from_str::<Value>(&t).map_err(|e| format!("{}: {e}", path.display()))?["levels"].as_array().cloned().unwrap_or_default(),
         Err(_) => Vec::new(),
     };
-    levels.retain(|l| l["code"] != r.code.as_str() && l["stagenum"] != r.stagenum);
-    let mut row = json!({"code": r.code, "stagenum": r.stagenum, "name": r.name});
+    let mut row = json!({"code": r.code, "name": r.name});
     if let Some(g) = r.group.as_ref().filter(|g| !g.is_empty()) {
         row["group"] = json!(g);
     }
-    levels.push(row);
-    levels.sort_by_key(|l| l["stagenum"].as_u64());
+    match levels.iter().position(|l| l["code"] == r.code.as_str()) {
+        Some(i) => levels[i] = row,
+        None => levels.push(row),
+    }
+    for l in &mut levels {
+        if let Some(o) = l.as_object_mut() {
+            o.remove("stagenum");
+        }
+    }
     write_json(&path, &json!({"format": "pd-custom-levels/1", "levels": levels}))
 }
 

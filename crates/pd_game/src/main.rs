@@ -16,8 +16,10 @@
 //! select, as PD's does; `--combat` goes straight to the Combat Simulator with
 //! the last agent (or a new one); `--fresh` starts on a blank Game Pak and
 //! doesn't keep it; `--unlock-all` pretends every challenge is done and every
-//! weapon found (and doesn't keep the Game Pak either). F1 toggles the
-//! developer panel.
+//! weapon found (and doesn't keep the Game Pak either). `--play <code>` (the
+//! level editor's "Play now") starts a match on that arena at once, player 1
+//! alone on the default setup, and comes back to the Combat Simulator when it
+//! ends. F1 toggles the developer panel.
 
 mod audio;
 mod controls;
@@ -93,6 +95,10 @@ struct PdGame {
     save_path: Option<PathBuf>,
     /// Start in the Combat Simulator (`--combat`).
     combat: bool,
+    /// `--play <code>`: the arena a match starts on once the menus run.
+    play: Option<String>,
+    /// The menus' setup while a `--play` match runs, to put back after it.
+    walkabout: Option<pd_menu::Walkabout>,
     /// The match stand-in's frame.
     stand_in: Gfx,
     target: Option<RenderTarget>,
@@ -143,6 +149,8 @@ impl PdGame {
             profile,
             save_path,
             combat,
+            play: None,
+            walkabout: None,
             stand_in: Gfx::new(FB_W, FB_H),
             target: None,
             presenter: None,
@@ -170,6 +178,9 @@ impl PdGame {
             log::info!("save: the Game Pak is {}{}", p.display(), if profile == Profile::Complete { " (not written while everything is unlocked)" } else { "" });
         }
         let mut menu = MenuSystem::new_with_eeprom(assets, profile, eeprom)?;
+        if let Some(p) = save_path {
+            menu.custom_setups = save::load_custom_setups(p);
+        }
         // Not PD: a "Tester" agent with everything done, for testing (kept in
         // the save like any agent; made once).
         if profile == Profile::Files && menu.make_tester_agent() {
@@ -202,12 +213,20 @@ impl PdGame {
     /// Write the Game Pak's EEPROM back to its file when the game wrote it
     /// (never while everything is pretend-unlocked).
     fn keep_save(&mut self) {
-        if !self.menu.paks.take_written() || self.profile == Profile::Complete {
+        let (eeprom, custom) = (self.menu.paks.take_written(), self.menu.custom_setups.take_written());
+        if self.profile == Profile::Complete {
             return;
         }
         if let Some(p) = &self.save_path {
-            if let Err(e) = save::store(p, &self.menu.paks.eeprom) {
-                log::error!("save: {e}");
+            if eeprom {
+                if let Err(e) = save::store(p, &self.menu.paks.eeprom) {
+                    log::error!("save: {e}");
+                }
+            }
+            if custom {
+                if let Err(e) = save::store_custom_setups(p, &self.menu.custom_setups) {
+                    log::error!("save: {e}");
+                }
             }
         }
     }
@@ -234,6 +253,9 @@ impl PdGame {
             }
         }
         self.menu.return_from_match();
+        if let Some(was) = self.walkabout.take() {
+            self.menu.end_walkabout(was);
+        }
         self.screen = Screen::Menus;
         self.controls.captured = ctx.set_cursor_captured(false);
         if let Some(r) = self.renderer.as_mut() {
@@ -269,6 +291,15 @@ impl PdGame {
                 lines.push(format!("Could not start: {e}"));
                 self.screen = Screen::StandIn { setup, lines };
             }
+        }
+    }
+
+    /// `--play <code>`: a match on that arena (a custom level's or one of
+    /// PD's), straight from the Combat Simulator (`MenuSystem::start_walkabout`).
+    fn start_walkabout(&mut self, code: &str) {
+        match self.assets.stage_num(code) {
+            Some(n) => self.walkabout = Some(self.menu.start_walkabout(n)),
+            None => log::error!("--play {code}: no such arena (a custom level's code from custom/levels.json, or one of PD's)"),
         }
     }
 
@@ -467,6 +498,9 @@ impl Game for PdGame {
         self.menu.back2 = back2;
         match &self.screen {
             Screen::Menus => {
+                if let Some(code) = self.play.take() {
+                    self.start_walkabout(&code);
+                }
                 self.menu.frame(&self.lv);
                 if let Some(Outcome::StartMatch(setup)) = self.menu.take_outcome() {
                     self.start_match(ctx, setup);
@@ -671,7 +705,8 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,perfect_dark=info,pd_menu=info,engine=info")).init();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let profile = if args.iter().any(|a| a == "--unlock-all") { Profile::Complete } else { Profile::Files };
-    let combat = args.iter().any(|a| a == "--combat");
+    let play = args.iter().position(|a| a == "--play").and_then(|i| args.get(i + 1)).cloned();
+    let combat = play.is_some() || args.iter().any(|a| a == "--combat");
     let fresh = args.iter().any(|a| a == "--fresh");
     let run = || -> Result<(), String> {
         let root = AssetRoot::discover("PD_ASSETS", "assets", "MANIFEST.json")?;
@@ -681,7 +716,8 @@ fn main() {
         if let Some(dir) = assets.custom_dir() {
             log::info!("custom levels: {} ({} listed)", dir.display(), assets.custom_levels().len());
         }
-        let game = PdGame::new(assets, profile, combat, save_path)?;
+        let mut game = PdGame::new(assets, profile, combat, save_path)?;
+        game.play = play;
         // PD draws once a frame: the render step advances effects by the
         // frame (the laser's liquid, the star flare's jitter, the noise's and
         // the VI chain's frame counters), so a frame between ticks is skipped.

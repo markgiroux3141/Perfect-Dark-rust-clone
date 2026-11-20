@@ -15,6 +15,7 @@
 //! PNG ([`shot`]). Everything the window doesn't need to draw lives here so
 //! the tests can reach it.
 
+pub mod app;
 pub mod camera;
 pub mod doc;
 pub mod draw3d;
@@ -25,6 +26,7 @@ pub mod newlevel;
 pub mod overlay;
 pub mod paths;
 pub mod preview;
+pub mod ready;
 pub mod scene;
 pub mod shot;
 pub mod space;

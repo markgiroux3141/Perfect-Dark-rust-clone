@@ -1,6 +1,6 @@
 //! A new level from a glTF file: its recipe (`levels/<code>.json`, a
-//! `"game": "gltf"` source), with a code and a custom stage number nobody
-//! uses yet.
+//! `"game": "gltf"` source), with a code nobody uses yet (the game numbers
+//! custom levels itself).
 
 use std::path::{Path, PathBuf};
 
@@ -13,7 +13,6 @@ pub struct NewLevel {
     pub file: PathBuf,
     pub name: String,
     pub code: String,
-    pub stagenum: u8,
     /// File units to centimetres (glTF's are metres: 100).
     pub scale: f32,
     /// 0: one per ~250 m² of floor.
@@ -51,27 +50,12 @@ fn title_from(stem: &str) -> String {
         .join(" ")
 }
 
-/// The custom stage numbers the recipes and the custom tree use.
-pub(crate) fn used_stagenums(paths: &EditPaths) -> Vec<u8> {
-    let mut used: Vec<u8> = Vec::new();
-    for e in paths.recipes() {
-        if let Some(n) = std::fs::read_to_string(&e.path).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).and_then(|v| v["stagenum"].as_u64()) {
-            used.push(n as u8);
-        }
-    }
-    let levels = paths.custom.join("levels.json");
-    if let Some(v) = std::fs::read_to_string(levels).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()) {
-        used.extend(v["levels"].as_array().into_iter().flatten().filter_map(|l| l["stagenum"].as_u64()).map(|n| n as u8));
-    }
-    used
-}
-
 fn code_taken(paths: &EditPaths, code: &str) -> bool {
     pd_core::ids::STAGE_CODES.iter().any(|(_, c)| *c == code) || paths.recipes().iter().any(|e| e.code == code) || paths.levels.join(format!("{code}.json")).exists()
 }
 
 impl NewLevel {
-    /// Defaults for `file`: its name, a free code and stage number, metres.
+    /// Defaults for `file`: its name, a free code, metres.
     pub fn for_file(file: &Path, paths: &EditPaths) -> NewLevel {
         let stem = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "level".into());
         let mut code = code_from(&stem);
@@ -81,9 +65,7 @@ impl NewLevel {
             code = format!("{base}{k}");
             k += 1;
         }
-        let used = used_stagenums(paths);
-        let stagenum = pd_core::assets::CUSTOM_STAGENUMS.clone().find(|n| !used.contains(n)).unwrap_or(*pd_core::assets::CUSTOM_STAGENUMS.end());
-        NewLevel { file: file.to_path_buf(), name: title_from(&stem), code, stagenum, scale: 100.0, rooms: 0, spawns: 12, weapons: 10, hills: 4, max_texture: 256, climb_ledges: false }
+        NewLevel { file: file.to_path_buf(), name: title_from(&stem), code, scale: 100.0, rooms: 0, spawns: 12, weapons: 10, hills: 4, max_texture: 256, climb_ledges: false }
     }
 
     /// What's wrong with it, if anything.
@@ -96,12 +78,6 @@ impl NewLevel {
         }
         if code_taken(paths, &self.code) {
             return Some(format!("the code {:?} is taken", self.code));
-        }
-        if !pd_core::assets::CUSTOM_STAGENUMS.contains(&self.stagenum) {
-            return Some("the stage number must be 0x60-0x7f".into());
-        }
-        if used_stagenums(paths).contains(&self.stagenum) {
-            return Some(format!("stage {:#x} is taken", self.stagenum));
         }
         if self.spawns == 0 {
             return Some("a level needs spawns".into());
@@ -118,7 +94,6 @@ impl NewLevel {
             "format": "pd-import-recipe/1",
             "code": self.code,
             "name": self.name.trim(),
-            "stagenum": self.stagenum,
             "scale": self.scale,
             "source": {"game": "gltf", "path": self.file.to_string_lossy().replace('\\', "/"), "max_texture": self.max_texture, "climb_ledges": self.climb_ledges},
             "rooms": self.rooms,

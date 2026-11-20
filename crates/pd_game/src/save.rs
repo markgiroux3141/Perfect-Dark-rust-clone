@@ -6,10 +6,15 @@
 //! bytes in order, as N64 emulators keep a 16 Kbit EEPROM (`.eep`), so a
 //! save from one loads here. `$PD_SAVE` names it; else it is
 //! `save/perfect_dark.eep` beside the assets directory.
+//!
+//! Beside it, `<name>.custom.json` keeps the custom arena of each setup file
+//! saved on one (`pd_menu::files::CustomSetups`): not PD's, so the EEPROM's
+//! bytes stay as PD would write them.
 
 use std::path::{Path, PathBuf};
 
 use pd_core::pak::EEPROM_SIZE;
+use pd_menu::files::CustomSetups;
 
 /// Where the EEPROM image lives: `$PD_SAVE`, else `save/perfect_dark.eep`
 /// next to `assets_root`.
@@ -38,6 +43,34 @@ pub fn load(path: &Path) -> Option<Vec<u8>> {
     }
 }
 
+/// Where the setup files' custom arenas are kept, beside the image at
+/// `eeprom`: `perfect_dark.custom.json`.
+pub fn custom_setups_path(eeprom: &Path) -> PathBuf {
+    eeprom.with_extension("custom.json")
+}
+
+/// The custom arenas kept beside the image at `eeprom` (none when there is
+/// no file; a malformed one is logged and ignored).
+pub fn load_custom_setups(eeprom: &Path) -> CustomSetups {
+    let path = custom_setups_path(eeprom);
+    match std::fs::read_to_string(&path) {
+        Ok(t) => serde_json::from_str(&t).unwrap_or_else(|e| {
+            log::warn!("save: {}: {e}; setups saved on custom arenas open on mp_init's", path.display());
+            CustomSetups::default()
+        }),
+        Err(_) => CustomSetups::default(),
+    }
+}
+
+/// Write the custom arenas beside the image at `eeprom` (as [`store`] does).
+pub fn store_custom_setups(eeprom: &Path, setups: &CustomSetups) -> Result<(), String> {
+    let path = custom_setups_path(eeprom);
+    let text = serde_json::to_string_pretty(setups).map_err(|e| e.to_string())?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))
+}
+
 /// Write the image to `path` (through a temporary file, so a crash can't
 /// leave half of it).
 pub fn store(path: &Path, eeprom: &[u8]) -> Result<(), String> {
@@ -63,6 +96,13 @@ mod tests {
         assert_eq!(load(&path), Some(image));
         std::fs::write(&path, [1, 2, 3]).unwrap();
         assert_eq!(load(&path), None);
+        // the custom arenas beside it
+        assert_eq!(custom_setups_path(&path), dir.join("save").join("perfect_dark.custom.json"));
+        assert_eq!(load_custom_setups(&path), CustomSetups::default());
+        let mut setups = CustomSetups::default();
+        setups.set(pd_core::savebuffer::FileGuid { fileid: 0x12, deviceserial: 0xbeef }, Some("kokiri"));
+        store_custom_setups(&path, &setups).unwrap();
+        assert_eq!(load_custom_setups(&path).code(pd_core::savebuffer::FileGuid { fileid: 0x12, deviceserial: 0xbeef }), Some("kokiri"));
         let _ = std::fs::remove_dir_all(dir);
     }
 }

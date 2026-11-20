@@ -7,7 +7,8 @@ A faithful recreation of Perfect Dark's Combat Simulator (NTSC final): the menus
 ## Build, test, run
 
 ```
-cargo build --release                       # the game: target/release/perfect_dark.exe (--combat, --fresh, --unlock-all;
+cargo build --release                       # the game: target/release/perfect_dark.exe (--combat, --fresh, --unlock-all,
+                                            #   --play <code>: a match on that arena at once, alone, the default setup;
                                             #   the Game Pak's EEPROM is save/perfect_dark.eep, or $PD_SAVE)
 cargo test --workspace --release            # all tests (incl. the menu goldens, crates/pd_menu/tests/golden/)
 cargo test -p pd_sim --release -- --ignored --nocapture   # long probes
@@ -43,11 +44,14 @@ target/release/pd_edit.exe [<code>]         # the level editor (a window: for th
                                             #   is that 3D view with no window (a preview in a scratch folder, no arena; ~1.7 s); `--shot <code> <out.png>
                                             #   [--at x,y,z,yaw,pitch | --item weapon 3 | --item door 3] [--waypoints] [--open]`
                                             #   is its view as a PNG (`--open`: every door opened two seconds before)
+                                            #   `--shot-ui <out.png> [<code>] [--step home|layout|items|test] [--select weapon 2] [--generate | --seed N]
+                                            #   [--room KEY] [--run-test] [--import FILE.glb] [--tool KIND]`: the whole window (panels and view) with no window: how to
+                                            #   look at the editor's screens (`--room vast`: a generated room selected on Layout; `--run-test`: the simulant test's numbers)
 cargo build --release -p pd_import          # also builds target/release/autolevel.exe, the level generator (docs/AUTOLEVEL.md):
                                             #   `autolevel build 40` plans, builds, bakes and walks seed 40 into out/autolevel/seed40
                                             #   (`--style felicity`: a Felicity-style level instead, with doors; docs/AUTOLEVEL.md, "Felicity")
                                             #   (GLB, GE64 OBJ, plan.svg, report.json; ~0.6 s, the walks in-process on pd_sim);
-                                            #   `autolevel import out/autolevel/seed40` makes it the arena `autolevel40` (stage 124):
+                                            #   `autolevel import out/autolevel/seed40` makes it the arena `autolevel40`:
                                             #   the generator's rooms and doorways as PD's rooms and portals, on the pool's textures,
                                             #   its recipe kept in levels/autolevel40.json (`--gltf`: as any glTF instead);
                                             #   `autolevel shots out/autolevel/seed40` then draws its views with the game (DIR/shots/*.png);
@@ -104,6 +108,7 @@ python tools/pd-assets/check_against_spikes.py   # assets/ against the old repo'
 - `crates/`: the thirteen crates (see ARCHITECTURE.md § Crates); `pd_import` is the custom level importer (offline, M15), `pd_edit` the level editor (M18).
 - `crates/autolevel`, `autolevel_build`, `autolevel_edit`: the level generator (Complex-style arenas from a seed) and its editor, moved here from the Blender MCP repo (M21). **Read [docs/AUTOLEVEL.md](docs/AUTOLEVEL.md) before touching them**: a seed's level must never change by accident (the answer keys in `tests/key/` are written by that repo's `scripts/autolevel_key.py` from its frozen Python), and they are not PD ports, so the decomp rules don't apply to them.
 - `custom/`: converted levels (gitignored; another game's data), laid over `assets/` at run time (ARCHITECTURE.md § Custom levels).
+- `crates/pd_import/sets/`: the arena sets (committed): which custom arenas the game lists. One is active per machine (`custom/arena_set.json`); `custom/levels.json` is written from it (`pd_import::sets`), and a finished import joins it. Pick, make, rename sets and delete arenas on `pd_edit`'s Home.
 - `assets/`: generated, committed; layout in ARCHITECTURE.md § Assets.
 - `tools/pd-assets/`: Python exporters (stdlib only; `pd_bg_preview.py` needs numpy + Pillow).
 - `tools/ge-extract/`: the GoldenEye level extractor (stdlib only, reuses `tools/pd-assets`): a GE level from the ROM into PD's stage formats, run by `pd_import` (M16). **Read [docs/GOLDENEYE.md](docs/GOLDENEYE.md) before porting another GE level**: the format mapping and every lesson Facility cost.

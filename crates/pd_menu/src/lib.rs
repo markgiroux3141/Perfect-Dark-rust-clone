@@ -321,6 +321,13 @@ pub struct MatchView {
     pub players: Vec<MatchViewPlayer>,
 }
 
+/// What [`MenuSystem::start_walkabout`] changed, to put back.
+pub struct Walkabout {
+    setup: mpstate::MpSetup,
+    weaponsetnum: i32,
+    mpquickteam: i32,
+}
+
 /// The whole of PD's menu system: `g_Menus`, `g_MenuData`, the menu fields of
 /// `g_Vars`, the MP state and the render state.
 pub struct MenuSystem {
@@ -384,6 +391,9 @@ pub struct MenuSystem {
     /// Not PD: the custom levels (`custom/levels.json`), listed after PD's
     /// arenas in a group of their own ([`handlers::mp_arena_menu_handler`]).
     pub custom_arenas: Vec<pd_core::assets::CustomLevel>,
+    /// Not PD: the custom arenas of the saved setup files, by file
+    /// ([`files::CustomSetups`]; kept beside the Game Pak by the game).
+    pub custom_setups: files::CustomSetups,
 }
 
 impl MenuSystem {
@@ -446,6 +456,7 @@ impl MenuSystem {
                 pd_core::assets::sort_custom_levels(&mut c);
                 c
             },
+            custom_setups: Default::default(),
         };
         pd.pads[0].connected = true;
         for m in pd.menus.iter_mut() {
@@ -735,6 +746,36 @@ impl MenuSystem {
         }
         self.matchview = MatchView::default();
         self.in_match = true;
+    }
+
+    /// Not PD: the level editor's "Play now" (`perfect_dark --play <code>`): a
+    /// Combat match on `stagenum` for player 1 alone, on `mp_init`'s setup
+    /// (its scenario, options and first weapon set) with no time or score
+    /// limit, started as the menus start one. The setup the menus had is
+    /// returned, for [`Self::end_walkabout`] to put back when it ends; it is
+    /// not saved.
+    pub fn start_walkabout(&mut self, stagenum: u8) -> Walkabout {
+        let was = Walkabout { setup: self.mp.setup.clone(), weaponsetnum: self.mp.weaponsetnum, mpquickteam: self.vars.mpquickteam };
+        let s = &mut self.mp.setup;
+        s.scenario = generated::MPSCENARIO_COMBAT as u8;
+        s.stagenum = stagenum;
+        s.options = mpstate::MP_INIT_OPTIONS;
+        // (the sliders' last notches: no limit)
+        s.timelimit = 60;
+        s.scorelimit = 100;
+        s.teamscorelimit = 400;
+        s.chrslots = 1;
+        self.mp_set_weaponset_slotnum(0);
+        self.vars.mpquickteam = generated::MPQUICKTEAM_NONE;
+        self.start_match();
+        was
+    }
+
+    /// The setup [`Self::start_walkabout`] took, back (after [`Self::return_from_match`]).
+    pub fn end_walkabout(&mut self, was: Walkabout) {
+        self.mp.setup = was.setup;
+        self.mp.weaponsetnum = was.weaponsetnum;
+        self.vars.mpquickteam = was.mpquickteam;
     }
 
     /// The arena menu's name for a stage: `g_MpArenas`' (the first match, as

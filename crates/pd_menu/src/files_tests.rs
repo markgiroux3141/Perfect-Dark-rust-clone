@@ -212,3 +212,49 @@ fn the_tester_agent_has_everything_unlocked() {
     assert!(locked.is_empty(), "locked weapons: {locked:?}");
     assert!((0..q.mp.challenges.len()).all(|i| q.challenge_is_completed_by_any_player_with_num_players(i, 1)));
 }
+
+/// Not PD: a setup on a custom arena writes the custom marker in its 7-bit
+/// stage field and keeps the arena's code beside the file. It loads back on
+/// that arena under the number this run gives it (levels.json reordered
+/// between runs), the file list names it, and with the level gone it opens on
+/// mp_init's arena. A setup on one of PD's arenas keeps PD's field and
+/// nothing beside it.
+#[test]
+fn a_setup_on_a_custom_arena_keeps_its_code() {
+    use pd_core::assets::CustomLevel;
+    let level = |code: &str, stagenum: u8| CustomLevel { code: code.into(), stagenum, name: code.to_uppercase(), group: String::new() };
+    let mut pd = MenuSystem::new(&assets(), Profile::Files).unwrap();
+    pd.custom_arenas = vec![level("kokiri", 0x60), level("trek1", 0x9a)];
+    pd.mp.setup.name = "Far".into();
+    pd.mp.setup.stagenum = 0x9a;
+    let far = free_file(&mut pd, FILETYPE_MPSETUP);
+    assert_eq!(pd.mpsetupfile_save(SAVEDEVICE_GAMEPAK, far.fileid, far.deviceserial), 0);
+    let far = pd.mp.setup.fileguid;
+    assert_eq!(MenuSystem::mpsetupfile_get_overview(&body(&mut pd, far)).2, super::files::SAVED_CUSTOM_STAGE as u16);
+    assert_eq!(pd.custom_setups.code(far), Some("trek1"));
+    assert!(pd.custom_setups.take_written());
+    // on one of PD's: PD's field, nothing kept
+    pd.mp.setup.name = "Near".into();
+    pd.mp.setup.stagenum = STAGE_MP_COMPLEX;
+    let near = free_file(&mut pd, FILETYPE_MPSETUP);
+    assert_eq!(pd.mpsetupfile_save(SAVEDEVICE_GAMEPAK, near.fileid, near.deviceserial), 0);
+    let near = pd.mp.setup.fileguid;
+    assert_eq!(MenuSystem::mpsetupfile_get_overview(&body(&mut pd, near)).2, STAGE_MP_COMPLEX as u16);
+    assert_eq!(pd.custom_setups.code(near), None);
+    assert!(!pd.custom_setups.take_written());
+
+    // the next run lists the levels in another order
+    let mut q = MenuSystem::new_with_eeprom(&assets(), Profile::Files, Some(pd.paks.eeprom.clone())).unwrap();
+    q.custom_arenas = vec![level("trek1", 0x60), level("kokiri", 0x61)];
+    q.custom_setups = pd.custom_setups.clone();
+    assert_eq!(q.mpsetupfile_load(SAVEDEVICE_GAMEPAK, far.fileid, far.deviceserial), 0);
+    assert_eq!((q.mp.setup.name.as_str(), q.mp.setup.stagenum), ("Far", 0x60));
+    assert_eq!(q.saved_setup_stage(super::files::SAVED_CUSTOM_STAGE, far), 0x60, "what the file list names");
+    assert_eq!(q.mpsetupfile_load(SAVEDEVICE_GAMEPAK, near.fileid, near.deviceserial), 0);
+    assert_eq!(q.mp.setup.stagenum, STAGE_MP_COMPLEX);
+    // its level gone, or nothing kept (a save from before): mp_init's arena
+    q.custom_arenas.retain(|c| c.code != "trek1");
+    assert_eq!(q.mpsetupfile_load(SAVEDEVICE_GAMEPAK, far.fileid, far.deviceserial), 0);
+    assert_eq!(q.mp.setup.stagenum, STAGE_MP_SKEDAR);
+    assert_eq!(q.saved_setup_stage(0x63, FileGuid { fileid: 0x7777, deviceserial: far.deviceserial }), STAGE_MP_SKEDAR);
+}

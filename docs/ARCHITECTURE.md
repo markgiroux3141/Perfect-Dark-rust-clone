@@ -43,7 +43,7 @@ Arrows point at what a crate may use. Nothing points back up.
 | **`pd_render`** | PD on the GPU: BG, every model through the one combiner path, effects, HUD canvas (radar, sights, shields), x-ray, framebuffer post, a `View` per player laid into the frame (`Renderer::render_views`: split screen) | write to the world |
 | **`pd_game`** | the `perfect_dark` binary: state machine (Menus → Match → Results), device → N64 controller mapping, event → voice routing, the music's frames onto an engine stream, the Game Pak's EEPROM kept in a file (`save`), presentation settings; its library half, `session`, couples a match with the menus over it (pause, end screens) for the binary and `pd_snapshot` | contain game rules |
 | **`pd_tools`** | `pd_snapshot` (offscreen PNGs of menus, guns, stages, matches, pickups), probes, offline audio renders (`pd_music`: a tune, or a menu → match → death → end flow, to a WAV), the bot/nav debug viewer | ship in the game |
-| **`pd_edit`** | the level editor: a custom level's layout (items, waypoint edits, doors from the catalogues of PD's and GoldenEye's door models) edited over the stage as the game loads it, in a fly-through view (`pd_render::Renderer::render_free`) with an egui panel; it runs `pd_import` to place the layout and to import a new glTF; `pd_edit --shot` renders its view to a PNG | ship in the game; hold level data of its own (the layout file is `pd_import`'s) |
+| **`pd_edit`** | the level editor: a custom level's layout (items, waypoint edits, doors from the catalogues of PD's and GoldenEye's door models) edited over the stage as the game loads it, in a fly-through view (`pd_render::Renderer::render_free`) with egui panels (`pd_edit::app`: Home, then each level's Layout, Items and Test & play steps, `app::theme` its look); it runs `pd_import` to place the layout and to import a new glTF; `pd_edit --shot` renders its view to a PNG, `--shot-ui` the whole window with no window | ship in the game; hold level data of its own (the layout file is `pd_import`'s) |
 | **`pd_import`** | the custom level importer: a recipe (`levels/<code>.json`), the source importers (`oot`: Ocarina of Time scenes from the OoT Clone repo's extractor; `ge`: GoldenEye 007 levels, which `tools/ge-extract` converts from the ROM straight into PD's stage formats, rooms, portals, tiles, doors and door models included; `pd`: one of PD's arenas rebuilt in Blender, a glTF laid over the arena room by room, its unchanged rooms' data kept, tiles and portals made for the rest, its setup kept; or several of PD's stages fused, each turned and moved into place) into one `LevelSource`, the collision preprocessing (step risers, ledges as ladders, water), rooms and portals by a k-d split, the four stage files, the gameplay data (`nav::gen`'s waypoints baked in, spawns, weapons and ammo, hills, bases, cover), a check match; headless | ship in the game; be needed at run time |
 | **`autolevel`** | the level generator's layout ([AUTOLEVEL.md](AUTOLEVEL.md)): from a seed and options, rooms scattered, joined by corridors, furnished, dead ends put right, and the plan, walks and report of the level; the recipe (seed, options and a person's edits, as JSON) and the joins that could be made from a room (`candidates`). A port of the Blender MCP repo's Python, held to an answer key (`tests/key/`): a seed's level never changes by accident | depend on any other workspace crate; read or write a file but the recipe's JSON |
 | **`autolevel_build`** | what makes a layout a level: its polygons in Complex's grammar, room meshes, a ray-traced bake of the lighting, the GE64 OBJ and GLB writers, the plan as SVG, and the `autolevel` command line's code (`cli`), with walking behind a trait (`walk::Walker`; pd-walk as a program is its implementation here) | depend on `pd_*` or `engine` (so the generator can be lifted out again); hold anything ROM-derived (textures are read from `assets/textures`) |
@@ -151,15 +151,20 @@ Levels converted from other games (`crates/pd_import`, run by hand: `pd_import <
 
 ```
 custom/
-  levels.json                the custom arenas: code, stage number (0x60-0x7f, CUSTOM_STAGENUMS), menu name.
-                             Only 32 numbers fit (an MP setup keeps the stage in 7 bits), so a recipe can be
-                             shelved: moved into crates/pd_import/levels/shelved/ (the Jedi Academy maps are,
-                             since 2026-11-17), where nothing counts its number, and its row taken out of
-                             levels.json; its stage files stay. To bring one back, move it up a folder (or
-                             `pd_import crates/pd_import/levels/shelved/<code>.json`) and import it
+  levels.json                the custom arenas: code, menu name, group, in the arena menu's order. A level is
+                             known by its code; the game hands out stage numbers as it starts, in this order
+                             (CUSTOM_STAGENUMS, 0x60-0xff: 160 arenas; a row's old "stagenum" is ignored). A
+                             saved MP setup on one keeps its code beside the Game Pak (save/perfect_dark.custom.json,
+                             pd_menu::files::CustomSetups; PD's 7-bit field holds 0x7f), so PD's arenas' setups
+                             stay byte for byte. Written from the active ARENA SET (pd_import::sets): the
+                             set's built arenas in its order, named and grouped by their recipes; never edited
+                             by hand. (The Jedi Academy maps' recipes are still in crates/pd_import/levels/shelved/,
+                             from before sets: in no set, out of the game.)
+  arena_set.json             which arena set is active on this machine ({"set": "<stem>"})
   stages/<code>/             the four stage files, in pd_stage.py's formats, plus
                              tex/<n>.png  the level's own textures (ids 0x10000 | material in bg.json); none for a generated level, which draws the pool's
                              report.txt   the import's report
+                             thumb.png    pd_edit's picture of it for Home (the view from a spawn, made when it is opened)
                              ge.json      a GoldenEye level's hand-off from tools/ge-extract to pd_import
   models/<stem>.json + .bin  a level's own models (GoldenEye's doors: all 48 of them once
                              `pd_import --ge-doors` has run), in the one model format

@@ -60,8 +60,8 @@ fn the_generator_says_where_nothing_goes_and_where_the_risky_places_are() {
 fn seed_40_is_placed_on_flat_floor_out_of_corridors_with_its_ammo_by_it() {
     let custom = std::env::temp_dir().join(format!("pd_import_autoplace_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&custom);
-    let paths = crate::Paths { assets: assets(), custom: custom.clone(), src: None };
-    let r = autowalk::recipe("autolevel40", "Autolevel 40", autowalk::STAGENUM, Via::Recipe("{\"format\": 1, \"seed\": 40}")).unwrap();
+    let paths = crate::Paths { assets: assets(), custom: custom.clone(), src: None, levels: None };
+    let r = autowalk::recipe("autolevel40", "Autolevel 40", Via::Recipe("{\"format\": 1, \"seed\": 40}")).unwrap();
     let report = crate::import(&r, &paths, &crate::layout::Layout::default()).unwrap();
     std::fs::remove_dir_all(&custom).unwrap();
     let line = |start: &str| report.iter().find(|l| l.starts_with(start)).unwrap_or_else(|| panic!("no {start:?} in {report:#?}")).clone();
@@ -100,8 +100,8 @@ fn probe_placement() {
     let text = std::env::var("PD_RECIPE").unwrap_or_else(|_| "{\"format\": 1, \"seed\": 40}".to_string());
     let custom = std::env::temp_dir().join(format!("pd_import_autoplace_probe_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&custom);
-    let paths = crate::Paths { assets: assets(), custom: custom.clone(), src: None };
-    let r = autowalk::recipe("autolevel_probe", "Probe", autowalk::STAGENUM, Via::Recipe(&text)).unwrap();
+    let paths = crate::Paths { assets: assets(), custom: custom.clone(), src: None, levels: None };
+    let r = autowalk::recipe("autolevel_probe", "Probe", Via::Recipe(&text)).unwrap();
     let report = crate::import(&r, &paths, &crate::layout::Layout::default()).unwrap();
     std::fs::remove_dir_all(&custom).unwrap();
     for l in report.iter().filter(|l| ["placement", "spawns", "weapons", "ammo", "reachable"].iter().any(|s| l.starts_with(s))) {

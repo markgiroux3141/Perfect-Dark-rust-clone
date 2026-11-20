@@ -298,7 +298,9 @@ impl Stage {
         setup_prepare_pads(&mut padlist, &rooms, &geom);
         Ok(Stage {
             code: code.to_owned(),
-            stagenum: setup.stage.num,
+            // A custom level's number is the one this run hands it
+            // (`AssetDir::stage_num`), not the one its setup.json was written with.
+            stagenum: assets.stage_num(code).unwrap_or(setup.stage.num),
             geom,
             pads: padlist,
             waypoints,

@@ -41,10 +41,6 @@ use serde_json::{json, Value};
 use crate::recipe::Recipe;
 use crate::{write, Paths};
 
-/// The first of the custom stage numbers nothing else uses (124-127 are
-/// free): what a generated level takes unless another is named.
-pub const STAGENUM: u8 = 124;
-
 /// The arena menu's group for generated levels.
 pub const GROUP: &str = "Autolevel";
 
@@ -93,7 +89,7 @@ pub enum Via<'a> {
 
 /// The recipe a generated level is imported with, as its file's text: the
 /// level's own source (or the glTF one), and an arena's usual counts.
-pub fn recipe_text(code: &str, name: &str, stagenum: u8, via: Via) -> String {
+pub fn recipe_text(code: &str, name: &str, via: Via) -> String {
     let text = |s: &str| Value::String(s.to_owned()).to_string();
     let (source, rooms) = match via {
         // The generator's recipe as it is written, set in two levels.
@@ -101,7 +97,7 @@ pub fn recipe_text(code: &str, name: &str, stagenum: u8, via: Via) -> String {
         Via::Gltf(glb) => (format!("\"game\": \"gltf\",\n    \"path\": {},\n    \"grates\": true,\n    \"low_ceilings\": true,\n    \"ramp_walls\": true", text(glb)), "\n  \"rooms\": 60,"),
     };
     format!(
-        "{{\n  \"format\": \"pd-import-recipe/1\",\n  \"code\": {},\n  \"name\": {},\n  \"group\": {},\n  \"stagenum\": {stagenum},\n  \"scale\": 1.0,\n  \"source\": {{\n    {source}\n  }},{rooms}\n  \"spawns\": 16,\n  \"weapons\": 10,\n  \"hills\": 5\n}}\n",
+        "{{\n  \"format\": \"pd-import-recipe/1\",\n  \"code\": {},\n  \"name\": {},\n  \"group\": {},\n  \"scale\": 1.0,\n  \"source\": {{\n    {source}\n  }},{rooms}\n  \"spawns\": 16,\n  \"weapons\": 10,\n  \"hills\": 5\n}}\n",
         text(code),
         text(name),
         text(GROUP),
@@ -110,8 +106,8 @@ pub fn recipe_text(code: &str, name: &str, stagenum: u8, via: Via) -> String {
 
 /// [`recipe_text`], read: the same settings, by the same reader as a recipe
 /// file's.
-pub fn recipe(code: &str, name: &str, stagenum: u8, via: Via) -> Result<Recipe, String> {
-    serde_json::from_str(&recipe_text(code, name, stagenum, via)).map_err(|e| format!("the recipe of {code}: {e}"))
+pub fn recipe(code: &str, name: &str, via: Via) -> Result<Recipe, String> {
+    serde_json::from_str(&recipe_text(code, name, via)).map_err(|e| format!("the recipe of {code}: {e}"))
 }
 
 /// The geometry step of an import alone, into a custom tree of the caller's
@@ -123,7 +119,7 @@ pub fn recipe(code: &str, name: &str, stagenum: u8, via: Via) -> Result<Recipe, 
 /// a level, in a fraction of an import's time. The folder is the caller's to
 /// keep (a renderer loads the BG from it) or delete.
 pub fn geometry_only(r: &Recipe, assets: &Path, custom: &Path) -> Result<(Stage, TileLevel), String> {
-    let paths = Paths { assets: assets.to_path_buf(), custom: custom.to_path_buf(), src: None };
+    let paths = Paths { assets: assets.to_path_buf(), custom: custom.to_path_buf(), src: None, levels: None };
     let (stage_dir, data) = crate::geometry(r, &paths)?;
     write::write_pads(&stage_dir, r, &data.fixed)?;
     write::write_setup(&stage_dir, r, &data.fixed)?;
@@ -172,7 +168,7 @@ impl SimWalk {
     }
 
     fn open_via(dir: &Path, seed: u64, via: Via, assets: &Path, res: Arc<WorldRes>) -> Result<SimWalk, String> {
-        let r = recipe(&format!("autolevel{seed}"), &format!("Autolevel {seed}"), STAGENUM, via)?;
+        let r = recipe(&format!("autolevel{seed}"), &format!("Autolevel {seed}"), via)?;
         // The geometry step of an import, into a custom tree of its own under
         // the build folder, loaded as the game loads a stage and thrown away.
         let scratch = dir.join(format!(".simwalk-{}-{}", std::process::id(), SCRATCH.fetch_add(1, Ordering::Relaxed)));

@@ -85,7 +85,6 @@ fn recipe() -> Recipe {
         format: "pd-import-recipe/1".into(),
         code: "test_yard".into(),
         name: "Test Yard".into(),
-        stagenum: 0x7f,
         scale: 1.0,
         source: Source::Oot(OotSource { scene_dir: String::new(), scene: String::new(), layer: 0, light_setting: 0, sun_dir: None, draw_rooms: None, remove: Vec::new(), walls: Vec::new() }),
         rooms: 6,
@@ -285,15 +284,15 @@ fn a_level_becomes_a_stage_the_game_plays() {
     let dir = std::env::temp_dir().join(format!("pd_import_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("assets");
-    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None };
+    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None, levels: None };
     let r = recipe();
     let report = crate::build(&r, yard(), &paths).unwrap();
     let a = pd_core::assets::AssetDir::new(&assets).with_custom_dir(&dir);
-    assert_eq!(a.custom_levels(), vec![pd_core::assets::CustomLevel { code: "test_yard".into(), stagenum: 0x7f, name: "Test Yard".into(), group: String::new() }]);
-    assert_eq!(a.stage_code(0x7f).as_deref(), Some("test_yard"));
+    assert_eq!(a.custom_levels(), vec![pd_core::assets::CustomLevel { code: "test_yard".into(), stagenum: 0x60, name: "Test Yard".into(), group: String::new() }]);
+    assert_eq!(a.stage_code(0x60).as_deref(), Some("test_yard"));
 
     let stage = pd_sim::stage::Stage::load(&a, "test_yard").unwrap();
-    assert_eq!(stage.stagenum, 0x7f);
+    assert_eq!(stage.stagenum, 0x60, "the number the game hands it, not setup.json's");
     assert_eq!(stage.spawn_pads.len(), 6);
     assert!(stage.rooms.roomcount() > 4 && !stage.rooms.portals.is_empty());
     let count = |t: &str| stage.props.iter().filter(|p| p["type"] == t).count();
@@ -338,7 +337,7 @@ fn facility_comes_from_the_goldeneye_rom() {
     let dir = std::env::temp_dir().join(format!("pd_import_ge_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let assets = manifest.join("..").join("..").join("assets");
-    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None };
+    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None, levels: None };
     let report = crate::import(&r, &paths, &crate::layout::Layout::new()).unwrap();
     let a = pd_core::assets::AssetDir::new(&assets).with_custom_dir(&dir);
     let stage = Arc::new(pd_sim::stage::Stage::load(&a, "facility").unwrap());
@@ -426,7 +425,7 @@ fn very_complex_is_complex_rebuilt() {
     let dir = std::env::temp_dir().join(format!("pd_import_vc_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let assets = manifest.join("..").join("..").join("assets");
-    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None };
+    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None, levels: None };
     let report = crate::import(&r, &paths, &crate::layout::Layout::new()).unwrap();
     let line = |start: &str| report.iter().find(|l| l.starts_with(start)).unwrap_or_else(|| panic!("no {start:?} in {report:#?}")).clone();
     assert!(line("base:").ends_with("40 the arena's, changed [14, 22, 25, 2a], added [2d, 2e, 2f, 30, 31, 32, 33, 34]"), "{}", line("base:"));
@@ -521,7 +520,7 @@ fn ci_felicity_is_two_stages_fused() {
     let dir = std::env::temp_dir().join(format!("pd_import_cf_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let assets = manifest.join("..").join("..").join("assets");
-    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None };
+    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None, levels: None };
     let (stage_dir, data) = crate::geometry(&r, &paths).unwrap();
     let line = |start: &str| data.report.iter().find(|l| l.starts_with(start)).unwrap_or_else(|| panic!("no {start:?} in {:#?}", data.report)).clone();
     // CI's rooms 1..=0x8c, Felicity's after them; the rooms the hall cut into
@@ -578,7 +577,7 @@ fn catacombs_is_a_jedi_academy_map() {
     let dir = std::env::temp_dir().join(format!("pd_import_jka_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let assets = manifest.join("..").join("..").join("assets");
-    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None };
+    let paths = crate::Paths { assets: assets.clone(), custom: dir.clone(), src: None, levels: None };
     let report = crate::import(&r, &paths, &crate::layout::Layout::new()).unwrap();
     let line = |start: &str| report.iter().find(|l| l.starts_with(start)).unwrap_or_else(|| panic!("no {start:?} in {report:#?}")).clone();
     let jka = line("jka: 178 surfaces");
