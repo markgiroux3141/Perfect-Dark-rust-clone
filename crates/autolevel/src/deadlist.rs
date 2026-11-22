@@ -216,7 +216,7 @@ mod tests {
     #[test]
     fn the_list_is_the_pythons_line_for_line() {
         let python = include_str!("../tests/deadlist/deadends_seed40.txt").replace("\r\n", "\n");
-        let (level, dead) = make(&Recipe::new(40)).unwrap();
+        let (level, dead) = make(&Recipe::before_bases(40)).unwrap();
         assert_eq!(dead.text(), python);
         assert_eq!((dead.before.len(), dead.long(), dead.fixes.as_ref().map(Vec::len), dead.left.len(), dead.camps), (11, 2, Some(2), 10, 6));
         assert_eq!(level.dead_ends.len(), 10);
@@ -233,7 +233,7 @@ mod tests {
         assert_eq!(rows.iter().filter(|r| matches!(r.of, Of::Left(_))).count(), 10);
         assert_eq!(rows.iter().filter(|r| r.line().is_none()).count(), 10);
         // a level that keeps its dead ends: the same list of them, and the Python stops there
-        let kept = Recipe { seed: 40, options: Options { dead_ends: false, ..Options::default() }, edits: Vec::new() };
+        let kept = Recipe { seed: 40, options: Options { dead_ends: false, ..Options::before_bases() }, edits: Vec::new() };
         let (_, kept) = make(&kept).unwrap();
         assert_eq!((kept.fixes.as_ref(), kept.left.len()), (None, 11));
         assert_eq!(kept.text(), python.split("done about them").next().unwrap());

@@ -300,7 +300,7 @@ fn a_stored_byte_reads_back_a_hair_off() {
 fn a_level_is_lit() {
     use crate::geometry;
     use autolevel::level::{generate, Options};
-    let lv = generate(40, &Options::default()).unwrap();
+    let lv = generate(40, &Options::before_bases()).unwrap();
     let (polys, lit) = geometry::polys(&lv, &cx::KIT).unwrap();
     let mut rooms = mesh::emit(&lv, &polys, &cx::KIT).unwrap();
     let set = Settings::default();

@@ -223,7 +223,8 @@ mod tests {
     use autolevel::recipe::Edit;
 
     fn args(line: &str) -> Args {
-        let words: Vec<String> = line.split_whitespace().map(str::to_string).collect();
+        // (bases and grown pods left out: the levels these tests pin were made before they were on)
+        let words: Vec<String> = format!("{line} --no-bases --no-big-pods").split_whitespace().map(str::to_string).collect();
         cli::parse(&words, &|path| Err(format!("{path}: no files here"))).unwrap()
     }
 
@@ -359,7 +360,7 @@ mod tests {
         // tried alone: the seed's own recipe, and the picture is not the one of the move made
         let tried = run(&args("--seed 40 --move medium1@60,29 --try --shot plan.png --width 900")).unwrap();
         let made = run(&args("--seed 40 --move medium1@60,29 --shot plan.png --width 900")).unwrap();
-        assert!(tried.recipe == Recipe::new(40) && png(&tried) != png(&made) && png(&tried) != png(&plain));
+        assert!(tried.recipe == Recipe::before_bases(40) && png(&tried) != png(&made) && png(&tried) != png(&plain));
     }
 
     #[test]
@@ -429,7 +430,7 @@ mod tests {
         assert_eq!((done.failed.as_deref(), done.refused.as_deref()), (Some(why), None));
         assert_eq!(done.text, format!("no level: {why}\n"));
         // (the bare plan is framed on the site, and draws its edge)
-        let placed = Doc::new(Recipe::new(25), true).lots().unwrap();
+        let placed = Doc::new(Recipe::before_bases(25), true).lots().unwrap();
         let view = View {
             boxes: Some(crate::planview::Boxes { lots: placed.lots, selected: Some("tower".into()), refused: None, site: Some(placed.site) }),
             ..View::default()

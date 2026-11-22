@@ -268,13 +268,13 @@ fn a_room_is_added_of_one_of_the_scales_kinds() {
     }
     assert_eq!(
         why(add("annexe", "attic", (62, 30, 69, 36), 0, 512)),
-        "add: no kind attic at this scale: one of colossal, spire, vast, tower, long, basin, medium, loft, small, tiny, atrium"
+        "add: no kind attic at this scale: one of colossal, spire, vast, tower, long, basin, medium, loft, small, tiny, atrium, base"
     );
     let standard = Recipe {
         options: Options { siting: Siting { scale: Scale::Standard, ..Siting::default() }, ..Options::default() },
         ..recipe(40, vec![add("annexe", "loft", (2, 2, 8, 8), 551, 787)])
     };
-    assert_eq!(standard.placed().unwrap_err(), "add: no kind loft at this scale: one of vast, tower, long, basin, medium, small, tiny, atrium");
+    assert_eq!(standard.placed().unwrap_err(), "add: no kind loft at this scale: one of vast, tower, long, basin, medium, small, tiny, atrium, base");
     assert_eq!(why(add("annexe", "medium", (62, 30, 63, 36), 0, 512)), "add: a room is at least 2 x 2 cells, not 1 x 6");
     assert_eq!(
         why(add("annexe", "medium", (62, 30, 69, 36), 0, 500)),

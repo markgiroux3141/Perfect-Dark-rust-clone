@@ -29,6 +29,7 @@
 //! and `styles/complex`), the writers, the bake and a command line.
 
 pub mod balcony;
+pub mod bases;
 pub mod boxes;
 pub mod build;
 pub mod candidates;

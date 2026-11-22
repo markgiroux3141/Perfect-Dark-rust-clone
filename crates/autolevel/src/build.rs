@@ -98,7 +98,7 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
         }
     }
     for up in &rooms {
-        if up.decks.is_some() || up.pool.is_some() || up.flood.is_some() || !up.cuts.is_empty() || up.sunk.is_some() || o.drops == 0 {
+        if up.decks.is_some() || up.pool.is_some() || up.flood.is_some() || !up.cuts.is_empty() || up.sunk.is_some() || up.base.is_some() || o.drops == 0 {
             continue;
         }
         let mut aprons = Cells::new();
@@ -114,6 +114,7 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
                 || !low.cuts.is_empty()
                 || low.sunk.is_some()
                 || low.decks.is_some()
+                || low.base.is_some()
                 || !(0 < up.floor - low.top && up.floor - low.top <= 320)
             {
                 continue;
@@ -185,7 +186,7 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
             for (z, cells) in &pc.cells {
                 for low in &rooms {
                     // (none into a shaped room: its cut is solid)
-                    if !(0 < z - low.top && z - low.top <= 40 && low.cuts.is_empty() && low.sunk.is_none()) {
+                    if !(0 < z - low.top && z - low.top <= 40 && low.cuts.is_empty() && low.sunk.is_none() && low.base.is_none()) {
                         continue;
                     }
                     let pods: Vec<Rect> = sp.iter().filter(|q| q.host == low.key).map(|q| q.rect()).collect();
@@ -254,6 +255,7 @@ fn more_drops<'a>(
             || up.flood.is_some()
             || !up.cuts.is_empty()
             || up.sunk.is_some()
+            || up.base.is_some()
             || holed.contains(up.key.as_str())
             || lit.contains(up.key.as_str())
         {
@@ -273,6 +275,7 @@ fn more_drops<'a>(
                 || !low.cuts.is_empty()
                 || low.sunk.is_some()
                 || low.decks.is_some()
+                || low.base.is_some()
                 || lit.contains(low.key.as_str())
                 || holed.contains(low.key.as_str())
             {
@@ -713,6 +716,11 @@ impl Build {
             Some("mixed") | None => {}
             Some(cover) => how.cover = cover,
         }
+        if s.base.is_some() {
+            // a base's storey: bare, nothing between its slits and whoever stands at them, and
+            // no cross wall (new in the Rust: no seed's level has one)
+            (how.cover, how.shape) = ("none", None);
+        }
         let mut last = "None".to_string();
         let holes = if hole.is_some() { vec![hole, None] } else { vec![None] };
         // (the rescue, ladders and bridges where ramps can't join it, only once every attempt
@@ -998,7 +1006,7 @@ mod tests {
 
     #[test]
     fn a_room_whose_doors_are_as_they_were_keeps_its_inside() {
-        let mut b = build(vec![room("a", (0, 0, 6, 6)), room("b", (14, 9, 20, 15)), room("c", (24, 9, 28, 15))], Options::default());
+        let mut b = build(vec![room("a", (0, 0, 6, 6)), room("b", (14, 9, 20, 15)), room("c", (24, 9, 28, 15))], Options::before_bases());
         b.refresh().unwrap();
         assert_eq!(b.interiors.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(), ["a", "b", "c"]);
         assert!(b.interiors.iter().all(|(k, it)| it.connected() && it.doors == b.net.doors(k)));
@@ -1020,7 +1028,7 @@ mod tests {
         let (mut before, mut after, mut deep) = (0, 0, 0);
         for (scale, seeds) in [(Scale::Towering, 1..=10), (Scale::Grand, 1..=10)] {
             for seed in seeds {
-                let mut o = Options::default();
+                let mut o = Options::before_bases();
                 o.siting.scale = scale;
                 let plain = generate(seed, &o);
                 o.holes = 1.0;
@@ -1047,7 +1055,7 @@ mod tests {
         let (mut levels, mut cellars) = (0, 0);
         for (scale, seeds) in [(Scale::Grand, 1..=6), (Scale::Towering, 1..=4)] {
             for seed in seeds {
-                let mut o = Options::default();
+                let mut o = Options::before_bases();
                 o.siting.scale = scale;
                 let plain = generate(seed, &o);
                 o.cellars = 1.0;
@@ -1074,13 +1082,13 @@ mod tests {
         }
         assert!(levels >= 8 && cellars >= 12, "{levels} levels, {cellars} cellars");
         // none unless asked for
-        assert!(generate(40, &Options::default()).unwrap().spaces().iter().all(|s| s.cellar.is_none()));
+        assert!(generate(40, &Options::before_bases()).unwrap().spaces().iter().all(|s| s.cellar.is_none()));
     }
 
     #[test]
     fn a_room_over_another_gets_a_drop_into_it() {
         let rooms = || vec![space("up", (0, 0, 8, 6), 276, 512, "medium"), room("low", (0, 0, 8, 6)), room("side", (12, 0, 18, 6))];
-        let mut b = build(rooms(), Options::default());
+        let mut b = build(rooms(), Options::before_bases());
         b.refresh().unwrap();
         let (u, low, r) = b.drops[0].clone();
         assert_eq!((b.drops.len(), u.as_str(), low.as_str(), r.2 - r.0, r.3 - r.1), (1, "up", "low", 2, 2));
@@ -1093,7 +1101,7 @@ mod tests {
         assert_eq!(b.sided(), [(u, low, r, up.hole_open)]);
         assert!(b.grates.is_empty());
         // and none when the level asks for none
-        let mut b = build(rooms(), Options { drops: 0, ..Options::default() });
+        let mut b = build(rooms(), Options { drops: 0, ..Options::before_bases() });
         b.refresh().unwrap();
         assert!(b.drops.is_empty() && b.sided().is_empty() && b.interior("up").unwrap().hole.is_empty());
     }
@@ -1114,7 +1122,7 @@ mod tests {
 
     #[test]
     fn a_small_room_down_a_long_corridor_is_left_out() {
-        let mut b = loop_and_spur((34, 0, 38, 4), Options::default());
+        let mut b = loop_and_spur((34, 0, 38, 4), Options::before_bases());
         let (g, ends) = b.ends();
         assert_eq!(g.places().len(), 4);
         assert_eq!(ends.len(), 1);
@@ -1130,7 +1138,7 @@ mod tests {
 
     #[test]
     fn a_bigger_one_is_joined_by_a_second_corridor() {
-        let mut b = loop_and_spur((34, 0, 40, 6), Options::default());
+        let mut b = loop_and_spur((34, 0, 40, 6), Options::before_bases());
         assert!(!b.ends().1[0].allowed);
         b.resolve().unwrap();
         let [Fix::Joined { room, storey, to, by, kind, length, ramps }] = &b.fixes[..] else { panic!("{:?}", b.fixes) };
@@ -1141,7 +1149,7 @@ mod tests {
         assert_eq!((b.net.routes().len(), b.net.doors("far").len(), b.interior("far").unwrap().doors.len()), (5, 2, 2));
         assert!(b.ends().1.is_empty()); // a loop out of the middle and back is no dead end
                                         // and a level that asks for its dead ends to be left keeps them
-        let o = Options { dead_ends: false, ..Options::default() };
+        let o = Options { dead_ends: false, ..Options::before_bases() };
         let mut left = crate::level::stage_dead_ends(loop_and_spur((34, 0, 40, 6), o)).unwrap();
         assert!(left.fixes.is_empty() && left.net.routes().len() == 4 && !left.ends().1[0].allowed);
     }
@@ -1154,7 +1162,7 @@ mod tests {
         let grid = crate::route::Grid::new(vec![spire, room("b", (14, 0, 20, 6))], 2);
         let mut b = Build::new(
             5,
-            Options::default(),
+            Options::before_bases(),
             Network { grid, pods: Vec::new(), hatches: Vec::new(), failed: Vec::new(), cut_off: Vec::new() },
             Vec::new(),
             vec![("spire".into(), (0, 1))],
@@ -1171,7 +1179,7 @@ mod tests {
 
     #[test]
     fn a_room_no_ramp_can_join_is_rescued_with_a_ladder() {
-        let mut b = build(vec![space("t", (0, 0, 4, 4), 0, 512, "medium"), room("b", (8, 0, 14, 6))], Options::default());
+        let mut b = build(vec![space("t", (0, 0, 4, 4), 0, 512, "medium"), room("b", (8, 0, 14, 6))], Options::before_bases());
         b.refresh().unwrap();
         assert!(b.interior("t").unwrap().chutes.is_empty());
         // an upstairs door, and no floor for a ramp to it: a ladder up to its landing (`stitch`)
@@ -1184,7 +1192,7 @@ mod tests {
 
     #[test]
     fn a_room_that_cannot_be_furnished_fails_the_level() {
-        let mut b = build(vec![space("t", (0, 0, 2, 2), 0, 512, "medium"), room("b", (8, 0, 14, 6))], Options::default());
+        let mut b = build(vec![space("t", (0, 0, 2, 2), 0, 512, "medium"), room("b", (8, 0, 14, 6))], Options::before_bases());
         b.refresh().unwrap();
         // an upstairs door, and no floor for a ramp to it, nor room for a ladder
         b.net.grid.doors[0].1.push(Door { room: "t".into(), side: 'N', a: 0, level: 276, width: 1, to: String::new() });
@@ -1194,7 +1202,7 @@ mod tests {
 
     #[test]
     fn a_rooms_dress_and_layout_follow_its_kind() {
-        let o = Options::default();
+        let o = Options::before_bases();
         let closet = room("closet", (0, 0, 3, 3));
         let hall = space("hall", (0, 0, 20, 14), 0, 787, "vast");
         for n in 0..40 {

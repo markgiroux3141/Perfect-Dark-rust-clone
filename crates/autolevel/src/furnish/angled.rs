@@ -573,7 +573,7 @@ mod tests {
         // (grand bare: islands; towering with platforms and their pits: shortcuts to them)
         for (scale, seeds, platforms) in [(Scale::Grand, 1..=10, 0.0), (Scale::Towering, 1..=10, 1.0)] {
             for seed in seeds {
-                let mut o = Options { platforms, holes: platforms / 2.0, ..Options::default() };
+                let mut o = Options { platforms, holes: platforms / 2.0, ..Options::before_bases() };
                 o.siting.scale = scale;
                 let plain = generate(seed, &o);
                 o.angled = 1.0;
@@ -630,7 +630,7 @@ mod tests {
         }
         assert!(levels >= 16 && isles >= 6 && spokes >= 18 && shortcuts >= 10, "{levels} levels, {isles} islands, {spokes} spokes, {shortcuts} shortcuts");
         // none unless asked for: every seed's level is as it was
-        assert!(generate(40, &Options::default()).unwrap().interiors.iter().all(|(_, it)| it.islands.is_empty() && it.angled.is_empty()));
+        assert!(generate(40, &Options::before_bases()).unwrap().interiors.iter().all(|(_, it)| it.islands.is_empty() && it.angled.is_empty()));
     }
 
     #[test]

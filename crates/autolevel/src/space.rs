@@ -63,6 +63,12 @@ pub struct Space {
     /// A sunken floor (`level::sinks`): (x0, y0, x1, y1) in cells, `level::SUNK_DEPTH` under the
     /// room's floor, its pit kept from the storey under it. New in the Rust.
     pub sunk: Option<crate::cells::Rect>,
+    /// One storey of a base (`bases`): a column of rooms that crosses a hall's wall, floor or
+    /// ceiling, slit windows into it at eye height. None for every other room. New in the Rust.
+    pub base: Option<crate::bases::Storey>,
+    /// The base storeys that stand in this room: (their key, their rectangle in cells, their
+    /// floor), solid in it but for their slits. Empty for every other room. New in the Rust.
+    pub blocks: Vec<(String, Rect, i32)>,
 }
 
 /// A cellar: a room a storey under a hall, inside its footprint, joined to it by a hatch in the
@@ -301,6 +307,8 @@ pub fn spaces(lots: &[Lot]) -> Vec<Space> {
             flood: None,
             cuts: Vec::new(),
             sunk: None,
+            base: None,
+            blocks: Vec::new(),
         })
         .collect();
     // a towering hall's high storeys: the ones of its pods over the storeys ramped inside it

@@ -13,7 +13,9 @@
       "options": {
         "scale": "towering",
         "platforms": 1.0,
-        "galleries": 2
+        "galleries": 2,
+        "bases": false,
+        "big_pods": false
       },
       "edits": []
     }

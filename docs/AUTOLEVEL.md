@@ -2619,6 +2619,145 @@ the maker makes them.** `graph_from_links_grouped` (`by_room`) and `regroup` sta
   weapons, ammo and spawns go; the waypoints are fine as they are).
 - Nobody has played it.
 
+## Bases: rooms that cut into a hall (2026-11-22)
+
+**The user's ask (2026-11-22, with a sketch):** a pod is a room wholly inside a bigger one, and
+they are all small. Let a small room cut into a big one instead: half in and half out of its
+wall, up through its floor, or down through its ceiling, with windows to see and shoot into the
+hall (all four sides, one for cover, any mix), and wherever a window is, something to stand on at
+eye level with it. And rooms in rooms of more varied sizes. The user's open questions were
+answered by default: the windows are **open slits** (no glass), and a base is entered **only from
+outside** (a fortified base); both are easy to change.
+
+**The model** (`autolevel::bases`): a base is a lot of kind `base` (`place::BASE`), never
+scattered. It crosses one hall (`bases::hall_of`: the first lot that is no base or pod, overlaps
+it in plan and shares a height with it).
+- **One room a storey** (`bases::split`, in `level::stage_rooms` before the cellars): each storey
+  is its own `Space` with a whole floor, so whoever stands in it is at eye level with its slits,
+  at any height the base reaches. The lowest keeps the lot's key; the rest are `{key}_2`,
+  `{key}_3` upwards (the editor draws them as the lot, `planview::differs`, `deleted`).
+- **Storeys are joined as a cellar is to its hall** (`Space::cellar`): a hatch two cells square
+  in the upper room's floor and a ladder up the lower room's wall. All of the cellars' machinery
+  serves them unchanged (the router's union, the drop, the ladder's geometry and `GEOFLAG_LADDER`,
+  the walks `drop_*` and `ladder_*`, the dead-end graph, `holds_cellar`). **The lower room of
+  each pair is a cell narrower on the ladder's side**, so the climb comes out on the upper room's
+  floor (a ladder up a wall that runs on up would come out against it). That side is one that
+  does not look into the hall where one exists.
+- **`Space::base`** (`bases::Storey`): the column, the hall, `inside` (wholly in the hall: no door
+  is possible, the hatches are its ways in), the walls with slits (`DIRS` indices) and how they
+  are cut ("band": one slit along the wall; "posts": a cell of slit, a cell of wall). Drawn from
+  the base's own stream, "{seed}/{key}/base": all the walls that look into the hall (0.4), the
+  one facing its middle (0.25), or two or three.
+- **The hall's side** (`Space::blocks`: each base storey on one of its storeys): the block is
+  the room and a half cell of wall round it, run on to the hall's wall where it would leave a slot
+  under two cells (as a pod's shell), cut back to the hall (`bases::block`), from the ceiling under
+  it to the floor over it (`bases::block_z`). The furnisher adds it to `shell` (that storey) and
+  `roof` (the one over it, unless the base goes on up there), so everything that keeps clear of a
+  pod keeps clear of a base; `plans::boxes` subtracts it from the hall's air. **On the hall's
+  floor storey** a shell is new (no pod is ever there), so `walk` and the cover's floor now leave
+  it out (no seed's floor changes: it is empty there).
+- **The router** marks base storeys after every other room and before pods (each overwrites the
+  hall it crosses), and the block on the hall's storey as a pod's shell. A door needs empty cells
+  outside it, so no base door can open into its hall: a base through a wall gets its door on the
+  outside part, one through the floor on the storey under the hall, one through the ceiling on the
+  storey over it. `door_levels` is a one-storey room's.
+- **Slits** (`bases::slits`, `planner`): air of the base storey's own through its block's wall,
+  from `SILL` (100) to `LINTEL` (190) over its floor: a standing player's eye (159) is in it, a
+  crouching one's under the sill (the wall below is cover). Each is an opening the plan checks
+  (an "overlook" link) and so a portal in the import. A wall looks into the hall when the block's
+  face is a cell or more from the hall's walls; the span keeps a half cell at each end
+  (`bases::faces`).
+- **What a base storey is not given:** cover or a cross wall (`build::furnish`: nothing between
+  its slits and whoever stands at them), drops or grates (`build::openings`, `more_drops`),
+  corridor windows (`windows`), a shape, water or a sunken floor (`level::shapes`, `floods`,
+  `sinks`, which also skip a hall with a base in it).
+- **Names** (`bases::NAMES`, the column's own stream "{seed}/{column}/name"): "The Pillbox", its
+  other storeys "The Pillbox, storey 2".
+- **Views** (`walks::views`): `base_<room>` from the far side of the room out through its first
+  slit, `base_<room>_out` from four cells out in the hall back at it.
+
+**The rules** (`bases::misfit`, in `Placed::check` for a base and its hall; every other pair by
+the scatter's rule): not a spire, basin or atrium; at least `DEEP` (2) cells into the hall each
+way, and not right across it; four storeys at most (`MOST_STOREYS`); a whole storey shared with
+the hall; not wholly inside it (that is a pod's place); through a wall, at least two cells out
+(for its door); and each storey under another a cell narrower, so a base of n storeys is at least
+2 + n cells across. Each refusal says which in words.
+
+**By hand:** an `add` of kind `base` over a hall, as any room (the editor's room tool offers the
+kind). **By the generator:** the recipe's `bases`, a switch, **on by default** (the user's call,
+2026-11-22: "a toggleable option ... it will default to on"; `--no-bases` on the command lines,
+"Bases" among the Generate screen's features in `pd_edit`, a switch in "Advanced";
+`bases::random`): each hall (no spire, basin or atrium; 8 cells across and 80 of floor or more)
+with the chance `bases::CHANCE` (0.75), from its own stream "{seed}/{key}/bases", takes one: through one of its
+walls (a storey or two of the hall's, 3 to 10 cells along it, 2 to 5 in and 2 to 4 out), up
+through its floor from the storey under it, or down through its ceiling from the storey over it
+(a storey or two into the hall, 3 to 8 cells a side, `INSET` (3) cells from its walls), clear of
+every other lot. Twenty-five tries, then none. Not in an empty start.
+
+**Bigger pods:** the recipe's `big_pods`, a switch, **on by default** as bases are
+(`--no-big-pods`; "Big pods" on the Generate screen; `level::grow_pods`): each pod with the chance
+`BIG_POD_CHANCE` (0.5; "{seed}/{key}/grow"), not in an empty start, grown about its middle to 5 to 10 cells by 4 to 8
+(`BIG_POD`), in its hall a cell from its walls, a fifth of its floor at most, clear of every
+other room, and only if it and every other pod of its hall still have a way in
+(`pods::pod_access`).
+
+**On by default, and what that took (2026-11-22):**
+- **Every seed that made a level still makes one.** A seed whose generated bases or grown pods
+  leave it with no level (a hall no set of ramps can join round a block) is made without them,
+  as the rescue makes every seed a level: `Recipe::plain` (the recipe with both off, for a seed's
+  level only), tried by `Recipe::generate`, `furnished` and `finish` and by `level::generate` when
+  the level as drawn fails. The recipe still says `bases: true`; the fallback is the same every
+  time. Probe: `bases::tests::seeds_with_bases_make_levels_as_they_did` (ignored; `SEEDS=1-60`):
+  seeds 1-60 at grand, standard and towering, 180 levels with and without, none lost; 294 bases;
+  one fallback (grand 42), and 13 levels with no base (no hall drew one, or none had room: most at
+  the standard scale, whose halls are small).
+- **A slit only where the hall is clear a cell in front of it** (`bases::slits`, which now takes the
+  level's rooms): a pod's shell or another base's block there left a slit opening onto nothing,
+  and the plan check refused the level (standard 58, towering 18 and 52).
+- **Bases take some halls from the other features:** a hall with a base is never flooded, shaped
+  or sunken, so those are fewer now (their own tests switch bases off to count them).
+- **The arenas already imported keep their levels:** every seeded Complex recipe in
+  `crates/pd_import/levels/` (and `autolevel51`) now says `"bases": false, "big_pods": false`, so
+  importing or placing one again makes the level it has (its items' places included); `bases7`
+  says `true` and was imported again.
+- **Tests that pin a seed's level by the defaults** pin it by `Options::before_bases()` /
+  `Recipe::before_bases(seed)` (the defaults with only these two off), the key tests and the
+  importer's by naming them off, the editor's command-line tests by `--no-bases --no-big-pods`
+  (`tests/cli.rs`, `PINNED`); `Options::python()` leaves both out too.
+- **The Generate screen** (`pd_edit::app::shape::FEATURES`): two more chips, whose on and off
+  values are `true` and `false` (`off_at`; a test turns every chip on and off).
+
+**Tests:** `bases::tests` (the sketch's three in one hall: one room a storey, doors only
+outside, the hatches and the narrower lower rooms, nothing of the hall's in a block, each slit an
+overlook with its view; the refusals in words; `--bases 1` on seeds 1-12 makes levels exactly
+where the seed does, with all three kinds and no inside storey with a door; big pods grown with
+their doors). The recipe and editor tests pin the kind list with `base` in it.
+
+**Checked (2026-11-22):** the keys and every test of the three crates and `pd_import` pass (no
+seed's level changed). `--bases 1` on grand seeds 1-12: 12 levels, 26 bases, every walk passes.
+With everything on at once (`--bases 1 --big-pods 1 --platforms 1 --angled 1 --holes 0.5
+--cellars 1 --flooded 0.3`), grand 1-12: 12 levels, 26 bases, 1,152 walks, all pass; towering 1-3,
+5-11 (`... --galleries 2`): 10 levels, 23 bases, 1,227 walks, all pass. Seen in the game's renderer
+(`pd_snapshot stage bases1 --at`): the hall through a wall base's three slits, by their portals.
+**Found on the way:** a shell on a hall's floor storey (no pod is ever there) was still walked on
+(`walk`); and in a column of three, two hatches centred on opposite walls of a room five cells deep
+met in its middle, so the drop from above landed on the lower hatch's rail: consecutive hatches now
+take opposite walls and opposite ends of them.
+
+**Arenas** (imported 2026-11-22, the Autolevel group): `bases1` (an empty start: the sketch's three
+in one hall, `bases::tests::three`), `bases2` (an empty start: a base two storeys up through a
+wall, slits on both; one rising two storeys through the floor; one hanging two storeys through the
+ceiling; a big one, 9 x 8, at catwalk height; and a pod beside them), `bases7` (seed 7, grand,
+`bases: 1, big_pods: 1, platforms: 1`: three bases, a pod grown to 10 x 8). Recipes in
+`crates/pd_import/levels/`. Nobody has played them.
+
+**Rough, and next:** the slits are open (no glass; one line in `bases::slits` and the planner to
+glaze them); a base's storeys take their names in order ("..., storey 2"), not by what they are;
+the editor's room tool draws a base as its lot (the column's narrower storeys are not shown apart);
+the ladder of a column goes up a wall that may also have slits (the band runs across it); a base
+in a basin, spire or atrium is refused, not fitted; nothing is placed at a slit on purpose (the
+placement rules know nothing of bases yet: a sniper's spot at a slit is the editor's).
+
 ## Risks
 
 - **A missed order dependence** shows up as a key mismatch deep in furnish. The cure is in

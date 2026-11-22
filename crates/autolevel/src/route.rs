@@ -303,8 +303,11 @@ impl Grid {
         let owner = vec![vec![0; (w * h) as usize]; LEVELS.len()];
         let doors = sp.iter().map(|s| (s.key.clone(), Vec::new())).collect();
         let mut g = Grid { sp, band, ox, oy, w, h, ids: BTreeMap::new(), owner, doors, routes: Vec::new(), made: 0, vents_made: 0 };
-        // pods overwrite their hosts
-        let order: Vec<usize> = (0..g.sp.len()).filter(|&n| g.sp[n].host.is_empty()).chain((0..g.sp.len()).filter(|&n| !g.sp[n].host.is_empty())).collect();
+        // pods overwrite their hosts, and a base's storeys the hall they cross (new in the Rust:
+        // no seed's level has a base unless asked for, so the order is as it was)
+        let all = &g.sp;
+        let rooms = |base: bool| (0..all.len()).filter(move |&n| all[n].host.is_empty() && all[n].base.is_some() == base);
+        let order: Vec<usize> = rooms(false).chain(rooms(true)).chain((0..all.len()).filter(|&n| !all[n].host.is_empty())).collect();
         for n in order {
             let s = g.sp[n].clone();
             let i = g.id(&s.key);
@@ -343,6 +346,14 @@ impl Grid {
                 // its shell in the hall: no doors there
                 let shell = shell_cells(&s, find(&g.sp, &s.host));
                 g.mark(shell, s.floor, i);
+            }
+            if let Some(b) = &s.base {
+                // a base storey's block in its hall: no doors there either
+                let hall = find(&g.sp, &b.hall).clone();
+                if hall.storeys().contains(&s.floor) {
+                    let (x0, y0, x1, y1) = crate::bases::block(s.rect(), hall.rect());
+                    g.mark((x0.div_euclid(2), y0.div_euclid(2), -(-x1).div_euclid(2), -(-y1).div_euclid(2)), s.floor, i);
+                }
             }
         }
         g
@@ -1050,6 +1061,8 @@ pub(crate) mod tests {
             flood: None,
             cuts: Vec::new(),
             sunk: None,
+            base: None,
+            blocks: Vec::new(),
         }
     }
 

@@ -382,6 +382,8 @@ fn finish(
                 flood: None,
                 cuts: Vec::new(),
                 sunk: None,
+                base: None,
+                blocks: Vec::new(),
             })
         })
         .collect();

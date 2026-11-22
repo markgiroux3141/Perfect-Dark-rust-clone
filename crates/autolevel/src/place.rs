@@ -75,6 +75,11 @@ pub const GRAND: [Kind; 10] = [
 /// New in the Rust (docs/AUTOLEVEL.md, "Atriums").
 pub const ATRIUM: Kind = Kind::new("atrium", 0, (8, 40), (8, 40), &[0], &[]).host();
 
+/// A base (`bases`): never scattered (only an edit or `Options::bases` adds one), a column of
+/// rooms through a hall's wall, floor or ceiling, held to `bases::misfit` against that hall and to
+/// the scatter's rule against every other lot. New in the Rust (docs/AUTOLEVEL.md, "Bases").
+pub const BASE: Kind = Kind::new(crate::bases::KIND, 0, (3, 10), (3, 8), &[0], &[236]);
+
 /// Grand's kinds reaching up to fifteen storeys. Floors and ceilings by `storeys::LEVELS` and
 /// `CEILINGS` (a height is floor to ceiling: 4094 from the ground is fifteen storeys).
 pub const TOWERING_KINDS: [Kind; 10] = [
@@ -342,6 +347,7 @@ impl Placed {
     pub fn new(lots: Vec<Lot>, o: &Siting) -> Placed {
         let (mut kinds, site) = kinds_and_site(o);
         kinds.push(ATRIUM); // never scattered: only an edit adds one
+        kinds.push(BASE); // nor is a base
         Placed { lots, site, kinds, gone: Vec::new(), touched: BTreeSet::new(), blank: false }
     }
 
@@ -535,6 +541,15 @@ impl Placed {
         }
         for (n, a) in self.lots.iter().enumerate() {
             for b in &self.lots[n + 1..] {
+                // a base and the hall it crosses: held to the base's own rule
+                let crossed = |p: &Lot, q: &Lot| p.kind == BASE.name && crate::bases::hall_of(p, &self.lots).is_some_and(|h| h.key == q.key);
+                if crossed(a, b) || crossed(b, a) {
+                    let (base, hall) = if crossed(a, b) { (a, b) } else { (b, a) };
+                    if let Some(why) = crate::bases::misfit(base, hall) {
+                        return Err(why);
+                    }
+                    continue;
+                }
                 let (pod, hall) = if a.host == b.key {
                     (a, b)
                 } else if b.host == a.key {

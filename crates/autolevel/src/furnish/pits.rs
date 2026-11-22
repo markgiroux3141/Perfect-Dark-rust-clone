@@ -235,7 +235,7 @@ mod tests {
     fn a_pit_drops_through_a_platform_onto_what_is_under_it() {
         let (mut levels, mut pits, mut spans) = (0, 0, 0);
         for seed in 1..=6 {
-            let mut o = Options { platforms: 1.0, galleries: 2, ..Options::default() };
+            let mut o = Options { platforms: 1.0, galleries: 2, ..Options::before_bases() };
             o.siting.scale = Scale::Towering;
             let plain = generate(seed, &o);
             o.holes = 1.0;
@@ -263,7 +263,7 @@ mod tests {
         }
         assert!(levels >= 5 && pits >= 10 && spans >= 2, "{levels} levels, {pits} pits, {spans} spans");
         // none unless asked for
-        let mut o = Options { platforms: 1.0, ..Options::default() };
+        let mut o = Options { platforms: 1.0, ..Options::before_bases() };
         o.siting.scale = Scale::Towering;
         assert!(generate(9, &o).unwrap().interiors.iter().all(|(_, it)| it.pits.is_empty()));
     }

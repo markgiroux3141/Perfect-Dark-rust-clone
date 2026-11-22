@@ -13,7 +13,9 @@
         "platforms": 1.0,
         "galleries": 2,
         "cellars": 0.3,
-        "angled": 0.3
+        "angled": 0.3,
+        "bases": false,
+        "big_pods": false
       },
       "edits": []
     }

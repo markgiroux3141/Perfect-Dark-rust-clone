@@ -11,7 +11,9 @@
       "format": 1,
       "seed": 9,
       "options": {
-        "scale": "towering"
+        "scale": "towering",
+        "bases": false,
+        "big_pods": false
       },
       "edits": []
     }

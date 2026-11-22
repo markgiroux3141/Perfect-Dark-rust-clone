@@ -12,7 +12,9 @@
       "seed": 13,
       "options": {
         "flooded": 0.4,
-        "angled": 1.0
+        "angled": 1.0,
+        "bases": false,
+        "big_pods": false
       },
       "edits": []
     }

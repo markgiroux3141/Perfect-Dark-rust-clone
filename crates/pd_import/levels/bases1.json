@@ -1,0 +1,140 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "bases1",
+  "name": "Bases 1",
+  "group": "Autolevel",
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 1,
+      "start": "empty",
+      "options": {
+        "flooded": 0.0
+      },
+      "edits": [
+        {
+          "edit": "add",
+          "key": "hall",
+          "kind": "colossal",
+          "rect": [
+            20,
+            20,
+            44,
+            38
+          ],
+          "floor": 0,
+          "top": 787
+        },
+        {
+          "edit": "add",
+          "key": "wallbase",
+          "kind": "base",
+          "rect": [
+            40,
+            24,
+            47,
+            30
+          ],
+          "floor": 0,
+          "top": 236
+        },
+        {
+          "edit": "add",
+          "key": "floorbase",
+          "kind": "base",
+          "rect": [
+            26,
+            30,
+            32,
+            35
+          ],
+          "floor": -276,
+          "top": 236
+        },
+        {
+          "edit": "add",
+          "key": "ceilbase",
+          "kind": "base",
+          "rect": [
+            28,
+            23,
+            34,
+            28
+          ],
+          "floor": 551,
+          "top": 1063
+        },
+        {
+          "edit": "add",
+          "key": "east",
+          "kind": "medium",
+          "rect": [
+            50,
+            22,
+            57,
+            32
+          ],
+          "floor": 0,
+          "top": 236
+        },
+        {
+          "edit": "add",
+          "key": "west",
+          "kind": "medium",
+          "rect": [
+            8,
+            22,
+            16,
+            30
+          ],
+          "floor": 0,
+          "top": 236
+        },
+        {
+          "edit": "add",
+          "key": "under",
+          "kind": "medium",
+          "rect": [
+            8,
+            33,
+            16,
+            40
+          ],
+          "floor": -276,
+          "top": -40
+        },
+        {
+          "edit": "add",
+          "key": "loft",
+          "kind": "loft",
+          "rect": [
+            26,
+            8,
+            34,
+            15
+          ],
+          "floor": 827,
+          "top": 1063
+        },
+        {
+          "edit": "add",
+          "key": "stair",
+          "kind": "tower",
+          "rect": [
+            8,
+            8,
+            15,
+            15
+          ],
+          "floor": 0,
+          "top": 1063
+        }
+      ]
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

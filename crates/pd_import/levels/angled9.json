@@ -15,7 +15,9 @@
         "platforms": 1.0,
         "galleries": 2,
         "holes": 0.5,
-        "angled": 1.0
+        "angled": 1.0,
+        "bases": false,
+        "big_pods": false
       },
       "edits": []
     }

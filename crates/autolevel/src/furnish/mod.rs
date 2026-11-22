@@ -477,6 +477,25 @@ impl Interior {
             }
             shell.get_mut(&p.floor).unwrap_or_else(|| panic!("{}: its pod {} is on no storey of it", s.key, p.key)).extend(cells);
         }
+        // the storeys of bases that stand in it (`Space::blocks`): solid on their storey, as a
+        // pod's shell is, and their roof a floor over them, unless the base goes on up there
+        let mut based: BTreeMap<i32, Cells> = BTreeMap::new();
+        for (key, r, z) in &s.blocks {
+            let cells: Cells = rect_cells(crate::bases::block(*r, s.rect())).intersection(&room).copied().collect();
+            shell.get_mut(z).unwrap_or_else(|| panic!("{}: its base storey {key} is on no storey of it", s.key)).extend(cells.iter().copied());
+            based.entry(*z).or_default().extend(cells.iter().copied());
+            let i = index(*z);
+            if i + 1 < LEVELS.len() {
+                if let Some(over) = roof.get_mut(&LEVELS[i + 1]) {
+                    over.extend(cells);
+                }
+            }
+        }
+        for (z, cells) in &based {
+            if let Some(over) = roof.get_mut(z) {
+                over.retain(|c| !cells.contains(c));
+            }
+        }
         Interior {
             s: s.clone(),
             doors: doors.to_vec(),

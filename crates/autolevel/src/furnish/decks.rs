@@ -312,8 +312,12 @@ impl Interior {
     /// Cells with a floor on storey `z`.
     pub fn walk(&self, z: i32) -> Cells {
         if z == self.levels[0] {
-            let mut out: Cells =
-                self.room.iter().filter(|c| !self.pool.contains(c) && !self.hole.contains(c) && !self.sunk_cells.contains(c)).copied().collect();
+            let mut out: Cells = self
+                .room
+                .iter()
+                .filter(|c| !self.pool.contains(c) && !self.hole.contains(c) && !self.sunk_cells.contains(c) && !self.shell[&self.levels[0]].contains(c))
+                .copied()
+                .collect();
             out.extend(self.bridge.iter().copied());
             return out;
         }

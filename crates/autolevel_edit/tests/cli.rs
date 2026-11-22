@@ -8,22 +8,26 @@
 
 use std::process::Command;
 
+/// Bases and grown pods left out: the levels these tests pin were made before they were on
+/// (2026-11-22).
+const PINNED: [&str; 2] = ["--no-bases", "--no-big-pods"];
+
 fn run(args: &[&str]) -> String {
-    let out = Command::new(env!("CARGO_BIN_EXE_autolevel_edit")).args(args).output().expect("autolevel_edit runs");
+    let out = Command::new(env!("CARGO_BIN_EXE_autolevel_edit")).args(args).args(PINNED).output().expect("autolevel_edit runs");
     assert!(out.status.success(), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
     String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n")
 }
 
 /// What a command line that must fail says.
 fn refused(args: &[&str]) -> String {
-    let out = Command::new(env!("CARGO_BIN_EXE_autolevel_edit")).args(args).output().expect("autolevel_edit runs");
+    let out = Command::new(env!("CARGO_BIN_EXE_autolevel_edit")).args(args).args(PINNED).output().expect("autolevel_edit runs");
     assert!(!out.status.success(), "{args:?} should fail");
     String::from_utf8_lossy(&out.stderr).replace("\r\n", "\n").trim().to_string()
 }
 
 /// What a command line that must fail prints before it does, and what it then says.
 fn fails(args: &[&str]) -> (String, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_autolevel_edit")).args(args).output().expect("autolevel_edit runs");
+    let out = Command::new(env!("CARGO_BIN_EXE_autolevel_edit")).args(args).args(PINNED).output().expect("autolevel_edit runs");
     assert_eq!(out.status.code(), Some(1), "{args:?} should fail");
     let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).replace("\r\n", "\n");
     (text(&out.stdout), text(&out.stderr).trim().to_string())
@@ -228,11 +232,12 @@ fn a_shot_is_written_twice_the_same_and_the_list_is_printed() {
     let (a, b) = (std::fs::read(&png1).unwrap(), std::fs::read(&png2).unwrap());
     assert!(a == b && a.starts_with(b"\x89PNG"));
     assert!(text.contains("seed 7: ") && text.contains(" dead ends as it falls, ") && text.contains("\nleft: ") && text.contains("\non the plan:\n"), "{text}");
-    // the recipe written from that line makes the same picture, and holds only what was chosen
+    // the recipe written from that line makes the same picture, and holds only what was chosen (the
+    // cover, and `PINNED`'s two)
     run(&["--seed", "7", "--cover", "pillars", "--save-recipe", &recipe]);
     assert_eq!(
         std::fs::read_to_string(&recipe).unwrap(),
-        "{\n  \"format\": 1,\n  \"seed\": 7,\n  \"options\": {\n    \"cover\": \"pillars\"\n  },\n  \"edits\": []\n}\n"
+        "{\n  \"format\": 1,\n  \"seed\": 7,\n  \"options\": {\n    \"cover\": \"pillars\",\n    \"bases\": false,\n    \"big_pods\": false\n  },\n  \"edits\": []\n}\n"
     );
     run(&["--recipe", &recipe, "--shot", &png3, "--width", "900"]);
     assert!(std::fs::read(&png3).unwrap() == a);

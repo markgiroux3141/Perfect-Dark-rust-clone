@@ -95,6 +95,15 @@ pub struct Options {
     /// cell lower, open all round, a ramp down into it (`sinks`, `furnish::sunken`; `SUNKEN` by
     /// default; 0: none, as the Python). New in the Rust.
     pub sunken: f64,
+    /// Halls may have bases: a column of rooms through one of its walls, its floor or its
+    /// ceiling, slits into it at eye height, entered from outside; each hall with the chance
+    /// `bases::CHANCE` (`bases::random`; off: none, as the Python). New in the Rust, on by default
+    /// (the user's call, 2026-11-22).
+    pub bases: bool,
+    /// Pods may be grown, to 5 to 10 cells by 4 to 8 where their hall has room; each with the
+    /// chance `BIG_POD_CHANCE` (`grow_pods`; off: none, as the Python). New in the Rust, on by
+    /// default (the user's call, 2026-11-22).
+    pub big_pods: bool,
     /// A room no set of ramps can join, on every attempt, is furnished once more with ladders and
     /// bridges (`furnish::stitch`; false: the level is given up there, as the Python's is). New in
     /// the Rust, on by default: it changes no level that could be made without it.
@@ -162,6 +171,8 @@ impl Default for Options {
             flooded: FLOODED,
             shaped: SHAPED,
             sunken: SUNKEN,
+            bases: true,
+            big_pods: true,
             rescue: true,
             dead_ends: true,
             dead_corridor: 8,
@@ -177,11 +188,18 @@ impl Default for Options {
 
 impl Options {
     /// The defaults with the Rust's own rooms that are on by default left out (flooded, shaped and
-    /// sunken: `FLOODED`, `SHAPED`, `SUNKEN`): a seed's level by the Python's rules, and the Rust's
+    /// sunken: `FLOODED`, `SHAPED`, `SUNKEN`; bases and big pods): a seed's level by the Python's rules, and the Rust's
     /// own that are always on. What a test pins a seed's level by, so that a feature on by default
     /// moves no pin.
     pub fn python() -> Options {
-        Options { flooded: 0.0, shaped: 0.0, sunken: 0.0, ..Options::default() }
+        Options { flooded: 0.0, shaped: 0.0, sunken: 0.0, bases: false, big_pods: false, ..Options::default() }
+    }
+
+    /// The defaults with bases and grown pods left out (`bases`, `big_pods`), everything else as
+    /// it is: what the tests that pinned a seed's level by the defaults before those were on
+    /// (2026-11-22) pin it by now.
+    pub fn before_bases() -> Options {
+        Options { bases: false, big_pods: false, ..Options::default() }
     }
 
     /// A catwalk's depth from its wall, in half cells.
@@ -240,8 +258,20 @@ pub fn stage_spaces(seed: u64, o: &Options) -> Result<Spaces, String> {
 /// The rest of `stage_spaces`, from the lots as placed: the rooms, the spires' spirals and the
 /// pods' ways in. (Its own stage so that a recipe can change the lots by hand first.)
 pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
-    let (placed, made) = cellars(seed, o, placed);
+    // bases: the generator's own (none unless asked for), then each split into its storeys
+    let col = crate::bases::columns(seed, &crate::bases::random(seed, o, placed));
+    let (placed, mut made) = cellars(seed, o, &col.lots);
     let mut sp = spaces(&placed);
+    for (key, b) in col.storeys {
+        let s = sp.iter().find(|s| s.key == key).expect("a base's storey").clone();
+        if let Some(hall) = sp.iter_mut().find(|h| h.key == b.hall) {
+            if hall.storeys().contains(&s.floor) {
+                hall.blocks.push((key.clone(), s.rect(), s.floor));
+            }
+        }
+        sp.iter_mut().find(|s| s.key == key).expect("a base's storey").base = Some(b);
+    }
+    made.extend(col.hatches);
     for (key, c) in made {
         let h = |r: crate::cells::Rect| (2 * r.0, 2 * r.1, 2 * r.2, 2 * r.3);
         // no door of either room opens onto the hatch (the hall's, nor a cellar door under it)
@@ -263,12 +293,14 @@ pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
             s.clear = lay.clear;
         }
     }
+    grow_pods(seed, o, &mut sp);
     // pods need a way in from their hall, or they are left out
     let (mut access, mut dropped) = (Vec::new(), Vec::new());
     let pods: Vec<String> = sp.iter().filter(|s| !s.host.is_empty()).map(|s| s.key.clone()).collect();
     for key in pods {
         let pod = find(&sp, &key);
-        let others: Vec<&Space> = sp.iter().filter(|q| q.host == pod.host).collect();
+        // (its hall's other pods, and the storeys of bases in it: its way in keeps out of them)
+        let others: Vec<&Space> = sp.iter().filter(|q| q.host == pod.host || q.base.as_ref().is_some_and(|b| b.hall == pod.host)).collect();
         match pod_access(find(&sp, &pod.host), pod, &others, o.band()) {
             Some(acc) => access.push((key, acc)),
             None => {
@@ -287,6 +319,61 @@ pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
     floods(seed, o, &mut sp);
     sinks(seed, o, &mut sp);
     Spaces { sp, spin, access, dropped }
+}
+
+/// The sides a grown pod may have (`grow_pods`), cells: the longer, the shorter.
+pub const BIG_POD: ((i32, i32), (i32, i32)) = ((5, 10), (4, 8));
+/// The chance each pod is grown when they may be (`Options::big_pods`): some big, some as they fell.
+pub const BIG_POD_CHANCE: f64 = 0.5;
+
+/// Bigger pods (`Options::big_pods`): each pod, with the chance `BIG_POD_CHANCE` from its own stream
+/// ("{seed}/{key}/grow"), is grown about its middle to 5 to 10 cells by 4 to 8, staying in its hall
+/// a cell from its walls, a fifth of the hall's floor at most, clear of every other room by the
+/// scatter's rule, and with a way in for it and for every other pod of its hall
+/// (`pods::pod_access`). Twenty tries, then it stays as it was. Not in an empty start (its pods are
+/// drawn by hand). New in the Rust; with the option off every pod is as it was.
+pub fn grow_pods(seed: u64, o: &Options, sp: &mut [Space]) {
+    use crate::scatter::{rect_gap, SLAB};
+    if !o.big_pods || o.start == Start::Empty {
+        return;
+    }
+    let keys: Vec<String> = sp.iter().filter(|s| !s.host.is_empty()).map(|s| s.key.clone()).collect();
+    for key in keys {
+        let mut rng = PyRandom::named(&format!("{seed}/{key}/grow"));
+        if rng.random() >= BIG_POD_CHANCE {
+            continue;
+        }
+        let n = sp.iter().position(|s| s.key == key).expect("a pod");
+        let pod = sp[n].clone();
+        let host = find(sp, &pod.host).clone();
+        for _ in 0..20 {
+            let long = rng.randint(BIG_POD.0 .0 as i64, BIG_POD.0 .1 as i64) as i32;
+            let short = rng.randint(BIG_POD.1 .0 as i64, BIG_POD.1 .1 as i64) as i32;
+            let (w, d) = if rng.random() < 0.5 { (long, short) } else { (short, long) };
+            if w + 2 > host.x1 - host.x0 || d + 2 > host.y1 - host.y0 || 5 * w * d > host.area() || w * d <= pod.area() {
+                continue;
+            }
+            let (cx, cy) = ((pod.x0 + pod.x1).div_euclid(2), (pod.y0 + pod.y1).div_euclid(2));
+            let x0 = (cx - w / 2).clamp(host.x0 + 1, host.x1 - 1 - w);
+            let y0 = (cy - d / 2).clamp(host.y0 + 1, host.y1 - 1 - d);
+            let grown = Space { x0, y0, x1: x0 + w, y1: y0 + d, ..pod.clone() };
+            let clear = sp.iter().all(|q| {
+                let (gx, gy) = rect_gap(grown.rect(), q.rect());
+                q.key == pod.key || q.key == host.key || gx.max(gy) >= crate::place::GAP || grown.floor >= q.top + SLAB || q.floor >= grown.top + SLAB
+            });
+            if !clear {
+                continue;
+            }
+            // a way in for it, and still for the hall's other pods
+            let mut trial: Vec<Space> = sp.to_vec();
+            trial[n] = grown.clone();
+            let others: Vec<&Space> = trial.iter().filter(|q| q.host == host.key || q.base.as_ref().is_some_and(|b| b.hall == host.key)).collect();
+            if others.iter().filter(|p| !p.host.is_empty()).all(|p| pod_access(&host, p, &others, o.band()).is_some()) {
+                sp[n] = grown;
+                break;
+            }
+        }
+    }
 }
 
 /// The chance a room is flooded unless told otherwise (`Options::flooded`; the user's call,
@@ -325,6 +412,8 @@ pub fn shapes(seed: u64, o: &Options, sp: &mut [Space], access: &[(String, Acces
             && s.pool.is_none()
             && s.cellar.is_none()
             && !halls.contains(&s.key)
+            && s.base.is_none()
+            && s.blocks.is_empty()
             && !matches!(s.kind, "spire" | "basin")
             && s.kind != crate::place::ATRIUM.name
             && w.min(d) >= least;
@@ -397,6 +486,8 @@ pub fn floods(seed: u64, o: &Options, sp: &mut [Space]) {
             || s.cellar.is_some()
             || !s.cuts.is_empty()
             || halls.contains(&s.key)
+            || s.base.is_some()
+            || !s.blocks.is_empty()
             || w.min(d) < FLOOD_NARROWEST
         {
             continue;
@@ -445,6 +536,8 @@ pub fn sinks(seed: u64, o: &Options, sp: &mut [Space]) {
             && s.cellar.is_none()
             && s.cuts.is_empty()
             && !halls.contains(&s.key)
+            && s.base.is_none()
+            && s.blocks.is_empty()
             && !matches!(s.kind, "spire" | "basin")
             && s.kind != crate::place::ATRIUM.name
             && w.min(d) >= room;
@@ -912,10 +1005,18 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
     if o.style == "sculpt" {
         return crate::sculpt::generate(seed, o);
     }
-    let rooms = stage_spaces(seed, o)?;
-    let net = stage_network(seed, o, &rooms.sp)?;
-    let b = stage_interiors(seed, o, net, rooms.access, rooms.spin)?;
-    stage_level(stage_dead_ends(b)?, rooms.dropped)
+    let made = (|| {
+        let rooms = stage_spaces(seed, o)?;
+        let net = stage_network(seed, o, &rooms.sp)?;
+        let b = stage_interiors(seed, o, net, rooms.access, rooms.spin)?;
+        stage_level(stage_dead_ends(b)?, rooms.dropped)
+    })();
+    match made {
+        // (the generator's own bases or grown pods left a hall that can't be furnished: the seed's
+        // level without them, as `Recipe::plain`)
+        Err(why) if o.bases || o.big_pods => generate(seed, &Options { bases: false, big_pods: false, ..o.clone() }).map_err(|_| why),
+        made => made,
+    }
 }
 
 /// The last stage: the furnished build as a level. Each pod's own inside, the beams, the
@@ -926,7 +1027,7 @@ pub fn stage_level(mut b: Build, dropped: Vec<String>) -> Result<Level, String> 
     let sp = b.spaces();
     let mut pods = Vec::new();
     for p in sp.iter().filter(|p| !p.host.is_empty()) {
-        let others: Vec<&Space> = sp.iter().filter(|q| q.host == p.host).collect();
+        let others: Vec<&Space> = sp.iter().filter(|q| q.host == p.host || q.base.as_ref().is_some_and(|b| b.hall == p.host)).collect();
         let acc = b.access.iter().find(|(k, _)| *k == p.key).map(|(_, a)| a);
         pods.push((p.key.clone(), pod_interior(find(sp, &p.host), p, acc, &others)));
     }

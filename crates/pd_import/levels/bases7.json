@@ -1,0 +1,23 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "bases7",
+  "name": "Bases 7",
+  "group": "Autolevel",
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 7,
+      "options": {
+        "platforms": 1.0,
+        "bases": true,
+        "big_pods": true
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

@@ -1190,6 +1190,11 @@ pub fn differs(lv: &Level, a: &Lot) -> Option<String> {
             lv.dropped.contains(&a.key) || lv.net.cut_off.contains(&a.key) || lv.fixes.iter().any(|f| matches!(f, Fix::Dropped { room } if *room == a.key));
         return Some(if out { "left out" } else { "new" }.to_string());
     };
+    if s.base.is_some() {
+        // a base: its column of storeys as the generator splits it (`autolevel::bases::split`),
+        // each under another a cell narrower: the lot stands as drawn
+        return None;
+    }
     let mut said: Vec<String> = Vec::new();
     if (s.x0, s.y0) != (a.x0, a.y0) {
         said.push("moved".to_string());
@@ -1208,7 +1213,11 @@ pub fn differs(lv: &Level, a: &Lot) -> Option<String> {
 
 /// The rooms of the level on show that have no lot any more.
 pub fn deleted<'a>(lv: &'a Level, lots: &[Lot]) -> Vec<&'a Space> {
-    lv.spaces().iter().filter(|s| lots.iter().all(|a| a.key != s.key)).collect()
+    // (a base's upper storeys are its column's lot's: `Space::base`)
+    fn column(s: &Space) -> &str {
+        s.base.as_ref().map_or(s.key.as_str(), |b| b.column.as_str())
+    }
+    lv.spaces().iter().filter(|s| lots.iter().all(|a| a.key != column(s))).collect()
 }
 
 /// How a box from `floor` to `top` shows with one storey on show, or all of them: its floor is

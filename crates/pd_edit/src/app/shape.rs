@@ -31,9 +31,9 @@ const STYLES: [Style; 5] = [
     Style { name: "Doors and offices", does: "A building cut into rooms, with doors", sets: &[("style", "felicity")] },
 ];
 
-/// A feature switch: its name, the option, the value it is turned on at, and
-/// what it adds.
-const FEATURES: [(&str, &str, &str, &str); 11] = [
+/// A feature switch: its name, the option, the value it is turned on at
+/// ("true" for an option that is yes or no), and what it adds.
+const FEATURES: [(&str, &str, &str, &str); 13] = [
     ("Vents", "vents", "4", "Crawl ducts, as short cuts"),
     ("Windows", "windows", "4", "Corridors that look onto a hall"),
     ("Drops", "drops", "2", "Holes in a floor into the room below"),
@@ -45,13 +45,25 @@ const FEATURES: [(&str, &str, &str, &str); 11] = [
     ("Flooded rooms", "flooded", "0.2", "A floor of water under railed walkways"),
     ("Sunken floors", "sunken", "0.2", "A pit in a hall's floor, a ramp down"),
     ("L and U rooms", "shaped", "0.2", "Rooms with a corner or a side cut away"),
+    ("Bases", "bases", "true", "Rooms cut into a hall through a wall, the floor or the ceiling, slit windows into it"),
+    ("Big pods", "big_pods", "true", "Rooms hung in a hall made bigger, where it has room"),
 ];
+
+/// The value a feature switch is turned off at: "false" for one that is yes
+/// or no, else none of it.
+fn off_at(on_at: &str) -> &'static str {
+    if on_at == "true" {
+        "false"
+    } else {
+        "0"
+    }
+}
 
 const SIZES: [(&str, &str, &str); 3] = [("Small", "0.75", "For 2 to 4 players"), ("Medium", "1", "For 4 to 8 players"), ("Large", "1.5", "For 8 to 12 players")];
 
-/// Whether an option's value means it is on (a number above zero).
+/// Whether an option's value means it is on (yes, or a number above zero).
 fn is_on(value: &str) -> bool {
-    value.parse::<f64>().is_ok_and(|v| v > 0.0)
+    value == "true" || value.parse::<f64>().is_ok_and(|v| v > 0.0)
 }
 
 /// A new level's recipe in the editor: every feature switch on (the user,
@@ -145,7 +157,7 @@ impl App {
                         .corner_radius(CornerRadius::same(14));
                     let r = ui.add_enabled(read, chip).on_hover_text(does).on_disabled_hover_text(format!("{does} (not in this style)"));
                     if r.clicked() {
-                        set.push((opt, if on { "0".to_string() } else { on_at.to_string() }));
+                        set.push((opt, if on { off_at(on_at).to_string() } else { on_at.to_string() }));
                     }
                 }
             });
@@ -463,5 +475,18 @@ mod tests {
         let others: Vec<&str> = recipe::OPTIONS.into_iter().filter(|n| !FEATURES.iter().any(|f| f.1 == *n)).collect();
         assert!(others.iter().all(|n| recipe::option(&new.options, n) == recipe::option(&plain.options, n)));
         assert_eq!((new.seed, new.edits.len()), (40, 0));
+    }
+
+    /// Every feature switch's on and off values are ones its option takes,
+    /// and read back as on and off.
+    #[test]
+    fn every_feature_switch_turns_on_and_off() {
+        for (label, name, on_at, _) in FEATURES {
+            let mut o = Options::default();
+            for (v, want) in [(on_at, true), (off_at(on_at), false)] {
+                recipe::set_option(&mut o, name, v).unwrap_or_else(|e| panic!("{label}: {e}"));
+                assert_eq!(is_on(&recipe::option(&o, name).unwrap()), want, "{label} at {v}");
+            }
+        }
     }
 }

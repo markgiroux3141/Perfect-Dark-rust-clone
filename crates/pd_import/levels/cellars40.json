@@ -12,7 +12,9 @@
       "seed": 40,
       "options": {
         "cellars": 1.0,
-        "holes": 0.5
+        "holes": 0.5,
+        "bases": false,
+        "big_pods": false
       },
       "edits": []
     }

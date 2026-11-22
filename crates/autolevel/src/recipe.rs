@@ -52,7 +52,7 @@ pub const FORMAT: u32 = 1;
 pub const CEILINGS: [&str; 4] = ["plain", "ceiling_tile", "ceiling_dark", "grille"];
 
 /// The options by name, as the file and a command line spell them, in the file's order.
-pub const OPTIONS: [&str; 33] = [
+pub const OPTIONS: [&str; 35] = [
     "style",
     "washroom",
     "scale",
@@ -77,6 +77,8 @@ pub const OPTIONS: [&str; 33] = [
     "flooded",
     "shaped",
     "sunken",
+    "bases",
+    "big_pods",
     "rescue",
     "dead_ends",
     "dead_corridor",
@@ -308,6 +310,10 @@ struct Opts {
     #[serde(skip_serializing_if = "Option::is_none")]
     sunken: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    bases: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    big_pods: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     rescue: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     dead_ends: Option<bool>,
@@ -359,6 +365,8 @@ impl Opts {
             flooded: pick(all, o.flooded, base.flooded),
             shaped: pick(all, o.shaped, base.shaped),
             sunken: pick(all, o.sunken, base.sunken),
+            bases: pick(all, o.bases, base.bases),
+            big_pods: pick(all, o.big_pods, base.big_pods),
             rescue: pick(all, o.rescue, base.rescue),
             dead_ends: pick(all, o.dead_ends, base.dead_ends),
             dead_corridor: pick(all, o.dead_corridor, base.dead_corridor),
@@ -417,6 +425,8 @@ impl Opts {
         set(&mut o.flooded, self.flooded);
         set(&mut o.shaped, self.shaped);
         set(&mut o.sunken, self.sunken);
+        set(&mut o.bases, self.bases);
+        set(&mut o.big_pods, self.big_pods);
         set(&mut o.rescue, self.rescue);
         set(&mut o.dead_ends, self.dead_ends);
         set(&mut o.dead_corridor, self.dead_corridor);
@@ -523,6 +533,11 @@ impl Recipe {
         Recipe { seed, options: Options::python(), edits: Vec::new() }
     }
 
+    /// A seed's level by the defaults with bases and grown pods left out (`Options::before_bases`).
+    pub fn before_bases(seed: u64) -> Recipe {
+        Recipe { seed, options: Options::before_bases(), edits: Vec::new() }
+    }
+
     /// An empty start: no rooms until they are added, the seed only for how they are decorated.
     pub fn empty(seed: u64) -> Recipe {
         Recipe { seed, options: Options { start: Start::Empty, ..Options::default() }, edits: Vec::new() }
@@ -540,14 +555,38 @@ impl Recipe {
             }
             return level::generate(self.seed, &self.options);
         }
-        let (b, dropped) = self.furnished()?;
-        self.finish(b, dropped)
+        let made = self.furnished().and_then(|(b, dropped)| self.finish(b, dropped));
+        match (made, self.plain()) {
+            (Err(why), Some(plain)) => plain.generate().map_err(|_| why),
+            (made, _) => made,
+        }
+    }
+
+    /// The recipe with the generator's own bases and grown pods left out, if it has any to leave
+    /// out (a seed's level with `Options::bases` or `big_pods` on): what a level that cannot be
+    /// made with them is made from instead, as the rescue makes every seed a level (new in the
+    /// Rust: docs/AUTOLEVEL.md, "Bases").
+    pub fn plain(&self) -> Option<Recipe> {
+        let o = &self.options;
+        (o.start == Start::Seed && (o.bases || o.big_pods)).then(|| {
+            let mut r = self.clone();
+            (r.options.bases, r.options.big_pods) = (false, false);
+            r
+        })
     }
 
     /// The first three stages, with the edits that belong to them: every room furnished, before
     /// anything is done about dead ends. With it come the pods `stage_spaces` left out.
     /// (`finish` is the rest. The editor stops here to list the dead ends as the rooms fall.)
     pub fn furnished(&self) -> Result<(Build, Vec<String>), String> {
+        match (self.furnished_as_drawn(), self.plain()) {
+            (Err(why), Some(plain)) => plain.furnished().map_err(|_| why),
+            (made, _) => made,
+        }
+    }
+
+    /// `furnished`, with no fallback.
+    fn furnished_as_drawn(&self) -> Result<(Build, Vec<String>), String> {
         let (seed, o) = (self.seed, &self.options);
         let (rooms, net) = self.routed()?;
         // (`level::stage_interiors`, with what was chosen for a room told to the build first)
@@ -681,7 +720,15 @@ impl Recipe {
     }
 
     /// The dead-end pass and the level, from `furnished`'s build, with the edits that belong there.
-    pub fn finish(&self, mut b: Build, dropped: Vec<String>) -> Result<Level, String> {
+    pub fn finish(&self, b: Build, dropped: Vec<String>) -> Result<Level, String> {
+        match (self.finish_as_drawn(b, dropped), self.plain()) {
+            (Err(why), Some(plain)) => plain.furnished().and_then(|(b, dropped)| plain.finish(b, dropped)).map_err(|_| why),
+            (made, _) => made,
+        }
+    }
+
+    /// `finish`, with no fallback.
+    fn finish_as_drawn(&self, mut b: Build, dropped: Vec<String>) -> Result<Level, String> {
         let known = |b: &Build, what: &str, room: &str| match b.spaces().iter().any(|s| s.key == room) {
             true => Ok(()),
             false => Err(format!("{what}: no room {room}")),
@@ -821,7 +868,7 @@ mod tests {
 
     #[test]
     fn every_option_and_edit_loads_and_saves() {
-        let mut o = Options::default();
+        let mut o = Options::before_bases();
         let values = [
             ("style", "felicity"),
             ("washroom", "false"),
@@ -847,6 +894,8 @@ mod tests {
             ("flooded", "0.3"),
             ("shaped", "0.5"),
             ("sunken", "0.4"),
+            ("bases", "false"),
+            ("big_pods", "false"),
             ("rescue", "false"),
             ("dead-ends", "false"),
             ("dead-corridor", "6"),
@@ -916,7 +965,7 @@ mod tests {
 
     #[test]
     fn with_no_edits_it_is_the_seeds_own_level() {
-        for (seed, o) in [(40, Options::default()), (7, Options { cover: "pillars", dead_ends: false, ..Options::default() })] {
+        for (seed, o) in [(40, Options::before_bases()), (7, Options { cover: "pillars", dead_ends: false, ..Options::before_bases() })] {
             let r = Recipe { seed, options: o.clone(), edits: Vec::new() };
             let (ours, theirs) = (r.generate().unwrap(), level::generate(seed, &o).unwrap());
             assert!(same(&ours, &theirs), "seed {seed}");
@@ -924,7 +973,7 @@ mod tests {
             // and through its file
             assert!(same(&load(&save(&r)).unwrap().generate().unwrap(), &theirs));
         }
-        let r = Recipe { seed: 1, options: Options { walkway: 3, ..Options::default() }, edits: Vec::new() };
+        let r = Recipe { seed: 1, options: Options { walkway: 3, ..Options::before_bases() }, edits: Vec::new() };
         assert_eq!(r.generate().unwrap_err(), "walkway: 1 or 2 cells");
     }
 
@@ -944,11 +993,11 @@ mod tests {
     #[test]
     fn a_join_by_hand_is_a_corridor_the_pass_need_not_add() {
         // seed 40's tower climbs two storeys to nothing; the pass joins its 551 to the colossal hall
-        let plain = Recipe::new(40).generate().unwrap();
+        let plain = Recipe::before_bases(40).generate().unwrap();
         let theirs = plain.fixes.iter().any(|f| matches!(f, Fix::Joined { room, storey: 551, to, .. } if room == "tower" && to == "colossal"));
         assert!(theirs, "{:?}", plain.fixes);
         let join = Edit::Join { room: "tower".into(), storey: 551, to: "colossal".into(), on: Vec::new() };
-        let r = Recipe { seed: 40, options: Options::default(), edits: vec![join] };
+        let r = Recipe { seed: 40, options: Options::before_bases(), edits: vec![join] };
         let lv = r.generate().unwrap();
         let ours = lv.net.routes().iter().find(|r| r.a.room == "tower" && r.a.level == 551 && r.b.room == "colossal").expect("the corridor asked for");
         assert!(!same(&lv, &plain));
@@ -961,7 +1010,7 @@ mod tests {
         assert!(same(&lv, &load(&save(&r)).unwrap().generate().unwrap()));
         // what can't be joined says why
         let bad = |room: &str, storey: i32, to: &str| {
-            Recipe { seed: 40, options: Options::default(), edits: vec![Edit::Join { room: room.into(), storey, to: to.into(), on: Vec::new() }] }
+            Recipe { seed: 40, options: Options::before_bases(), edits: vec![Edit::Join { room: room.into(), storey, to: to.into(), on: Vec::new() }] }
                 .generate()
                 .unwrap_err()
         };
@@ -973,7 +1022,7 @@ mod tests {
 
     #[test]
     fn a_route_can_be_taken_out_unless_the_level_falls_in_two() {
-        let (b, _) = Recipe::new(40).furnished().unwrap();
+        let (b, _) = Recipe::before_bases(40).furnished().unwrap();
         // a corridor of a loop goes; one that is the only way to a room does not
         let (mut gone, mut bridge) = (None, None);
         for r in b.net.routes() {
@@ -987,15 +1036,16 @@ mod tests {
         }
         let (gone, bridge) = (gone.expect("a level has loops"), bridge.expect("and rooms with one corridor"));
         let last = gone.pieces.last().unwrap().key.clone(); // any piece's key names the route
-        let r = Recipe { seed: 40, options: Options::default(), edits: vec![Edit::Remove { route: last }] };
+        let r = Recipe { seed: 40, options: Options::before_bases(), edits: vec![Edit::Remove { route: last }] };
         let lv = r.generate().unwrap();
         assert!(lv.net.routes().iter().all(|q| q.key() != gone.key()));
         assert!(lv.plan.get(gone.key()).is_none() && lv.walks.iter().all(|(name, _)| !name.contains(gone.key())));
         assert!(lv.interior(&gone.a.room).doors.iter().all(|d| d.to != gone.key()));
-        let plain = Recipe::new(40).generate().unwrap();
+        let plain = Recipe::before_bases(40).generate().unwrap();
         assert!(plain.plan.get(gone.key()).is_some() || gone.pieces[0].kind == "stub");
         assert!(!same(&lv, &plain));
-        let err = |route: &str| Recipe { seed: 40, options: Options::default(), edits: vec![Edit::Remove { route: route.into() }] }.generate().unwrap_err();
+        let err =
+            |route: &str| Recipe { seed: 40, options: Options::before_bases(), edits: vec![Edit::Remove { route: route.into() }] }.generate().unwrap_err();
         assert_eq!(err(&bridge), format!("remove: without {bridge} the level is in two"));
         assert!(err("c999").starts_with("remove: no route c999 after routing"));
     }
@@ -1003,18 +1053,18 @@ mod tests {
     #[test]
     fn a_dead_end_can_be_kept_or_cut_by_hand() {
         // seed 7: tiny3 is nine cells down a corridor of its own, and the pass joins it up
-        let plain = Recipe::new(7).generate().unwrap();
+        let plain = Recipe::before_bases(7).generate().unwrap();
         assert!(plain.fixes.iter().any(|f| matches!(f, Fix::Joined { room, .. } if room == "tiny3")));
-        let keep = Recipe { seed: 7, options: Options::default(), edits: vec![Edit::Keep { room: "tiny3".into() }] };
+        let keep = Recipe { seed: 7, options: Options::before_bases(), edits: vec![Edit::Keep { room: "tiny3".into() }] };
         let lv = keep.generate().unwrap();
         assert!(lv.fixes.iter().all(|f| !matches!(f, Fix::Joined { room, .. } if room == "tiny3")), "{:?}", lv.fixes);
         let left: Vec<&crate::deadends::DeadEnd> = lv.dead_ends.iter().filter(|e| !e.allowed).collect();
         assert_eq!((left.len(), left[0].rooms.as_slice()), (1, &["tiny3".to_string()][..]));
         assert_eq!(Recipe { edits: vec![Edit::Keep { room: "attic".into() }], ..keep }.generate().unwrap_err(), "keep: no room attic");
         // seed 40: the basin's balcony goes when its decks are cut at its floor
-        let plain = Recipe::new(40).generate().unwrap();
+        let plain = Recipe::before_bases(40).generate().unwrap();
         assert!(plain.dead_ends.iter().any(|e| e.tip == "basin@276") && !plain.interior("basin").deck[&276].is_empty());
-        let cut = Recipe { seed: 40, options: Options::default(), edits: vec![Edit::Cut { room: "basin".into(), above: 0 }] };
+        let cut = Recipe { seed: 40, options: Options::before_bases(), edits: vec![Edit::Cut { room: "basin".into(), above: 0 }] };
         let lv = cut.generate().unwrap();
         assert!(lv.dead_ends.iter().all(|e| e.tip != "basin@276"));
         assert!(lv.interior("basin").deck.get(&276).is_none_or(|deck| deck.is_empty()));
@@ -1031,13 +1081,13 @@ mod tests {
             Edit::Ceiling { room: "vast".into(), ceiling: "grille".into() },
             Edit::Brightness { room: "vast".into(), value: 88 },
         ];
-        let r = Recipe { seed: 40, options: Options::default(), edits };
-        let (lv, plain) = (r.generate().unwrap(), Recipe::new(40).generate().unwrap());
+        let r = Recipe { seed: 40, options: Options::before_bases(), edits };
+        let (lv, plain) = (r.generate().unwrap(), Recipe::before_bases(40).generate().unwrap());
         let of = |rows: &[(String, i32)]| rows.iter().filter(|(k, _)| k == "vast").map(|(_, v)| *v).collect::<Vec<_>>();
         assert_eq!(of(&lv.moods), [88]); // one entry, the last word
         assert_eq!(lv.ceilings.iter().filter(|(k, _)| k == "vast").map(|(_, c)| *c).collect::<Vec<_>>(), ["grille"]);
         assert!(lv.plan == plain.plan && lv.report == plain.report);
-        let err = |e: Edit| Recipe { seed: 40, options: Options::default(), edits: vec![e] }.generate().unwrap_err();
+        let err = |e: Edit| Recipe { seed: 40, options: Options::before_bases(), edits: vec![e] }.generate().unwrap_err();
         assert_eq!(err(Edit::Brightness { room: "vast".into(), value: 300 }), "brightness: 0 to 255, not 300");
         assert_eq!(err(Edit::Ceiling { room: "vast".into(), ceiling: "sky".into() }), "ceiling: one of ('plain', 'ceiling_tile', 'ceiling_dark', 'grille')");
         assert_eq!(err(Edit::Ceiling { room: "attic".into(), ceiling: "plain".into() }), "ceiling: no room attic");

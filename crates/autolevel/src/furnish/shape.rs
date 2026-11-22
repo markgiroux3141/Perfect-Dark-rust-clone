@@ -47,7 +47,7 @@ mod tests {
         let (mut levels, mut shaped, mut ls, mut us, mut flat) = (0, 0, 0, 0, 0);
         for (scale, seeds) in [(Scale::Grand, 1..=10), (Scale::Towering, 1..=6)] {
             for seed in seeds {
-                let mut o = Options { platforms: 1.0, angled: 1.0, flooded: 0.0, ..Options::default() };
+                let mut o = Options { platforms: 1.0, angled: 1.0, flooded: 0.0, ..Options::before_bases() };
                 o.siting.scale = scale;
                 let plain = generate(seed, &o);
                 o.shaped = 1.0;
@@ -120,6 +120,6 @@ mod tests {
             "{levels} levels, {shaped} shaped rooms ({ls} L, {us} U, {flat} of one storey)"
         );
         // none when told none
-        assert!(generate(40, &Options { shaped: 0.0, ..Options::default() }).unwrap().interiors.iter().all(|(_, it)| it.cut.is_empty()));
+        assert!(generate(40, &Options { shaped: 0.0, ..Options::before_bases() }).unwrap().interiors.iter().all(|(_, it)| it.cut.is_empty()));
     }
 }

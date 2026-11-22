@@ -270,7 +270,7 @@ mod tests {
         let (mut levels, mut floods, mut rafts, mut tanks) = (0, 0, 0, 0);
         for (scale, seeds) in [(Scale::Grand, 1..=6), (Scale::Towering, 1..=6)] {
             for seed in seeds {
-                let mut o = Options { angled: 1.0, ..Options::default() };
+                let mut o = Options { angled: 1.0, ..Options::before_bases() };
                 o.siting.scale = scale;
                 let dry = generate(seed, &o);
                 o.flooded = 1.0;
@@ -352,6 +352,6 @@ mod tests {
         }
         assert!(levels >= 10 && floods >= 40 && rafts >= 5 && tanks >= 10, "{levels} levels, {floods} floods, {rafts} rafts, {tanks} tanks");
         // none when told none
-        assert!(generate(40, &Options { flooded: 0.0, ..Options::default() }).unwrap().interiors.iter().all(|(_, it)| it.flood.is_none()));
+        assert!(generate(40, &Options { flooded: 0.0, ..Options::before_bases() }).unwrap().interiors.iter().all(|(_, it)| it.flood.is_none()));
     }
 }

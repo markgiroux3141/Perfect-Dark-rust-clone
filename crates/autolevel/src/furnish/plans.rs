@@ -27,6 +27,11 @@ impl Interior {
             .collect();
         // a shaped room's cuts: solid from its floor to its top
         shells.extend(s.cuts.iter().map(|c| box3(c.0 as f64, c.1 as f64, c.2 as f64, c.3 as f64, s.floor, s.top)));
+        // the blocks of the bases standing in it (their slits are the base's own air)
+        for (_, r, z) in &s.blocks {
+            let (lo, hi) = crate::bases::block_z(*z, s);
+            shells.push(box_h(crate::bases::block(*r, s.rect()), lo, hi));
+        }
         let mut out = if shells.is_empty() { vec![main] } else { subtract(main, &shells) };
         if let Some(p) = s.pool {
             out.push(box3(p.0 as f64, p.1 as f64, p.2 as f64, p.3 as f64, p.4, s.floor));

@@ -11,7 +11,9 @@
       "format": 1,
       "seed": 1,
       "options": {
-        "size": 4.0
+        "size": 4.0,
+        "bases": false,
+        "big_pods": false
       },
       "edits": []
     }

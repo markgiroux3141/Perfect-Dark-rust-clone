@@ -412,7 +412,7 @@ mod tests {
         let recipe = Recipe::new(40);
         let base = recipe.scattered().unwrap();
         assert_eq!(new_key(&base), "room1");
-        assert_eq!(kinds(&base), ["colossal", "spire", "vast", "tower", "long", "basin", "medium", "loft", "small", "tiny", "atrium"]);
+        assert_eq!(kinds(&base), ["colossal", "spire", "vast", "tower", "long", "basin", "medium", "loft", "small", "tiny", "atrium", "base"]);
         assert_eq!(tops(551), [787, 1063, 1338, 1614, 1890, 2165, 2441, 2716, 2992, 3267, 3543, 3819, 4094, 4370]);
         let spot = free(&base, 6, 5);
         let add = Change::Add { key: "room1".into(), kind: "medium".into(), rect: spot, floor: 0, top: 236 };

@@ -28,7 +28,7 @@ fn seed40() -> &'static Built {
     BUILT.get_or_init(|| built::make(&Seed::python(40), true).unwrap())
 }
 
-const RECIPE_40: &str = "{\n  \"format\": 1,\n  \"seed\": 40,\n  \"options\": {\n    \"flooded\": 0.0,\n    \"shaped\": 0.0,\n    \"sunken\": 0.0\n  }\n}";
+const RECIPE_40: &str = "{\n  \"format\": 1,\n  \"seed\": 40,\n  \"options\": {\n    \"flooded\": 0.0,\n    \"shaped\": 0.0,\n    \"sunken\": 0.0,\n    \"bases\": false,\n    \"big_pods\": false\n  }\n}";
 
 /// The level's recipe, as `autolevel import` writes it.
 fn recipe40() -> Recipe {

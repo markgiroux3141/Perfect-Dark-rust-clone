@@ -3,6 +3,10 @@
   "name": "Complex",
   "arenas": [
     "level_1",
-    "level_2"
+    "level_2",
+    "autolevel51",
+    "bases1",
+    "bases2",
+    "bases7"
   ]
 }

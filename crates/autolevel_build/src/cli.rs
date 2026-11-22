@@ -94,6 +94,11 @@ What kind of level (sweep, plan, build, batch and deadends all take these):
                              it (default 0.1; 0: none)
   --sunken P                 the chance each room with open floor enough for it has a sunken floor: a
                              rectangle a cell lower, open all round, a ramp down into it (default 0.1)
+  --no-bases                 no bases (on by default: each hall, three times in four, has a column of rooms
+                             through one of its walls, its floor or its ceiling, slit windows into it at
+                             eye height, entered from outside, its storeys joined by hatches and ladders)
+  --no-big-pods              no grown pods (on by default: half the pods, rooms hung in a hall, are grown to
+                             5 to 10 cells by 4 to 8 where the hall has room for them and their ways in)
   --site WxH                 cells; default 80x60 for grand, 64x48 for standard
   --dead-corridor N          a room that goes nowhere may be this many cells of corridor off a main area (8);
   --dead-walk N              and this many cells' walk in all, ramps and decks too (20);
@@ -170,7 +175,7 @@ pub struct Args {
 }
 
 /// The options that are yes or no: named alone, they are yes.
-const FLAGS: [&str; 5] = ["crates", "shapes", "dead_ends", "washroom", "rescue"];
+const FLAGS: [&str; 7] = ["crates", "shapes", "dead_ends", "washroom", "rescue", "bases", "big_pods"];
 
 /// Does the command `cmd` take the flag `name` (underscores for its hyphens)?
 fn takes(cmd: &str, name: &str) -> bool {
@@ -187,7 +192,8 @@ fn takes(cmd: &str, name: &str) -> bool {
         // (a trek's options are its own: `trek::OPTIONS`)
         _ => {
             !matches!(cmd, "walk" | "shots" | "trek")
-                && (matches!(name, "no_shapes" | "keep_dead_ends" | "no_washroom" | "no_rescue") || recipe::OPTIONS.contains(&name))
+                && (matches!(name, "no_shapes" | "keep_dead_ends" | "no_washroom" | "no_rescue" | "no_bases" | "no_big_pods")
+                    || recipe::OPTIONS.contains(&name))
         }
     }
 }
@@ -262,6 +268,8 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
             "no_washroom" => (out.recipe.options.washroom, took) = (false, 1),
             "keep_dead_ends" => (out.recipe.options.dead_ends, took) = (false, 1),
             "no_rescue" => (out.recipe.options.rescue, took) = (false, 1),
+            "no_bases" => (out.recipe.options.bases, took) = (false, 1),
+            "no_big_pods" => (out.recipe.options.big_pods, took) = (false, 1),
             _ if FLAGS.contains(&name.as_str()) && !matches!(args.get(n + 1).map(String::as_str), Some("true" | "false")) => {
                 recipe::set_option(&mut out.recipe.options, &name, "true")?;
                 took = 1;
@@ -630,6 +638,7 @@ pub fn report_json(r: &Report) -> Json {
         ("sunken", json!(r.sunken)),
         ("chutes", json!(r.chutes)),
         ("crossings", json!(r.crossings)),
+        ("bases", json!(r.bases)),
         ("cut_off", json!(r.cut_off)),
         ("empty_air", json!(r.empty_air)),
         ("largest_void", json!(r.largest_void)),
@@ -648,7 +657,7 @@ pub fn report_json(r: &Report) -> Json {
 }
 
 /// The report's keys that are the Rust's own, after the Python's (which end with the score).
-pub const RUSTS_OWN: [&str; 17] = [
+pub const RUSTS_OWN: [&str; 18] = [
     "platforms",
     "galleries",
     "holes",
@@ -663,6 +672,7 @@ pub const RUSTS_OWN: [&str; 17] = [
     "sunken",
     "chutes",
     "crossings",
+    "bases",
     "cut_off",
     "empty_air",
     "largest_void",

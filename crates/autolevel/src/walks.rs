@@ -400,6 +400,26 @@ pub fn views(lv: &mut Level) {
             }
         }
     }
+    // each base storey with slits: from the far side of the room out through its first slit, and
+    // from four cells out in the hall back at it (new in the Rust: `bases`)
+    for s in sp.iter().filter(|s| s.base.is_some()) {
+        let hall = lv.space(&s.base.as_ref().expect("a base storey").hall);
+        let Some(&(d, r)) = crate::bases::slits(s, sp).first() else { continue };
+        let (dx, dy) = DIRS[d];
+        let (sx, sy) = ((r.0 + r.2) as f64 / 4.0, (r.1 + r.3) as f64 / 4.0);
+        let (ix, iy) = match d {
+            0 => (s.x0 as f64 + 0.5, sy),
+            1 => (sx, s.y0 as f64 + 0.5),
+            2 => (s.x1 as f64 - 0.5, sy),
+            _ => (sx, s.y1 as f64 - 0.5),
+        };
+        set(&mut views, format!("base_{}", s.key), (ix, iy, s.floor, sx + 3.0 * dx as f64, sy + 3.0 * dy as f64));
+        let (ox, oy) = (
+            (sx + 4.0 * dx as f64).clamp(hall.x0 as f64 + 0.5, hall.x1 as f64 - 0.5),
+            (sy + 4.0 * dy as f64).clamp(hall.y0 as f64 + 0.5, hall.y1 as f64 - 0.5),
+        );
+        set(&mut views, format!("base_{}_out", s.key), (ox, oy, s.floor, sx, sy));
+    }
     // each cellar's ladder from across the cellar
     for (_, low, _, side) in &lv.drops {
         let (Some(_), Some(c)) = (side, lv.space(low).cellar.as_ref()) else { continue };

@@ -11,7 +11,9 @@
       "format": 1,
       "seed": 140,
       "options": {
-        "scale": "standard"
+        "scale": "standard",
+        "bases": false,
+        "big_pods": false
       },
       "edits": []
     }

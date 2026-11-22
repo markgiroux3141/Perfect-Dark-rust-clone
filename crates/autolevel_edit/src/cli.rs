@@ -32,7 +32,7 @@ pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
   --NAME VALUE          an option, by its name in the recipe: scale size site cover clutter walkway
                         crates shapes risers second vents windows drops grates platforms galleries holes cellars angled flooded shaped sunken rescue
                         dead-ends dead-corridor dead-walk dead-climb loops shift level-change tries
-                        (also --no-shapes, --keep-dead-ends, --no-rescue, and --crates alone)
+                        (also --no-shapes, --keep-dead-ends, --no-rescue, --no-bases, --no-big-pods, and --crates alone)
   --shot FILE.png       write the plan view and print the dead-end list; no window, no GPU
   --storey Z            the snapshot shows one storey, by its floor (-276 0 276 551 ...; default all)
   --width W             the snapshot's width in pixels (default 1600)
@@ -197,7 +197,7 @@ fn added(v: &str) -> Result<Change, String> {
 }
 
 /// The options that are yes or no: named alone, they are yes.
-const FLAGS: [&str; 4] = ["crates", "shapes", "dead_ends", "rescue"];
+const FLAGS: [&str; 6] = ["crates", "shapes", "dead_ends", "rescue", "bases", "big_pods"];
 
 /// Read the arguments (the program's name left off). `read` is how a recipe file is read.
 pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> Result<Args, String> {
@@ -333,6 +333,8 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
             "no_shapes" => (out.recipe.options.shapes, took) = (false, 1),
             "keep_dead_ends" => (out.recipe.options.dead_ends, took) = (false, 1),
             "no_rescue" => (out.recipe.options.rescue, took) = (false, 1),
+            "no_bases" => (out.recipe.options.bases, took) = (false, 1),
+            "no_big_pods" => (out.recipe.options.big_pods, took) = (false, 1),
             _ if FLAGS.contains(&name.as_str()) && !matches!(args.get(n + 1).map(String::as_str), Some("true" | "false")) => {
                 recipe::set_option(&mut out.recipe.options, &name, "true")?;
                 took = 1;

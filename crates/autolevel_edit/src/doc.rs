@@ -485,7 +485,7 @@ mod tests {
 
     #[test]
     fn edits_undo_redo_and_dirty() {
-        let mut d = Doc::new(Recipe::new(40), true);
+        let mut d = Doc::new(Recipe::before_bases(40), true);
         assert!(!d.dirty() && !d.can_undo() && !d.can_redo() && d.stale());
         d.set_seed(40); // no change: no step
         d.set_option("cover", "mixed").unwrap();
@@ -510,7 +510,7 @@ mod tests {
         while d.undo() {
             steps += 1;
         }
-        assert_eq!((steps, d.recipe.clone(), d.dirty()), (7, Recipe::new(40), false));
+        assert_eq!((steps, d.recipe.clone(), d.dirty()), (7, Recipe::before_bases(40), false));
         assert!(!d.undo() && d.can_redo());
         while d.redo() {}
         assert_eq!(d.recipe, last);
@@ -530,12 +530,12 @@ mod tests {
         }
         assert!(d.undo() && d.recipe == was);
         // a recipe that was never saved is dirty from the start
-        assert!(Doc::new(Recipe::new(1), false).dirty());
+        assert!(Doc::new(Recipe::before_bases(1), false).dirty());
     }
 
     #[test]
     fn undo_keeps_five_hundred_steps() {
-        let mut d = Doc::new(Recipe::new(0), true);
+        let mut d = Doc::new(Recipe::before_bases(0), true);
         for seed in 1..=600 {
             d.set_seed(seed);
         }
@@ -548,7 +548,7 @@ mod tests {
 
     #[test]
     fn a_level_is_for_the_recipe_it_was_made_from() {
-        let mut d = Doc::new(Recipe::new(40), true);
+        let mut d = Doc::new(Recipe::before_bases(40), true);
         assert!(d.made().is_none() && d.error().is_none());
         d.regenerate().unwrap();
         assert!(!d.stale() && d.made().unwrap().level.seed == 40);
@@ -583,7 +583,7 @@ mod tests {
 
     #[test]
     fn a_room_is_picked_a_join_chosen_and_it_is_made_as_it_was_shown() {
-        let mut d = Doc::new(Recipe::new(40), true);
+        let mut d = Doc::new(Recipe::before_bases(40), true);
         d.regenerate().unwrap();
         assert!(d.picked().is_none() && !d.wants_joins() && d.joins().is_none());
         assert_eq!(d.find_joins().unwrap_err(), "no room is picked");
@@ -613,7 +613,7 @@ mod tests {
         let r = made.level.net.routes().iter().find(|r| r.key() == c.route.key()).expect("the corridor chosen");
         assert_eq!((r, autolevel::candidates::footprint(r)), (&c.route, c.cells()));
         // undo is the recipe without it; redo, with it: the same level again
-        assert!(d.undo() && d.recipe == Recipe::new(40) && !d.can_undo());
+        assert!(d.undo() && d.recipe == Recipe::before_bases(40) && !d.can_undo());
         d.regenerate().unwrap();
         assert!(d.made().unwrap().level.net.routes().iter().all(|r| *r != c.route));
         assert!(d.redo() && d.recipe.edits.len() == 1);
@@ -639,7 +639,7 @@ mod tests {
 
     #[test]
     fn a_corridor_is_picked_and_taken_out_or_the_reason_given() {
-        let mut d = Doc::new(Recipe::new(40), true);
+        let mut d = Doc::new(Recipe::before_bases(40), true);
         // nothing can be said of a corridor until the level is the recipe's own
         assert_eq!(d.remove_route("c23").unwrap_err(), "the level is being made again: a moment");
         d.regenerate().unwrap();
@@ -673,7 +673,7 @@ mod tests {
 
     #[test]
     fn a_box_is_moved_in_one_step_or_refused_in_plain_words() {
-        let mut d = Doc::new(Recipe::new(40), true);
+        let mut d = Doc::new(Recipe::before_bases(40), true);
         let lots = d.lots().unwrap().lots;
         let at = |lots: &[autolevel::scatter::Lot], key: &str| lots.iter().find(|a| a.key == key).map(|a| a.rect()).unwrap();
         let (a, b) = (at(&lots, "medium1"), at(&lots, "medium2"));
@@ -710,7 +710,7 @@ mod tests {
 
     #[test]
     fn a_room_is_made_and_deleted_and_the_selection_follows() {
-        let mut d = Doc::new(Recipe::new(40), true);
+        let mut d = Doc::new(Recipe::before_bases(40), true);
         let placed = d.lots().unwrap();
         let key = boxes::new_key(&placed);
         let clear = |r: (i32, i32, i32, i32)| placed.lots.iter().all(|a| a.x1 + 2 <= r.0 || r.2 + 2 <= a.x0 || a.y1 + 2 <= r.1 || r.3 + 2 <= a.y0);
@@ -739,7 +739,7 @@ mod tests {
 
     #[test]
     fn a_choice_for_a_room_is_one_edit_however_often_it_is_changed() {
-        let mut d = Doc::new(Recipe::new(40), true);
+        let mut d = Doc::new(Recipe::before_bases(40), true);
         assert_eq!(d.choices("vast").unwrap_err(), "no level has been made yet");
         d.regenerate().unwrap();
         let was = d.choices("vast").unwrap();
@@ -787,7 +787,7 @@ mod tests {
 
     #[test]
     fn a_search_finds_the_joins_on_a_thread() {
-        let mut d = Doc::new(Recipe::new(40), true);
+        let mut d = Doc::new(Recipe::before_bases(40), true);
         d.pick("tower", 551);
         let search = crate::jobs::Search::spawn(d.recipe.clone(), ("tower".to_string(), 551), d.rev());
         let result = loop {

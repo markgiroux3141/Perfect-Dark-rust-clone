@@ -14,7 +14,9 @@
         "scale": "towering",
         "platforms": 1.0,
         "galleries": 2,
-        "holes": 1.0
+        "holes": 1.0,
+        "bases": false,
+        "big_pods": false
       },
       "edits": []
     }

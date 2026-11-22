@@ -44,6 +44,7 @@ pub fn plan(lv: &mut Level, rng: &mut PyRandom) -> Result<(), String> {
         }
     }
     let mut named: BTreeSet<String> = BTreeSet::new();
+    let mut columns: BTreeMap<String, String> = BTreeMap::new(); // a base's name, by its column
     let mut stubs: BTreeMap<&str, Vec<Box3>> = sp.iter().map(|s| (s.key.as_str(), Vec::new())).collect();
     let mut links: Vec<(String, String, &'static str)> = Vec::new();
     // boxes and rails added to a room for its openings
@@ -80,6 +81,18 @@ pub fn plan(lv: &mut Level, rng: &mut PyRandom) -> Result<(), String> {
         }
         links.push((w.piece.clone(), w.hall.clone(), "overlook"));
     }
+    // a base storey's slits into its hall: air of its own through its block's wall, at eye height
+    for s in sp.iter().filter(|s| s.base.is_some()) {
+        let b = s.base.as_ref().expect("a base storey");
+        let slits = crate::bases::slits(s, sp);
+        for (_, r) in &slits {
+            let h = |v: i32| v as f64 / 2.0;
+            extra.entry(&s.key).or_default().push(box3(h(r.0), h(r.1), h(r.2), h(r.3), s.floor + crate::bases::SILL, s.floor + crate::bases::LINTEL));
+        }
+        if !slits.is_empty() {
+            links.push((s.key.clone(), b.hall.clone(), "overlook"));
+        }
+    }
     for r in lv.net.routes() {
         let pc = &r.pieces[0];
         if pc.kind == "stub" {
@@ -102,7 +115,22 @@ pub fn plan(lv: &mut Level, rng: &mut PyRandom) -> Result<(), String> {
         let key = s.key.as_str();
         // a name of its kind's while they last, then its key. (The Python would title-case the
         // key if its list of names came back empty, which the list it falls back on never is.)
-        let name = if s.kind == crate::place::ATRIUM.name {
+        let name = if let Some(b) = &s.base {
+            // a base's: its column's own draw, the first no earlier room has; its other storeys
+            // after it ("The Pillbox, upper")
+            let first = columns
+                .entry(b.column.clone())
+                .or_insert_with(|| {
+                    let mut pool = crate::bases::NAMES.to_vec();
+                    PyRandom::named(&format!("{seed}/{}/name", b.column)).shuffle(&mut pool);
+                    pool.into_iter().find(|n| !named.contains(*n)).map_or_else(|| b.column.clone(), str::to_string)
+                })
+                .clone();
+            match key.strip_prefix(&format!("{}_", b.column)) {
+                Some(n) => format!("{first}, storey {n}"),
+                None => first,
+            }
+        } else if s.kind == crate::place::ATRIUM.name {
             let mut pool = ATRIUM_NAMES.to_vec();
             PyRandom::named(&format!("{seed}/{key}/name")).shuffle(&mut pool);
             pool.into_iter().find(|n| !named.contains(*n)).map_or_else(|| s.key.clone(), str::to_string)

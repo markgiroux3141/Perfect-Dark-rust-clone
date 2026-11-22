@@ -10,7 +10,10 @@
     "recipe": {
       "format": 1,
       "seed": 40,
-      "options": {},
+      "options": {
+        "bases": false,
+        "big_pods": false
+      },
       "edits": []
     }
   },

@@ -410,7 +410,7 @@ mod tests {
     #[test]
     fn a_routes_footprint_is_what_the_grid_marks_for_it() {
         for seed in [40, 13] {
-            let (_, net) = Recipe::new(seed).routed().unwrap();
+            let (_, net) = Recipe::before_bases(seed).routed().unwrap();
             assert!(net.routes().iter().any(|r| r.ramps() > 0) && net.routes().iter().any(|r| r.pieces[0].kind == "vent"));
             for r in net.routes() {
                 assert_eq!(footprint(r), owned(&net, r), "seed {seed}: {}", r.key());
@@ -420,7 +420,7 @@ mod tests {
 
     #[test]
     fn candidates_are_found_for_a_known_seed() {
-        let recipe = Recipe::new(40);
+        let recipe = Recipe::before_bases(40);
         let found = candidates(&recipe, "tower", 551).unwrap();
         assert_eq!((found.room.as_str(), found.storey), ("tower", 551));
         // the tower's neighbours first, each by its cheapest corridor, then their other storeys
@@ -462,7 +462,7 @@ mod tests {
         assert_eq!(err("attic", 0), "no room attic");
         assert_eq!(err("small8", 276), "small8 is a pod: it is joined inside vast");
         assert_eq!(err("tower", 1654), "tower takes doors on 0, 276, 551, not on 1654");
-        let bad = Recipe { options: Options { walkway: 3, ..Options::default() }, ..recipe };
+        let bad = Recipe { options: Options { walkway: 3, ..Options::before_bases() }, ..recipe };
         assert_eq!(candidates(&bad, "tower", 551).unwrap_err(), "walkway: 1 or 2 cells");
     }
 
@@ -470,7 +470,7 @@ mod tests {
     fn what_is_previewed_is_what_is_made() {
         // a door through the wall, flat corridors, ramps and switchbacks; from a floor, a deck and a basement
         for (seed, room, storey) in [(40, "tower", 551), (40, "medium4", -276), (7, "tiny3", 276), (23, "spire1", 1102)] {
-            let recipe = Recipe::new(seed);
+            let recipe = Recipe::before_bases(seed);
             let found = candidates(&recipe, room, storey).unwrap();
             assert!(found.found.len() >= 6, "seed {seed}: {}", found.text());
             let plain = recipe.generate().unwrap();
@@ -491,7 +491,7 @@ mod tests {
     #[test]
     fn a_vent_is_previewed_where_no_corridor_fits() {
         // seed 13: nothing but a crawl duct fits from medium4's basement to tiny2 on the ground
-        let recipe = Recipe::new(13);
+        let recipe = Recipe::before_bases(13);
         let found = candidates(&recipe, "medium4", -276).unwrap();
         let vent = found.found.iter().find(|c| c.kind() == "vent").unwrap_or_else(|| panic!("no vent: {}", found.text()));
         assert_eq!((vent.to.as_str(), vent.on, vent.text().as_str()), ("tiny2", 0, "to tiny2 on 0 by a vent, 6 cells (v03)"));
@@ -499,7 +499,7 @@ mod tests {
         let (_, lv) = chosen(&recipe, vent);
         assert_made(&lv, vent);
         // with no vents in the level's options there is none to offer
-        let dry = Recipe { options: Options { vents: 0, ..Options::default() }, ..recipe };
+        let dry = Recipe { options: Options { vents: 0, ..Options::before_bases() }, ..recipe };
         assert!(candidates(&dry, "medium4", -276).unwrap().found.iter().all(|c| c.kind() != "vent"));
     }
 
@@ -507,7 +507,7 @@ mod tests {
     fn candidates_follow_the_recipes_earlier_edits() {
         // one join made, a corridor taken out, and then another join: each is previewed on the
         // network as the edits before it left it
-        let mut recipe = Recipe::new(40);
+        let mut recipe = Recipe::before_bases(40);
         let first = candidates(&recipe, "tower", 551).unwrap().found[2].clone();
         recipe.edits.push(first.edit());
         let (_, net) = recipe.routed().unwrap();
@@ -532,7 +532,7 @@ mod tests {
 
     #[test]
     fn a_route_is_taken_out_by_the_edit_that_fits_it() {
-        let recipe = Recipe::new(40);
+        let recipe = Recipe::before_bases(40);
         let lv = recipe.generate().unwrap();
         let (_, net) = recipe.routed().unwrap();
         // a corridor of a loop: the remove edit, by the route's own key whichever piece was named
@@ -547,7 +547,7 @@ mod tests {
         assert_eq!(removal(&recipe, &lv, "c17").unwrap_err(), "c17 is the only way to small7: without it the level is in two");
         // (and how many more lie past it: some seed in a handful has a corridor like that)
         let deep = (1..12).find_map(|seed| {
-            let other = Recipe::new(seed);
+            let other = Recipe::before_bases(seed);
             let (_, net) = other.routed().ok()?;
             let r = net.routes().iter().find(|r| cut_off(&net, r).len() > 1)?;
             Some((r.key().to_string(), cut_off(&net, r), removal(&other, &other.generate().ok()?, r.key())))

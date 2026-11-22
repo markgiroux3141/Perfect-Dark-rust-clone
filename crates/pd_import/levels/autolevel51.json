@@ -1,0 +1,28 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "autolevel51",
+  "name": "Autolevel 51",
+  "group": "Autolevel",
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 51,
+      "options": {
+        "size": 0.75,
+        "clutter": 0.55,
+        "platforms": 1.0,
+        "galleries": 2,
+        "cellars": 0.3,
+        "angled": 0.3,
+        "bases": false,
+        "big_pods": false
+      },
+      "edits": []
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}
