@@ -85,7 +85,12 @@ pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
   --ceiling ROOM@plain|ceiling_tile|ceiling_dark|grille
                         the room's ceiling. Brightness and ceiling are for the built level: the
                         plan only says that they were chosen
-  --own ROOM@layout|cover|inside|brightness|ceiling|all
+  --feature ROOM@FEATURE@on|off|auto
+                        one of the level's features for this room alone: shaped (an L or a U),
+                        flooded, sunken, cellar (a big hall on the ground), platforms, holes
+                        (drops through them), angled (catwalks across its air). On: wherever it
+                        fits; off: none; auto: the level's chance again
+  --own ROOM@layout|cover|inside|brightness|ceiling|FEATURE|all
                         the seed's own again for that choice, or for all of the room's
   --choices ROOM        print the room's choices: what it has, whether the seed or the recipe
                         chose it, and each layout it could take or why it can't. Printed for
@@ -373,12 +378,27 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
                 let value = v.parse().map_err(|_| format!("--brightness: a room, then @ and {what}, not {}", args[n + 1]))?;
                 out.choose.push(Choose::Set(Edit::Brightness { room, value }));
             }
+            "feature" => {
+                let names: Vec<&str> = autolevel::level::FEATURES.iter().map(|(f, _)| *f).collect();
+                let what = format!("a feature ({}), @ and on, off or auto, as vast@flooded@on", names.join(" "));
+                let (room, v) = choice(n, &what)?;
+                let bad = || format!("--feature: a room, then @ and {what}, not {}", args[n + 1]);
+                let (name, on) = v.split_once('@').ok_or_else(bad)?;
+                let name = names.iter().find(|f| **f == name).ok_or_else(bad)?;
+                out.choose.push(match on {
+                    "on" | "off" => Choose::Set(Edit::Feature { room, feature: name.to_string(), on: on == "on" }),
+                    "auto" => Choose::Own { room, what: name.to_string() },
+                    _ => return Err(bad()),
+                });
+            }
             "own" => {
-                let what = "what is the seed's own again (layout cover inside brightness ceiling all), as vast@layout";
+                let what = "what is the seed's own again (layout cover inside brightness ceiling, a feature, or all), as vast@layout";
                 let (room, v) = choice(n, what)?;
+                let feature = autolevel::level::FEATURES.iter().any(|(f, _)| *f == v);
                 let kind = match v {
                     "inside" => "reroll",
                     "layout" | "cover" | "brightness" | "ceiling" | "all" => v,
+                    _ if feature => v,
                     _ => return Err(format!("--own: a room, then @ and {what}, not {}", args[n + 1])),
                 };
                 out.choose.push(Choose::Own { room, what: kind.to_string() });
@@ -580,7 +600,7 @@ mod tests {
         );
         assert_eq!(args("--brightness vast@dim").unwrap_err(), "--brightness: a room, then @ and a number from 0 to 255, as vast@120, not vast@dim");
         assert_eq!(args("--brightness 90").unwrap_err(), "--brightness: a room, then @ and a number from 0 to 255, as vast@120, not 90");
-        let own = "--own: a room, then @ and what is the seed's own again (layout cover inside brightness ceiling all), as vast@layout";
+        let own = "--own: a room, then @ and what is the seed's own again (layout cover inside brightness ceiling, a feature, or all), as vast@layout";
         assert_eq!(args("--own vast@doors").unwrap_err(), format!("{own}, not vast@doors"));
         assert_eq!(args("--own vast").unwrap_err(), format!("{own}, not vast"));
         assert_eq!(args("--choices").unwrap_err(), "--choices needs a value");

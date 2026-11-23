@@ -302,6 +302,20 @@ fn ceiling_word(ceiling: &str) -> &'static str {
 }
 
 /// What the room panel was asked to do (done once it is drawn).
+/// A feature's name on the panel, and what it adds (`autolevel::level::FEATURES`).
+fn feature_word(name: &str) -> (&'static str, &'static str) {
+    match name {
+        "shaped" => ("L or U shape", "A corner or a side of the room cut away"),
+        "flooded" => ("Flooded floor", "Water over the floor, railed walkways across it"),
+        "sunken" => ("Sunken pit", "Part of the floor a step lower, a ramp down into it"),
+        "cellar" => ("Cellar", "A room under the hall: a hatch down, a ladder up"),
+        "platforms" => ("Platforms", "Big platforms off the catwalks into the hall's air"),
+        "holes" => ("Platform drops", "Holes through the platforms to the floor below"),
+        "angled" => ("Angled walkways", "Catwalks across the hall at an angle, and an island"),
+        _ => ("A feature", ""),
+    }
+}
+
 enum Ask {
     Set(recipe::Edit),
     Clear(&'static str),
@@ -436,6 +450,41 @@ impl App {
             if let Some(why) = &c.unfurnished {
                 theme::help(ui, why);
             }
+            theme::section(ui, "Features");
+            let mut missing = Vec::new();
+            for f in &c.features {
+                let (word, does) = feature_word(f.name);
+                ui.horizontal(|ui| {
+                    ui.label(word).on_hover_text(does);
+                    // (the three choices at the right edge, Auto first)
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.selectable_label(f.chosen == Some(false), "Off").on_hover_text("None in this room").clicked() && f.chosen != Some(false) {
+                            ask = Some(Ask::Set(recipe::Edit::Feature { room: room.clone(), feature: f.name.to_string(), on: false }));
+                        }
+                        let on = ui.add_enabled(f.cannot.is_none() || f.chosen == Some(true), egui::SelectableLabel::new(f.chosen == Some(true), "On"));
+                        let on = match &f.cannot {
+                            Some(why) => on.on_disabled_hover_text(why.as_str()),
+                            None => on.on_hover_text(format!("{does}, wherever it fits")),
+                        };
+                        if on.clicked() && f.chosen != Some(true) {
+                            ask = Some(Ask::Set(recipe::Edit::Feature { room: room.clone(), feature: f.name.to_string(), on: true }));
+                        }
+                        let has = if f.has { "it has one" } else { "it has none" };
+                        if ui.selectable_label(f.chosen.is_none(), "Auto").on_hover_text(format!("As the level makes it ({has})")).clicked() && f.chosen.is_some() {
+                            ask = Some(Ask::Clear(f.name));
+                        }
+                        if f.has {
+                            ui.label(RichText::new("●").size(10.0).color(theme::ACCENT)).on_hover_text("This room has it now");
+                        }
+                    });
+                });
+                if f.chosen == Some(true) && !f.has && !g.ed.doc.stale() {
+                    missing.push(word);
+                }
+            }
+            if !missing.is_empty() {
+                theme::help(ui, &format!("Turned on but it doesn't fit in this room: {}. Another feature, its size or its shape may be in the way.", missing.join(", ").to_lowercase()));
+            }
             theme::section(ui, "Look");
             ui.horizontal(|ui| {
                 ui.label("Ceiling");
@@ -484,7 +533,7 @@ impl App {
             Some(Ask::Set(e)) => g.ed.set_choice(e),
             Some(Ask::Clear(what)) => g.ed.clear_choice(&room, what),
             Some(Ask::Reset) => {
-                for what in autolevel::choices::KINDS {
+                for what in autolevel::choices::KINDS.into_iter().chain(autolevel::level::FEATURES.iter().map(|(f, _)| *f)) {
                     g.ed.clear_choice(&room, what);
                 }
             }

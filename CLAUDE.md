@@ -45,7 +45,7 @@ target/release/pd_edit.exe [<code>]         # the level editor (a window: for th
                                             #   [--at x,y,z,yaw,pitch | --item weapon 3 | --item door 3] [--waypoints] [--open]`
                                             #   is its view as a PNG (`--open`: every door opened two seconds before)
                                             #   `--shot-ui <out.png> [<code>] [--step home|layout|items|test] [--select weapon 2] [--generate | --seed N]
-                                            #   [--room KEY] [--run-test] [--import FILE.glb] [--tool KIND]`: the whole window (panels and view) with no window: how to
+                                            #   [--room KEY] [--side] [--run-test] [--import FILE.glb] [--tool KIND]`: the whole window (panels and view) with no window: how to
                                             #   look at the editor's screens (`--room vast`: a generated room selected on Layout; `--run-test`: the simulant test's numbers)
 cargo build --release -p pd_import          # also builds target/release/autolevel.exe, the level generator (docs/AUTOLEVEL.md):
                                             #   `autolevel build 40` plans, builds, bakes and walks seed 40 into out/autolevel/seed40
@@ -75,13 +75,15 @@ cargo build --release -p pd_import          # also builds target/release/autolev
                                             #   a room no ramps can join is rescued with ladders and bridges, so every seed makes a
                                             #   level (`--no-rescue`: it fails as it did; docs/AUTOLEVEL.md, "Rescue")
                                             #   also `sweep`, `plan`, `batch`, `walk`, `deadends`, `--recipe FILE`; `autolevel --help`
-cargo run --release -p autolevel_edit -- --seed 40 --shot out.png [--empty] [--storey Z] [--pick ROOM@STOREY [--join N]] [--remove KEY]
+cargo run --release -p autolevel_edit -- --seed 40 --shot out.png [--empty] [--storey Z] [--pick ROOM@STOREY [--join N]] [--remove KEY] [--side x@Y|y@ROOM]
                                             #   the generator's editor: its plan view as a PNG with no window (how to look at a
                                             #   level's plan), the dead-end list, the joins that could be made; without --shot a window (the user's).
                                             #   `--empty`: no rooms but those --add makes (a blank level; docs/AUTOLEVEL.md, "Blank levels").
                                             #   Room boxes: `--rooms --select ROOM --lots --move ROOM@X,Y --rect ROOM@X0,Y0,X1,Y1 --pin ROOM@FLOOR
-                                            #   --delete ROOM --add KIND@X0,Y0,X1,Y1@FLOOR@TOP --try` (a refusal is drawn and exits 1). One room's
-                                            #   choices: `--layout --cover --inside --brightness --ceiling --own ROOM@VALUE`, `--choices ROOM`
+                                            #   --delete ROOM --add KIND@X0,Y0,X1,Y1@FLOOR@TOP --height ROOM@FLOOR@TOP --try` (a refusal is drawn and
+                                            #   exits 1). `--side x@Y | y@X | x@ROOM`: the snapshot is the side view (a section, height up). One room's
+                                            #   choices: `--layout --cover --inside --brightness --ceiling --own ROOM@VALUE`, `--feature ROOM@NAME@on|off|auto`
+                                            #   (shaped flooded sunken cellar platforms holes angled), `--choices ROOM`
 cargo test --release -p autolevel -p autolevel_build -p autolevel_edit   # the generator against its answer keys (~60 s); these three
                                             #   crates alone are run through rustfmt (`cargo fmt -p ...`, their own rustfmt.toml)
 cargo run --release -p pd_tools --bin pd_music -- <out.wav> <tune|--flow> [secs]   # offline music renders (MUSIC_* name or number; --list)

@@ -844,6 +844,7 @@ field, option or edit is an error that says which. With no edits a recipe gives 
 | `keep` (the dead end a room is in) | the dead-end pass | The pass leaves it alone (`Build::keep`). |
 | `cut` (a room's own decks stop at a storey) | after the pass | Refused if the room has a door higher up (`Build::cut`). |
 | `brightness`, `ceiling` | the finished level | They replace the planner's own choice. |
+| `feature` (a room, one of `level::FEATURES`, on or off) | the rooms (shaped, flooded, sunken, cellar) or furnishing (platforms, holes, angled) | New (2026-11-23). In place of the level's chance for that room alone: on is a chance of 1, off of 0, drawn from the room's own stream as ever. A room the feature does not fit is left without it (the room's choices say so); refused only for an unknown feature. |
 
 **Which lots may overlap** (`place::Placed::check`, held to after all the lot edits, not after
 each). Every lot is on the site, at least 2 by 2 cells, with its floor on a storey
@@ -2823,7 +2824,7 @@ without it never takes.
 Order of work, and where each stands:
 
 1. **The side view and `height`.** Done (2026-11-23): "Blank levels", step 2, as built.
-2. **Per-room features.** The features that are level-wide dials today (`platforms`,
+2. **Per-room features.** Done (2026-11-23): "Per-room features", below. The features that were level-wide dials (`platforms`,
    `galleries`, `holes`, `cellars`, `angled`, `flooded`, `shaped`, `sunken`, `bases`,
    `big_pods`) chosen for one room: forced on, forced off, or the seed's roll. One edit kind,
    applied where the roll is made, so it replaces the roll rather than adding geometry code.
@@ -2851,6 +2852,50 @@ Order of work, and where each stands:
    Wanted before 3 and 6 make edits that ripple.
 8. Lock one room and re-roll the rest; copy, paste and mirror a room with its choices; a room
    saved as a preset.
+
+### Per-room features (roadmap item 2, 2026-11-23)
+
+- **The edit:** `Edit::Feature { room, feature, on }`, `feature` one of `level::FEATURES`:
+  `shaped`, `flooded`, `sunken`, `cellar` (rolled with the rooms: `Stage::Lots`) and
+  `platforms`, `holes`, `angled` (rolled by the room's furnisher: `Stage::Interiors`).
+  `galleries`, `bases` and `big_pods` are not in it yet (they add rooms or storeys, not a roll
+  per room), nor the drops and grates between rooms.
+- **How it reaches the rolls:** `Recipe::effective()` is the recipe's options with its feature
+  edits as `Options::forced` (not saved, as `start` is not: the edits are). `rooms_on`, `routed`
+  and `furnished_as_drawn` make their stages with it. Each roll asks `o.chance(room, feature,
+  level)` in place of the level's chance (on: `level.max(1.0)`, off: 0), and a stage that returns
+  early at a chance of nothing goes on if `o.forces_on(feature)`. Every one of these rolls draws
+  from the room's own stream (`{seed}/{key}/shape`, `/flooded`, `/sunken`, `/cellar`; the
+  furnisher's per room), so **no other room's draw moves** (tested). A recipe with no feature
+  edit borrows its own options: no seed's level changes, the keys pass. In an empty start the
+  shape and the pit are still none unless chosen on.
+- **What a room has:** `choices::Choices::features` (`Feature { name, has, chosen, cannot }`):
+  `has` read from the level (cuts, flood, sunk, a cellar whose hall it is, platforms, pits,
+  angled catwalks or islands); `cannot` from the room alone (a pod; a cellar only under a
+  colossal, vast or tower on the ground; platforms, holes and angled only in a room of more than
+  one storey; a spire, basin or atrium keeps its shape and floor). Each feature is a choice kind
+  of its own (`choices::kind`), so `set` keeps one edit a room a feature and `clear` takes it out.
+- **On the Layout screen** (`pd_edit::app::shape`, the room panel): a **Features** section, a
+  row each in plain words (L or U shape, Flooded floor, Sunken pit, Cellar, Platforms, Platform
+  drops, Angled walkways) with Auto / On / Off at the right, a dot where the room has it, On
+  greyed with the reason where it can't, and a line naming any turned on that didn't fit. Reset
+  room clears them too. **In the generator's panel:** "features (this room alone)", folded
+  unless one is chosen, a row each with "level's chance / on / off" and what the room has.
+- **On the command line:** `--feature ROOM@FEATURE@on|off|auto`; `--own ROOM@FEATURE`;
+  `--choices ROOM` lists a line for each feature (has it or none, whose choice, why it can't).
+- **Checked:** `tests/recipe.rs` (on: medium1 flooded, colossal's platforms, a cellar under vast,
+  every other room's rolls as they were; off: one room kept dry among rooms flooded at a chance
+  of 1; off where it wouldn't have been: the same level; an unknown feature; the file both
+  ways); a window test (On is one edit, the level has it, "has: yes", the level's chance again
+  takes it out); the choices text and lists. Seed 40 with six forced on: four took (vast's shape
+  didn't, as it then has a cellar and a cellar's hall keeps its rectangle; colossal's pit didn't
+  fit). Pictures read: the side view with the cellar under vast and colossal's platform, the
+  Layout screen's Features rows.
+- **Rough:** nobody has looked at the window. Why a feature turned on didn't fit is not said
+  (only that it didn't): the rolls' own tests would have to give their reasons. Forcing a cellar
+  renames the cellars after it (`cellar1`, `cellar2` go by order), so edits naming a later
+  cellar can lose it. Platforms "on" is the level's count or one for each 100 cells, whichever is
+  more; there is no "more" or "fewer" yet.
 
 ## Risks
 

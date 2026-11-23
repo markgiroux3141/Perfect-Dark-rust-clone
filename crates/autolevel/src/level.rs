@@ -125,7 +125,18 @@ pub struct Options {
     /// How the level begins: the seed's own rooms, or none. Not one of the recipe's options (it
     /// is the recipe's own field, "start"), but here so every stage can see it.
     pub start: Start,
+    /// Features chosen for single rooms (a recipe's `feature` edits: the room, one of
+    /// `FEATURES`, on or off), in place of the level's chance for them. Not one of the recipe's
+    /// options either: `Recipe` fills it from its edits for the stages (`Recipe::effective`),
+    /// and with none (every seed's own level) nothing is rolled differently. New here.
+    pub forced: Vec<(String, &'static str, bool)>,
 }
+
+/// The features a single room may be given or kept from (a recipe's `feature` edit), each with
+/// the stage that rolls it: `true` where it is rolled over the rooms before anything is routed
+/// (`shapes`, `floods`, `sinks`, `cellars`), `false` where the room's furnisher rolls it.
+pub const FEATURES: [(&str, bool); 7] =
+    [("shaped", true), ("flooded", true), ("sunken", true), ("cellar", true), ("platforms", false), ("holes", false), ("angled", false)];
 
 /// How a level begins: with the rooms the seed scatters (`Seed`: every seed's level), or with
 /// none (`Empty`: a person draws them, and the seed only decorates them). New here: the Python
@@ -182,6 +193,7 @@ impl Default for Options {
             level_change: 10.0,
             tries: 8,
             start: Start::Seed,
+            forced: Vec::new(),
         }
     }
 }
@@ -228,6 +240,28 @@ impl Options {
     /// level's one stream (`shared`), as the Python does; an empty start gives the thing a stream
     /// of its own (`PyRandom::named(name())`, kept in `own`), so that adding a room elsewhere
     /// does not move them.
+    /// What a single room is told of a feature (`FEATURES`): Some(on) where a recipe's edit
+    /// chose for it (the last such), None where the level's chance decides.
+    pub fn forced(&self, room: &str, what: &str) -> Option<bool> {
+        self.forced.iter().rev().find(|(r, w, _)| r == room && *w == what).map(|&(_, _, on)| on)
+    }
+
+    /// The chance (or share) a room has of a feature: `level`'s, the level's own, unless one was
+    /// chosen for the room: 1 for on (the most it is given anywhere), 0 for off.
+    pub fn chance(&self, room: &str, what: &str, level: f64) -> f64 {
+        match self.forced(room, what) {
+            Some(true) => level.max(1.0),
+            Some(false) => 0.0,
+            None => level,
+        }
+    }
+
+    /// Is a feature chosen for some room (so a stage that rolls it has to look, even with the
+    /// level's chance at nothing)?
+    pub fn forces_on(&self, what: &str) -> bool {
+        self.forced.iter().any(|(_, w, on)| *w == what && *on)
+    }
+
     pub fn stream<'a>(&self, shared: &'a mut PyRandom, own: &'a mut Option<PyRandom>, name: impl FnOnce() -> String) -> &'a mut PyRandom {
         match self.start {
             Start::Seed => shared,
@@ -399,9 +433,11 @@ const CUT: (f64, f64) = (0.3, 0.45);
 /// storey under `LOW_LEAST`. Ten tries, then it stays a rectangle. New in the Rust.
 pub fn shapes(seed: u64, o: &Options, sp: &mut [Space], access: &[(String, Access)]) {
     // (an empty start's rooms are drawn by hand: each is as it was drawn)
-    if o.shaped <= 0.0 || o.start == Start::Empty {
+    if (o.shaped <= 0.0 || o.start == Start::Empty) && !o.forces_on("shaped") {
         return;
     }
+    // (in an empty start only a room it is chosen for is shaped)
+    let level = if o.start == Start::Empty { 0.0 } else { o.shaped };
     let halls: Vec<String> = sp.iter().filter_map(|s| s.cellar.as_ref().map(|c| c.hall.clone())).collect();
     for n in 0..sp.len() {
         let s = sp[n].clone();
@@ -420,8 +456,12 @@ pub fn shapes(seed: u64, o: &Options, sp: &mut [Space], access: &[(String, Acces
         if !fits {
             continue;
         }
+        let chance = o.chance(&s.key, "shaped", level);
+        if chance <= 0.0 {
+            continue;
+        }
         let mut rng = PyRandom::named(&format!("{seed}/{}/shape", s.key));
-        if rng.random() >= o.shaped {
+        if rng.random() >= chance {
             continue;
         }
         // what the cut keeps clear of: its pods' blocks and their ways in (half cells)
@@ -473,7 +513,7 @@ pub const FLOOD_NARROWEST: i32 = 5;
 /// is a pod, a spire, a basin, an atrium, a cellar or a cellar's hall, narrower than
 /// `FLOOD_NARROWEST`, or has a room under it where the water's pit would be. New in the Rust.
 pub fn floods(seed: u64, o: &Options, sp: &mut [Space]) {
-    if o.flooded <= 0.0 {
+    if o.flooded <= 0.0 && !o.forces_on("flooded") {
         return;
     }
     let halls: Vec<String> = sp.iter().filter_map(|s| s.cellar.as_ref().map(|c| c.hall.clone())).collect();
@@ -498,7 +538,8 @@ pub fn floods(seed: u64, o: &Options, sp: &mut [Space]) {
         let water = s.floor - FLOOD_DEPTH;
         let pit = (s.x0 - 1, s.y0 - 1, s.x1 + 1, s.y1 + 1);
         let under = all.iter().any(|b| b.key != s.key && b.floor < s.floor && b.top + 39 > water - 40 && crate::scatter::rect_gap(pit, b.rect()) == (0, 0));
-        if !under && PyRandom::named(&format!("{seed}/{}/flooded", s.key)).random() < o.flooded {
+        let chance = o.chance(&s.key, "flooded", o.flooded);
+        if !under && chance > 0.0 && PyRandom::named(&format!("{seed}/{}/flooded", s.key)).random() < chance {
             s.flood = Some(water);
         }
     }
@@ -521,9 +562,10 @@ pub const SUNK_INSET: i32 = 3;
 /// cellar's hall, nor a flooded or shaped room; none in an empty start. Ten tries, then none. The
 /// furnisher lays its ramp (`furnish::sunken`). New in the Rust.
 pub fn sinks(seed: u64, o: &Options, sp: &mut [Space]) {
-    if o.sunken <= 0.0 || o.start == Start::Empty {
+    if (o.sunken <= 0.0 || o.start == Start::Empty) && !o.forces_on("sunken") {
         return;
     }
+    let level = if o.start == Start::Empty { 0.0 } else { o.sunken };
     let halls: Vec<String> = sp.iter().filter_map(|s| s.cellar.as_ref().map(|c| c.hall.clone())).collect();
     let all: Vec<Space> = sp.to_vec();
     for s in sp.iter_mut() {
@@ -544,8 +586,12 @@ pub fn sinks(seed: u64, o: &Options, sp: &mut [Space]) {
         if !fits {
             continue;
         }
+        let chance = o.chance(&s.key, "sunken", level);
+        if chance <= 0.0 {
+            continue;
+        }
         let mut rng = PyRandom::named(&format!("{seed}/{}/sunken", s.key));
-        if rng.random() >= o.sunken {
+        if rng.random() >= chance {
             continue;
         }
         // what it keeps clear of: its pods' blocks and their ways in (half cells)
@@ -587,12 +633,16 @@ pub fn cellars(seed: u64, o: &Options, lots: &[Lot]) -> (Vec<Lot>, Vec<(String, 
     use crate::scatter::{clear, rect_gap};
     let mut out = lots.to_vec();
     let mut made = Vec::new();
-    if o.cellars <= 0.0 {
+    if o.cellars <= 0.0 && !o.forces_on("cellar") {
         return (out, made);
     }
     for hall in lots.iter().filter(|l| l.host.is_empty() && l.floor == 0 && matches!(l.kind, "colossal" | "vast" | "tower")) {
+        let chance = o.chance(&hall.key, "cellar", o.cellars);
+        if chance <= 0.0 {
+            continue;
+        }
         let mut rng = PyRandom::named(&format!("{seed}/{}/cellar", hall.key));
-        if rng.random() >= o.cellars {
+        if rng.random() >= chance {
             continue;
         }
         let (room_w, room_d) = (hall.x1 - hall.x0 - 2 * CELLAR_INSET, hall.y1 - hall.y0 - 2 * CELLAR_INSET);

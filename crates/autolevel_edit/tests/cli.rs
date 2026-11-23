@@ -167,8 +167,11 @@ fn a_rooms_choices_are_made_listed_refused_and_taken_back() {
         "--inside ROOM@N",
         "--brightness ROOM@0..255",
         "--ceiling ROOM@plain|ceiling_tile|ceiling_dark|grille",
-        "--own ROOM@layout|cover|inside|brightness|ceiling|all",
+        "--own ROOM@layout|cover|inside|brightness|ceiling|FEATURE|all",
+        "--feature ROOM@FEATURE@on|off|auto",
         "--choices ROOM",
+        "--height ROOM@FLOOR@TOP",
+        "--side x@Y | y@X | x@ROOM | y@ROOM",
     ];
     assert!(flags.iter().all(|flag| help.contains(flag)), "{help}");
     std::fs::remove_dir_all(&dir).unwrap();

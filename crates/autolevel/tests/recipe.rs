@@ -810,3 +810,49 @@ fn an_atriums_top_is_reached_through_other_rooms_and_never_ramped_down() {
     // the same twice
     assert!(same(&lv, &empty(1, atrium_trek()).generate().unwrap()));
 }
+
+fn feature(room: &str, feature: &str, on: bool) -> Edit {
+    Edit::Feature { room: s(room), feature: s(feature), on }
+}
+
+/// What each room has of the features rolled with the rooms: its cuts, water, pit, and whether a
+/// cellar is under it.
+fn rolled(lv: &Level) -> Vec<(String, String)> {
+    lv.spaces()
+        .iter()
+        .map(|s| {
+            let cellar = lv.spaces().iter().any(|c| c.cellar.as_ref().is_some_and(|c| c.hall == s.key));
+            (s.key.clone(), format!("{:?}", (&s.cuts, s.flood, s.sunk, cellar)))
+        })
+        .collect()
+}
+
+#[test]
+fn a_feature_is_given_to_one_room_or_kept_from_it_and_no_other_room_changes() {
+    let at = |edits: Vec<Edit>| Recipe { seed: 40, options: Options::default(), edits };
+    let base = at(vec![]).generate().unwrap();
+    // on: the room has it, and every other room is as it was
+    let on = at(vec![feature("medium1", "flooded", true), feature("colossal", "platforms", true), feature("vast", "cellar", true)]).generate().unwrap();
+    assert!(on.space("medium1").flood.is_some(), "medium1 is flooded");
+    assert!(!on.interior("colossal").platforms.is_empty(), "colossal has platforms");
+    assert!(on.spaces().iter().any(|c| c.cellar.as_ref().is_some_and(|c| c.hall == "vast")), "vast has a cellar");
+    let was: Vec<(String, String)> = rolled(&base).into_iter().filter(|(k, _)| k != "medium1" && k != "vast").collect();
+    let now: Vec<(String, String)> = rolled(&on).into_iter().filter(|(k, _)| k != "medium1" && k != "vast" && !k.starts_with("cellar")).collect();
+    assert_eq!(was, now, "no other room's roll moved");
+    // off: with every room flooded by the level's chance, one kept dry
+    let wet = Options { flooded: 1.0, ..Options::default() };
+    let all = Recipe { seed: 40, options: wet.clone(), edits: vec![] }.generate().unwrap();
+    let room = all.spaces().iter().find(|s| s.flood.is_some()).map(|s| s.key.clone()).expect("a flooded room at a chance of 1");
+    let dry = Recipe { seed: 40, options: wet, edits: vec![feature(&room, "flooded", false)] }.generate().unwrap();
+    assert!(dry.space(&room).flood.is_none(), "{room} is kept dry");
+    assert!(dry.spaces().iter().any(|s| s.key != room && s.flood.is_some()), "the others are still flooded");
+    // a room told off what it would not have had anyway: the same level
+    let none = at(vec![feature("medium1", "flooded", false), feature("colossal", "angled", false)]).generate().unwrap();
+    assert!(same(&none, &base));
+    // a feature that is none of them
+    let bad = at(vec![feature("vast", "lava", true)]).generate().unwrap_err();
+    assert!(bad.starts_with("feature: one of shaped, flooded"), "{bad}");
+    // and the file both ways
+    let r = at(vec![feature("vast", "cellar", true)]);
+    assert_eq!(load(&save(&r)).unwrap(), r);
+}

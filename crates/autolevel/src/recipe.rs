@@ -168,6 +168,12 @@ pub enum Edit {
     Keep { room: String },
     /// A room's own decks stop at the storey `above`.
     Cut { room: String, above: i32 },
+    /// One of `level::FEATURES` for a single room: `on`, it has it wherever it fits (the
+    /// level's chance for it is 1), or not at all; in place of the level's chance, from the
+    /// room's own stream as ever, so no other room's draw moves. A room the feature does not fit
+    /// (a pod, one too narrow, a cellar under a hall not on the ground) is left without it, and
+    /// the room's choices say so. Err for a feature that is none of them. New here.
+    Feature { room: String, feature: String, on: bool },
 }
 
 impl Edit {
@@ -189,6 +195,7 @@ impl Edit {
             Edit::Reroll { .. } => "reroll",
             Edit::Keep { .. } => "keep",
             Edit::Cut { .. } => "cut",
+            Edit::Feature { .. } => "feature",
         }
     }
 
@@ -199,6 +206,11 @@ impl Edit {
             Edit::Join { .. } | Edit::Remove { .. } => Stage::Routes,
             Edit::Layout { .. } | Edit::Cover { .. } | Edit::Brightness { .. } | Edit::Ceiling { .. } | Edit::Reroll { .. } => Stage::Interiors,
             Edit::Keep { .. } | Edit::Cut { .. } => Stage::DeadEnds,
+            // (the room's shape, water, pit and cellar are rolled with the rooms; the rest by its furnisher)
+            Edit::Feature { feature, .. } => match crate::level::FEATURES.iter().find(|(f, _)| f == feature) {
+                Some((_, true)) => Stage::Lots,
+                _ => Stage::Interiors,
+            },
         }
     }
 
@@ -224,7 +236,8 @@ impl Edit {
             | Edit::Ceiling { room, .. }
             | Edit::Reroll { room, .. }
             | Edit::Keep { room }
-            | Edit::Cut { room, .. } => vec![room],
+            | Edit::Cut { room, .. }
+            | Edit::Feature { room, .. } => vec![room],
         }
     }
 
@@ -249,6 +262,7 @@ impl Edit {
             Edit::Reroll { room, n } => format!("{room}: inside {n}"),
             Edit::Keep { room } => format!("keep {room}'s dead end"),
             Edit::Cut { room, above } => format!("cut {room}: no deck of its own above {above}"),
+            Edit::Feature { room, feature, on } => format!("{room}: {feature} {}", if *on { "on" } else { "off" }),
         }
     }
 }
@@ -571,6 +585,26 @@ impl Recipe {
         }
     }
 
+    /// The options the stages are made with: the recipe's, with what its `feature` edits chose
+    /// for single rooms (`Options::forced`). The recipe's own when it has none. Err for a
+    /// feature that is none of `level::FEATURES`.
+    pub fn effective(&self) -> Result<std::borrow::Cow<'_, Options>, String> {
+        let mut forced = Vec::new();
+        for e in &self.edits {
+            if let Edit::Feature { room, feature, on } = e {
+                let Some(&(name, _)) = level::FEATURES.iter().find(|(f, _)| f == feature) else {
+                    let names: Vec<&str> = level::FEATURES.iter().map(|(f, _)| *f).collect();
+                    return Err(format!("feature: one of {}, not {feature:?}", names.join(", ")));
+                };
+                forced.push((room.clone(), name, *on));
+            }
+        }
+        if forced.is_empty() {
+            return Ok(std::borrow::Cow::Borrowed(&self.options));
+        }
+        Ok(std::borrow::Cow::Owned(Options { forced, ..self.options.clone() }))
+    }
+
     /// The recipe with the generator's own bases and grown pods left out, if it has any to leave
     /// out (a seed's level with `Options::bases` or `big_pods` on): what a level that cannot be
     /// made with them is made from instead, as the rescue makes every seed a level (new in the
@@ -596,7 +630,8 @@ impl Recipe {
 
     /// `furnished`, with no fallback.
     fn furnished_as_drawn(&self) -> Result<(Build, Vec<String>), String> {
-        let (seed, o) = (self.seed, &self.options);
+        let o = self.effective()?;
+        let (seed, o) = (self.seed, o.as_ref());
         let (rooms, net) = self.routed()?;
         // (`level::stage_interiors`, with what was chosen for a room told to the build first)
         let mut b = Build::new(seed, o.clone(), net, rooms.access, rooms.spin);
@@ -631,7 +666,8 @@ impl Recipe {
     /// stops here to try the joins a person could make next, on the network a `join` edit added
     /// to the end of the list would be applied to.)
     pub fn routed(&self) -> Result<(level::Spaces, Network), String> {
-        let (seed, o) = (self.seed, &self.options);
+        let o = self.effective()?;
+        let (seed, o) = (self.seed, o.as_ref());
         let (_, rooms) = self.rooms()?;
         let mut net = level::stage_network(seed, o, &rooms.sp)?;
         for e in &self.edits {
@@ -655,7 +691,8 @@ impl Recipe {
     /// `rooms`, from the seed's own lots already placed (`scattered`): for a caller that tries
     /// one change after another on the same seed and options (the editor, as a box is dragged).
     pub fn rooms_on(&self, base: Placed) -> Result<(Placed, level::Spaces), String> {
-        let (seed, o) = (self.seed, &self.options);
+        let o = self.effective()?;
+        let (seed, o) = (self.seed, o.as_ref());
         o.check()?;
         let own = base.lots.clone();
         let placed = self.lots_on(base)?;
@@ -864,6 +901,7 @@ mod tests {
             Edit::Keep { room: s("tiny3") },
             Edit::Cut { room: s("spire1"), above: 827 },
             Edit::Height { room: s("medium3"), floor: 276, top: 787 },
+            Edit::Feature { room: s("vast"), feature: s("flooded"), on: true },
         ]
     }
 

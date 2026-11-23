@@ -44,6 +44,16 @@ pub fn text(c: &Choices, s: &Space) -> String {
             Some(why) => out.push_str(&format!("  can't take layout {lay}: {why}\n")),
         }
     }
+    for f in &c.features {
+        let has = if f.has { "has it" } else { "has none" };
+        let whose = match f.chosen {
+            Some(true) => "on in the recipe",
+            Some(false) => "off in the recipe",
+            None => "the level's chance",
+        };
+        let cannot = f.cannot.as_ref().map_or(String::new(), |why| format!(" (can't: {why})"));
+        out.push_str(&format!("  feature {:<10} {has:<8}  {whose}{cannot}\n", f.name));
+    }
     out
 }
 
@@ -74,7 +84,8 @@ pub fn owned(room: &str, what: &str, cleared: &[&str]) -> String {
 
 /// The kinds `--own ROOM@WHAT` names: one, or all of them.
 pub fn kinds(what: &str) -> Vec<&'static str> {
-    KINDS.into_iter().filter(|k| what == "all" || *k == what).collect()
+    let features = autolevel::level::FEATURES.iter().map(|(f, _)| *f);
+    KINDS.into_iter().chain(features).filter(|k| what == "all" || *k == what).collect()
 }
 
 #[cfg(test)]
@@ -94,12 +105,15 @@ mod tests {
         let said = of(&recipe, "colossal");
         let c = choices::of(&recipe, lv, "colossal").unwrap();
         assert_eq!(said.lines().next().unwrap(), "choices for colossal (a colossal room, 20 x 27 cells, 0 to 1063): what it has, and whose choice that is");
-        assert_eq!(said.lines().count(), 10);
+        // (a line for each kind, each layout, and each of the seven features)
+        assert_eq!(said.lines().count(), 17);
+        assert!(said.contains("\n  feature flooded    has none  the level's chance\n"), "{said}");
         let row = |said: &str, name: &str| said.lines().find(|l| l.trim_start().starts_with(name)).unwrap().split_whitespace().collect::<Vec<_>>().join(" ");
         assert_eq!(row(&said, "layout"), format!("layout {} the seed's own", c.layout.unwrap_or("none")));
         assert_eq!((c.cover, c.pieces, row(&said, "cover").as_str()), ("lanes", 1, "cover lanes, 1 piece the seed's own"));
         assert_eq!(row(&said, "inside"), "inside 0 the seed's own");
-        assert!(said.ends_with("  could take layout none\n  could take layout ring\n  could take layout galleries\n  could take layout mezzanine\n"), "{said}");
+        assert!(said.contains("  could take layout none\n  could take layout ring\n  could take layout galleries\n  could take layout mezzanine\n"), "{said}");
+        assert!(said.ends_with("  feature angled     has none  the level's chance\n"), "{said}");
         // what the recipe chose says so (the level here is still the seed's: what it has is as it was)
         let mut r = recipe.clone();
         r.edits.push(Edit::Layout { room: "colossal".into(), layout: "ring".into() });
@@ -143,7 +157,8 @@ mod tests {
         assert_eq!(owned("vast", "all", &["cover", "reroll"]), "vast: the seed's own cover, inside again");
         assert_eq!(owned("vast", "reroll", &[]), "vast: nothing was chosen for its inside");
         assert_eq!(owned("vast", "all", &[]), "vast: nothing was chosen for it");
-        assert_eq!((kinds("all"), kinds("reroll"), kinds("maze")), (KINDS.to_vec(), vec!["reroll"], vec![]));
+        assert_eq!((kinds("reroll"), kinds("maze"), kinds("flooded")), (vec!["reroll"], vec![], vec!["flooded"]));
+        assert_eq!(kinds("all").len(), KINDS.len() + autolevel::level::FEATURES.len());
         assert_eq!((word("reroll"), word("layout")), ("inside", "layout"));
     }
 }

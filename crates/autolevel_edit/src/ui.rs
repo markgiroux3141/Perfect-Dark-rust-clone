@@ -1252,6 +1252,42 @@ impl Editor {
             }
         });
         ui.weak("(brightness and ceiling are for the built level: the plan shows them only as words)");
+        // one row for each of the level's features, for this room alone (folded: the list of
+        // rooms stays where it was)
+        let open = !c.chosen.features.is_empty();
+        let head = egui::CollapsingHeader::new("features (this room alone)").default_open(open).show(ui, |ui| {
+            for f in &c.features {
+                ui.horizontal(|ui| {
+                    ui.label(f.name);
+                    let auto = ui.selectable_label(f.chosen.is_none(), "level's chance");
+                    let on = ui.add_enabled(f.cannot.is_none() || f.chosen == Some(true), egui::SelectableLabel::new(f.chosen == Some(true), "on"));
+                    let on = match &f.cannot {
+                        Some(why) => on.on_disabled_hover_text(why.as_str()),
+                        None => on,
+                    };
+                    let off = ui.selectable_label(f.chosen == Some(false), "off");
+                    for (name, r) in [("auto", &auto), ("on", &on), ("off", &off)] {
+                        self.spots.push((format!("feature {} {name}", f.name), r.rect));
+                    }
+                    if auto.clicked() && f.chosen.is_some() {
+                        ask = Some(Ask::Clear(f.name));
+                    }
+                    if on.clicked() && f.chosen != Some(true) {
+                        ask = Some(Ask::Set(Edit::Feature { room: room.to_string(), feature: f.name.to_string(), on: true }));
+                    }
+                    if off.clicked() && f.chosen != Some(false) {
+                        ask = Some(Ask::Set(Edit::Feature { room: room.to_string(), feature: f.name.to_string(), on: false }));
+                    }
+                    let has = match (f.has, f.chosen) {
+                        (true, _) => "has: yes",
+                        (false, Some(true)) => "has: no (it doesn't fit)",
+                        (false, _) => "has: no",
+                    };
+                    ui.weak(has);
+                });
+            }
+        });
+        self.spots.push(("features".to_string(), head.header_response.rect));
         match ask {
             Some(Ask::Set(e)) => self.set_choice(e),
             Some(Ask::Clear(what)) => self.clear_choice(room, what),
@@ -2916,5 +2952,23 @@ mod tests {
         let at = spot(&ed, "view top");
         click(&mut ed, &egui, at);
         assert_eq!(ed.side, None);
+    }
+
+    #[test]
+    fn a_feature_turned_on_for_one_room_is_one_edit_and_auto_takes_it_out() {
+        // (the editor's tests have the level's chance of water at nothing: on is the room's alone)
+        let (mut ed, egui) = inside("medium1");
+        settle(&mut ed);
+        frame(&mut ed, &egui, Vec::new());
+        press(&mut ed, &egui, "features");
+        press(&mut ed, &egui, "feature flooded on");
+        assert_eq!(edits(&ed), ["medium1: flooded on"]);
+        settle(&mut ed);
+        assert!(ed.doc.made().unwrap().level.space("medium1").flood.is_some(), "medium1 is flooded");
+        frame(&mut ed, &egui, Vec::new());
+        let said = frame(&mut ed, &egui, Vec::new());
+        assert!(has(&said, "has: yes"), "{said:?}");
+        press(&mut ed, &egui, "feature flooded auto");
+        assert!(edits(&ed).is_empty());
     }
 }

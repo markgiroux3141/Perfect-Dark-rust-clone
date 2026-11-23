@@ -514,7 +514,8 @@ mod tests {
         assert_eq!(row("cover"), "cover none, 0 pieces chosen in the recipe");
         assert_eq!((row("brightness"), row("ceiling")), ("brightness 90 chosen in the recipe".to_string(), "ceiling grille chosen in the recipe".to_string()));
         assert!(row("layout").ends_with(" the seed's own") && row("inside") == "inside 0 the seed's own", "{}", done.text);
-        assert!(done.text.contains("\n  could take layout mezzanine\nautolevel seed 40: 29 rooms, "), "{}", done.text);
+        assert!(done.text.contains("\n  could take layout mezzanine\n  feature shaped "), "{}", done.text);
+        assert!(done.text.contains("\n  feature angled     has none  the level's chance\nautolevel seed 40: 29 rooms, "), "{}", done.text);
         assert_eq!(
             done.recipe.edits,
             [
@@ -538,7 +539,7 @@ mod tests {
             listed.text
         );
         assert!(
-            listed.text.contains("\nchoices for small8 (a small room, a pod of vast, 4 x 3 cells, 551 to 787): ") && listed.text.lines().count() == 20,
+            listed.text.contains("\nchoices for small8 (a small room, a pod of vast, 4 x 3 cells, 551 to 787): ") && listed.text.lines().count() == 34,
             "{}",
             listed.text
         );

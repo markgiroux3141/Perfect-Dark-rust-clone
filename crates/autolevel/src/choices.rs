@@ -4,7 +4,9 @@
 //!
 //! The choices are the recipe's own edits: `layout` (a hall's first upper storey), `cover`
 //! (what stands on its floor), `reroll` (its inside from another stream of random numbers),
-//! `brightness` (what its floor is baked to) and `ceiling`. `of` reads, for one room of a made
+//! `brightness` (what its floor is baked to) and `ceiling`; and `feature`, one of
+//! `level::FEATURES` on or off (an L or U shape, water, a sunken floor, a cellar, platforms,
+//! drops through them, angled catwalks), each feature a kind of its own. `of` reads, for one room of a made
 //! level, what it has, what the recipe chose for it, and which layouts it could take (with the
 //! reason for each it could not, in plain words). `set` is the recipe with a choice made, and
 //! `clear` the recipe with the seed's own again.
@@ -18,7 +20,7 @@
 //! attempt can be furnished with) comes back from making it, as any failed recipe does.
 
 use crate::build::{takes, LAYOUTS};
-use crate::level::{Level, COVER};
+use crate::level::{Level, COVER, FEATURES};
 use crate::py;
 use crate::recipe::{Edit, Recipe, CEILINGS};
 
@@ -33,6 +35,8 @@ pub struct Chosen {
     pub reroll: Option<u32>,
     pub brightness: Option<i32>,
     pub ceiling: Option<String>,
+    /// Features chosen on or off, in `FEATURES`' order.
+    pub features: Vec<(&'static str, bool)>,
 }
 
 impl Chosen {
@@ -50,6 +54,7 @@ impl Chosen {
         out.extend(self.reroll.map(|n| format!("inside {n}")));
         out.extend(self.brightness.map(|v| format!("brightness {v}")));
         out.extend(self.ceiling.as_ref().map(|v| format!("ceiling {v}")));
+        out.extend(self.features.iter().map(|(f, on)| format!("{f} {}", if *on { "on" } else { "off" })));
         out.join(", ")
     }
 }
@@ -78,6 +83,20 @@ pub struct Choices {
     pub ceiling: Option<&'static str>,
     /// What the recipe's edits choose for it.
     pub chosen: Chosen,
+    /// Each of `FEATURES`: whether the room has it in the level, and why it can't (None: it may).
+    pub features: Vec<Feature>,
+}
+
+/// One feature of a room, as its choices show it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Feature {
+    pub name: &'static str,
+    /// Does the room have it in the level made?
+    pub has: bool,
+    /// On or off by the recipe's edit (None: the level's chance decides).
+    pub chosen: Option<bool>,
+    /// Why the room can't have it, as far as can be told without making the level.
+    pub cannot: Option<String>,
 }
 
 /// The room and the kind of a choice edit ("layout", "cover", ...). None for any other edit.
@@ -86,6 +105,8 @@ pub fn kind(e: &Edit) -> Option<(&str, &'static str)> {
         Edit::Layout { room, .. } | Edit::Cover { room, .. } | Edit::Reroll { room, .. } | Edit::Brightness { room, .. } | Edit::Ceiling { room, .. } => {
             Some((room, e.name()))
         }
+        // (each feature is a kind of its own: a room has one edit for each)
+        Edit::Feature { room, feature, .. } => FEATURES.iter().find(|(f, _)| f == feature).map(|(f, _)| (room.as_str(), *f)),
         _ => None,
     }
 }
@@ -100,10 +121,52 @@ pub fn chosen(recipe: &Recipe, room: &str) -> Chosen {
             Edit::Reroll { n, .. } => c.reroll = Some(*n),
             Edit::Brightness { value, .. } => c.brightness = Some(*value),
             Edit::Ceiling { ceiling, .. } => c.ceiling = Some(ceiling.clone()),
+            Edit::Feature { on, .. } => {
+                let (_, what) = kind(e).expect("a feature's kind");
+                c.features.retain(|(f, _)| *f != what);
+                c.features.push((what, *on));
+            }
             _ => {}
         }
     }
+    c.features.sort_by_key(|(f, _)| FEATURES.iter().position(|(g, _)| g == f));
     c
+}
+
+/// Does `room` have the feature `what` in `lv`?
+fn has(lv: &Level, room: &str, what: &str) -> bool {
+    let s = lv.spaces().iter().find(|s| s.key == room);
+    let it = lv.interiors.iter().find(|(k, _)| k == room).map(|(_, it)| it);
+    match what {
+        "shaped" => s.is_some_and(|s| !s.cuts.is_empty()),
+        "flooded" => s.is_some_and(|s| s.flood.is_some()),
+        "sunken" => s.is_some_and(|s| s.sunk.is_some()),
+        "cellar" => lv.spaces().iter().any(|c| c.cellar.as_ref().is_some_and(|c| c.hall == room)),
+        "platforms" => it.is_some_and(|it| !it.platforms.is_empty()),
+        "holes" => it.is_some_and(|it| !it.pits.is_empty()),
+        "angled" => it.is_some_and(|it| !it.angled.is_empty() || !it.islands.is_empty()),
+        _ => false,
+    }
+}
+
+/// Why `s` can't have the feature `what`, as far as can be told from the room alone: a pod is
+/// furnished with its hall, a cellar goes only under a big hall on the ground, and the rest need
+/// floor or air enough (only making the level tells: None).
+fn cannot(s: &crate::space::Space, what: &str) -> Option<String> {
+    if !s.host.is_empty() {
+        return Some(format!("{} is a pod of {}: it has its hall's", s.key, s.host));
+    }
+    let tall = s.storeys().len() > 1;
+    match what {
+        "cellar" if !(s.floor == 0 && matches!(s.kind, "colossal" | "vast" | "tower")) => {
+            Some("only a big hall (colossal, vast or tower) on the ground floor has a cellar".to_string())
+        }
+        "platforms" | "holes" | "angled" if !tall => Some(format!("{} is one storey: {what} hang in a hall's air", s.key)),
+        "shaped" | "flooded" | "sunken" if matches!(s.kind, "spire" | "basin") || s.kind == crate::place::ATRIUM.name => {
+            Some(format!("a {} keeps its own shape and floor", s.kind))
+        }
+        _ => None,
+    }
 }
 
 /// Every room the recipe chooses something for, in the order the edits first name them, each
@@ -140,6 +203,15 @@ pub fn of(recipe: &Recipe, lv: &Level, room: &str) -> Result<Choices, String> {
         brightness: lv.moods.iter().find(|(k, _)| k == room).map(|(_, v)| *v),
         ceiling: lv.ceilings.iter().find(|(k, _)| k == room).map(|(_, role)| *role),
         chosen: chosen(recipe, room),
+        features: FEATURES
+            .iter()
+            .map(|&(name, _)| Feature {
+                name,
+                has: has(lv, room, name),
+                chosen: chosen(recipe, room).features.iter().find(|(f, _)| *f == name).map(|(_, on)| *on),
+                cannot: cannot(s, name),
+            })
+            .collect(),
     })
 }
 
@@ -171,6 +243,14 @@ pub fn refusal(lv: Option<&Level>, e: &Edit) -> Option<String> {
         Edit::Reroll { room, .. } => space(room).filter(|s| !s.host.is_empty()).map(|s| format!("reroll: {}", pod(room, &s.host))),
         Edit::Brightness { value, .. } => (!(0..=255).contains(value)).then(|| format!("brightness: 0 to 255, not {value}")),
         Edit::Ceiling { ceiling, .. } => (!CEILINGS.contains(&ceiling.as_str())).then(|| one_of("ceiling", &CEILINGS)),
+        Edit::Feature { room, feature, on } => {
+            let names: Vec<&str> = FEATURES.iter().map(|(f, _)| *f).collect();
+            if !names.contains(&feature.as_str()) {
+                return Some(one_of("feature", &names));
+            }
+            // (off is always allowed: it is what the room has anyway where it can't)
+            space(room).filter(|_| *on).and_then(|s| cannot(s, feature)).map(|why| format!("{feature}: {why}"))
+        }
         _ => Some(format!("{}: not a choice for one room", e.name())),
     }
 }
@@ -203,7 +283,8 @@ pub fn set(recipe: &Recipe, e: Edit) -> Result<Recipe, String> {
 /// one room: every such edit taken out.
 pub fn clear(recipe: &Recipe, room: &str, what: &str) -> Recipe {
     let mut out = recipe.clone();
-    out.edits.retain(|e| kind(e) != Some((room, what)) || !KINDS.contains(&what));
+    let known = KINDS.contains(&what) || FEATURES.iter().any(|(f, _)| *f == what);
+    out.edits.retain(|e| kind(e) != Some((room, what)) || !known);
     out
 }
 
@@ -237,8 +318,15 @@ mod tests {
         // every room with a choice, in the order first named, and each in a few words
         let words: Vec<(String, String)> = all(&r).into_iter().map(|(room, c)| (room, c.words())).collect();
         assert_eq!(words, [("vast".to_string(), "cover crates, brightness 120".to_string()), ("colossal".to_string(), "cover none".to_string())]);
-        let every = Chosen { layout: Some("ring".into()), cover: Some("none".into()), reroll: Some(2), brightness: Some(90), ceiling: Some("grille".into()) };
-        assert_eq!(every.words(), "layout ring, cover none, inside 2, brightness 90, ceiling grille");
+        let every = Chosen {
+            layout: Some("ring".into()),
+            cover: Some("none".into()),
+            reroll: Some(2),
+            brightness: Some(90),
+            ceiling: Some("grille".into()),
+            features: vec![("flooded", true), ("cellar", false)],
+        };
+        assert_eq!(every.words(), "layout ring, cover none, inside 2, brightness 90, ceiling grille, flooded on, cellar off");
         assert_eq!(Chosen::default().words(), "");
         // a recipe written by hand may have two: both go for the one
         let mut twice = r.clone();
