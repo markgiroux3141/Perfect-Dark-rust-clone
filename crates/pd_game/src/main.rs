@@ -109,6 +109,9 @@ struct PdGame {
     /// Whether the panel showed before full screen hid it (it comes back
     /// when full screen is left).
     panel_before_fullscreen: bool,
+    /// Keep the N64 video's TV set photo round the tube in full screen (off:
+    /// the bare tube fills the screen).
+    tv_in_fullscreen: bool,
     /// Quantise the framebuffer to RGBA5551, as the N64's is.
     n64_colour: bool,
     match_assets: MatchAssets,
@@ -161,6 +164,7 @@ impl PdGame {
             presenter: None,
             show_panel: true,
             panel_before_fullscreen: true,
+            tv_in_fullscreen: false,
             n64_colour: true,
             renderer: None,
             loaded_stage: None,
@@ -620,7 +624,7 @@ impl Game for PdGame {
                 });
                 ui.label(egui::RichText::new("A second player joins the Combat Simulator by pressing START; then set 'keyboard drives' to that controller.").weak());
                 ui.separator();
-                presentation::video_panel(ui, &mut self.video);
+                presentation::video_panel(ui, &mut self.video, &mut self.tv_in_fullscreen);
                 if let Some(music) = &self.music {
                     ui.separator();
                     ui.label("MUSIC");
@@ -679,10 +683,18 @@ impl Game for PdGame {
     }
 
     fn render(&mut self, ctx: &mut Ctx, frame: &mut Frame) {
+        // SUBST: the VI shows PD's 220 lines inside a 240-line, 4:3 picture /
+        // full screen (F11) zooms the 220 lines to the screen's height, the
+        // pixels' shape kept, so the bands above and below them go.
+        let full = ctx.is_fullscreen();
+        let canvas = |w: u32, h: u32, scale: u32| if full { (w * scale, h * scale) } else { (w * scale, 240 * scale) };
+        let mut video = self.video;
+        if full && !self.tv_in_fullscreen {
+            video.tv = n64::gpu::video::TvSet::Off;
+        }
         if matches!(self.screen, Screen::Match(_)) {
             self.ensure_match_target(ctx);
             let (Screen::Match(world), Some(target), Some(presenter), Some(renderer), Some(nv)) = (&self.screen, &self.match_target, &self.presenter, &mut self.renderer, &mut self.n64v) else { return };
-            let video = self.video;
             let n64 = video.active();
             let (device, queue) = (&ctx.gpu.device, &ctx.gpu.queue);
             let single = world.players.len() == 1;
@@ -714,10 +726,10 @@ impl Game for PdGame {
                 return;
             }
             // The VI shows PD's 220 lines inside a 240-line, 4:3 picture.
-            presenter.present(ctx.gpu, frame, target, (VIEW_W * self.render_scale, 240 * self.render_scale), Filter::Nearest);
+            presenter.present(ctx.gpu, frame, target, canvas(VIEW_W, VIEW_H, self.render_scale), Filter::Nearest);
             return;
         }
-        let (Some(target), Some(presenter)) = (&self.target, &self.presenter) else { return };
+        let (Some(target), Some(presenter), Some(nv)) = (&self.target, &self.presenter, &mut self.n64v) else { return };
         let gfx = match &self.screen {
             Screen::StandIn { lines, .. } => {
                 states::draw_match_stand_in(&mut self.stand_in, &self.menu.draw.res.fonts, lines);
@@ -725,9 +737,22 @@ impl Game for PdGame {
             }
             _ => &self.menu.draw.gfx,
         };
+        if video.active() {
+            // The menus' frame through the same N64 framebuffer, VI and tube
+            // as the match's (the chain's own 16-bit colour stands in for the
+            // panel's RGBA5551 switch). No HUD: the match's last is dropped.
+            target.upload(ctx.gpu, &gfx.rgba8(self.n64_colour && !video.fb16));
+            let (device, queue) = (&ctx.gpu.device, &ctx.gpu.queue);
+            nv.upload_hud(device, queue, None);
+            let vf = VideoFrame { color: &target.view, color_srgb: false, size: (target.width, target.height), gun_depth: None, world_near_far: (1.0, 2.0), gun_near_far: (1.0, 2.0) };
+            clear(&mut frame.encoder, &frame.view);
+            let rect = tube_rect(frame.size.0, frame.size.1, frame.viewport[0]);
+            nv.run(device, queue, &mut frame.encoder, &vf, &frame.view, rect, &video);
+            return;
+        }
         target.upload(ctx.gpu, &gfx.rgba8(self.n64_colour));
         // The VI shows PD's 220 lines inside a 240-line, 4:3 picture.
-        presenter.present(ctx.gpu, frame, target, (320, 240), Filter::Nearest);
+        presenter.present(ctx.gpu, frame, target, canvas(FB_W as u32, FB_H as u32, 1), Filter::Nearest);
     }
 }
 

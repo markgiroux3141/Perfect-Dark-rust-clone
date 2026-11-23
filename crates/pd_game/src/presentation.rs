@@ -1,6 +1,6 @@
 //! The developer panel's presentation options: how the match looks and sounds
 //! on the way out (none of it changes the game). VIDEO is `n64::gpu::video`'s
-//! N64 framebuffer, VI filters and CRT over the match view; AUDIO is
+//! N64 framebuffer, VI filters and CRT over the menus and the match view; AUDIO is
 //! `n64::audio`'s N64 mix and TV speaker on the voices' DSP track.
 //!
 //! Source: the old repo's `pd_guns/app.rs` (`audio_panel`, `video_panel`).
@@ -10,9 +10,10 @@ use n64::audio::{AudioSettings, SpeakerPreset};
 use n64::gpu::video::{Mask, Preset, Resolution, Signal, TvSet, VideoSettings};
 
 /// The panel's VIDEO section: the N64's framebuffer and VI, then the tube.
-pub fn video_panel(ui: &mut egui::Ui, v: &mut VideoSettings) {
+/// `tv_full`: keep the TV set round the tube in full screen.
+pub fn video_panel(ui: &mut egui::Ui, v: &mut VideoSettings, tv_full: &mut bool) {
     ui.label(egui::RichText::new("VIDEO").strong());
-    ui.checkbox(&mut v.n64, "N64 video (the match)");
+    ui.checkbox(&mut v.n64, "N64 video (menus and match)");
     ui.add_enabled_ui(v.n64, |ui| {
         egui::ComboBox::from_label("N64 resolution").selected_text(v.resolution.label()).show_ui(ui, |ui| {
             for r in Resolution::ALL {
@@ -52,6 +53,7 @@ pub fn video_panel(ui: &mut egui::Ui, v: &mut VideoSettings) {
                         ui.selectable_value(&mut v.tv, t, t.label());
                     }
                 });
+                ui.add_enabled(v.tv != TvSet::Off, egui::Checkbox::new(tv_full, "TV set in full screen too")).on_hover_text("Off: full screen (F11) shows the bare tube");
                 ui.add(egui::Slider::new(&mut v.scanlines, 0.0..=1.0).text("scanlines"));
                 ui.add(egui::Slider::new(&mut v.sharpness, 0.5..=2.5).text("signal sharpness"));
                 ui.add(egui::Slider::new(&mut v.halation, 0.0..=0.3).text("halation"));
