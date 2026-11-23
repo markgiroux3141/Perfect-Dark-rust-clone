@@ -12,10 +12,11 @@
 //! boxes alone (`Done::failed`). A room's choice that is refused, or that no level can be made
 //! with, is shown on the level as it was: the room's box in red, the reason by it.
 
-use crate::cli::{Args, Choose};
+use crate::cli::{Args, Choose, Side, SideAt};
 use crate::doc::Doc;
 use crate::planview::{Boxes, View};
 use crate::raster::Image;
+use crate::sideview::{Section, SideView};
 use crate::{chosen, lots, routes, shot};
 use autolevel::boxes::{self, Change, Trial};
 use autolevel::recipe::Recipe;
@@ -126,6 +127,20 @@ fn rooms(doc: &mut Doc, args: &Args, text: &mut String) -> Result<Option<Trial>,
 /// Do what `args` asks for short of opening the window or writing a file. Err, saying why, if
 /// the recipe makes no level, or a route can't be taken out or a join made. A room change that
 /// is refused is no Err: see `Done::refused`.
+/// The section `--side` asks for: a row or column as given, or through a room's middle (its
+/// box as the recipe places it, else as the level has it).
+fn section(side: &Side, lv: Option<&autolevel::level::Level>, boxes: Option<&Boxes>) -> Result<Section, String> {
+    match &side.at {
+        SideAt::Cell(at) => Ok(Section { axis: side.axis, at: *at }),
+        SideAt::Room(room) => {
+            let lot = boxes.and_then(|b| b.lots.iter().find(|a| a.key == *room)).map(|a| a.rect());
+            let rect = lot.or_else(|| lv.and_then(|lv| lv.spaces().iter().find(|s| s.key == *room)).map(|s| s.rect()));
+            let rect = rect.ok_or_else(|| format!("--side: no room {room} (--lots names them)"))?;
+            Ok(Section::through(side.axis, rect))
+        }
+    }
+}
+
 pub fn run(args: &Args) -> Result<Done, String> {
     let mut doc = Doc::new(args.recipe.clone(), args.from.is_some());
     let mut text = String::new();
@@ -155,7 +170,19 @@ pub fn run(args: &Args) -> Result<Done, String> {
         let Some(boxes) = boxes else { return Err(why) };
         text.push_str(&format!("no level: {why}\n"));
         let view = View { storey: args.storey, boxes: Some(boxes), ..View::default() };
-        let shot = args.shot.is_some().then(|| shot::render_bare(doc.recipe.seed, &why, &view, args.width));
+        let shot = match &args.side {
+            Some(side) if args.shot.is_some() => {
+                let section = section(side, None, view.boxes.as_ref())?;
+                Some(shot::render_side(
+                    None,
+                    doc.recipe.seed,
+                    &format!("no level: {why}"),
+                    &SideView { section: Some(section), boxes: view.boxes, scale: 1.0 },
+                    args.width,
+                ))
+            }
+            _ => args.shot.is_some().then(|| shot::render_bare(doc.recipe.seed, &why, &view, args.width)),
+        };
         return Ok(Done { recipe: doc.recipe, text, shot, refused, failed: Some(why) });
     }
     if let (Some(shown), None) = (&boxes, &trial) {
@@ -206,7 +233,25 @@ pub fn run(args: &Args) -> Result<Done, String> {
         text.push_str(&chosen::text(&found, made.level.space(room)));
     }
     let view = View { storey: args.storey, gone, boxes, ..doc.look(args.all, None) };
-    let shot = args.shot.is_some().then(|| shot::render(&made, &view, args.width));
+    let shot = match &args.side {
+        Some(side) if args.shot.is_some() => {
+            let section = section(side, Some(&made.level), view.boxes.as_ref())?;
+            text.push_str(&format!(
+                "side view {}
+",
+                section.words()
+            ));
+            let under = shot::summary(&made);
+            Some(shot::render_side(
+                Some(&made),
+                doc.recipe.seed,
+                &under,
+                &SideView { section: Some(section), boxes: view.boxes.clone(), scale: 1.0 },
+                args.width,
+            ))
+        }
+        _ => args.shot.is_some().then(|| shot::render(&made, &view, args.width)),
+    };
     if args.shot.is_some() || args.list {
         text.push_str(&format!("{}\n{}on the plan:\n{}", shot::title(&made), made.dead.text(), made.dead.numbered()));
     }
@@ -594,5 +639,26 @@ mod tests {
         assert_eq!(done.recipe.edits, [Edit::Keep { room: "spire1".into() }]);
         assert!(done.text.starts_with("removed: c39a was the dead-end pass's: spire1's dead end is now kept as it is"), "{}", done.text);
         assert!(done.text.contains("autolevel seed 40: 29 rooms, 43 links"), "{}", done.text);
+    }
+
+    #[test]
+    fn a_height_is_made_and_the_side_view_drawn_through_a_room() {
+        let done = run(&args("--seed 40 --height medium5@276@1063 --side x@medium5 --select medium5 --shot side.png --width 900")).unwrap();
+        assert!(done.failed.is_none() && done.refused.is_none(), "{:?} {:?}", done.failed, done.refused);
+        assert_eq!(done.recipe.edits, [Edit::Height { room: "medium5".into(), floor: 276, top: 1063 }]);
+        assert!(done.text.contains("room: medium5 from 276 up to 1063") && done.text.contains("side view along x"), "{}", done.text);
+        let side = done.shot.expect("a snapshot");
+        // the side view is not the plan
+        let plan = run(&args("--seed 40 --height medium5@276@1063 --select medium5 --shot plan.png --width 900")).unwrap().shot.unwrap();
+        assert_ne!(side.png().unwrap(), plan.png().unwrap());
+        // the same height again is the same picture, and what it can't read is said
+        let again = run(&args("--seed 40 --height medium5@276@1063 --side x@medium5 --select medium5 --shot side.png --width 900")).unwrap();
+        assert_eq!(again.shot.unwrap().png().unwrap(), side.png().unwrap());
+        let words = |line: &str| line.split_whitespace().map(str::to_string).collect::<Vec<_>>();
+        let no = |path: &str| Err(format!("{path}: no files here"));
+        assert!(cli::parse(&words("--side z@4"), &no).unwrap_err().starts_with("--side: x or y"));
+        assert!(cli::parse(&words("--height medium5@276"), &no).unwrap_err().starts_with("--height: a room, its floor and its top"));
+        let err = run(&args("--seed 40 --side x@nowhere --shot side.png")).err();
+        assert!(err.as_deref().is_some_and(|e| e.starts_with("--side: no room nowhere")), "{err:?}");
     }
 }

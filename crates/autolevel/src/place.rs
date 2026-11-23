@@ -3,7 +3,7 @@
 //! middle (`compact`). The first steps of `level.generate` in the Python.
 //!
 //! New in the Rust: `Placed`, the placed lots as a person changes them (a recipe's `move`,
-//! `resize`, `add`, `delete` and `pin`), held to the rule the scatter itself places by.
+//! `resize`, `add`, `delete`, `pin` and `height`), held to the rule the scatter itself places by.
 
 use crate::py;
 use crate::scatter::{apart, clear, hosts, pod_levels, pod_misfit, rect_gap, rect_overlap, scatter, Kind, Lot, Misfit, Rect, STOREY};
@@ -326,6 +326,17 @@ fn list(zs: &[i32]) -> String {
     zs.iter().map(|z| z.to_string()).collect::<Vec<_>>().join(", ")
 }
 
+/// A room's top as the scatter spells it from a ceiling line: a storey above its top storey's
+/// floor (the low road's ceiling line is a unit above that, and -40 is taken for it too). Err,
+/// worded for the edit `what`, for a height that is no ceiling line.
+fn top_line(what: &str, key: &str, top: i32) -> Result<i32, String> {
+    let up = CEILINGS.iter().position(|&c| c == top || (c, top) == (CEILINGS[0], LEVELS[0] + STOREY));
+    let Some(up) = up else {
+        return Err(format!("{what}: {key}'s top would be at {top}: ceilings are at {}", list(&CEILINGS)));
+    };
+    Ok(LEVELS[up] + STOREY)
+}
+
 /// Err unless a room can stand from `floor` to `top`: its floor on a storey, a storey or more
 /// tall, and under the highest ceiling.
 fn stands(key: &str, floor: i32, top: i32) -> Result<(), String> {
@@ -455,13 +466,7 @@ impl Placed {
         if rect.2 - rect.0 < LEAST || rect.3 - rect.1 < LEAST {
             return Err(format!("add: a room is at least {LEAST} x {LEAST} cells, not {} x {}", rect.2 - rect.0, rect.3 - rect.1));
         }
-        // the top as the scatter spells it: a storey above the top storey's floor (the low
-        // road's ceiling line is a unit above that)
-        let up = CEILINGS.iter().position(|&c| c == top || (c, top) == (CEILINGS[0], LEVELS[0] + STOREY));
-        let Some(up) = up else {
-            return Err(format!("add: {key}'s top would be at {top}: ceilings are at {}", list(&CEILINGS)));
-        };
-        let top = LEVELS[up] + STOREY;
+        let top = top_line("add", key, top)?;
         stands(key, floor, top).map_err(|why| format!("add: {why}"))?;
         self.lots.push(Lot { key: key.to_string(), kind: k.name, x0: rect.0, y0: rect.1, x1: rect.2, y1: rect.3, floor, top, host: String::new() });
         self.gone.retain(|(k, _)| k != key); // a room again
@@ -492,21 +497,44 @@ impl Placed {
         let n = self.at("pin", room)?;
         let was = self.lots[n].floor;
         stands(room, floor, self.lots[n].top + floor - was).map_err(|why| format!("pin: {why}"))?;
-        // (storeys are not all as far apart, so pods go by storeys, not by units)
-        let up = index(floor) as i32 - index(was) as i32;
+        self.raise("pin", n, floor)?;
+        self.touch(room);
+        Ok(())
+    }
+
+    /// `height`: the lot's floor is on the storey `floor` and its top on the ceiling line `top`
+    /// (as `add` takes it), its pods as many storeys up or down as its floor goes. Err for a
+    /// floor that is no storey's, a top that is no ceiling line, a room under a storey tall or
+    /// above the highest ceiling, or a pod that would have no storey to be on. (A hall made
+    /// lower than its pods is refused by the scatter's rule, `check`.) New here: the side view's
+    /// edit (docs/AUTOLEVEL.md, "Blank levels", the side view).
+    pub fn height(&mut self, room: &str, floor: i32, top: i32) -> Result<(), String> {
+        let n = self.at("height", room)?;
+        let top = top_line("height", room, top)?;
+        stands(room, floor, top).map_err(|why| format!("height: {why}"))?;
+        self.raise("height", n, floor)?;
+        self.lots[n].top = top;
+        self.touch(room);
+        Ok(())
+    }
+
+    /// Lot `n` and its pods go up or down as many storeys as its floor goes to reach `floor`
+    /// (storeys are not all as far apart, so pods go by storeys, not by units), each keeping its
+    /// height. Err, with nothing moved, if a pod would have no storey to be on.
+    fn raise(&mut self, what: &str, n: usize, floor: i32) -> Result<(), String> {
+        let up = index(floor) as i32 - index(self.lots[n].floor) as i32;
         let group = self.group(n);
         let mut floors = vec![floor];
         for &m in &group[1..] {
             let pod = &self.lots[m];
             let to = usize::try_from(index(pod.floor) as i32 + up).ok().and_then(|i| LEVELS.get(i));
-            let to = to.ok_or_else(|| format!("pin: with {room} on {floor}, its pod {} would have no storey to be on", pod.key))?;
+            let to = to.ok_or_else(|| format!("{what}: with {} on {floor}, its pod {} would have no storey to be on", self.lots[n].key, pod.key))?;
             floors.push(*to);
         }
         for (m, floor) in group.into_iter().zip(floors) {
             let a = &mut self.lots[m];
             (a.floor, a.top) = (floor, floor + a.top - a.floor);
         }
-        self.touch(room);
         Ok(())
     }
 

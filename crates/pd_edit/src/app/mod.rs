@@ -2134,6 +2134,13 @@ impl App {
         }
     }
 
+    /// Show a generated level from the side, through its selected room (`--shot-ui --side`).
+    pub(crate) fn show_generated_side(&mut self) {
+        if let Some(g) = self.generating.as_mut() {
+            g.ed.set_side(true);
+        }
+    }
+
     pub(crate) fn shot_setup(&mut self, step: Option<Step>, sel: Option<Sel>, tool: Option<Kind>) {
         if let Some(s) = step {
             self.go(s);

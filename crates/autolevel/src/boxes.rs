@@ -31,8 +31,8 @@
 use crate::cells::Rect;
 use crate::place::{Placed, LEAST};
 use crate::recipe::{Edit, Recipe, Stage};
-use crate::scatter::Lot;
-use crate::storeys::{index, CEILINGS};
+use crate::scatter::{Lot, STOREY};
+use crate::storeys::{index, CEILINGS, LEVELS};
 
 /// One change to the room boxes, as a person makes it.
 #[derive(Clone, Debug, PartialEq)]
@@ -44,6 +44,10 @@ pub enum Change {
     Rect { room: String, rect: Rect },
     /// The room's floor goes to this storey, its height kept. A hall's pods go as many storeys.
     Pin { room: String, floor: i32 },
+    /// The room stands from the storey `floor` to the ceiling line `top` (the side view's drag of
+    /// a box up or down, or of its top or bottom edge). A hall's pods go as many storeys as its
+    /// floor. Made a `pin` where the room keeps its height, else a `height`.
+    Height { room: String, floor: i32, top: i32 },
     /// A new room: `kind` one of the scale's, `floor` a storey's and `top` a ceiling line.
     Add { key: String, kind: String, rect: Rect, floor: i32, top: i32 },
     /// The room goes, a hall's pods with it, and every later edit that names any of them.
@@ -54,7 +58,7 @@ impl Change {
     /// The room it changes (`Add`: the one it makes).
     pub fn room(&self) -> &str {
         match self {
-            Change::Move { room, .. } | Change::Rect { room, .. } | Change::Pin { room, .. } | Change::Delete { room } => room,
+            Change::Move { room, .. } | Change::Rect { room, .. } | Change::Pin { room, .. } | Change::Height { room, .. } | Change::Delete { room } => room,
             Change::Add { key, .. } => key,
         }
     }
@@ -146,7 +150,7 @@ fn same(a: &Recipe, b: &Recipe, base: &Placed) -> bool {
 
 /// Is this a lot edit that names `room` (and only moves, sizes or pins it, with `shifts`)?
 fn names(e: &Edit, room: &str, shifts: bool) -> bool {
-    let kind = if shifts { matches!(e, Edit::Move { .. } | Edit::Resize { .. } | Edit::Pin { .. }) } else { e.stage() == Stage::Lots };
+    let kind = if shifts { matches!(e, Edit::Move { .. } | Edit::Resize { .. } | Edit::Pin { .. } | Edit::Height { .. }) } else { e.stage() == Stage::Lots };
     kind && e.rooms() == [room]
 }
 
@@ -227,6 +231,17 @@ pub fn apply(recipe: &Recipe, change: &Change, base: &Placed) -> Result<(Recipe,
         Change::Pin { room, floor } => {
             find("pin", room)?;
             out.edits.push(Edit::Pin { room: room.clone(), floor: *floor });
+        }
+        Change::Height { room, floor, top } => {
+            let a = find("height", room)?;
+            // (a room that keeps its height is pinned: the edit says what was done; a top is
+            // the scatter's spelling of a ceiling line, as `add` keeps it)
+            let top = if *top == CEILINGS[0] { LEVELS[0] + STOREY } else { *top };
+            if top - floor == a.top - a.floor {
+                out.edits.push(Edit::Pin { room: room.clone(), floor: *floor });
+            } else {
+                out.edits.push(Edit::Height { room: room.clone(), floor: *floor, top });
+            }
         }
         Change::Add { key, kind, rect, floor, top } => {
             out.edits.push(Edit::Add { key: key.clone(), kind: kind.clone(), rect: *rect, floor: *floor, top: *top });
@@ -450,6 +465,47 @@ mod tests {
         assert_eq!((t.refused.as_deref(), &t.recipe), (Some("add: there is a room vast already"), &recipe));
         let t = trial(&recipe, &Change::Add { key: "room1".into(), kind: "attic".into(), rect: spot, floor: 0, top: 236 }, &base);
         assert!(t.refused.as_deref().is_some_and(|w| w.starts_with("add: no kind attic at this scale")), "{:?}", t.refused);
+    }
+
+    #[test]
+    fn a_rooms_height_is_one_edit_its_pods_go_with_its_floor_and_back_is_none() {
+        let recipe = Recipe::new(40);
+        let base = recipe.scattered().unwrap();
+        let hall = lot(&base.lots, "vast").clone();
+        let pods: Vec<Lot> = base.lots.iter().filter(|a| a.host == "vast").cloned().collect();
+        let up = |z: i32, n: usize| LEVELS[index(z) + n];
+        let ceiling = |top: i32| CEILINGS[index(top - STOREY)];
+        // a storey taller: its top alone, the pods where they were
+        let taller = Change::Height { room: "vast".into(), floor: hall.floor, top: ceiling(hall.top) + (up(hall.top - STOREY, 1) - (hall.top - STOREY)) };
+        let t = trial(&recipe, &taller, &base);
+        let Change::Height { top, .. } = taller else { unreachable!() };
+        assert_eq!(t.recipe.edits, [Edit::Height { room: "vast".into(), floor: hall.floor, top }]);
+        assert_eq!((lot(&t.lots, "vast").floor, lot(&t.lots, "vast").top), (hall.floor, top));
+        for pod in &pods {
+            assert_eq!(lot(&t.lots, &pod.key).floor, pod.floor, "{} stays", pod.key);
+        }
+        // the same height a storey up is a pin, and the pods go up a storey with it
+        let shifted = Change::Height { room: "vast".into(), floor: up(hall.floor, 1), top: hall.top + up(hall.floor, 1) - hall.floor };
+        let p = trial(&recipe, &shifted, &base);
+        assert_eq!(p.recipe.edits, [Edit::Pin { room: "vast".into(), floor: up(hall.floor, 1) }]);
+        for pod in &pods {
+            assert_eq!(lot(&p.lots, &pod.key).floor, up(pod.floor, 1), "{} goes up with it", pod.key);
+        }
+        // and back as it was: nothing
+        let back = trial(&t.recipe, &Change::Height { room: "vast".into(), floor: hall.floor, top: hall.top }, &base);
+        assert_eq!(back.recipe, recipe);
+        // under a storey tall, or a top that is no ceiling line: refused, nothing changed
+        let low = trial(&recipe, &Change::Height { room: "vast".into(), floor: 551, top: 512 }, &base);
+        assert!(low.refused.as_deref().is_some_and(|w| w.contains("under a storey tall")), "{:?}", low.refused);
+        let odd = trial(&recipe, &Change::Height { room: "vast".into(), floor: 0, top: 600 }, &base);
+        assert!(odd.refused.as_deref().is_some_and(|w| w.starts_with("height: vast's top would be at 600")), "{:?}", odd.refused);
+        assert_eq!((low.recipe.clone(), odd.recipe.clone()), (recipe.clone(), recipe.clone()));
+        // a room made by hand keeps its add alone, with its new heights
+        let spot = free(&base, 6, 5);
+        let made = trial(&recipe, &Change::Add { key: "room1".into(), kind: "medium".into(), rect: spot, floor: 0, top: 236 }, &base);
+        let tall = trial(&made.recipe, &Change::Height { room: "room1".into(), floor: 0, top: 787 }, &base);
+        assert_eq!(tall.refused, None);
+        assert_eq!(tall.recipe.edits, [Edit::Add { key: "room1".into(), kind: "medium".into(), rect: spot, floor: 0, top: 787 }]);
     }
 
     #[test]

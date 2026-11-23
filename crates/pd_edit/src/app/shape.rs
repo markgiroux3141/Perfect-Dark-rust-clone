@@ -184,8 +184,36 @@ impl App {
                 }
                 if ui.selectable_label(g.ed.tool == PlanTool::Join, "Join rooms").on_hover_text("Click a room to see what it could be joined to, or a corridor to take it out").clicked() {
                     g.ed.set_tool(PlanTool::Join);
+                    g.ed.set_side(false);
                 }
             });
+            ui.horizontal(|ui| {
+                let side = g.ed.side;
+                if ui.selectable_label(side.is_none(), "From above").on_hover_text("The plan: rooms seen from above").clicked() && side.is_some() {
+                    g.ed.set_side(false);
+                }
+                if ui.selectable_label(side.is_some(), "From the side").on_hover_text("A slice through the level: drag a room up or down a floor, or its top or bottom to make it taller or shorter").clicked() && side.is_none() {
+                    g.ed.set_side(true);
+                }
+            });
+            if let Some(s) = g.ed.side {
+                ui.horizontal(|ui| {
+                    let across = s.axis == autolevel_edit::sideview::Axis::X;
+                    if ui.button("Turn the slice").on_hover_text(if across { "Look along the other way (south to north)" } else { "Look along the other way (west to east)" }).clicked() {
+                        g.ed.turn_side();
+                    }
+                    if ui.button(" ‹ ").on_hover_text(if across { "Slice a step further south" } else { "Slice a step further west" }).clicked() {
+                        g.ed.nudge_side(-1);
+                    }
+                    if ui.button(" › ").on_hover_text(if across { "Slice a step further north" } else { "Slice a step further east" }).clicked() {
+                        g.ed.nudge_side(1);
+                    }
+                    if ui.add_enabled(g.ed.doc.selected().is_some(), egui::Button::new("Through the room")).on_hover_text("Slice through the middle of the selected room").clicked() {
+                        g.ed.side_through_selected();
+                    }
+                });
+                theme::help(ui, "Drag a room up or down to move it a floor; drag its top or bottom edge to change how tall it is.");
+            }
             let edits = &g.ed.doc.recipe.edits;
             theme::section(ui, "Your changes");
             if edits.is_empty() {
@@ -279,6 +307,8 @@ enum Ask {
     Clear(&'static str),
     Reset,
     Floor(i32),
+    /// The room's top on this ceiling line, its floor kept.
+    Top(i32),
     Delete,
 }
 
@@ -331,6 +361,19 @@ impl App {
                 }
                 if ui.add_enabled(up.is_some(), egui::Button::new("Up a floor")).clicked() {
                     ask = up.map(Ask::Floor);
+                }
+            });
+            ui.horizontal(|ui| {
+                // (the top is a ceiling line: a storey more or less over the same floor)
+                let ceilings = autolevel::storeys::CEILINGS;
+                let top = ceilings.iter().position(|&c| c == autolevel::storeys::snap_top(lot.top));
+                let taller = top.and_then(|t| ceilings.get(t + 1)).copied();
+                let shorter = top.filter(|_| tall > 1).map(|t| ceilings[t - 1]);
+                if ui.add_enabled(taller.is_some(), egui::Button::new("Taller")).on_hover_text("A floor more on top").clicked() {
+                    ask = taller.map(Ask::Top);
+                }
+                if ui.add_enabled(shorter.is_some(), egui::Button::new("Shorter")).on_hover_text("A floor less off the top").clicked() {
+                    ask = shorter.map(Ask::Top);
                 }
             });
             let c = match g.ed.doc.choices(&room) {
@@ -447,6 +490,9 @@ impl App {
             }
             Some(Ask::Floor(floor)) => {
                 g.ed.change(&autolevel::boxes::Change::Pin { room: room.clone(), floor });
+            }
+            Some(Ask::Top(top)) => {
+                g.ed.change(&autolevel::boxes::Change::Height { room: room.clone(), floor: lot.floor, top });
             }
             Some(Ask::Delete) => {
                 g.ed.change(&autolevel::boxes::Change::Delete { room: room.clone() });

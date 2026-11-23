@@ -58,6 +58,9 @@ pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
   --rect ROOM@X0,Y0,X1,Y1
                         the room's box becomes this, low corner then high. A hall's pods stay
   --pin ROOM@FLOOR      the room's floor goes on this storey, its height kept
+  --height ROOM@FLOOR@TOP
+                        the room stands from this floor to this ceiling (a hall's pods go as many
+                        storeys as its floor): the side view's edit
   --delete ROOM         the room goes: a hall's pods with it, and the edits that name them
   --add KIND@X0,Y0,X1,Y1@FLOOR@TOP
                         a new room of this kind (--lots shows the kinds in use), from this floor to
@@ -94,6 +97,11 @@ pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
                         and one no inside can be furnished with makes no level: either way the
                         snapshot is still written, of the level as it was, with the room's box
                         in red and the reason by it; nothing after it is done, the exit status is 1
+  --side x@Y | y@X | x@ROOM | y@ROOM
+                        the snapshot is the side view, not the plan: a section along x through the
+                        row of cells y = Y (or along y through the column x = X, or through a
+                        room's middle), height upwards, the storeys labelled up the side. With the
+                        room flags the boxes the section cuts are drawn over it, --select's with grips
   --save-recipe FILE    write the recipe, with what the room flags, the choices, --remove and
                         --join changed
   --frames N            the window closes by itself after N frames of a made level (a smoke test)";
@@ -136,6 +144,41 @@ pub struct Args {
     pub choose: Vec<Choose>,
     /// Rooms whose choices to print.
     pub choices: Vec<String>,
+    /// The snapshot is the side view along this section, not the plan.
+    pub side: Option<Side>,
+}
+
+/// Where `--side` cuts: its axis, and a row or column of cells, or a room's middle.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Side {
+    pub axis: crate::sideview::Axis,
+    pub at: SideAt,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SideAt {
+    Cell(i32),
+    Room(String),
+}
+
+impl Side {
+    /// Read `x@12`, `y@30` or `x@vast`.
+    pub fn parse(v: &str) -> Result<Side, String> {
+        use crate::sideview::Axis;
+        let bad = || format!("--side: x or y, then @ and a row or column of cells or a room, as x@12 or y@vast, not {v}");
+        let (axis, at) = v.split_once('@').ok_or_else(bad)?;
+        let axis = match axis {
+            "x" => Axis::X,
+            "y" => Axis::Y,
+            _ => return Err(bad()),
+        };
+        let at = match at.parse::<i32>() {
+            Ok(n) => SideAt::Cell(n),
+            Err(_) if !at.is_empty() => SideAt::Room(at.to_string()),
+            Err(_) => return Err(bad()),
+        };
+        Ok(Side { axis, at })
+    }
 }
 
 /// A choice for one room, as the line asks for it.
@@ -225,6 +268,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
         trial: false,
         choose: Vec::new(),
         choices: Vec::new(),
+        side: None,
     };
     // a room, then @ and its choice: ("vast", "ring") of "--layout vast@ring"
     let choice = |n: usize, what: &str| {
@@ -293,6 +337,15 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
                 let (room, z) = room_at(v).ok_or_else(|| format!("--pin: a room's key and a floor, as tower@276, not {v}"))?;
                 out.boxes.push(Change::Pin { room: room.to_string(), floor: floor("--pin: a room, then @ and a floor", z)? });
             }
+            "height" => {
+                let v = value(n)?;
+                let shape = || format!("--height: a room, its floor and its top, as tower@276@1063, not {v}");
+                let (room, rest) = room_at(v).ok_or_else(shape)?;
+                let (f, t) = rest.split_once('@').ok_or_else(shape)?;
+                let (floor, top) = (floor("--height: a room, then @ and a floor", f)?, t.parse::<i32>().map_err(|_| shape())?);
+                out.boxes.push(Change::Height { room: room.to_string(), floor, top });
+            }
+            "side" => out.side = Some(Side::parse(value(n)?)?),
             "add" => out.boxes.push(added(value(n)?)?),
             "choices" => out.choices.push(value(n)?.to_string()),
             "layout" => {

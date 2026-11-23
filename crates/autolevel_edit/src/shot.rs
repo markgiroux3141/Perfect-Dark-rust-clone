@@ -8,6 +8,7 @@ use crate::deadlist::Made;
 use crate::font;
 use crate::planview::{bare, bounds_bare, bounds_of, colour, picture, Key, Picture, Rgba, Swatch, View};
 use crate::raster::{rasterise, Fit, Image, EDGE};
+use crate::sideview::{self, SideView};
 use autolevel::storeys::snap_top;
 
 /// The title strip's height, and a legend row's, in pixels.
@@ -129,6 +130,22 @@ pub fn render_bare(seed: u64, why: &str, view: &View, width: usize) -> Image {
     let view = &View { scale: width as f32 / (hi.0 - lo.0), ..view.clone() };
     let head = format!("autolevel seed {seed}: no level, the room boxes alone   [{}]", storeys(view));
     compose(&bare(view), view, width, &head, &format!("no level: {why}   {NOTE}"))
+}
+
+/// The side view (`sideview`) `width` pixels wide: of the level if there is one (`made`), else of
+/// the room boxes alone, under `under` (the generator's reason, for no level).
+pub fn render_side(made: Option<&Made>, seed: u64, under: &str, side: &SideView, width: usize) -> Image {
+    let width = width.clamp(320, 8000);
+    let lv = made.map(|m| &m.level);
+    let (lo, hi) = sideview::bounds(lv, side);
+    let side = &SideView { scale: width as f32 / (hi.0 - lo.0), ..side.clone() };
+    let cut = side.section.map_or("no section".to_string(), |s| s.words());
+    let head = match made {
+        Some(made) => format!("{}   [side view {cut}]", title(made)),
+        None => format!("autolevel seed {seed}: no level, the room boxes alone   [side view {cut}]"),
+    };
+    let view = View { boxes: side.boxes.clone(), ..View::default() };
+    compose(&sideview::picture(lv, side), &view, width, &head, under)
 }
 
 /// A picture `width` pixels wide under its two title lines (and what the view is doing, if

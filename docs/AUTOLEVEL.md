@@ -787,7 +787,10 @@ list, Felicity's greyed sliders; the site made one's own and back). Nobody has l
 5. The 3D view and walking the level in place. **Done** (2026-11-17), in `pd_edit`.
 6. Blank levels: an empty start, contacts in place of refusals, alternatives, the cascade shown,
    and a side view for heights. **Designed** (2026-11-18); its step 1, the empty start, **done**
-   the same day: see "Blank levels: your edit wins".
+   the same day; step 2, the side view and the `height` edit, **done** 2026-11-23: see "Blank
+   levels: your edit wins".
+7. The rest of the editing roadmap (per-room features, the 3D gizmo, per-part re-rolls, single
+   elements): see "Editing generated levels: the roadmap" (2026-11-23).
 
 ## The recipe
 
@@ -832,6 +835,7 @@ field, option or edit is an error that says which. With no edits a recipe gives 
 | `add` (a key, a kind, a rect, a floor and a top) | lots | A lot the scatter did not make, after the scattered ones. The kind (one of the scale's) decides its dress and name only. The key is new, a lower-case word, and not shaped like a route's (`c07`, `v02`). |
 | `delete` | lots | The lot goes, and its pods with it. Any later edit that names it is refused. |
 | `pin` (a room's floor on a storey) | lots | Its height kept; a hall's pods go the same number of storeys. |
+| `height` (a room's floor and its top) | lots | New (2026-11-23): the side view's edit, and the only one that changes a seeded room's height. The top is a ceiling line, as `add`'s is; a hall's pods go as many storeys as its floor. Refused under a storey tall, over the highest ceiling, for a pod left with no storey, or by the overlap rule. |
 | `join` (a room on a storey to another, optionally `"on": [storeys]`) | after routing | On the dead-end pass's terms: a corridor, or a vent if none fits. The editor's candidates are this edit with `on` given. |
 | `remove` (a route, by any of its pieces' keys) | routing | Refused if the level would fall in two. It cannot name a corridor the dead-end pass adds later: `keep` stops one. Keys shift when lots change. |
 | `cover` (one of `level::COVER`) | furnishing | In place of the dress's own cover; the room's shape and pillar stay. Refused for a pod. |
@@ -1807,6 +1811,53 @@ hang offered, both walk clean); choose carve (windows in the shared wall; `room2
   key that is dealt out again. Two rooms "beside" each other are still refused (a cell between):
   that is step 3.
 
+### As built (step 2: the side view and the `height` edit, 2026-11-23)
+
+- **The edit:** `Edit::Height { room, floor, top }` (`place::Placed::height`; the top parsed as
+  `add` parses it, `top_line`; the pods shifted by storeys as `pin` shifts them, `raise`).
+  `boxes::Change::Height` is what the side view asks for: made a `pin` where the room keeps its
+  height, else a `height`, and folded into a made room's `add` like the other lot edits. The
+  answer keys pass unchanged (no seed has the edit).
+- **The picture** (`autolevel_edit::sideview`): a `Section` (`Axis::X` through the row
+  `y = at`, or `Axis::Y` through the column `x = at`; `Section::through` a room's middle). Cells
+  across, `z / 118` up (`UNITS`: true proportions). Floor lines labelled ("ground 0", "floor 2
+  551") and ceiling lines; rooms the cut crosses solid in their floor's colour, the rest faint
+  outlines; decks and catwalks on the cut row (half cells) as thick lines; a room's ramps as
+  slopes (a ramp crossing the cut as its box with a diagonal); corridors and vents as bands at
+  their heights (a corridor 236 high, a vent 59); a corridor's ramp and a vent's ducts as slopes
+  where their ends are within a cell of the cut. With the room tool the boxes are drawn over it
+  (`Boxes`), the selected one with four grips and its heights beside it, red with the refusal.
+  The same `Prim`s as the plan: the window's `paint` and the snapshot's `rasterise` draw it.
+- **Taking hold:** `sideview::hit` (the selected box's top, bottom or ends within the grip, else
+  the smallest box under the pointer: a pod over its hall). `sideview::drag`: the body goes the
+  way it has gone furthest (across: a `Move` along the section; up or down: a `Pin` to the
+  nearest storey), the top a `Height` to the nearest ceiling line (never under a storey), the
+  bottom a `Height` to the nearest floor with the top kept, an end a `Rect`.
+- **In the window** (`ui::Editor`): `side: Option<Section>`; `canvas` draws `side_canvas` in
+  its place, with its own pan and zoom (`side_look`; framed on the selected room, its storeys
+  70% of the height), the drag tried at each step and made on letting go as on the plan.
+  `side_controls` (the generator's panel, under the tool row): Top | Side, "along x/y", `<` `>`
+  to move the cut a cell, "through the selected room". `set_side`, `turn_side`, `nudge_side`,
+  `side_through_selected` are public. **On the Layout screen** (`pd_edit::app::shape`): "From
+  above | From the side" under "Change the plan", "Turn the slice", the two arrows, "Through
+  the room"; the room panel has **Taller / Shorter** beside Down/Up a floor (a `Height` a
+  ceiling line either way).
+- **Without a window:** `autolevel_edit --side x@Y|y@X|x@ROOM|y@ROOM --shot OUT.png` (with the
+  room flags, the boxes over it; `--height ROOM@FLOOR@TOP` the edit);
+  `pd_edit --shot-ui OUT.png --seed 40 --room vast --side` (the Layout screen from the side).
+  Pictures: `out/autolevel/side/` (scratch).
+- **Checked:** one in `boxes` (a height is one edit, pods go with the floor, back is none,
+  refusals, folded into an `add`), 4 in `sideview` (sections, hits, drags, seed 40's picture the
+  same twice), one in `headless` (`--height` and `--side`), one in the window's (egui events:
+  the Side switch, a top dragged up a storey is one `height`, the body up a floor is a `pin`,
+  Top again). The pictures read: seed 40 through vast along x, medium5 made four storeys tall,
+  the Layout screen from the side.
+- **Rough:** nobody has looked at the window. The cut is not drawn on the plan. Zoomed in, the
+  floor labels at the left margin go off the view (the line under the view says the height).
+  A drag up of the body always keeps the height (a `pin`); moving across and up at once is two
+  drags. Corridors are drawn 236 high whatever their own ceiling; cover (pillars, crates) and
+  windows are not drawn.
+
 **Not decided yet:** how many alternatives to show at most, and whether they appear as a strip of
 small plans or one at a time with numbers (as the Join tool's are); what a room the generator adds
 looks like (its kind, and so its dress); whether a seeded level can be switched to "your edit
@@ -2757,6 +2808,49 @@ the editor's room tool draws a base as its lot (the column's narrower storeys ar
 the ladder of a column goes up a wall that may also have slits (the band runs across it); a base
 in a basin, spire or atrium is refused, not fitted; nothing is placed at a slit on purpose (the
 placement rules know nothing of bases yet: a sniper's spot at a slit is the editor's).
+
+## Editing generated levels: the roadmap (2026-11-23)
+
+The user's ask (2026-11-23): make generated Complex-style levels much more customisable: move
+things vertically, edit in 3D with a gizmo, add corridors between rooms, cycle the options for
+catwalks and other connections, add and take away pillars, windows in pods and the like, worked
+on over several sessions. The rule that shapes all of it: **every tool makes a recipe edit** (a
+level is its recipe, never its geometry), so a new kind of edit in `autolevel` is the real work,
+and a new way of making one (side view, gizmo, a cycle button) is cheap once the edit exists. No
+seed's level may change (the answer keys), so every new edit is an override that a recipe
+without it never takes.
+
+Order of work, and where each stands:
+
+1. **The side view and `height`.** Done (2026-11-23): "Blank levels", step 2, as built.
+2. **Per-room features.** The features that are level-wide dials today (`platforms`,
+   `galleries`, `holes`, `cellars`, `angled`, `flooded`, `shaped`, `sunken`, `bases`,
+   `big_pods`) chosen for one room: forced on, forced off, or the seed's roll. One edit kind,
+   applied where the roll is made, so it replaces the roll rather than adding geometry code.
+   Shown on the room panel as Auto / On / Off rows, greyed with the reason where a room can't
+   take it (as layouts are). Watch: some rolls draw from level-wide streams in a seeded level,
+   so forcing one room can shift another's draw; an empty start keys them by room already.
+3. **3D picking and a box gizmo** (in `pd_edit`'s 3D view): a click picks the room under the
+   pointer (PD's rooms are the generator's: the preview's room index gives the key); the
+   selected room gets six face handles (the sides a `Rect`, top and bottom a `Height`) and move
+   arrows (x, y by cells, z by storeys), drawn as a wireframe that follows the drag using
+   `boxes::trial` alone (a millisecond), red with the refusal; the level is made again when it
+   is let go, as on the plan. Plus a cutaway (ceilings hidden, storeys above N hidden) to see
+   into tall halls. `pd_edit::gizmo` exists for items: look there first.
+4. **Corridors drawn by hand, and their style.** A doorway picked on each room's wall (the Join
+   tool picks rooms only): a `door`/`via` field on `join`; and a corridor's style cycled
+   (straight, L, stairs, ramp, vent).
+5. **Per-part re-rolls and a variants strip.** `reroll { room, part }` with a stream of its own
+   per part (catwalks, cover, windows), so one part changes and the rest stays; 4 to 6 small
+   pictures of re-rolls made in parallel (as the Join tool's candidates are), one click to keep.
+6. **Single elements by place.** Windows (`window { hall, storey, cell, glass|rail|none }`: in
+   an empty start a window's stream is already keyed by its place), pillars and crates added,
+   taken out or nudged, a drop put in a floor. Named by where they are, never by an index
+   (indices shift with every remake).
+7. **The cascade shown** ("Blank levels", piece 5): what an edit changed, lit, ghosted, listed.
+   Wanted before 3 and 6 make edits that ripple.
+8. Lock one room and re-roll the rest; copy, paste and mirror a room with its choices; a room
+   saved as a preset.
 
 ## Risks
 

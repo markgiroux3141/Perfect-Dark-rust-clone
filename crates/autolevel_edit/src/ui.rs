@@ -40,16 +40,18 @@
 //! one edit and one step to undo, and a room keeps one edit of a kind however often it is
 //! changed. If the recipe then makes no level, "undo that" by the reason takes the choice back.
 
-use crate::cli::Args;
+use crate::cli::{self, Args};
 use crate::controls::{self, Control};
 use crate::deadlist::{Kind, Made, Row};
 use crate::doc::Doc;
 use crate::jobs::{Job, Search};
 use crate::planview::{self, colour, Boxes, Hit, Prim, Rgba, Swatch, View, P};
 use crate::raster::Fit;
+use crate::sideview::{self, Axis, Section, SideHit, SidePart, SideView};
 use crate::{routes, shot};
 use autolevel::boxes::{self, Change, Part, Trial};
 use autolevel::candidates::Removal;
+use autolevel::cells::Rect;
 use autolevel::level::{Options, Start, COVER};
 use autolevel::place::{self, Placed};
 use autolevel::recipe::{self, Edit, Recipe};
@@ -97,6 +99,9 @@ enum Held {
     Box { lot: Lot, part: Part, from: P },
     /// A new room, drawn from this cell.
     New { from: (i32, i32) },
+    /// A room's box in the side view, as it was when the button went down, by this part of it,
+    /// from this place (cells across, cells up).
+    Side { lot: Lot, part: SidePart, from: P },
 }
 
 /// What the drag in hand has come to: the change, what it would make of the lots, and for a
@@ -136,6 +141,7 @@ fn going(change: &Change) -> String {
         Change::Rect { room, rect } => format!("{room}: {}", span(rect)),
         Change::Add { key, kind, rect, floor, top } => format!("draw {key} ({kind}, {floor} to {top}): {}", span(rect)),
         Change::Pin { room, floor } => format!("pin {room}'s floor at {floor}"),
+        Change::Height { room, floor, top } => format!("{room} from {floor} up to {top}"),
         Change::Delete { room } => format!("delete {room}"),
     }
 }
@@ -215,6 +221,12 @@ pub struct Editor {
     /// The count of the recipe's changes just after the last choice made for a room: while the
     /// recipe is still that one and makes no level, the panel offers to undo the choice.
     chose: Option<u64>,
+    /// The side view is shown in place of the plan, along this section (None: the plan).
+    pub side: Option<Section>,
+    /// The side view's middle (cells across, cells up) and pixels to a cell (None: fit it).
+    side_look: Option<(P, f32)>,
+    /// How the last frame laid the side view on the window.
+    pub side_fit: Option<Fit>,
 }
 
 impl Editor {
@@ -255,6 +267,114 @@ impl Editor {
             pins: None,
             bright: None,
             chose: None,
+            side: None,
+            side_look: None,
+            side_fit: None,
+        }
+        .with_side(args.side.as_ref())
+    }
+
+    /// The side view as the command line asks for it (`--side`).
+    fn with_side(mut self, side: Option<&cli::Side>) -> Editor {
+        let Some(side) = side else { return self };
+        self.side = Some(match &side.at {
+            cli::SideAt::Cell(at) => Section { axis: side.axis, at: *at },
+            cli::SideAt::Room(room) => {
+                let rect = self.doc.lots().ok().and_then(|p| p.lots.into_iter().find(|a| a.key == *room)).map(|a| a.rect());
+                rect.map_or(Section { axis: side.axis, at: 0 }, |r| Section::through(side.axis, r))
+            }
+        });
+        self.tool = Tool::Rooms;
+        self
+    }
+
+    /// The selected room's box, as the recipe places it.
+    fn selected_rect(&mut self) -> Option<Rect> {
+        let key = self.doc.selected()?.to_string();
+        self.doc.lots().ok()?.lots.into_iter().find(|a| a.key == key).map(|a| a.rect())
+    }
+
+    /// Show the side view (along x through the selected room's middle, or where it last cut)
+    /// or the plan again. The side view's drags are the room tool's, so it is put in hand.
+    pub fn set_side(&mut self, on: bool) {
+        self.drop_drag();
+        if !on {
+            self.side = None;
+            return;
+        }
+        let rect = self.selected_rect();
+        let level = self.doc.made().map(|m| planview::bounds(&m.level));
+        let was = self.side.unwrap_or(Section { axis: Axis::X, at: level.map_or(0, |(lo, hi)| ((lo.1 + hi.1) / 2.0) as i32) });
+        self.side = Some(rect.map_or(was, |r| Section::through(was.axis, r)));
+        self.side_look = None;
+        self.set_tool(Tool::Rooms);
+    }
+
+    /// The switch between the plan and the side view, and with the side view shown, which way it
+    /// cuts and where: a row each, `spots` named "view top", "view side", "side turn", "side
+    /// back", "side on", "side selected".
+    pub fn side_controls(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("view");
+            let top = ui.selectable_label(self.side.is_none(), "Top").on_hover_text("the plan, from above");
+            let side = ui
+                .selectable_label(self.side.is_some(), "Side")
+                .on_hover_text("a section through the level, height upwards: drag a room up or down, or its top or bottom");
+            self.spots.push(("view top".to_string(), top.rect));
+            self.spots.push(("view side".to_string(), side.rect));
+            if top.clicked() && self.side.is_some() {
+                self.set_side(false);
+            }
+            if side.clicked() && self.side.is_none() {
+                self.set_side(true);
+            }
+        });
+        let Some(s) = self.side else { return };
+        ui.horizontal(|ui| {
+            let (back, on) = if s.axis == Axis::X { ("south", "north") } else { ("west", "east") };
+            let turn = ui.button(if s.axis == Axis::X { "along x" } else { "along y" }).on_hover_text("cut the other way");
+            let b = ui.button("<").on_hover_text(format!("cut a cell further {back}"));
+            ui.label(format!("{} = {}", if s.axis == Axis::X { "y" } else { "x" }, s.at));
+            let f = ui.button(">").on_hover_text(format!("cut a cell further {on}"));
+            let sel = ui.add_enabled(self.doc.selected().is_some(), egui::Button::new("through the selected room"));
+            for (name, r) in [("side turn", &turn), ("side back", &b), ("side on", &f), ("side selected", &sel)] {
+                self.spots.push((name.to_string(), r.rect));
+            }
+            if turn.clicked() {
+                self.turn_side();
+            }
+            if b.clicked() {
+                self.nudge_side(-1);
+            }
+            if f.clicked() {
+                self.nudge_side(1);
+            }
+            if sel.clicked() {
+                self.side_through_selected();
+            }
+        });
+    }
+
+    /// The side view cuts the other way, through the selected room's middle if there is one.
+    pub fn turn_side(&mut self) {
+        let rect = self.selected_rect();
+        if let Some(s) = self.side {
+            self.side = Some(s.turned(rect));
+            self.side_look = None;
+        }
+    }
+
+    /// The side view's cut moves `by` cells across the plan (north or east).
+    pub fn nudge_side(&mut self, by: i32) {
+        if let Some(s) = &mut self.side {
+            s.at += by;
+        }
+    }
+
+    /// The side view's cut goes through the selected room's middle.
+    pub fn side_through_selected(&mut self) {
+        if let (Some(s), Some(r)) = (self.side, self.selected_rect()) {
+            self.side = Some(Section::through(s.axis, r));
         }
     }
 
@@ -466,7 +586,7 @@ impl Editor {
                 drawn = Some(Lot { key: key.clone(), kind, x0, y0, x1, y1, floor, top, host: String::new() });
                 Some(Change::Add { key, kind: kind.to_string(), rect: (x0, y0, x1, y1), floor, top })
             }
-            Some(Held::Pan) | None => return,
+            Some(Held::Pan | Held::Side { .. }) | None => return,
         };
         if self.tried.as_ref().map(|t| &t.change) != change.as_ref() {
             self.tried = change.and_then(|change| self.doc.try_change(&change).ok().map(|trial| Tried { change, trial, drawn }));
@@ -655,6 +775,7 @@ impl Editor {
                 }
             }
         });
+        self.side_controls(ui);
         if !ui.memory(|m| m.focused().is_some()) {
             self.seed_text = self.doc.recipe.seed.to_string();
         }
@@ -1367,6 +1488,10 @@ impl Editor {
 
     /// The plan.
     pub fn canvas(&mut self, ui: &mut egui::Ui) {
+        if let Some(s) = self.side {
+            self.side_canvas(ui, s);
+            return;
+        }
         let (resp, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
         let rect = resp.rect;
         painter.rect_filled(rect, 0.0, col(colour::BACKGROUND));
@@ -1443,35 +1568,7 @@ impl Editor {
         };
         self.drawn.0 = pic.prims.len();
         let painter = painter.with_clip_rect(rect);
-        for p in &pic.prims {
-            match p {
-                Prim::Poly { pts, fill } => {
-                    painter.add(egui::Shape::convex_polygon(pts.iter().map(|&q| to(q)).collect(), col(*fill), egui::Stroke::NONE));
-                }
-                Prim::Line { a, b, col: c, width_px } => {
-                    painter.line_segment([to(*a), to(*b)], egui::Stroke::new(*width_px, col(*c)));
-                }
-                Prim::Circle { c, r, col: k, filled } => {
-                    let r = (r * zoom).max(2.0);
-                    if *filled {
-                        painter.circle_filled(to(*c), r, col(*k));
-                    } else {
-                        painter.circle_stroke(to(*c), r, egui::Stroke::new(1.5, col(*k)));
-                    }
-                }
-                Prim::Text { at, text, col: c, size_px, centred } => {
-                    let align = if *centred { egui::Align2::CENTER_CENTER } else { egui::Align2::LEFT_CENTER };
-                    let font = egui::FontId::proportional(size_px + 3.0);
-                    // (a dark copy underneath, as the snapshot edges its letters)
-                    painter.text(to(*at) + egui::vec2(1.0, 1.0), align, text, font.clone(), col([12, 13, 17, 220]));
-                    painter.text(to(*at), align, text, font, col(*c));
-                }
-                Prim::Badge { at, text, fill, col: c, r_px, size_px } => {
-                    painter.circle(to(*at), *r_px, col(*fill), egui::Stroke::new(1.5, col(*c)));
-                    painter.text(to(*at), egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(size_px + 2.0), col(*c));
-                }
-            }
-        }
+        paint(&painter, &pic.prims, &to, zoom);
         if let Some(at) = resp.hover_pos() {
             let (x, y) = fit.from((at.x, at.y));
             let cell = (x.floor() as i32, y.floor() as i32);
@@ -1491,6 +1588,151 @@ impl Editor {
             };
             let text = format!("cell {}, {}  {}{does}", cell.0, cell.1, under.join(", "));
             painter.text(rect.left_bottom() + egui::vec2(8.0, -8.0), egui::Align2::LEFT_BOTTOM, text, egui::FontId::monospace(12.0), col(colour::KEY));
+        }
+    }
+}
+
+impl Editor {
+    /// The side view in the window, along `s`: the room boxes it cuts are selected with a click,
+    /// and a drag of one moves it along the section or up or down a storey, or sets its top or
+    /// bottom, or pulls an end (`sideview::drag`), tried at each whole step while the button is
+    /// down and made when it is let go, as on the plan. A drag on nothing pans; the wheel zooms.
+    pub fn side_canvas(&mut self, ui: &mut egui::Ui, s: Section) {
+        let (resp, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
+        let rect = resp.rect;
+        painter.rect_filled(rect, 0.0, col(colour::BACKGROUND));
+        let made = self.doc.made().cloned();
+        let placed = self.doc.lots().ok();
+        let boxes = placed.is_some().then(|| self.shown());
+        let view = SideView { section: Some(s), boxes, scale: 1.0 };
+        let (lo, hi) = sideview::bounds(made.as_ref().map(|m| &m.level), &view);
+        if self.side_look.is_none() || resp.double_clicked() {
+            let fit = Fit::inside(lo, hi, rect.width().max(1.0), rect.height().max(1.0));
+            let mut look = (((lo.0 + hi.0) / 2.0, (lo.1 + hi.1) / 2.0), fit.scale);
+            // (a section is long and low: with a room in hand, its storeys fill most of the
+            // height and the room is in the middle, the rest a pan away)
+            if let Some(r) = self.selected_rect().filter(|r| s.crosses(*r)) {
+                let (u0, u1) = s.span(r);
+                let tall = rect.height().max(1.0) * 0.7 / (hi.1 - lo.1);
+                look = (((u0 + u1) as f32 / 2.0, look.0 .1), fit.scale.max(tall.min(rect.width().max(1.0) / (u1 - u0 + 8) as f32)));
+            }
+            self.side_look = Some(look);
+        }
+        let (mut centre, mut zoom) = self.side_look.expect("just set");
+        let lie = |centre: P, zoom: f32| Fit::new(lo, hi, zoom, rect.center().x - (centre.0 - lo.0) * zoom, rect.center().y - (hi.1 - centre.1) * zoom);
+        let grip = GRIP / zoom;
+        if resp.drag_started() {
+            let from = ui.input(|i| i.pointer.press_origin()).or(resp.interact_pointer_pos());
+            let mut held = Held::Pan;
+            if let (Some(at), Some(placed)) = (from, placed.as_ref()) {
+                let at = lie(centre, zoom).from((at.x, at.y));
+                let hit = sideview::hit(&placed.lots, &s, at, self.doc.selected(), grip);
+                if let Some((lot, part)) = hit.and_then(|h| placed.lots.iter().find(|a| a.key == h.key).map(|a| (a.clone(), h.part))) {
+                    self.doc.select(Some(&lot.key));
+                    self.refused = None;
+                    held = Held::Side { lot, part, from: at };
+                }
+            }
+            (self.held, self.tried) = (Some(held), None);
+        }
+        if resp.dragged() && matches!(self.held, Some(Held::Pan)) {
+            let d = resp.drag_delta();
+            centre = (centre.0 - d.x / zoom, centre.1 + d.y / zoom);
+        }
+        if let (true, Some(at)) = (resp.hovered(), ui.input(|i| i.pointer.hover_pos())) {
+            let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+            if scroll != 0.0 {
+                let was = zoom;
+                zoom = (zoom * (1.0 + scroll * 0.002)).clamp(2.0, 400.0);
+                let (dx, dy) = (at.x - rect.center().x, at.y - rect.center().y);
+                centre = (centre.0 + dx / was - dx / zoom, centre.1 - dy / was + dy / zoom);
+            }
+        }
+        self.side_look = Some((centre, zoom));
+        let fit = lie(centre, zoom);
+        self.side_fit = Some(fit);
+        if let Some(at) = resp.interact_pointer_pos().map(|at| fit.from((at.x, at.y))) {
+            if resp.clicked() {
+                let lots = placed.as_ref().map_or(Vec::new(), |p| p.lots.clone());
+                let hit = sideview::hit(&lots, &s, at, self.doc.selected(), grip);
+                self.select(hit.as_ref().map(|h| h.key.as_str()));
+            }
+            if resp.dragged() || resp.drag_stopped() {
+                if let Some(Held::Side { lot, part, from }) = &self.held {
+                    let change = sideview::drag(lot, &s, *part, *from, at);
+                    if self.tried.as_ref().map(|t| &t.change) != change.as_ref() {
+                        self.tried = change.and_then(|change| self.doc.try_change(&change).ok().map(|trial| Tried { change, trial, drawn: None }));
+                    }
+                    self.refused = self.tried.as_ref().and_then(|t| t.trial.refused.clone());
+                }
+            }
+        }
+        if resp.drag_stopped() {
+            self.let_go();
+        } else if self.held.is_some() && !resp.dragged() {
+            (self.held, self.tried) = (None, None);
+        }
+        // (drawn after the drag is tried, so the box is where the pointer has it)
+        let boxes = placed.is_some().then(|| self.shown());
+        let view = SideView { section: Some(s), boxes, scale: zoom };
+        let pic = sideview::picture(made.as_ref().map(|m| &m.level), &view);
+        self.drawn.0 = pic.prims.len();
+        let to = |p: P| {
+            let (x, y) = fit.to(p);
+            egui::pos2(x, y)
+        };
+        let painter = painter.with_clip_rect(rect);
+        paint(&painter, &pic.prims, &to, zoom);
+        let line = match (&self.tried, resp.hover_pos()) {
+            (Some(t), _) => format!("{}{}", going(&t.change), if t.trial.refused.is_some() { ": refused" } else { "" }),
+            (None, Some(at)) => {
+                let (u, v) = fit.from((at.x, at.y));
+                let hit = placed.as_ref().and_then(|p| sideview::hit(&p.lots, &s, (u, v), self.doc.selected(), grip));
+                let does = match hit {
+                    Some(SideHit { key, part: SidePart::Top }) => format!("   drag: {key}'s top up or down"),
+                    Some(SideHit { key, part: SidePart::Bottom }) => format!("   drag: {key}'s floor up or down, its top kept"),
+                    Some(SideHit { key, part: SidePart::End(_) }) => format!("   drag: pull {key}'s end"),
+                    Some(SideHit { key, part: SidePart::Body }) => format!("   drag: move {key} across, or up or down a floor"),
+                    None => String::new(),
+                };
+                format!("{} {}, height {:.0}{does}", if s.axis == Axis::X { "x" } else { "y" }, u.floor(), v * sideview::UNITS)
+            }
+            (None, None) => String::new(),
+        };
+        painter.text(rect.left_top() + egui::vec2(8.0, 8.0), egui::Align2::LEFT_TOP, s.words(), egui::FontId::proportional(13.0), col(colour::TITLE));
+        painter.text(rect.left_bottom() + egui::vec2(8.0, -8.0), egui::Align2::LEFT_BOTTOM, line, egui::FontId::monospace(12.0), col(colour::KEY));
+    }
+}
+
+/// Draw a picture's primitives, `to` putting a place (cells) on the window, `zoom` pixels to a cell.
+fn paint(painter: &egui::Painter, prims: &[Prim], to: &dyn Fn(P) -> egui::Pos2, zoom: f32) {
+    for p in prims {
+        match p {
+            Prim::Poly { pts, fill } => {
+                painter.add(egui::Shape::convex_polygon(pts.iter().map(|&q| to(q)).collect(), col(*fill), egui::Stroke::NONE));
+            }
+            Prim::Line { a, b, col: c, width_px } => {
+                painter.line_segment([to(*a), to(*b)], egui::Stroke::new(*width_px, col(*c)));
+            }
+            Prim::Circle { c, r, col: k, filled } => {
+                let r = (r * zoom).max(2.0);
+                if *filled {
+                    painter.circle_filled(to(*c), r, col(*k));
+                } else {
+                    painter.circle_stroke(to(*c), r, egui::Stroke::new(1.5, col(*k)));
+                }
+            }
+            Prim::Text { at, text, col: c, size_px, centred } => {
+                let align = if *centred { egui::Align2::CENTER_CENTER } else { egui::Align2::LEFT_CENTER };
+                let font = egui::FontId::proportional(size_px + 3.0);
+                // (a dark copy underneath, as the snapshot edges its letters)
+                painter.text(to(*at) + egui::vec2(1.0, 1.0), align, text, font.clone(), col([12, 13, 17, 220]));
+                painter.text(to(*at), align, text, font, col(*c));
+            }
+            Prim::Badge { at, text, fill, col: c, r_px, size_px } => {
+                painter.circle(to(*at), *r_px, col(*fill), egui::Stroke::new(1.5, col(*c)));
+                painter.text(to(*at), egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(size_px + 2.0), col(*c));
+            }
         }
     }
 }
@@ -2623,5 +2865,56 @@ mod tests {
             said = frame(&mut ed, &egui, Vec::new());
         }
         assert!(has(&said, &why), "{why}: {said:?}");
+    }
+
+    /// Where a place in the side view (cells across, cells up) is in the window.
+    fn side_px(ed: &Editor, at: P) -> egui::Pos2 {
+        let (x, y) = ed.side_fit.expect("the side view was drawn").to(at);
+        egui::pos2(x, y)
+    }
+
+    /// A drag in the side view from one place to another (cells across, cells up), let go there.
+    fn side_drag(ed: &mut Editor, egui: &egui::Context, from: P, to: P) {
+        let (a, b) = (side_px(ed, from), side_px(ed, to));
+        frame(ed, egui, vec![egui::Event::PointerMoved(a)]);
+        frame(ed, egui, vec![button(a, true)]);
+        frame(ed, egui, vec![egui::Event::PointerMoved(a + (b - a) / 2.0)]);
+        frame(ed, egui, vec![egui::Event::PointerMoved(b)]);
+        frame(ed, egui, vec![button(b, false)]);
+        frame(ed, egui, Vec::new());
+    }
+
+    #[test]
+    fn in_the_side_view_a_rooms_top_is_dragged_up_and_its_body_up_a_floor() {
+        let (mut ed, egui) = rooms();
+        ed.select(Some("medium5"));
+        pass(&mut ed, &egui, Vec::new());
+        let at = spot(&ed, "view side");
+        click(&mut ed, &egui, at);
+        pass(&mut ed, &egui, Vec::new());
+        let s = ed.side.expect("the side view is shown");
+        let a = lot(&mut ed, "medium5");
+        assert!(s.crosses(a.rect()), "it cuts through the selected room");
+        let (u0, u1) = s.span(a.rect());
+        let mid = (u0 + u1) as f32 / 2.0;
+        let up = sideview::up;
+        // its top a storey up: one height edit, the floor kept
+        let top = snap_top(a.top);
+        let higher = autolevel::storeys::CEILINGS.iter().copied().find(|&c| c > top).expect("a ceiling above");
+        side_drag(&mut ed, &egui, (mid, up(top)), (mid, up(higher)));
+        assert_eq!(edits(&ed), [format!("medium5 from {} up to {higher}", a.floor)]);
+        settle(&mut ed);
+        assert!(ed.doc.error().is_none(), "{:?}", ed.doc.error());
+        // undone, then the body dragged up a storey: a pin
+        ed.doc.undo();
+        pass(&mut ed, &egui, Vec::new());
+        let above = LEVELS.iter().copied().find(|&z| z > a.floor).expect("a floor above");
+        let inside = (mid, up((a.floor + top) / 2));
+        side_drag(&mut ed, &egui, inside, (inside.0, inside.1 + up(above - a.floor)));
+        assert_eq!(edits(&ed), [format!("pin medium5's floor at {above}")]);
+        // back to the plan
+        let at = spot(&ed, "view top");
+        click(&mut ed, &egui, at);
+        assert_eq!(ed.side, None);
     }
 }

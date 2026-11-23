@@ -130,6 +130,12 @@ pub enum Edit {
     /// height that is no storey's floor, a top above the highest ceiling, or if the lots then
     /// break the scatter's rule (a pod stays on one of its hall's first two upper storeys).
     Pin { room: String, floor: i32 },
+    /// A room's floor is on the storey `floor` and its top on the ceiling line `top`; a hall's
+    /// pods go as many storeys up or down as its floor does. The side view's edit, and the only
+    /// one that changes a seeded room's height. Err for heights no room stands at, a pod with no
+    /// storey to go to, or if the lots then break the scatter's rule. New here: the Python has
+    /// none.
+    Height { room: String, floor: i32, top: i32 },
     /// A corridor (failing that a vent) from `room`'s storey to the room `to`, which takes the
     /// door on one of the storeys `on` (none given: any it offers).
     Join {
@@ -173,6 +179,7 @@ impl Edit {
             Edit::Add { .. } => "add",
             Edit::Delete { .. } => "delete",
             Edit::Pin { .. } => "pin",
+            Edit::Height { .. } => "height",
             Edit::Join { .. } => "join",
             Edit::Remove { .. } => "remove",
             Edit::Layout { .. } => "layout",
@@ -188,7 +195,7 @@ impl Edit {
     /// The stage it belongs to: a level is made again from there.
     pub fn stage(&self) -> Stage {
         match self {
-            Edit::Move { .. } | Edit::Resize { .. } | Edit::Add { .. } | Edit::Delete { .. } | Edit::Pin { .. } => Stage::Lots,
+            Edit::Move { .. } | Edit::Resize { .. } | Edit::Add { .. } | Edit::Delete { .. } | Edit::Pin { .. } | Edit::Height { .. } => Stage::Lots,
             Edit::Join { .. } | Edit::Remove { .. } => Stage::Routes,
             Edit::Layout { .. } | Edit::Cover { .. } | Edit::Brightness { .. } | Edit::Ceiling { .. } | Edit::Reroll { .. } => Stage::Interiors,
             Edit::Keep { .. } | Edit::Cut { .. } => Stage::DeadEnds,
@@ -210,6 +217,7 @@ impl Edit {
             | Edit::Resize { room, .. }
             | Edit::Delete { room }
             | Edit::Pin { room, .. }
+            | Edit::Height { room, .. }
             | Edit::Layout { room, .. }
             | Edit::Cover { room, .. }
             | Edit::Brightness { room, .. }
@@ -230,6 +238,7 @@ impl Edit {
             }
             Edit::Delete { room } => format!("delete {room}"),
             Edit::Pin { room, floor } => format!("pin {room}'s floor at {floor}"),
+            Edit::Height { room, floor, top } => format!("{room} from {floor} up to {top}"),
             Edit::Join { room, storey, to, on } if on.is_empty() => format!("join {room} on {storey} to {to}"),
             Edit::Join { room, storey, to, on } => format!("join {room} on {storey} to {to} (on {})", list(on)),
             Edit::Remove { route } => format!("remove {route}"),
@@ -713,6 +722,7 @@ impl Recipe {
                 Edit::Add { key, kind, rect, floor, top } => p.add(key, kind, *rect, *floor, *top)?,
                 Edit::Delete { room } => p.delete(room)?,
                 Edit::Pin { room, floor } => p.pin(room, *floor)?,
+                Edit::Height { room, floor, top } => p.height(room, *floor, *top)?,
                 _ => {}
             }
         }
@@ -853,6 +863,7 @@ mod tests {
             Edit::Reroll { room: s("vast"), n: 2 },
             Edit::Keep { room: s("tiny3") },
             Edit::Cut { room: s("spire1"), above: 827 },
+            Edit::Height { room: s("medium3"), floor: 276, top: 787 },
         ]
     }
 

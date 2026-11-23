@@ -64,6 +64,7 @@ pub fn asked(c: &Change) -> String {
         Change::Move { room, to } => Edit::Move { room: room.clone(), to: *to }.describe(),
         Change::Rect { room, rect } => format!("{room}'s box to {}, {} to {}, {}", rect.0, rect.1, rect.2, rect.3),
         Change::Pin { room, floor } => Edit::Pin { room: room.clone(), floor: *floor }.describe(),
+        Change::Height { room, floor, top } => Edit::Height { room: room.clone(), floor: *floor, top: *top }.describe(),
         Change::Add { key, kind, rect, floor, top } => Edit::Add { key: key.clone(), kind: kind.clone(), rect: *rect, floor: *floor, top: *top }.describe(),
         Change::Delete { room } => Edit::Delete { room: room.clone() }.describe(),
     }

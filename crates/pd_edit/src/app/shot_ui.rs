@@ -1,6 +1,6 @@
 //! `pd_edit --shot-ui <out.png> [<code>] [--size WxH] [--frames N] [--step
 //! home|layout|items|test] [--select KIND INDEX] [--generate [SEED]] [--room
-//! KEY] [--import FILE.glb] [--tool KIND] [--hover X,Y] [--run-test]`: the whole editor window (its panels
+//! KEY] [--side] [--import FILE.glb] [--tool KIND] [--hover X,Y] [--run-test]`: the whole editor window (its panels
 //! and the view between them) as a PNG, with no window. The app runs headless
 //! (`App::ui` on an egui context with no window, `App::update` between
 //! passes) until the level asked for has loaded and nothing is running, then
@@ -32,6 +32,8 @@ struct Shot {
     room: Option<String>,
     /// Run the simulant test first (Test & play's numbers).
     run_test: bool,
+    /// Show a generated level from the side (through `room`, if it is given).
+    side: bool,
     import: Option<PathBuf>,
     tool: Option<Kind>,
     hover: Option<egui::Pos2>,
@@ -72,6 +74,7 @@ fn parse(args: &[String]) -> Result<Shot, String> {
             "--seed" => s.generate = Some(val(&mut it, "--seed")?.parse().map_err(|_| "--seed N")?),
             "--run-test" => s.run_test = true,
             "--room" => s.room = Some(val(&mut it, "--room")?),
+            "--side" => s.side = true,
             "--import" => s.import = Some(PathBuf::from(val(&mut it, "--import")?)),
             "--hover" => {
                 let v = val(&mut it, "--hover")?;
@@ -127,6 +130,9 @@ pub fn run(args: &[String]) -> Result<PathBuf, String> {
             app.shot_setup(shot.step, shot.select.map(|(kind, index)| Sel::Item(Item { kind, index })), shot.tool);
             if let Some(room) = &shot.room {
                 app.select_generated_room(room);
+            }
+            if shot.side {
+                app.show_generated_side();
             }
         }
         if shot.run_test && !tested && n >= 3 && app.settled() {
