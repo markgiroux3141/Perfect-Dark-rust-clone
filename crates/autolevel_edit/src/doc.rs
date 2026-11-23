@@ -181,7 +181,7 @@ impl Doc {
 
     /// Join `room`'s `storey` to the room `to`, which takes the door on one of `on` (none: any).
     pub fn join(&mut self, room: &str, storey: i32, to: &str, on: &[i32]) {
-        self.add(Edit::Join { room: room.to_string(), storey, to: to.to_string(), on: on.to_vec() });
+        self.add(Edit::Join { room: room.to_string(), storey, to: to.to_string(), on: on.to_vec(), door: None, to_door: None, via: None });
     }
 
     /// Take out the route with a piece of this key: the `remove` edit, or for a corridor the
@@ -498,7 +498,10 @@ mod tests {
         d.cut("spire1", 827);
         assert!(d.dirty() && d.rev() == 6);
         assert_eq!((d.recipe.seed, d.recipe.options.cover, d.recipe.edits.len()), (7, "pillars", 4));
-        assert_eq!(d.recipe.edits[0], Edit::Join { room: "tower".into(), storey: 551, to: "colossal".into(), on: vec![276, 551] });
+        assert_eq!(
+            d.recipe.edits[0],
+            Edit::Join { room: "tower".into(), storey: 551, to: "colossal".into(), on: vec![276, 551], door: None, to_door: None, via: None }
+        );
         // an option nobody knows changes nothing and is no step
         assert_eq!(d.set_option("cover", "hedges").unwrap_err(), "cover: one of ('mixed', 'pillars', 'crates', 'none')");
         assert_eq!(d.rev(), 6);
@@ -604,7 +607,7 @@ mod tests {
         assert_eq!(d.choose(99).unwrap_err(), "no join 99: there are 21");
         let c = d.choose(4).unwrap();
         assert_eq!(c, found.found[3]);
-        assert_eq!(d.recipe.edits, [Edit::Join { room: "tower".into(), storey: 551, to: c.to.clone(), on: vec![c.on] }]);
+        assert_eq!(d.recipe.edits, [Edit::Join { room: "tower".into(), storey: 551, to: c.to.clone(), on: vec![c.on], door: None, to_door: None, via: None }]);
         assert!(d.picked().is_none() && d.picked_route() == Some(c.route.key()) && d.stale() && d.dirty());
         assert_eq!(d.look(false, None).route.as_deref(), Some(c.route.key()));
         // made: the level has the route that was shown, cell for cell

@@ -836,7 +836,7 @@ field, option or edit is an error that says which. With no edits a recipe gives 
 | `delete` | lots | The lot goes, and its pods with it. Any later edit that names it is refused. |
 | `pin` (a room's floor on a storey) | lots | Its height kept; a hall's pods go the same number of storeys. |
 | `height` (a room's floor and its top) | lots | New (2026-11-23): the side view's edit, and the only one that changes a seeded room's height. The top is a ceiling line, as `add`'s is; a hall's pods go as many storeys as its floor. Refused under a storey tall, over the highest ceiling, for a pod left with no storey, or by the overlap rule. |
-| `join` (a room on a storey to another, optionally `"on": [storeys]`) | after routing | On the dead-end pass's terms: a corridor, or a vent if none fits. The editor's candidates are this edit with `on` given. |
+| `join` (a room on a storey to another, optionally `"on": [storeys]`) | after routing | On the dead-end pass's terms: a corridor, or a vent if none fits. The editor's candidates are this edit with `on` given. New (2026-11-23): `"door"` and `"to_door"` (`{"side": "E", "at": 26}`: the one doorway each room may take, the cell along its wall of the door's low end) and `"via"` (`"corridor"` or `"vent"`); refused where nothing fits through them, or for a doorway off the wall. |
 | `remove` (a route, by any of its pieces' keys) | routing | Refused if the level would fall in two. It cannot name a corridor the dead-end pass adds later: `keep` stops one. Keys shift when lots change. |
 | `cover` (one of `level::COVER`) | furnishing | In place of the dress's own cover; the room's shape and pillar stay. Refused for a pod. |
 | `layout` ("ring", "galleries", "mezzanine", "none") | furnishing | A hall's first upper storey, on every attempt. Refused for a room of one storey, a tower or spire, one too small for it (a ring 8 by 8 cells, galleries 7 by 8, a mezzanine 5 by 10), and when no attempt can be furnished with it: it never falls back to another. "none" keeps a balcony the room would have had anyway. |
@@ -2838,7 +2838,9 @@ Order of work, and where each stands:
    `boxes::trial` alone (a millisecond), red with the refusal; the level is made again when it
    is let go, as on the plan. Plus a cutaway (ceilings hidden, storeys above N hidden) to see
    into tall halls. `pd_edit::gizmo` exists for items: look there first.
-4. **Corridors drawn by hand, and their style.** A doorway picked on each room's wall (the Join
+4. **Corridors drawn by hand, and their style.** Step 1 done (2026-11-23): the edit ("Joins
+   through a doorway", below). Next: the editor's part, picking the doorway on the plan, the
+   side view and in 3D, and cycling the way. A doorway picked on each room's wall (the Join
    tool picks rooms only): a `door`/`via` field on `join`; and a corridor's style cycled
    (straight, L, stairs, ramp, vent).
 5. **Per-part re-rolls and a variants strip.** `reroll { room, part }` with a stream of its own
@@ -2956,6 +2958,32 @@ Order of work, and where each stands:
   camera from inside a room (they are drawn on top, so they are seen through walls). With the
   walker walking there is no gizmo. A cutaway change makes the whole preview again; the cut is
   not shown on the plan or the side view.
+
+### Joins through a doorway (roadmap item 4, step 1, 2026-11-23)
+
+- **The edit:** `Edit::Join` gains `door`, `to_door` (`recipe::Doorway { side, at }`: the
+  wall, E N W or S, and the cell along it of the door's low end, x on a north or south wall, y
+  on an east or west one) and `via` (one of `recipe::VIAS`: "corridor", "vent"; none: a
+  corridor, failing that a vent, as ever). All three are left out of the file when not given,
+  so every recipe there was reads and writes as it did.
+- **How it reaches the router:** `route::Terms` and `VentTerms` gain `da` and `db` (None by
+  default: the answer keys pass unchanged): `terminals` (a corridor's ends), `direct_at` (a stub
+  through the wall between rooms a cell or two apart; `direct` is it with none) and the vent's
+  ends keep only the doorway given. `recipe::join` checks the doorway is on its wall (else
+  "medium3 has no doorway N 90 (its walls run 61 to 67)") and the way; "vent" goes straight to
+  a vent (made even where the level's `vents` is 0), "corridor" never falls back to one; none
+  fitting is "no corridor fits from medium3 on 0 to medium1 through the doorways asked for".
+  `describe` words them ("join medium3 on 0 to medium1, from its east wall at 26, to its west
+  wall at 27, by a vent").
+- **Checked:** `tests/recipe.rs` (`a_join_takes_the_doorway_asked_for_or_says_none_fits_there`:
+  every doorway on medium3's walls tried, each one made has its door exactly there, the rest
+  refused with the message, the router's own door among those made; a doorway off the wall; a
+  way that is none; a vent asked for is a vent; a corridor asked for where one is made anyway is
+  the same level; the file both ways). The answer keys pass.
+- **Not yet:** the editor's part (a doorway picked on a room's wall on the plan, the side view
+  and the 3D view; the way cycled in the Join tool's list); styles beyond corridor and vent
+  ("straight", "L", "stairs", "ramp" need the router to take terms for them: `Terms::straight`
+  and `turn` are the nearest); a command-line flag (a recipe file carries the edit).
 
 ## Risks
 

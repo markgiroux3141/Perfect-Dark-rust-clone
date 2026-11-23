@@ -6,7 +6,7 @@
 use autolevel::furnish::Interior;
 use autolevel::level::{Level, Options};
 use autolevel::place::{self, Placed, Scale, Siting};
-use autolevel::recipe::{load, save, Edit, Recipe};
+use autolevel::recipe::{load, save, Doorway, Edit, Recipe};
 use autolevel::scatter::Lot;
 
 fn s(text: &str) -> String {
@@ -143,7 +143,7 @@ fn a_room_is_moved_and_later_edits_see_it_there() {
     }
     assert!(!same(&lv, &plain) && !lv.interior("medium3").doors.is_empty());
     // a join by hand is made to the room where it now is
-    let join = Edit::Join { room: s("medium3"), storey: 0, to: s("medium1"), on: vec![] };
+    let join = Edit::Join { room: s("medium3"), storey: 0, to: s("medium1"), on: vec![], door: None, to_door: None, via: None };
     let joined = made(40, vec![join.clone(), mv("medium3", (62, 24))]); // the move comes first whatever the list's order
     assert_eq!(joined.net.routes().len(), lv.net.routes().len() + 1);
     let r = joined.net.routes().iter().find(|r| r.a.room == "medium3" && r.b.room == "medium1").expect("the corridor asked for");
@@ -325,7 +325,7 @@ fn a_room_is_deleted_with_its_pods_and_edits_that_name_it_say_so() {
     assert_eq!(err(40, vec![delete("vast"), reroll("tiny2", 1)]), "reroll: tiny2 was deleted with its hall vast");
     assert_eq!(err(40, vec![delete("tiny4"), cover("tiny4", "none")]), "cover: tiny4 was deleted");
     // an edit of a later stage is applied after the delete wherever it is in the list
-    let join = Edit::Join { room: s("tiny4"), storey: 276, to: s("small1"), on: vec![] };
+    let join = Edit::Join { room: s("tiny4"), storey: 276, to: s("small1"), on: vec![], door: None, to_door: None, via: None };
     assert_eq!(err(40, vec![join, delete("tiny4")]), "join: tiny4 was deleted");
     assert_eq!(err(40, vec![delete("tiny4"), Edit::Keep { room: s("tiny4") }]), "keep: tiny4 was deleted");
     assert_eq!(err(40, vec![delete("tiny4"), Edit::Brightness { room: s("tiny4"), value: 99 }]), "brightness: tiny4 was deleted");
@@ -855,4 +855,64 @@ fn a_feature_is_given_to_one_room_or_kept_from_it_and_no_other_room_changes() {
     // and the file both ways
     let r = at(vec![feature("vast", "cellar", true)]);
     assert_eq!(load(&save(&r)).unwrap(), r);
+}
+
+// ---------------------------------------------------------------- join through a doorway
+
+fn join(room: &str, storey: i32, to: &str, door: Option<Doorway>, via: Option<&str>) -> Edit {
+    Edit::Join { room: s(room), storey, to: s(to), on: vec![], door, to_door: None, via: via.map(s) }
+}
+
+#[test]
+fn a_join_takes_the_doorway_asked_for_or_says_none_fits_there() {
+    // medium3 moved beside medium1, as above: the router's own choice of door first
+    let plain = made(40, vec![mv("medium3", (62, 24)), join("medium3", 0, "medium1", None, None)]);
+    let r = plain.net.routes().iter().find(|r| r.a.room == "medium3" && r.b.room == "medium1").expect("the corridor").clone();
+    // every doorway along medium3's walls (62..69 x 24..32): each one made has its door there,
+    // and those that fit no corridor say so
+    let (mut made_at, mut refused) = (Vec::new(), 0);
+    for (side, along) in [('N', 62..69), ('S', 62..69), ('E', 24..32), ('W', 24..32)] {
+        for at in along {
+            let d = Doorway { side, at };
+            match recipe(40, vec![mv("medium3", (62, 24)), join("medium3", 0, "medium1", Some(d), None)]).generate() {
+                Ok(lv) => {
+                    let got = lv.net.routes().iter().find(|r| r.a.room == "medium3" && r.b.room == "medium1").expect("the corridor").a.clone();
+                    assert_eq!((got.side, got.a), (side, at), "asked for {d:?}");
+                    made_at.push(d);
+                }
+                Err(why) => {
+                    assert!(why.contains("join: no corridor fits from medium3 on 0 to medium1 through the doorways asked for"), "{d:?}: {why}");
+                    refused += 1;
+                }
+            }
+        }
+    }
+    assert!(made_at.len() >= 3 && refused > 0, "{} made, {refused} refused", made_at.len());
+    assert!(made_at.contains(&Doorway { side: r.a.side, at: r.a.a }), "the router's own door is one of them");
+    // a doorway that is no place on its wall, and a way that is none
+    let why = err(40, vec![join("medium3", 0, "medium1", Some(Doorway { side: 'N', at: 90 }), None)]);
+    assert!(why.contains("join: medium3 has no doorway N 90 (its walls run 61 to 67)"), "{why}");
+    assert!(err(40, vec![join("medium3", 0, "medium1", None, Some("tunnel"))]).contains("join: by a tunnel? (a corridor or a vent)"));
+    // by a vent: a vent it is, though the corridor would fit
+    let vent = made(40, vec![mv("medium3", (62, 24)), join("medium3", 0, "medium1", None, Some("vent"))]);
+    let v = vent.net.routes().iter().find(|r| r.a.room == "medium3" && r.b.room == "medium1").expect("the vent");
+    assert_eq!(v.pieces[0].kind, "vent");
+    // by a corridor where only... the plain join's own is a corridor already: the same level
+    let corridor = made(40, vec![mv("medium3", (62, 24)), join("medium3", 0, "medium1", None, Some("corridor"))]);
+    assert!(same(&corridor, &plain));
+    // the file: the new fields are written only when given, and read back
+    let e = Edit::Join {
+        room: s("medium3"),
+        storey: 0,
+        to: s("medium1"),
+        on: vec![],
+        door: Some(Doorway { side: 'E', at: 26 }),
+        to_door: Some(Doorway { side: 'W', at: 27 }),
+        via: Some(s("vent")),
+    };
+    let text = save(&recipe(40, vec![e.clone()]));
+    assert!(text.contains(r#""door": {"#) && text.contains(r#""side": "E""#) && text.contains(r#""via": "vent""#), "{text}");
+    assert_eq!(load(&text).unwrap().edits, vec![e.clone()]);
+    assert!(!save(&recipe(40, vec![join("medium3", 0, "medium1", None, None)])).contains("door"));
+    assert_eq!(e.describe(), "join medium3 on 0 to medium1, from its east wall at 26, to its west wall at 27, by a vent");
 }

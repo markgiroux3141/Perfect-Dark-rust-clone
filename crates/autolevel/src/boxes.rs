@@ -454,7 +454,7 @@ mod tests {
         // one of the seed's own is deleted by the recipe's delete, its pods with it
         let pods: Vec<String> = base.lots.iter().filter(|a| a.host == "vast").map(|a| a.key.clone()).collect();
         let mut r = Recipe::new(40);
-        r.edits.push(Edit::Join { room: "tower".into(), storey: 551, to: "vast".into(), on: vec![] });
+        r.edits.push(Edit::Join { room: "tower".into(), storey: 551, to: "vast".into(), on: vec![], door: None, to_door: None, via: None });
         r.edits.push(Edit::Cover { room: pods[0].clone(), cover: "none".into() });
         let gone = trial(&r, &Change::Delete { room: "vast".into() }, &base);
         assert_eq!(gone.recipe.edits, [Edit::Delete { room: "vast".into() }]);

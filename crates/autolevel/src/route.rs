@@ -125,6 +125,11 @@ pub struct Terms {
     pub la: Option<Vec<i32>>,
     /// The storeys the second room may take the door on.
     pub lb: Option<Vec<i32>>,
+    /// The one doorway the first room may take: the wall (E, N, W or S) and the cell along it
+    /// of the door's low end (None: any). New here (a person's `join`): the Python has none.
+    pub da: Option<(char, i32)>,
+    /// The second room's.
+    pub db: Option<(char, i32)>,
     /// Head positions looked at before the link is given up.
     pub search: usize,
     /// The search knows what the storeys still to climb will cost. It finds a way between rooms
@@ -135,7 +140,19 @@ pub struct Terms {
 
 impl Default for Terms {
     fn default() -> Self {
-        Terms { max_cost: 70.0, turn: 2.0, ramp_cost: 8.0, upper: 3.0, straight: STRAIGHT, la: None, lb: None, search: SEARCH, storeyed: false }
+        Terms {
+            max_cost: 70.0,
+            turn: 2.0,
+            ramp_cost: 8.0,
+            upper: 3.0,
+            straight: STRAIGHT,
+            la: None,
+            lb: None,
+            da: None,
+            db: None,
+            search: SEARCH,
+            storeyed: false,
+        }
     }
 }
 
@@ -155,11 +172,14 @@ pub struct VentTerms {
     /// The storeys each end may open on (None: any the room offers).
     pub la: Option<Vec<i32>>,
     pub lb: Option<Vec<i32>>,
+    /// The one opening each end may take (as [`Terms::da`]).
+    pub da: Option<(char, i32)>,
+    pub db: Option<(char, i32)>,
 }
 
 impl Default for VentTerms {
     fn default() -> Self {
-        VentTerms { max_cost: 24.0, turn: 0.5, ramp_cost: 4.0, la: None, lb: None }
+        VentTerms { max_cost: 24.0, turn: 0.5, ramp_cost: 4.0, la: None, lb: None, da: None, db: None }
     }
 }
 
@@ -470,7 +490,7 @@ impl Grid {
 
     /// Head positions flush against one of the room's walls, where a door may go (on the
     /// storeys in `levels` only, if given).
-    fn terminals(&self, s: &Space, sums: &Sums, levels: Option<&[i32]>) -> Ends {
+    fn terminals(&self, s: &Space, sums: &Sums, levels: Option<&[i32]>, only: Option<(char, i32)>) -> Ends {
         let mut out = Ends::default();
         for z in s.door_levels() {
             if levels.is_some_and(|l| !l.contains(&z)) {
@@ -480,6 +500,9 @@ impl Grid {
             for (&side, &(dx, dy)) in SIDES.iter().zip(DIRS.iter()) {
                 let along = if dx != 0 { s.y0..s.y1 - WIDE + 1 } else { s.x0..s.x1 - WIDE + 1 };
                 for a in along {
+                    if only.is_some_and(|d| d != (side, a)) {
+                        continue;
+                    }
                     let (hx, hy) = if dx != 0 { (if dx > 0 { s.x1 } else { s.x0 - WIDE }, a) } else { (a, if dy > 0 { s.y1 } else { s.y0 - WIDE }) };
                     if self.count(everything, hx, hy, hx + WIDE, hy + WIDE) != 0 {
                         continue;
@@ -499,6 +522,11 @@ impl Grid {
     /// A stub through the wall between two rooms one or two cells apart on a storey both have
     /// a floor on, or None. `la`, `lb`: the storeys each may take the door on.
     pub fn direct(&self, a: &Space, b: &Space, la: Option<&[i32]>, lb: Option<&[i32]>) -> Option<Route> {
+        self.direct_at(a, b, la, lb, None, None)
+    }
+
+    /// [`Grid::direct`] through the doorways `da` and `db` alone where they are given.
+    pub fn direct_at(&self, a: &Space, b: &Space, la: Option<&[i32]>, lb: Option<&[i32]>, da: Option<(char, i32)>, db: Option<(char, i32)>) -> Option<Route> {
         struct Stub<'a> {
             off: f64,
             rect: Rect,
@@ -538,6 +566,10 @@ impl Grid {
                         continue;
                     }
                     let sides = if axis == 0 { ('E', 'W') } else { ('N', 'S') };
+                    let (side_a, side_b) = if first.key == a.key { (sides.0, sides.1) } else { (sides.1, sides.0) };
+                    if da.is_some_and(|d| d != (side_a, at)) || db.is_some_and(|d| d != (side_b, at)) {
+                        continue;
+                    }
                     if !(self.door_ok(first, sides.0, at, z, WIDE) && self.door_ok(second, sides.1, at, z, WIDE)) {
                         continue;
                     }
@@ -568,7 +600,7 @@ impl Grid {
         let sums = [self.sums(&[&a.key]), self.sums(&[&b.key])];
         let everything: Vec<&[i32]> = sums[0].iter().map(|s| s.0.as_slice()).collect();
         let mut ends: Vec<Ends> = Vec::new();
-        for (n, (s, only)) in [(a, &t.la), (b, &t.lb)].into_iter().enumerate() {
+        for (n, (s, only, door)) in [(a, &t.la, t.da), (b, &t.lb, t.db)].into_iter().enumerate() {
             let mut found = Ends::default();
             for z in s.vent_levels() {
                 if only.as_ref().is_some_and(|l| !l.contains(&z)) {
@@ -578,6 +610,9 @@ impl Grid {
                 for (&side, &(dx, dy)) in SIDES.iter().zip(DIRS.iter()) {
                     let along = if dx != 0 { s.y0..s.y1 } else { s.x0..s.x1 };
                     for at in along {
+                        if door.is_some_and(|d| d != (side, at)) {
+                            continue;
+                        }
                         let (hx, hy) = if dx != 0 { (if dx > 0 { s.x1 } else { s.x0 - 1 }, at) } else { (at, if dy > 0 { s.y1 } else { s.y0 - 1 }) };
                         if self.count(everything[index(z)], hx, hy, hx + 1, hy + 1) != 0 || self.count(others, hx - 1, hy - 1, hx + 2, hy + 2) != 0 {
                             continue;
@@ -704,7 +739,7 @@ impl Grid {
     /// corridor is a chicane: each jog is wider than the corridor and nothing is seen end to
     /// end. If that finds no way, it is routed without the rule.
     pub fn route(&self, a: &Space, b: &Space, t: &Terms) -> Option<Route> {
-        if let Some(r) = self.direct(a, b, t.la.as_deref(), t.lb.as_deref()) {
+        if let Some(r) = self.direct_at(a, b, t.la.as_deref(), t.lb.as_deref(), t.da, t.db) {
             return Some(r);
         }
         if t.straight != 0 {
@@ -716,8 +751,8 @@ impl Grid {
     /// The search (`_route` in the Python), with at most `straight` moves in a line (0: any).
     fn route_with(&self, a: &Space, b: &Space, t: &Terms, straight: i32) -> Option<Route> {
         let (sums_a, sums_b) = (self.sums(&[&a.key]), self.sums(&[&b.key]));
-        let starts = self.terminals(a, &sums_a, t.la.as_deref());
-        let goals = self.terminals(b, &sums_b, t.lb.as_deref());
+        let starts = self.terminals(a, &sums_a, t.la.as_deref(), t.da);
+        let goals = self.terminals(b, &sums_b, t.lb.as_deref(), t.db);
         if starts.is_empty() || goals.is_empty() {
             return None;
         }

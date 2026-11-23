@@ -83,7 +83,7 @@ pub struct Candidate {
 impl Candidate {
     /// The edit that makes it: added to the end of the recipe it was found for, it gives `route`.
     pub fn edit(&self) -> Edit {
-        Edit::Join { room: self.room.clone(), storey: self.storey, to: self.to.clone(), on: vec![self.on] }
+        Edit::Join { room: self.room.clone(), storey: self.storey, to: self.to.clone(), on: vec![self.on], door: None, to_door: None, via: None }
     }
 
     /// corridor (with or without ramps), stub (a door through the wall) or vent.
@@ -233,7 +233,7 @@ pub fn routes(net: &Network, o: &Options, room: &str, storey: i32, reach: i32, s
         for z in t.door_levels().into_iter().filter(|z| apart(*z) <= storeys) {
             // the recipe's own join, on a copy: what it adds is what the edit will add
             let mut tried = net.clone();
-            match recipe::join(&mut tried, o, room, storey, &t.key, &[z]) {
+            match recipe::join(&mut tried, o, room, storey, &t.key, &[z], (None, None), None) {
                 Ok(()) => {
                     let route = tried.routes().last().expect("a join adds a route").clone();
                     fits.push(Candidate { room: room.to_string(), storey, to: t.key.clone(), on: z, route });
@@ -441,7 +441,7 @@ mod tests {
             assert!(ends.contains(&("tower", 551)) && ends.contains(&(c.to.as_str(), c.on)), "{}", c.text());
             assert!(c.route.key() == next || c.route.key() == format!("{next}a"), "{}", c.text());
             assert!(c.route.cost <= crate::build::JOIN_COST);
-            assert_eq!(c.edit(), Edit::Join { room: "tower".into(), storey: 551, to: c.to.clone(), on: vec![c.on] });
+            assert_eq!(c.edit(), Edit::Join { room: "tower".into(), storey: 551, to: c.to.clone(), on: vec![c.on], door: None, to_door: None, via: None });
         }
         assert_eq!((found.found[0].kind(), found.found[0].text().as_str()), ("stub", "to loft3 on 551 by a door through the wall (c39)"));
         assert!(found.found.iter().any(|c| c.kind() == "corridor" && c.route.ramps() == 0) && found.found.iter().any(|c| c.route.ramps() >= 2));
@@ -526,7 +526,7 @@ mod tests {
         // a recipe written before joins named their storey loads, and joins as it always did
         let old = "{\"format\": 1, \"seed\": 40, \"edits\": [{\"edit\": \"join\", \"room\": \"tower\", \"storey\": 551, \"to\": \"colossal\"}]}";
         let old = recipe::load(old).unwrap();
-        assert_eq!(old.edits, [Edit::Join { room: "tower".into(), storey: 551, to: "colossal".into(), on: Vec::new() }]);
+        assert_eq!(old.edits, [Edit::Join { room: "tower".into(), storey: 551, to: "colossal".into(), on: Vec::new(), door: None, to_door: None, via: None }]);
         assert!(old.generate().unwrap().net.routes().iter().any(|r| r.a.room == "tower" && r.a.level == 551 && r.b.room == "colossal"));
     }
 

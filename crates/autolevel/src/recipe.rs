@@ -103,6 +103,31 @@ pub enum Stage {
     DeadEnds,
 }
 
+/// A doorway a person picked on a room's wall: the wall (E, N, W or S) and the cell along it
+/// of the door's low end (x for a north or south wall, y for an east or west one).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Doorway {
+    pub side: char,
+    pub at: i32,
+}
+
+impl Doorway {
+    pub fn words(&self) -> String {
+        let wall = match self.side {
+            'E' => "east",
+            'N' => "north",
+            'W' => "west",
+            _ => "south",
+        };
+        format!("its {wall} wall at {}", self.at)
+    }
+}
+
+/// What a `join` is made as: a corridor (with ramps, or a stub through a wall), a vent, or
+/// (none given) a corridor, failing that a vent.
+pub const VIAS: [&str; 2] = ["corridor", "vent"];
+
 /// One change made by hand.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "edit", rename_all = "snake_case", deny_unknown_fields)]
@@ -137,13 +162,22 @@ pub enum Edit {
     /// none.
     Height { room: String, floor: i32, top: i32 },
     /// A corridor (failing that a vent) from `room`'s storey to the room `to`, which takes the
-    /// door on one of the storeys `on` (none given: any it offers).
+    /// door on one of the storeys `on` (none given: any it offers). New (2026-11-23, the
+    /// editing roadmap's item 4; none of the Python's): `door` and `to_door`, the one doorway
+    /// each room may take (none given: the router's choice), and `via`, one of [`VIAS`] (none:
+    /// a corridor, failing that a vent). A join without them is made as it always was.
     Join {
         room: String,
         storey: i32,
         to: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         on: Vec<i32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        door: Option<Doorway>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        to_door: Option<Doorway>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        via: Option<String>,
     },
     /// The route with a piece of this key is taken out.
     Remove { route: String },
@@ -252,8 +286,22 @@ impl Edit {
             Edit::Delete { room } => format!("delete {room}"),
             Edit::Pin { room, floor } => format!("pin {room}'s floor at {floor}"),
             Edit::Height { room, floor, top } => format!("{room} from {floor} up to {top}"),
-            Edit::Join { room, storey, to, on } if on.is_empty() => format!("join {room} on {storey} to {to}"),
-            Edit::Join { room, storey, to, on } => format!("join {room} on {storey} to {to} (on {})", list(on)),
+            Edit::Join { room, storey, to, on, door, to_door, via } => {
+                let mut s = format!("join {room} on {storey} to {to}");
+                if !on.is_empty() {
+                    s += &format!(" (on {})", list(on));
+                }
+                if let Some(d) = door {
+                    s += &format!(", from {}", d.words());
+                }
+                if let Some(d) = to_door {
+                    s += &format!(", to {}", d.words());
+                }
+                if let Some(v) = via {
+                    s += &format!(", by a {v}");
+                }
+                s
+            }
             Edit::Remove { route } => format!("remove {route}"),
             Edit::Layout { room, layout } => format!("{room}: layout {layout}"),
             Edit::Cover { room, cover } => format!("{room}: cover {cover}"),
@@ -672,7 +720,7 @@ impl Recipe {
         let mut net = level::stage_network(seed, o, &rooms.sp)?;
         for e in &self.edits {
             match e {
-                Edit::Join { room, storey, to, on } => join(&mut net, o, room, *storey, to, on)?,
+                Edit::Join { room, storey, to, on, door, to_door, via } => join(&mut net, o, room, *storey, to, on, (*door, *to_door), via.as_deref())?,
                 Edit::Remove { route } => remove(&mut net, route)?,
                 _ => {}
             }
@@ -837,7 +885,16 @@ fn put<T>(rows: &mut Vec<(String, T)>, room: &str, v: T) {
 
 /// A join by hand, on the dead-end pass's terms (`Build::join`): a corridor from `room`'s storey
 /// to `to`, a vent if none fits and the level has vents.
-pub(crate) fn join(net: &mut Network, o: &Options, room: &str, storey: i32, to: &str, on: &[i32]) -> Result<(), String> {
+pub(crate) fn join(
+    net: &mut Network,
+    o: &Options,
+    room: &str,
+    storey: i32,
+    to: &str,
+    on: &[i32],
+    doors: (Option<Doorway>, Option<Doorway>),
+    via: Option<&str>,
+) -> Result<(), String> {
     let find = |key: &str| net.spaces().iter().find(|s| s.key == key).ok_or_else(|| format!("join: no room {key}"));
     let (a, b) = (find(room)?, find(to)?);
     if room == to {
@@ -854,13 +911,33 @@ pub(crate) fn join(net: &mut Network, o: &Options, room: &str, storey: i32, to: 
     if let Some(z) = on.iter().find(|z| !b.door_levels().contains(z)) {
         return Err(format!("join: {to} takes doors on {}, not on {z}", list(&b.door_levels())));
     }
-    let lb = (!on.is_empty()).then(|| on.to_vec());
-    let terms = Terms { max_cost: JOIN_COST, la: Some(vec![storey]), lb: lb.clone(), search: JOIN_SEARCH, storeyed: true, ..Terms::default() };
-    let mut r = net.grid.route(a, b, &terms);
-    if r.is_none() && o.vents != 0 && a.vent_levels().contains(&storey) {
-        r = net.grid.vent(a, b, &VentTerms { la: Some(vec![storey]), lb, ..VentTerms::default() });
+    if let Some(v) = via.filter(|v| !VIAS.contains(v)) {
+        return Err(format!("join: by a {v}? (a corridor or a vent)"));
     }
-    let r = r.ok_or_else(|| format!("join: no corridor fits from {room} on {storey} to {to}"))?;
+    for (d, s) in [(doors.0, a), (doors.1, b)] {
+        let Some(d) = d else { continue };
+        let (lo, hi) = if matches!(d.side, 'N' | 'S') { (s.x0, s.x1) } else { (s.y0, s.y1) };
+        if !matches!(d.side, 'E' | 'N' | 'W' | 'S') || d.at < lo || d.at >= hi {
+            return Err(format!("join: {} has no doorway {} {} (its walls run {lo} to {})", s.key, d.side, d.at, hi - 1));
+        }
+    }
+    let (da, db) = (doors.0.map(|d| (d.side, d.at)), doors.1.map(|d| (d.side, d.at)));
+    let lb = (!on.is_empty()).then(|| on.to_vec());
+    let terms = Terms { max_cost: JOIN_COST, la: Some(vec![storey]), lb: lb.clone(), da, db, search: JOIN_SEARCH, storeyed: true, ..Terms::default() };
+    let mut r = if via == Some("vent") { None } else { net.grid.route(a, b, &terms) };
+    let vents = o.vents != 0 || via == Some("vent");
+    if r.is_none() && via != Some("corridor") && vents && a.vent_levels().contains(&storey) {
+        r = net.grid.vent(a, b, &VentTerms { la: Some(vec![storey]), lb, da, db, ..VentTerms::default() });
+    }
+    let what = match via {
+        Some("vent") => "vent",
+        _ => "corridor",
+    };
+    let through = match doors {
+        (None, None) => String::new(),
+        _ => " through the doorways asked for".to_string(),
+    };
+    let r = r.ok_or_else(|| format!("join: no {what} fits from {room} on {storey} to {to}{through}"))?;
     net.grid.commit(r);
     Ok(())
 }
@@ -890,8 +967,8 @@ mod tests {
             Edit::Add { key: s("extra1"), kind: s("medium"), rect: (2, 3, 9, 8), floor: 0, top: 236 },
             Edit::Delete { room: s("tiny4") },
             Edit::Pin { room: s("loft1"), floor: 551 },
-            Edit::Join { room: s("tower"), storey: 551, to: s("colossal"), on: vec![276, 551] },
-            Edit::Join { room: s("tower"), storey: 0, to: s("vast"), on: vec![] },
+            Edit::Join { room: s("tower"), storey: 551, to: s("colossal"), on: vec![276, 551], door: None, to_door: None, via: None },
+            Edit::Join { room: s("tower"), storey: 0, to: s("vast"), on: vec![], door: None, to_door: None, via: None },
             Edit::Remove { route: s("c07") },
             Edit::Layout { room: s("colossal"), layout: s("ring") },
             Edit::Cover { room: s("vast"), cover: s("pillars") },
@@ -1045,7 +1122,7 @@ mod tests {
         let plain = Recipe::before_bases(40).generate().unwrap();
         let theirs = plain.fixes.iter().any(|f| matches!(f, Fix::Joined { room, storey: 551, to, .. } if room == "tower" && to == "colossal"));
         assert!(theirs, "{:?}", plain.fixes);
-        let join = Edit::Join { room: "tower".into(), storey: 551, to: "colossal".into(), on: Vec::new() };
+        let join = Edit::Join { room: "tower".into(), storey: 551, to: "colossal".into(), on: Vec::new(), door: None, to_door: None, via: None };
         let r = Recipe { seed: 40, options: Options::before_bases(), edits: vec![join] };
         let lv = r.generate().unwrap();
         let ours = lv.net.routes().iter().find(|r| r.a.room == "tower" && r.a.level == 551 && r.b.room == "colossal").expect("the corridor asked for");
@@ -1059,9 +1136,13 @@ mod tests {
         assert!(same(&lv, &load(&save(&r)).unwrap().generate().unwrap()));
         // what can't be joined says why
         let bad = |room: &str, storey: i32, to: &str| {
-            Recipe { seed: 40, options: Options::before_bases(), edits: vec![Edit::Join { room: room.into(), storey, to: to.into(), on: Vec::new() }] }
-                .generate()
-                .unwrap_err()
+            Recipe {
+                seed: 40,
+                options: Options::before_bases(),
+                edits: vec![Edit::Join { room: room.into(), storey, to: to.into(), on: Vec::new(), door: None, to_door: None, via: None }],
+            }
+            .generate()
+            .unwrap_err()
         };
         assert_eq!(bad("tower", 551, "nowhere"), "join: no room nowhere");
         assert_eq!(bad("tower", 551, "tower"), "join: tower to itself");

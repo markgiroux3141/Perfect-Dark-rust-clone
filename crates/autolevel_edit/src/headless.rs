@@ -304,7 +304,10 @@ mod tests {
         // with one dead end fewer to put right, adds one fewer of its own)
         let done = run(&args("--seed 40 --pick tower@551 --join 3 --shot plan.png --width 900 --routes")).unwrap();
         assert!(done.text.contains(&format!("joined: 3  {third}\n")), "{}", done.text);
-        assert_eq!(done.recipe.edits, [Edit::Join { room: "tower".into(), storey: 551, to: "colossal".into(), on: vec![551] }]);
+        assert_eq!(
+            done.recipe.edits,
+            [Edit::Join { room: "tower".into(), storey: 551, to: "colossal".into(), on: vec![551], door: None, to_door: None, via: None }]
+        );
         assert!(
             done.text.contains("\nroutes (40): ") && done.text.contains("\n  c39   tower on 551 - colossal on 551    a corridor, 6 cells\n"),
             "{}",
