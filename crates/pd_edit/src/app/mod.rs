@@ -1899,6 +1899,9 @@ impl App {
             let (znear, zfar) = renderer.z_range();
             let view = space.view(w as f32 / h as f32, znear, zfar);
             crate::shot::draw_bg(renderer, queue, encoder, target, &view);
+            if let Some(draw3d) = self.draw3d.as_ref() {
+                draw3d.draw(device, encoder, target, camera::world_to_clip(&view), &space.overlay(), true);
+            }
             return true;
         }
         let scene = self.level.as_ref().filter(|l| l.bg_loaded && self.generating.is_none()).and_then(|l| l.scene.as_ref());
@@ -2081,6 +2084,8 @@ impl App {
                         // The level in 3D is drawn under this (`render`); the right
                         // button looks, as in the ordinary view.
                         let resp = g.space.over_view(ui, &g.ed.doc.recipe);
+                        // a click picks a room, the selected one's gizmo reshapes it
+                        g.space.gizmo(ui, &resp, &mut g.ed);
                         self.hover_view = resp.hovered() || self.looking;
                         if resp.hovered() && ui.input(|i| i.pointer.secondary_pressed()) {
                             self.capture = Some(true);
@@ -2131,6 +2136,24 @@ impl App {
     pub(crate) fn select_generated_room(&mut self, key: &str) {
         if let Some(g) = self.generating.as_mut() {
             g.ed.select(Some(key));
+        }
+    }
+
+    /// Show a generated level in 3D, its ceilings left out if asked
+    /// (`--shot-ui --3d [--no-ceilings]`).
+    pub(crate) fn show_generated_3d(&mut self, no_ceilings: bool) {
+        if let Some(g) = self.generating.as_mut() {
+            g.space.middle = Middle::Space;
+            g.space.cut.ceilings = no_ceilings;
+        }
+    }
+
+    /// The 3D view's camera over the generated room selected, from outside it.
+    pub(crate) fn overlook_generated_room(&mut self) {
+        if let Some(g) = self.generating.as_mut() {
+            if let Some(key) = g.ed.doc.selected().map(str::to_owned) {
+                g.space.overlook(&key);
+            }
         }
     }
 

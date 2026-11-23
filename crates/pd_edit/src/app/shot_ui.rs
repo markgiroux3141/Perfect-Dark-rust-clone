@@ -1,6 +1,6 @@
 //! `pd_edit --shot-ui <out.png> [<code>] [--size WxH] [--frames N] [--step
 //! home|layout|items|test] [--select KIND INDEX] [--generate [SEED]] [--room
-//! KEY] [--side] [--import FILE.glb] [--tool KIND] [--hover X,Y] [--run-test]`: the whole editor window (its panels
+//! KEY] [--side] [--3d [--no-ceilings]] [--import FILE.glb] [--tool KIND] [--hover X,Y] [--run-test]`: the whole editor window (its panels
 //! and the view between them) as a PNG, with no window. The app runs headless
 //! (`App::ui` on an egui context with no window, `App::update` between
 //! passes) until the level asked for has loaded and nothing is running, then
@@ -34,6 +34,10 @@ struct Shot {
     run_test: bool,
     /// Show a generated level from the side (through `room`, if it is given).
     side: bool,
+    /// Show a generated level in 3D (from over `room`, its gizmo on it), and
+    /// with no ceilings drawn.
+    three_d: bool,
+    no_ceilings: bool,
     import: Option<PathBuf>,
     tool: Option<Kind>,
     hover: Option<egui::Pos2>,
@@ -75,6 +79,8 @@ fn parse(args: &[String]) -> Result<Shot, String> {
             "--run-test" => s.run_test = true,
             "--room" => s.room = Some(val(&mut it, "--room")?),
             "--side" => s.side = true,
+            "--3d" => s.three_d = true,
+            "--no-ceilings" => s.no_ceilings = true,
             "--import" => s.import = Some(PathBuf::from(val(&mut it, "--import")?)),
             "--hover" => {
                 let v = val(&mut it, "--hover")?;
@@ -134,6 +140,9 @@ pub fn run(args: &[String]) -> Result<PathBuf, String> {
             if shot.side {
                 app.show_generated_side();
             }
+            if shot.three_d {
+                app.show_generated_3d(shot.no_ceilings);
+            }
         }
         if shot.run_test && !tested && n >= 3 && app.settled() {
             app.run_test();
@@ -149,6 +158,11 @@ pub fn run(args: &[String]) -> Result<PathBuf, String> {
         if !app.settled() {
             std::thread::sleep(Duration::from_millis(20));
         }
+    }
+    if shot.three_d {
+        // (the camera over the room in hand, once its level is on show; a pass to draw its gizmo)
+        app.overlook_generated_room();
+        let _ = pass(&mut app, &ctx, started, shot.size, shot.hover, &mut painter, &gpu);
     }
     let out = pass(&mut app, &ctx, started, shot.size, shot.hover, &mut painter, &gpu);
     let free = ctx.available_rect();

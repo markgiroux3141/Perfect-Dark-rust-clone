@@ -9,7 +9,7 @@ use autolevel_edit::planview;
 use glam::Vec3;
 
 use super::*;
-use crate::preview::{cell, world};
+use crate::preview::{cell, world, Cutaway};
 
 fn assets() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("assets")
@@ -421,4 +421,173 @@ fn the_camera_is_marked_on_the_plan_and_a_right_click_sends_it_there() {
     assert!((mark.x - want.0).abs() < 6.0 && (mark.y - want.1).abs() < 6.0);
     rig.right_click_plan((36.5, 44.0));
     assert!(!rig.space.walking() && (cell(rig.space.cam.pos).0 - 36.5).abs() < 0.05);
+}
+
+/// The 3D view with the generator's editor beside it, as the window has
+/// them: a frame runs the view's words and then the gizmo.
+struct Hosted {
+    space: Space,
+    ed: Editor,
+    egui: egui::Context,
+    root: PathBuf,
+}
+
+impl Hosted {
+    fn new(name: &str, recipe: gen::Recipe) -> Hosted {
+        let root = root(name);
+        let mut args = autolevel_edit::cli::parse(&[], &|path| Err(format!("{path}: no file"))).unwrap();
+        args.recipe = recipe;
+        let mut space = Space::new(assets(), root.clone());
+        space.middle = Middle::Space;
+        Hosted { space, ed: Editor::new(args), egui: egui::Context::default(), root }
+    }
+
+    fn frame(&mut self, events: Vec<egui::Event>) -> Vec<String> {
+        let screen = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1200.0, 800.0));
+        let Hosted { space, ed, egui, .. } = self;
+        let out = egui.run(egui::RawInput { screen_rect: Some(screen), events, ..Default::default() }, |egui| {
+            egui::CentralPanel::default().frame(egui::Frame::NONE).show(egui, |ui| {
+                let recipe = ed.doc.recipe.clone();
+                let resp = space.over_view(ui, &recipe);
+                space.gizmo(ui, &resp, ed);
+            });
+        });
+        out.shapes.iter().filter_map(|s| if let egui::Shape::Text(t) = &s.shape { Some(t.galley.text().to_string()) } else { None }).collect()
+    }
+
+    /// Where a world point is drawn in the view.
+    fn px(&self, p: Vec3) -> egui::Pos2 {
+        let rect = self.space.rect.expect("a frame was drawn");
+        let view = self.space.cam.view(rect.width() / rect.height(), 15.0, 10000.0);
+        let (x, y, _) = crate::camera::project(&crate::camera::world_to_clip(&view), p, rect.width(), rect.height()).expect("in front of the camera");
+        rect.min + egui::vec2(x, y)
+    }
+
+    fn button(at: egui::Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() }
+    }
+
+    fn click(&mut self, at: egui::Pos2) -> Vec<String> {
+        self.frame(vec![egui::Event::PointerMoved(at)]);
+        self.frame(vec![Hosted::button(at, true)]);
+        self.frame(vec![Hosted::button(at, false)]);
+        self.frame(Vec::new())
+    }
+
+    /// The button down at `a`, the pointer moved to `b`: the texts while it is held there.
+    fn drag(&mut self, a: egui::Pos2, b: egui::Pos2) -> Vec<String> {
+        self.frame(vec![egui::Event::PointerMoved(a)]);
+        self.frame(vec![Hosted::button(a, true)]);
+        self.frame(vec![egui::Event::PointerMoved(a + (b - a) / 2.0)]);
+        self.frame(vec![egui::Event::PointerMoved(b)]);
+        self.frame(Vec::new())
+    }
+
+    fn release(&mut self, at: egui::Pos2) -> Vec<String> {
+        self.frame(vec![Hosted::button(at, false)]);
+        self.frame(Vec::new())
+    }
+}
+
+impl Drop for Hosted {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+#[test]
+fn a_click_in_3d_picks_a_room_and_its_gizmo_reshapes_it_when_let_go() {
+    use crate::boxgizmo::{self, Face, Handle};
+    let mut h = Hosted::new("gizmo", seed(40));
+    // over vast from outside its south-west corner, its ceiling cut away
+    h.space.cut.ceilings = true;
+    assert!(h.space.settle(&seed(40)));
+    assert!(h.space.preview().unwrap().cut.ceilings);
+    h.space.cam = FlyCam::new(Vec3::new(3160.0, 2200.0, -1020.0), 143f32.to_radians(), (-36f32).to_radians());
+    h.frame(Vec::new());
+    // a click on its floor picks it: the generator's panel has it in hand, and its gizmo is drawn
+    let floor = world((42.0, 29.0), 0.0);
+    let said = h.click(h.px(floor));
+    assert_eq!(h.ed.doc.selected(), Some("vast"));
+    assert!(has(&said, "vast selected: drag a face to size it, an arrow to move it"), "{said:?}");
+    assert_eq!(h.space.drawn.lot.as_ref().map(|a| (a.key.as_str(), a.rect())), Some(("vast", (37, 20, 47, 38))));
+    assert!(!h.space.overlay().top_tris.is_empty());
+
+    // The east face pulled a cell out (seed 40's rooms are packed close: two would touch long):
+    // tried as it goes (the box drawn where it would be), made one edit when let go.
+    let lot = h.space.drawn.lot.clone().unwrap();
+    let (lo, hi) = boxgizmo::world_box(&lot);
+    let s = boxgizmo::size(h.space.cam.pos, lo, hi);
+    let east = boxgizmo::spot(Handle::Face(Face::East), lo, hi, s);
+    let (a, b) = (h.px(east), h.px(east + Vec3::X * 1.2 * preview::CELL));
+    h.frame(vec![egui::Event::PointerMoved(a)]);
+    assert_eq!(h.space.drawn.hot, Some(Handle::Face(Face::East)), "the handle under the pointer is lit");
+    let said = h.drag(a, b);
+    assert!(has(&said, "vast 11 x 18 cells, from 37, 20"), "{said:?}");
+    assert_eq!(h.space.drawn.tried.iter().find(|a| a.key == "vast").map(|a| a.rect()), Some((37, 20, 48, 38)));
+    assert!(!h.space.drawn.refused && h.ed.doc.recipe.edits.is_empty(), "nothing is made while it is held");
+    h.release(b);
+    assert_eq!(h.ed.doc.recipe.edits, vec![Edit::Resize { room: "vast".into(), size: (11, 18) }]);
+    assert!(h.space.drawn.tried.is_empty() && h.ed.doc.selected() == Some("vast"));
+
+    // The top dragged up two storeys runs into loft1: drawn red with the refusal, nothing made.
+    let was = h.ed.doc.recipe.clone();
+    let lot = h.space.drawn.lot.clone().unwrap();
+    let (lo, hi) = boxgizmo::world_box(&lot);
+    let s = boxgizmo::size(h.space.cam.pos, lo, hi);
+    let top = boxgizmo::spot(Handle::Face(Face::Top), lo, hi, s);
+    let (a, b) = (h.px(top), h.px(top + Vec3::Y * 560.0));
+    let said = h.drag(a, b);
+    assert!(h.space.drawn.refused && has(&said, "refused: vast and loft1 overlap"), "{said:?}");
+    let said = h.release(b);
+    assert!(h.ed.doc.recipe == was && h.ed.refused.as_deref().is_some_and(|r| r.starts_with("vast and loft1 overlap")), "{said:?}");
+
+    // The x arrow three cells west: a move, which would land small4 in vast at its floor.
+    let o = boxgizmo::origin(lo, hi, s);
+    let (a, b) = (h.px(o + Vec3::X * s * 0.5), h.px(o + Vec3::X * (s * 0.5 - 3.1 * preview::CELL)));
+    let said = h.drag(a, b);
+    assert!(has(&said, "vast to cell 34, 20: refused: small4 lands in vast, so it is its pod"), "{said:?}");
+    h.release(b);
+    assert!(h.ed.doc.recipe == was);
+
+    // A click on nothing selects nothing.
+    h.click(egui::pos2(60.0, 60.0));
+    assert_eq!(h.ed.doc.selected(), None);
+    assert!(h.space.drawn.lot.is_none() && h.space.overlay().top_tris.is_empty());
+}
+
+#[test]
+fn the_cutaway_is_made_into_the_preview_and_the_bar_steps_it() {
+    let mut rig = Rig::new("cut");
+    rig.space.middle = Middle::Space;
+    assert!(rig.settle());
+    let whole = rig.space.preview().unwrap().line();
+    let (low, high) = rig.space.cut_steps().unwrap();
+    assert_eq!((low, high), (0, 4), "seed 40's cellars to floor 3 (the tallest rooms' tops)");
+    // "No ceilings": a preview made again with them left out; its tiles (the walk) are the same
+    let tiles_before = tiles(&rig.space);
+    rig.click("ceilings");
+    assert!(rig.space.cut.ceilings && !rig.space.current(&seed(40)));
+    assert!(has(&rig.frame(Vec::new()), "the cutaway is being made..."));
+    assert!(rig.settle());
+    assert_eq!(tiles(&rig.space), tiles_before);
+    // ▼ cuts it under the highest ceiling line, then a storey at a time down to the ground
+    rig.click("cut down");
+    assert_eq!(rig.space.cut.up_to, Some(high));
+    rig.click("cut down");
+    assert!(has(&rig.frame(Vec::new()), &format!("storeys up to {}", Cutaway::storey_name(high - 1))));
+    for _ in 0..high {
+        rig.click("cut down");
+    }
+    assert_eq!(rig.space.cut.up_to, Some(low), "never under the lowest floor");
+    assert!(rig.settle());
+    assert_eq!(rig.space.preview().unwrap().cut, Cutaway { ceilings: true, up_to: Some(low) });
+    // ▲ back up; over the top nothing is cut
+    for _ in low..=high {
+        rig.click("cut up");
+    }
+    assert_eq!(rig.space.cut.up_to, None);
+    assert!(has(&rig.frame(Vec::new()), "every storey"));
+    rig.click("ceilings");
+    assert!(rig.settle() && rig.space.preview().unwrap().line().split(", made in").next() == whole.split(", made in").next());
 }

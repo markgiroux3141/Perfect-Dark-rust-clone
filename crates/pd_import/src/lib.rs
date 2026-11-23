@@ -194,10 +194,19 @@ pub fn replace(r: &Recipe, paths: &Paths, layout: &Layout, how: Finish) -> Resul
 /// The source importer: the stage's geometry written into a fresh
 /// `custom/stages/<code>/`, and what the source brings besides (saved there).
 pub fn geometry(r: &Recipe, paths: &Paths) -> Result<(PathBuf, SourceData), String> {
+    geometry_drawn(r, paths, &|_| {})
+}
+
+/// [`geometry`], with the drawn triangles of a [`LevelSource`] level put
+/// through `drawn` before the BG is written (the tiles are made from the
+/// collision as ever, so a walk on it is the same): what a preview's
+/// cutaway takes out (`pd_edit::preview::Cutaway`). The sources that write
+/// PD's stage files themselves are not touched.
+pub fn geometry_drawn(r: &Recipe, paths: &Paths, drawn: &dyn Fn(&mut Vec<source::Tri>)) -> Result<(PathBuf, SourceData), String> {
     let (dir, data) = match &r.source {
         Source::Oot(_) | Source::Gltf(_) | Source::Jka(_) | Source::Autolevel(_) => {
             let (src, report) = level_source(r, paths)?.expect("a LevelSource importer");
-            write_geometry(r, src, paths, report)?
+            write_geometry(r, src, paths, report, drawn)?
         }
         Source::Ge(g) => {
             let mut report = vec![title(r)];
@@ -296,9 +305,10 @@ fn auto_rooms(src: &LevelSource) -> usize {
 
 /// Everything after a [`LevelSource`] importer: its triangles and collision
 /// into the stage's geometry files.
-fn write_geometry(r: &Recipe, mut src: LevelSource, paths: &Paths, mut report: Vec<String>) -> Result<(PathBuf, SourceData), String> {
+fn write_geometry(r: &Recipe, mut src: LevelSource, paths: &Paths, mut report: Vec<String>, drawn: &dyn Fn(&mut Vec<source::Tri>)) -> Result<(PathBuf, SourceData), String> {
     let risers = src.drop_step_risers();
     let ledges = src.mark_ledges();
+    drawn(&mut src.tris);
     let (lo, hi) = src.bounds();
     report.push(format!(
         "source: {} triangles, {} materials, {} textures, {} collision polygons ({} step risers dropped, {} ledges made climbable), {} markers; {:.0} x {:.0} x {:.0} m",
@@ -331,7 +341,7 @@ fn write_geometry(r: &Recipe, mut src: LevelSource, paths: &Paths, mut report: V
 
 /// Everything after a [`LevelSource`] importer, placed without a layout.
 pub fn build(r: &Recipe, src: LevelSource, paths: &Paths) -> Result<Vec<String>, String> {
-    let (dir, data) = write_geometry(r, src, paths, vec![title(r)])?;
+    let (dir, data) = write_geometry(r, src, paths, vec![title(r)], &|_| {})?;
     data.save(&dir)?;
     finish(r, paths, &dir, data, &Layout::new(), Finish { check: true, fresh_graph: true })
 }

@@ -7,6 +7,7 @@
 use std::time::SystemTime;
 
 use super::*;
+use pd_import::source::{Tri, Vert};
 use autolevel::recipe::Edit;
 
 fn repo() -> PathBuf {
@@ -388,4 +389,32 @@ fn a_scratch_folder_goes_when_it_is_dropped_and_a_fresh_one_is_not_swept() {
     drop(fresh);
     assert!(!path.exists());
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_cutaway_drops_the_ceilings_and_clips_what_crosses_its_height() {
+    use glam::Vec2;
+    let v = |x: f32, y: f32, z: f32, c: u8| Vert { pos: Vec3::new(x, y, z), uv: Vec2::new(x / 100.0, y / 100.0), col: [c, c, c, 255] };
+    let tri = |a, b, c| Tri { v: [a, b, c], material: 3, xlu: false, room: 7 };
+    // a ceiling at 236 seen from under it (its winding faces down), a floor at 0 facing up, and a
+    // wall from 0 to 1063
+    let ceiling = tri(v(0.0, 236.0, 0.0, 10), v(100.0, 236.0, 0.0, 10), v(0.0, 236.0, 100.0, 10));
+    let floor = tri(v(0.0, 0.0, 0.0, 10), v(0.0, 0.0, 100.0, 10), v(100.0, 0.0, 0.0, 10));
+    let wall = tri(v(0.0, 0.0, 0.0, 0), v(100.0, 0.0, 0.0, 0), v(0.0, 1063.0, 0.0, 200));
+    assert!(faces_down(&ceiling) && !faces_down(&floor) && !faces_down(&wall));
+    let mut tris = vec![ceiling.clone(), floor.clone(), wall.clone()];
+    Cutaway { ceilings: true, up_to: None }.apply(&mut tris);
+    assert_eq!(tris.len(), 2, "the ceiling is gone");
+    // up to the ground storey: cut at a hair under 236; the wall's tip clipped off, the floor kept
+    let mut tris = vec![ceiling, floor, wall];
+    let cut = Cutaway { ceilings: false, up_to: Some(1) };
+    assert_eq!((cut.height(), cut.words(), Cutaway::storey_name(3)), (Some(234.0), "up to ground".to_string(), "floor 2".to_string()));
+    cut.apply(&mut tris);
+    assert_eq!(tris.len(), 3, "the floor, and the wall as two triangles under the cut");
+    assert!(tris.iter().all(|t| t.v.iter().all(|p| p.pos.y <= 234.0 + 1e-3) && t.material == 3 && t.room == 7));
+    // where the wall's edge was cut its colour and texture place are between its ends'
+    let cutv = tris[1..].iter().flat_map(|t| t.v).find(|p| (p.pos.y - 234.0).abs() < 1e-3 && p.pos.x == 0.0).unwrap();
+    assert_eq!(cutv.col[0], (200.0f32 * 234.0 / 1063.0).round() as u8);
+    assert!((cutv.uv.y - 2.34).abs() < 1e-4);
+    assert!(Cutaway::default().none() && Cutaway::default().words().is_empty());
 }

@@ -161,13 +161,42 @@ pub struct Generated {
     pub crouch: bool,
     pub plan: bool,
     pub list: bool,
+    /// The room whose box and gizmo are drawn (the camera over it unless
+    /// another is asked for).
+    pub select: Option<String>,
+    /// A handle of its gizmo dragged so many cells (or storeys, up and down):
+    /// the box it would leave drawn, red if refused.
+    pub drag: Option<(crate::boxgizmo::Handle, f32)>,
+    /// The cutaway: no ceilings, the storeys over the one whose floor is this.
+    pub no_ceilings: bool,
+    pub up_to: Option<i32>,
+    /// A pixel to pick the room under, as a click there would.
+    pub pick: Option<(f32, f32)>,
 }
 
-const GENERATED_USAGE: &str = "usage: pd_edit --shot-generated <out.png> [--seed N | --recipe FILE] [--at x,y,z,yaw,pitch | --view NAME | --room KEY] [--walk x,y,z,theta | --walk NAME [--forward TICKS] [--crouch]] [--plan] [--list] [--size WxH]";
+const GENERATED_USAGE: &str = "usage: pd_edit --shot-generated <out.png> [--seed N | --recipe FILE] [--at x,y,z,yaw,pitch | --view NAME | --room KEY] [--walk x,y,z,theta | --walk NAME [--forward TICKS] [--crouch]] [--select ROOM [--drag HANDLE:N]] [--no-ceilings] [--up-to FLOOR] [--pick PX,PY] [--plan] [--list] [--size WxH]\n  HANDLE: west east south north top bottom (faces) or x y z (arrows); N cells, or storeys for top, bottom and z";
 
 impl Generated {
     pub fn parse(args: &[String]) -> Result<Generated, String> {
-        let mut g = Generated { out: None, seed: 40, recipe: None, size: (1280, 800), at: None, view: None, room: None, walk: None, forward: 0, crouch: false, plan: false, list: false };
+        let mut g = Generated {
+            out: None,
+            seed: 40,
+            recipe: None,
+            size: (1280, 800),
+            at: None,
+            view: None,
+            room: None,
+            walk: None,
+            forward: 0,
+            crouch: false,
+            plan: false,
+            list: false,
+            select: None,
+            drag: None,
+            no_ceilings: false,
+            up_to: None,
+            pick: None,
+        };
         let numbers = |name: &str, v: &str| v.split(',').map(|s| s.trim().parse::<f32>()).collect::<Result<Vec<f32>, _>>().map_err(|e| format!("{name}: {e}"));
         let mut it = args.iter();
         while let Some(a) = it.next() {
@@ -194,6 +223,20 @@ impl Generated {
                 "--crouch" => g.crouch = true,
                 "--plan" => g.plan = true,
                 "--list" => g.list = true,
+                "--select" => g.select = Some(val("--select")?),
+                "--drag" => {
+                    let v = val("--drag")?;
+                    let (h, n) = v.split_once(':').ok_or("--drag HANDLE:N")?;
+                    let h = crate::boxgizmo::Handle::named(h).ok_or(format!("--drag {h}: west, east, south, north, top, bottom, x, y or z"))?;
+                    g.drag = Some((h, n.parse().map_err(|_| "--drag HANDLE:N")?));
+                }
+                "--no-ceilings" => g.no_ceilings = true,
+                "--up-to" => g.up_to = Some(val("--up-to")?.parse().map_err(|_| "--up-to FLOOR (a storey's height: 0, 276, 551, ...)")?),
+                "--pick" => {
+                    let v = numbers("--pick", &val("--pick")?)?;
+                    let [x, y] = v[..] else { return Err("--pick PX,PY".into()) };
+                    g.pick = Some((x, y));
+                }
                 s if !s.starts_with("--") && g.out.is_none() => g.out = Some(PathBuf::from(s)),
                 s => return Err(format!("{s:?}?\n{GENERATED_USAGE}")),
             }
@@ -201,7 +244,36 @@ impl Generated {
         if g.out.is_none() && !g.list {
             return Err(GENERATED_USAGE.into());
         }
+        if g.drag.is_some() && g.select.is_none() {
+            return Err("--drag needs --select ROOM".into());
+        }
+        if let Some(z) = g.up_to.filter(|z| !autolevel::storeys::LEVELS.contains(z)) {
+            return Err(format!("--up-to {z}: a storey's floor ({:?})", autolevel::storeys::LEVELS));
+        }
         Ok(g)
+    }
+
+    /// The cutaway asked for.
+    pub fn cut(&self) -> preview::Cutaway {
+        preview::Cutaway { ceilings: self.no_ceilings, up_to: self.up_to.and_then(|z| autolevel::storeys::LEVELS.iter().position(|&l| l == z)) }
+    }
+
+    /// What the gizmo draws for `--select` (and `--drag`) on `recipe`, and a
+    /// line of what the drag came to.
+    pub fn gizmo(&self, recipe: &autolevel::recipe::Recipe) -> Result<(crate::boxgizmo::Shown, Option<String>), String> {
+        use crate::boxgizmo::{change_by, Shown};
+        let Some(key) = &self.select else { return Ok((Shown::default(), None)) };
+        let base = recipe.scattered()?;
+        let lots = recipe.lots_on(base.clone())?.lots;
+        let lot = lots.iter().find(|a| &a.key == key).cloned().ok_or_else(|| format!("--select {key}: no room of that key has a box (there are: {})", lots.iter().map(|a| a.key.as_str()).collect::<Vec<_>>().join(", ")))?;
+        let Some((h, n)) = self.drag else { return Ok((Shown { lot: Some(lot), ..Shown::default() }, None)) };
+        // (a storey is 275.6 units: LEVELS' step)
+        let by = n * if h.vertical() { 275.6 } else { preview::CELL };
+        let Some(change) = change_by(&lot, h, by) else { return Ok((Shown { lot: Some(lot), hot: Some(h), ..Shown::default() }, Some(format!("--drag {}:{n} changes nothing", h.name())))) };
+        let t = autolevel::boxes::trial(recipe, &change, &base);
+        let tried = t.lots.iter().filter(|a| a.key == *key || a.host == *key).cloned().collect();
+        let line = format!("drag {}:{n}: {}{}", h.name(), crate::space::words(&change), t.refused.as_ref().map_or(String::new(), |why| format!(": refused: {why}")));
+        Ok((Shown { lot: Some(lot), tried, refused: t.refused.is_some(), hot: Some(h) }, Some(line)))
     }
 
     /// The generator's recipe asked for: the file's, or the seed's own.
@@ -222,7 +294,7 @@ impl Generated {
             (Some([x, y, z, yaw, pitch]), _, _) => Ok(FlyCam::new(Vec3::new(*x, *y, *z), yaw.to_radians(), pitch.to_radians())),
             (None, Some(name), _) => pv.view_camera(name).ok_or_else(|| names(&format!("no view {name}"), pv.views.iter().map(|(n, _)| n.as_str()).collect())),
             (None, None, Some(key)) => pv.room_camera(key).ok_or_else(|| names(&format!("no room {key}"), pv.rooms.iter().map(|r| r.key.as_str()).collect())),
-            (None, None, None) => Ok(pv.start_camera()),
+            (None, None, None) => Ok(self.select.as_deref().and_then(|k| pv.room_camera(k)).unwrap_or_else(|| pv.start_camera())),
         }
     }
 
@@ -290,8 +362,9 @@ pub fn run_generated(args: &[String]) -> Result<Vec<String>, String> {
     let paths = EditPaths::discover()?;
     let root = preview::Scratch::root();
     preview::Scratch::sweep(&root);
-    let pv = Preview::make(&recipe, &paths.assets, &root)?;
-    let mut said = vec![format!("preview of seed {}{}: {}", recipe.seed, if recipe.edits.is_empty() { String::new() } else { format!(" with {} edits", recipe.edits.len()) }, pv.line())];
+    let pv = Preview::make_cut(&recipe, g.cut(), &paths.assets, &root)?;
+    let cut = if pv.cut.none() { String::new() } else { format!(" ({})", pv.cut.words()) };
+    let mut said = vec![format!("preview of seed {}{}{cut}: {}", recipe.seed, if recipe.edits.is_empty() { String::new() } else { format!(" with {} edits", recipe.edits.len()) }, pv.line())];
     if g.list {
         for (name, _) in &pv.views {
             let c = pv.view_camera(name).expect("a view of the preview's own");
@@ -332,9 +405,20 @@ pub fn run_generated(args: &[String]) -> Result<Vec<String>, String> {
         Some(wk) => wk.view(aspect, znear, zfar),
         None => cam.view(aspect, znear, zfar),
     };
+    if let Some((px, py)) = g.pick {
+        let (o, d) = crate::camera::ray(&view, px, py, w as f32, h as f32);
+        said.push(format!("picked at {px:.0}, {py:.0}: {}", crate::boxgizmo::pick_room(&pv, o, d).unwrap_or_else(|| "no room".to_string())));
+    }
+    let (shown, line) = g.gizmo(&recipe)?;
+    said.extend(line);
     let target = RenderTarget::on_device(&gpu.device, w, h, format, true);
     let mut enc = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("pd_edit shot-generated") });
     draw_bg(&renderer, &gpu.queue, &mut enc, &target, &view);
+    if shown.lot.is_some() {
+        let mut mesh = crate::draw3d::Mesh3d::default();
+        crate::boxgizmo::draw(&mut mesh, &shown, cam.pos);
+        crate::draw3d::Draw3d::new(&gpu.device, format).draw(&gpu.device, &mut enc, &target, crate::camera::world_to_clip(&view), &mesh, true);
+    }
     gpu.queue.submit(Some(enc.finish()));
     let rgba = target.read_rgba8(&gpu.device, &gpu.queue);
     image::RgbaImage::from_raw(w, h, rgba).ok_or("image size")?.save(&out).map_err(|e| format!("{}: {e}", out.display()))?;

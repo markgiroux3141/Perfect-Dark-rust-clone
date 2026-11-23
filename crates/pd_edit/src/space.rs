@@ -14,22 +14,33 @@
 //! ([`Space::over_view`]) and the camera's mark on the plan with the right
 //! click that sends the camera there ([`Space::over_plan`]).
 //!
+//! In the 3D view a click picks the generator's room under the pointer, and
+//! the room selected gets a box gizmo to reshape it by ([`Space::gizmo`],
+//! [`crate::boxgizmo`]): a drag is tried as it goes and made when let go, as
+//! on the plan. The cutaway ([`Space::cut`]: no ceilings, the storeys over one
+//! left out) is made into the preview, so changing it makes one again.
+//!
 //! The window (`main.rs`) does the rest: it gathers the keys and the mouse
 //! into a [`Motion`] and [`Controls`], loads a new preview's BG into its
 //! renderer when [`Space::follow`] says one arrived, and draws
-//! [`Space::view`].
+//! [`Space::view`] with [`Space::overlay`] over it.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use autolevel::boxes::{Change, Trial};
 use autolevel::recipe as gen;
+use autolevel::storeys::{CEILINGS, LEVELS};
 use autolevel_edit::raster::Fit;
+use autolevel_edit::ui::Editor;
 use engine::egui;
 use pd_render::View;
 use pd_sim::world::WorldRes;
 
-use crate::camera::{FlyCam, Motion};
-use crate::preview::{self, Controls, Job, Preview, Reseat, Walker, EYE};
+use crate::boxgizmo::{self, Grab, Shown};
+use crate::camera::{self, FlyCam, Motion};
+use crate::draw3d::Mesh3d;
+use crate::preview::{self, Controls, Cutaway, Job, Preview, Reseat, Walker, EYE};
 
 /// What the middle of the window shows of the generator's level.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,6 +56,27 @@ pub const MARK: [u8; 4] = [255, 96, 200, 255];
 pub const MARK_PX: f32 = 16.0;
 
 const AMBER: egui::Color32 = egui::Color32::from_rgb(255, 190, 90);
+const RED: egui::Color32 = egui::Color32::from_rgb(255, 110, 100);
+
+/// A drag of the box gizmo: what it took hold of, and the change it has come
+/// to with what that would make (`boxes::trial`).
+#[derive(Clone, Debug)]
+struct Held {
+    grab: Grab,
+    tried: Option<(Change, Trial)>,
+}
+
+/// A change to a room's box in a few words, for the line over the view.
+pub fn words(c: &Change) -> String {
+    match c {
+        Change::Move { room, to } => format!("{room} to cell {}, {}", to.0, to.1),
+        Change::Rect { room, rect } => format!("{room} {} x {} cells, from {}, {}", rect.2 - rect.0, rect.3 - rect.1, rect.0, rect.1),
+        Change::Pin { room, floor } => format!("{room}'s floor to {floor}"),
+        Change::Height { room, floor, top } => format!("{room} from {floor} up to {top}"),
+        Change::Add { key, .. } => format!("a new room {key}"),
+        Change::Delete { room } => format!("{room} deleted"),
+    }
+}
 
 /// The 3D view of the level being shaped.
 pub struct Space {
@@ -67,15 +99,42 @@ pub struct Space {
     /// How many previews have been shown.
     pub made: usize,
     /// Where the last frame put the bar's controls, by name ("plan", "3d",
-    /// "walk", "stop", "go"): what a test aims the pointer at.
+    /// "walk", "stop", "go", "ceilings", "cut down", "cut up"): what a test
+    /// aims the pointer at.
     pub spots: Vec<(String, egui::Rect)>,
+    /// What the 3D view leaves undrawn to see into the level (made into the
+    /// preview: a change makes one again).
+    pub cut: Cutaway,
+    /// A drag of the gizmo under way.
+    held: Option<Held>,
+    /// What the gizmo draws this frame (the last [`Self::gizmo`] says).
+    pub drawn: Shown,
+    /// Where the last frame had the 3D view (what its rays are cast through).
+    pub rect: Option<egui::Rect>,
 }
 
 impl Space {
     /// The view over `assets` (the game's `assets/`), its previews kept
     /// under `root` ([`preview::Scratch::root`], in the window).
     pub fn new(assets: PathBuf, root: PathBuf) -> Space {
-        Space { middle: Middle::Plan, assets, root, shown: None, job: None, failed: None, cam: FlyCam::new(glam::Vec3::new(0.0, 500.0, 0.0), 0.0, 0.0), placed: false, walker: None, note: None, made: 0, spots: Vec::new() }
+        Space {
+            middle: Middle::Plan,
+            assets,
+            root,
+            shown: None,
+            job: None,
+            failed: None,
+            cam: FlyCam::new(glam::Vec3::new(0.0, 500.0, 0.0), 0.0, 0.0),
+            placed: false,
+            walker: None,
+            note: None,
+            made: 0,
+            spots: Vec::new(),
+            cut: Cutaway::default(),
+            held: None,
+            drawn: Shown::default(),
+            rect: None,
+        }
     }
 
     /// The preview on show.
@@ -93,9 +152,9 @@ impl Space {
         self.job.is_some()
     }
 
-    /// Is the preview on show `recipe`'s own?
+    /// Is the preview on show `recipe`'s own, with the cutaway asked for?
     pub fn current(&self, recipe: &gen::Recipe) -> bool {
-        self.shown.as_ref().is_some_and(|(of, _)| of == recipe)
+        self.shown.as_ref().is_some_and(|(of, pv)| of == recipe && pv.cut == self.cut)
     }
 
     /// Has the 3D view anything to keep up with: is it on show, or has it
@@ -122,7 +181,7 @@ impl Space {
         }
         let failed = self.failed.as_ref().is_some_and(|(of, _)| of == recipe);
         if self.job.is_none() && !self.current(recipe) && !failed && self.wanted() {
-            self.job = Some((recipe.clone(), Job::spawn(recipe.clone(), self.assets.clone(), self.root.clone())));
+            self.job = Some((recipe.clone(), Job::spawn_cut(recipe.clone(), self.cut, self.assets.clone(), self.root.clone())));
         }
         arrived
     }
@@ -176,7 +235,8 @@ impl Space {
         match (&self.job, &self.shown) {
             (Some((_, job)), Some(_)) => (format!("bringing the 3D view up to the plan... {:.1} s (the last level stays)", job.started.elapsed().as_secs_f32()), true),
             (Some((_, job)), None) => (format!("making the 3D view... {:.1} s", job.started.elapsed().as_secs_f32()), false),
-            (None, Some((of, pv))) if of == recipe => (pv.line(), false),
+            (None, Some((of, pv))) if of == recipe && pv.cut == self.cut => (pv.line(), false),
+            (None, Some((of, _))) if of == recipe => ("the cutaway is being made...".to_string(), false),
             (None, Some(_)) => ("the plan has changed: the last level stays".to_string(), true),
             (None, None) => ("no 3D view yet".to_string(), false),
         }
@@ -252,6 +312,23 @@ impl Space {
         true
     }
 
+    /// The camera outside the room `key`, over its south-west corner, looking
+    /// down at its middle from far enough off to see the whole box (and its
+    /// gizmo).
+    pub fn overlook(&mut self, key: &str) -> bool {
+        let Some(r) = self.preview().and_then(|pv| pv.rooms.iter().find(|r| r.key == key)).cloned() else {
+            self.note = Some((format!("{key} is not in the level on show"), true));
+            return false;
+        };
+        let (lo, hi) = boxgizmo::room_box(&r);
+        let mid = (lo + hi) * 0.5;
+        let eye = mid + glam::Vec3::new(-0.55, 0.75, 0.6).normalize() * (hi - lo).length() * 1.1;
+        let d = mid - eye;
+        self.place(FlyCam::new(eye, d.x.atan2(d.z), (d.y / d.length()).asin()));
+        self.note = Some((format!("over {key}"), false));
+        true
+    }
+
     /// The camera standing at the plan place `at` (cells), turned as it is,
     /// and the 3D view on show. With a preview: on the floor there nearest
     /// under the camera's height, else the highest. Without one yet: on the
@@ -277,6 +354,126 @@ impl Space {
         self.middle = Middle::Space;
         self.note = Some((format!("the camera is at cell {:.0}, {:.0}, {:.0} over the floor", at.0.floor(), at.1.floor(), EYE), false));
         true
+    }
+
+    /// The storeys the cut can stop at: from the lowest floor of the level on
+    /// show to the storey under its highest ceiling line (indices into
+    /// `LEVELS`). None with no preview.
+    pub fn cut_steps(&self) -> Option<(usize, usize)> {
+        let pv = self.preview()?;
+        let low = pv.rooms.iter().filter_map(|r| LEVELS.iter().position(|&z| z == r.floor)).min()?;
+        let top = pv.rooms.iter().map(|r| r.top).max()?;
+        let high = CEILINGS.iter().rposition(|&c| c < top).unwrap_or(low).max(low);
+        Some((low, high))
+    }
+
+    /// The cut a storey lower than it is (from none: under the highest
+    /// ceiling line), never under the lowest floor.
+    pub fn cut_lower(&self) -> Option<usize> {
+        let (low, high) = self.cut_steps()?;
+        Some(self.cut.up_to.map_or(high, |i| i.saturating_sub(1).max(low)))
+    }
+
+    /// The cut a storey higher; over the highest, none.
+    pub fn cut_higher(&self) -> Option<usize> {
+        let (_, high) = self.cut_steps()?;
+        self.cut.up_to.and_then(|i| (i < high).then_some(i + 1))
+    }
+
+    /// The gizmo's part of a frame over the 3D view (`resp` is
+    /// [`Self::over_view`]'s): a click picks the room under the pointer (the
+    /// generator's panel then has it in hand), a drag of a handle of the
+    /// selected room's gizmo is tried at each step (`Doc::try_change`, the
+    /// box drawn where it would be, red with the refusal) and made when let
+    /// go (`Editor::change`). Leaves what to draw in [`Self::drawn`].
+    pub fn gizmo(&mut self, ui: &egui::Ui, resp: &egui::Response, ed: &mut Editor) {
+        let rect = resp.rect;
+        self.rect = Some(rect);
+        if self.shown.is_none() || self.walking() || rect.width() < 1.0 || rect.height() < 1.0 {
+            (self.held, self.drawn) = (None, Shown::default());
+            return;
+        }
+        let view = self.cam.view(rect.width() / rect.height(), 15.0, 10000.0);
+        let ray = |p: egui::Pos2| camera::ray(&view, p.x - rect.min.x, p.y - rect.min.y, rect.width(), rect.height());
+        let eye = view.eye;
+        let key = ed.doc.selected().map(str::to_owned);
+        let lot = key.as_deref().and_then(|k| ed.doc.lots().ok()?.lots.into_iter().find(|a| a.key == k));
+        let handle_at = |p: egui::Pos2| {
+            let a = lot.as_ref()?;
+            let (lo, hi) = boxgizmo::world_box(a);
+            let (o, d) = ray(p);
+            boxgizmo::pick(lo, hi, eye, o, d)
+        };
+        let primary = egui::PointerButton::Primary;
+        if resp.drag_started_by(primary) {
+            let from = ui.input(|i| i.pointer.press_origin()).or(resp.interact_pointer_pos());
+            self.held = from.and_then(|p| {
+                let (h, a) = (handle_at(p)?, lot.as_ref()?);
+                let (o, d) = ray(p);
+                Grab::start(h, a, eye, o, d).map(|grab| Held { grab, tried: None })
+            });
+            ed.refused = None;
+        }
+        if let (Some(held), true) = (self.held.as_mut(), resp.dragged_by(primary) || resp.drag_stopped_by(primary)) {
+            if let Some(p) = resp.interact_pointer_pos() {
+                let (o, d) = ray(p);
+                let change = held.grab.change(o, d);
+                if held.tried.as_ref().map(|t| &t.0) != change.as_ref() {
+                    held.tried = change.and_then(|c| ed.doc.try_change(&c).ok().map(|t| (c, t)));
+                }
+                ed.refused = held.tried.as_ref().and_then(|(_, t)| t.refused.clone());
+            }
+        }
+        if resp.drag_stopped_by(primary) {
+            if let Some(Held { tried: Some((change, _)), .. }) = self.held.take() {
+                let made = ed.change(&change);
+                self.note = Some(if made { (format!("{} (the level is being made again)", words(&change)), false) } else { (ed.refused.clone().unwrap_or_default(), true) });
+            }
+        } else if self.held.is_some() && !resp.dragged_by(primary) {
+            self.held = None;
+        }
+        if resp.clicked() {
+            if let Some(p) = resp.interact_pointer_pos().filter(|p| handle_at(*p).is_none()) {
+                let (o, d) = ray(p);
+                let picked = self.preview().and_then(|pv| boxgizmo::pick_room(pv, o, d));
+                ed.select(picked.as_deref());
+                self.note = Some(match &picked {
+                    Some(k) => (format!("{k} selected: drag a face to size it, an arrow to move it"), false),
+                    None => ("no room there (a corridor, or nothing)".to_string(), false),
+                });
+            }
+        }
+        // what it draws, and the line under the pointer
+        let hot = self.held.as_ref().map(|h| h.grab.handle).or_else(|| resp.hover_pos().and_then(handle_at));
+        let (tried, refused) = match self.held.as_ref().and_then(|h| h.tried.as_ref()) {
+            Some((c, t)) => {
+                let room = c.room();
+                (t.lots.iter().filter(|a| a.key == room || a.host == room).cloned().collect(), t.refused.is_some())
+            }
+            None => (Vec::new(), false),
+        };
+        self.drawn = Shown { lot, tried, refused, hot };
+        let line = match (self.held.as_ref().and_then(|h| h.tried.as_ref()), hot, key.as_deref()) {
+            (Some((c, t)), _, _) => Some(match &t.refused {
+                Some(why) => (format!("{}: refused: {why}", words(c)), true),
+                None => (words(c), false),
+            }),
+            (None, Some(h), Some(k)) => Some((h.does(k), false)),
+            _ => None,
+        };
+        if let Some((line, wrong)) = line {
+            let painter = ui.painter_at(rect);
+            painter.text(rect.left_bottom() + egui::vec2(8.0, -24.0), egui::Align2::LEFT_BOTTOM, line, egui::FontId::proportional(14.0), if wrong { RED } else { egui::Color32::from_rgb(255, 215, 130) });
+        }
+    }
+
+    /// What the 3D view draws over the level: the gizmo ([`Self::drawn`]).
+    pub fn overlay(&self) -> Mesh3d {
+        let mut mesh = Mesh3d::default();
+        if self.middle == Middle::Space && !self.walking() {
+            boxgizmo::draw(&mut mesh, &self.drawn, self.cam.pos);
+        }
+        mesh
     }
 
     // ── egui ───────────────────────────────────────────────────────────────
@@ -306,6 +503,7 @@ impl Space {
         let mut spots = Vec::new();
         let mut spot = |name: &str, r: &egui::Response| spots.push((name.to_string(), r.rect));
         let (mut walk, mut stop, mut go) = (false, false, false);
+        let mut cut = self.cut;
         ui.horizontal(|ui| {
             let r = ui.selectable_label(self.middle == Middle::Plan, "Plan").on_hover_text("The generator's plan. Right-click it: the 3D view's camera goes there");
             spot("plan", &r);
@@ -334,6 +532,25 @@ impl Space {
                     go = r.clicked();
                 }
                 ui.separator();
+                let mut ceilings = self.cut.ceilings;
+                let r = ui.checkbox(&mut ceilings, "No ceilings").on_hover_text("Leave every ceiling undrawn, to see into the rooms from over them (walking is the same)");
+                spot("ceilings", &r);
+                cut.ceilings = ceilings;
+                let r = ui.add_enabled(self.cut_steps().is_some(), egui::Button::new("Cut lower")).on_hover_text("Cut the level off a storey lower: the storeys over it are not drawn");
+                spot("cut down", &r);
+                if r.clicked() {
+                    cut.up_to = self.cut_lower();
+                }
+                let r = ui.add_enabled(self.cut.up_to.is_some(), egui::Button::new("Cut higher")).on_hover_text("Cut it a storey higher (at the top, nothing is cut)");
+                spot("cut up", &r);
+                if r.clicked() {
+                    cut.up_to = self.cut_higher();
+                }
+                ui.label(match self.cut.up_to {
+                    Some(i) => format!("storeys up to {}", Cutaway::storey_name(i)),
+                    None => "every storey".to_string(),
+                });
+                ui.separator();
             }
             if self.wanted() {
                 let (text, warn) = self.status(recipe);
@@ -347,6 +564,7 @@ impl Space {
             }
         });
         self.spots = spots;
+        self.cut = cut;
         if stop {
             self.stop_walking();
         } else if walk {
@@ -390,7 +608,7 @@ impl Space {
         let hint = if self.walking() {
             "Walking: WASD or the arrows (left and right turn), right button: look, C: crouch a level down, Space: up, Esc: fly again"
         } else {
-            "Right button: look, WASD: fly, Q/E down and up, Shift faster, wheel: speed. G: walk from here"
+            "Right button: look, WASD: fly, Q/E down and up, Shift faster, wheel: speed. G: walk from here. Click: pick a room"
         };
         painter.text(rect.left_top() + egui::vec2(8.0, 8.0), egui::Align2::LEFT_TOP, hint, egui::FontId::proportional(13.0), egui::Color32::from_gray(230));
         if let Some((note, wrong)) = &self.note {

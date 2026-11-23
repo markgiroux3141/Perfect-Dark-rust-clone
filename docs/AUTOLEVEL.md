@@ -2831,7 +2831,7 @@ Order of work, and where each stands:
    Shown on the room panel as Auto / On / Off rows, greyed with the reason where a room can't
    take it (as layouts are). Watch: some rolls draw from level-wide streams in a seeded level,
    so forcing one room can shift another's draw; an empty start keys them by room already.
-3. **3D picking and a box gizmo** (in `pd_edit`'s 3D view): a click picks the room under the
+3. **3D picking and a box gizmo.** Done (2026-11-23): "The box gizmo", below. (In `pd_edit`'s 3D view): a click picks the room under the
    pointer (PD's rooms are the generator's: the preview's room index gives the key); the
    selected room gets six face handles (the sides a `Rect`, top and bottom a `Height`) and move
    arrows (x, y by cells, z by storeys), drawn as a wireframe that follows the drag using
@@ -2896,6 +2896,66 @@ Order of work, and where each stands:
   renames the cellars after it (`cellar1`, `cellar2` go by order), so edits naming a later
   cellar can lose it. Platforms "on" is the level's count or one for each 100 cells, whichever is
   more; there is no "more" or "fewer" yet.
+
+### The box gizmo and the cutaway (roadmap item 3, 2026-11-23)
+
+- **Picking** (`pd_edit::boxgizmo::pick_room`): the ray from the pointer meets the level's tiles
+  (floors and walls: PD's rooms are the generator's, numbered as its plan numbers them) or a
+  room's top from under it (ceilings are no tiles where a head does not reach them); the room is
+  the one whose box holds the point just before what it met, else just past it (a wall seen from
+  outside), a pod before its hall. A corridor is no room's box: nothing is picked. With the
+  cutaway, a ray from over the cut starts where it crosses it, rooms over it are not met, and
+  with no ceilings a room's top is not met either. A click on a room selects it in the
+  generator's panel (the Layout screen's room panel then has it); a click on nothing selects
+  nothing.
+- **The gizmo** (`boxgizmo`): the selected lot's box (`world_box`) as white edges, faint where
+  walls hide them, its floor outlined on top; six face handles (a cube on each face's middle,
+  1.2% of their distance across, so the same on screen), the sides red (x) and green (y), top
+  and bottom blue; three arrows from just outside the box's south-west corner (x, y, up),
+  their length as the item gizmo's, never more than the box is across. `pick` is the nearest
+  handle the ray meets. A drag (`Grab`: the ray read along the handle's line,
+  `gizmo::closest_t_on_axis`) is `change_by`: the side view's `sideview::drag` with the same
+  part (a side an `End`, the top `Top`, the bottom `Bottom`, the arrows the `Body` along x, y or
+  up), so it snaps as the side view does: whole cells, the nearest storey for a floor, the
+  nearest ceiling line for a top, never under a storey tall. Sides are `Rect`, top and bottom
+  `Height`, x and y `Move`, up `Pin`.
+- **In the window** (`space::Space::gizmo`, after `over_view`): the hovered handle lit and the
+  line over the view saying what a drag of it does; while held, the change is tried at each
+  step with `Doc::try_change` (`boxes::trial` alone, a millisecond) and the boxes it would leave
+  (the room's, and a hall's pods, or a room that would become its pod) drawn on top in amber,
+  red with the refusal written over the view; let go, `Editor::change` makes it (the plan's
+  status line says what, the preview is made again a moment later). `Space::overlay` is the
+  mesh; the window draws it with `Draw3d` over the preview's BG (pd_render untouched).
+- **The cutaway** (`preview::Cutaway`): "No ceilings" leaves out every drawn triangle that faces
+  down (ceilings, catwalks' and decks' undersides); "Cut lower" / "Cut higher" draws only the
+  storeys up to one (from under the highest ceiling line down to the lowest floor; past the top,
+  every storey), triangles over its ceiling line dropped and those across it clipped
+  (`Vert::lerp`). Only the drawing: `pd_import::geometry_drawn` / `autowalk::geometry_only_drawn`
+  put the BG's triangles through it after the collision is made, so the tiles, a walk and a pick
+  are the same. Changing it makes the preview again (0.7 s; "the cutaway is being made...").
+- **Without a window:** `pd_edit --shot-generated OUT.png --select ROOM [--drag HANDLE:N]
+  [--no-ceilings] [--up-to FLOOR] [--pick PX,PY]` (HANDLE one of west east south north top
+  bottom x y z, N cells, or storeys for top, bottom and z; it prints what the drag comes to and
+  any refusal; the camera over the room unless asked otherwise); `pd_edit --shot-ui OUT.png
+  --seed 40 --room vast --3d [--no-ceilings]` (the window with the 3D view, the camera over the
+  room from outside: `Space::overlook`). Pictures: `out/autolevel/gizmo/` (scratch).
+- **Checked:** 3 in `boxgizmo` (the box against the preview's cells, each handle's change against
+  the side view's, a pick and a drag along its line), one in `preview` (ceilings dropped, a wall
+  clipped with its colour and texture place along its edge), two in the window's (egui events:
+  a click picks vast, the east face pulled a cell is one `resize` made on letting go and nothing
+  while held, the top up two storeys red with the refusal and nothing made, the x arrow three
+  cells west refused (small4 would land in it), a click on nothing selects nothing; "No
+  ceilings" makes a preview with the same tiles, "Cut lower / higher" step from the highest
+  storey to the lowest and back). Pictures read: vast's gizmo from inside and from outside with
+  no ceilings, a refused top drag in red, seed 40 cut to floor 1 with no ceilings from above,
+  the whole Layout screen in 3D.
+- **Rough:** nobody has looked at the window. Seed 40's rooms are packed close, so most drags
+  of its halls are refused: try an empty start or a smaller room. A drag that is let go where
+  it is refused does nothing but say why. A side and the top at once, or moving and lifting at
+  once, are two drags. The gizmo's arrows sit at the south-west corner, which can be behind the
+  camera from inside a room (they are drawn on top, so they are seen through walls). With the
+  walker walking there is no gizmo. A cutaway change makes the whole preview again; the cut is
+  not shown on the plan or the side view.
 
 ## Risks
 

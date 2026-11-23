@@ -16,6 +16,7 @@
 //! the tests can reach it.
 
 pub mod app;
+pub mod boxgizmo;
 pub mod camera;
 pub mod doc;
 pub mod draw3d;

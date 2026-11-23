@@ -33,6 +33,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use autolevel::recipe as gen;
+use autolevel::storeys::{CEILINGS, LEVELS};
 use glam::Vec3;
 use pd_core::assets::AssetDir;
 use pd_core::events::Event;
@@ -41,6 +42,7 @@ use pd_core::lv::{Lv, LvTickIn};
 use pd_core::rng::Rng;
 use pd_import::autowalk::{self, Via};
 use pd_import::recipe::Source;
+use pd_import::source::{Tri, Vert};
 use pd_render::View;
 use pd_sim::player::{Player, PlayerInput, WalkEnv};
 use pd_sim::stage::{Stage, TileLevel};
@@ -138,6 +140,105 @@ pub struct RoomBox {
     pub host: String,
 }
 
+/// What of a preview is left undrawn, to see into the level from above: its
+/// ceilings, and everything over a storey's ceiling line. Only the drawing:
+/// its tiles are the level's own, so a walk, a pick and a floor found are the
+/// same with or without (the importer's `geometry_drawn`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Cutaway {
+    /// No ceiling drawn: no triangle that faces down (a room's ceiling, the
+    /// underside of a catwalk or a deck), so the floors are seen from over them.
+    pub ceilings: bool,
+    /// Only the storeys up to this one drawn (an index into
+    /// `autolevel::storeys::LEVELS`): everything over its ceiling line is cut
+    /// off, a tall hall's walls with it. None: every storey.
+    pub up_to: Option<usize>,
+}
+
+impl Cutaway {
+    /// Nothing cut.
+    pub fn none(&self) -> bool {
+        *self == Cutaway::default()
+    }
+
+    /// The height everything drawn over is cut off at (a hair under the
+    /// storey's ceiling line, so a ceiling on it goes too).
+    pub fn height(&self) -> Option<f32> {
+        self.up_to.map(|i| CEILINGS[i.min(CEILINGS.len() - 1)] as f32 - 2.0)
+    }
+
+    /// The storey `LEVELS[i]` in words, as the side view labels its floors.
+    pub fn storey_name(i: usize) -> String {
+        match LEVELS.get(i) {
+            Some(z) if *z < 0 => "cellars".to_string(),
+            Some(0) => "ground".to_string(),
+            Some(_) => format!("floor {}", i - 1),
+            None => format!("storey {i}"),
+        }
+    }
+
+    /// What is cut, in a few words ("" for nothing).
+    pub fn words(&self) -> String {
+        let mut said = Vec::new();
+        if self.ceilings {
+            said.push("no ceilings".to_string());
+        }
+        if let Some(i) = self.up_to {
+            said.push(format!("up to {}", Cutaway::storey_name(i)));
+        }
+        said.join(", ")
+    }
+
+    /// The drawn triangles with what is cut taken out: a ceiling dropped, a
+    /// triangle over the height dropped and one across it clipped there (its
+    /// texture place and colour along its edges as they were).
+    pub fn apply(&self, tris: &mut Vec<Tri>) {
+        if self.ceilings {
+            tris.retain(|t| !faces_down(t));
+        }
+        let Some(h) = self.height() else { return };
+        let mut out = Vec::with_capacity(tris.len());
+        for t in tris.drain(..) {
+            match t.v.iter().filter(|v| v.pos.y <= h).count() {
+                0 => {}
+                3 => out.push(t),
+                _ => {
+                    let kept = clip_under(&t.v, h);
+                    for i in 1..kept.len().saturating_sub(1) {
+                        out.push(Tri { v: [kept[0], kept[i], kept[i + 1]], ..t.clone() });
+                    }
+                }
+            }
+        }
+        *tris = out;
+    }
+}
+
+/// Does the triangle face down (its winding's normal more down than level:
+/// the generator's faces are wound to face the air they are seen from)?
+pub fn faces_down(t: &Tri) -> bool {
+    let n = (t.v[1].pos - t.v[0].pos).cross(t.v[2].pos - t.v[0].pos);
+    n.y < -0.7 * n.length()
+}
+
+/// The part of a triangle at or under the height `h`, as a convex polygon in
+/// its winding (Sutherland and Hodgman, against one plane).
+fn clip_under(v: &[Vert; 3], h: f32) -> Vec<Vert> {
+    let lerp = |a: &Vert, b: &Vert| a.lerp(b, (h - a.pos.y) / (b.pos.y - a.pos.y));
+    let mut out = Vec::with_capacity(4);
+    for i in 0..3 {
+        let (a, b) = (&v[i], &v[(i + 1) % 3]);
+        let (ina, inb) = (a.pos.y <= h, b.pos.y <= h);
+        if ina {
+            out.push(*a);
+        }
+        if ina != inb {
+            out.push(lerp(a, b));
+        }
+    }
+    out
+}
+
 /// A generated level to look at and walk: its stage and tiles as the game
 /// would load them, in a scratch tree of its own.
 pub struct Preview {
@@ -151,6 +252,8 @@ pub struct Preview {
     /// plan cell x, y, the floor stood on, the cell looked at.
     pub views: Vec<(String, autolevel::level::View)>,
     pub rooms: Vec<RoomBox>,
+    /// What of it is not drawn.
+    pub cut: Cutaway,
     /// How long it took to make, seconds.
     pub secs: f32,
     assets: PathBuf,
@@ -163,18 +266,23 @@ impl Preview {
     /// generator's words where the recipe makes no level (nothing is left
     /// behind).
     pub fn make(recipe: &gen::Recipe, assets: &Path, root: &Path) -> Result<Preview, String> {
+        Preview::make_cut(recipe, Cutaway::default(), assets, root)
+    }
+
+    /// [`Preview::make`] with `cut` left undrawn.
+    pub fn make_cut(recipe: &gen::Recipe, cut: Cutaway, assets: &Path, root: &Path) -> Result<Preview, String> {
         let started = Instant::now();
         let scratch = Scratch::new(root)?;
         let r = autowalk::recipe(CODE, "Preview", Via::Recipe(&gen::save(recipe)))?;
         // (a recipe the generator stops dead on is an error here, as in its own editor)
-        let (stage, level) = autowalk::geometry_only(&r, assets, scratch.path())?;
+        let (stage, level) = autowalk::geometry_only_drawn(&r, assets, scratch.path(), &|tris| cut.apply(tris))?;
         // The level itself, for its views and rooms: the importer has just
         // made it for the geometry and hands the same one back.
         let Source::Autolevel(src) = &r.source else { return Err("the preview's recipe is not a generated level's".to_string()) };
         let built = pd_import::autolevel::make(src, None)?;
         let rooms = built.level.spaces().iter().map(|s| RoomBox { key: s.key.clone(), rect: s.rect(), floor: s.floor, top: s.top, host: s.host.clone() }).collect();
         let (lo, hi) = level.geom.polys.iter().flat_map(|p| p.verts.iter()).fold((Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)), |(a, b), v| (a.min(*v), b.max(*v)));
-        Ok(Preview { stage: Arc::new(stage), level: Arc::new(level), lo, hi, views: built.level.views.clone(), rooms, secs: started.elapsed().as_secs_f32(), assets: assets.to_path_buf(), scratch })
+        Ok(Preview { stage: Arc::new(stage), level: Arc::new(level), lo, hi, views: built.level.views.clone(), rooms, cut, secs: started.elapsed().as_secs_f32(), assets: assets.to_path_buf(), scratch })
     }
 
     /// `assets/` with this preview's scratch tree over it: what the renderer
@@ -338,10 +446,15 @@ pub struct Job {
 impl Job {
     /// Start making `recipe`'s preview under `root`.
     pub fn spawn(recipe: gen::Recipe, assets: PathBuf, root: PathBuf) -> Job {
+        Job::spawn_cut(recipe, Cutaway::default(), assets, root)
+    }
+
+    /// Start making `recipe`'s preview with `cut` left undrawn.
+    pub fn spawn_cut(recipe: gen::Recipe, cut: Cutaway, assets: PathBuf, root: PathBuf) -> Job {
         let (tx, rx) = channel();
         std::thread::spawn(move || {
             // (the generator has places where it stops dead: an error here, as in its own editor)
-            let made = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Preview::make(&recipe, &assets, &root)));
+            let made = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Preview::make_cut(&recipe, cut, &assets, &root)));
             let _ = tx.send(made.unwrap_or_else(|_| Err("the generator stopped on this recipe (see the terminal)".to_string())));
         });
         Job { started: Instant::now(), rx }

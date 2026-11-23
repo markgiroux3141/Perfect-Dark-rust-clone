@@ -119,8 +119,14 @@ pub fn recipe(code: &str, name: &str, via: Via) -> Result<Recipe, String> {
 /// a level, in a fraction of an import's time. The folder is the caller's to
 /// keep (a renderer loads the BG from it) or delete.
 pub fn geometry_only(r: &Recipe, assets: &Path, custom: &Path) -> Result<(Stage, TileLevel), String> {
+    geometry_only_drawn(r, assets, custom, &|_| {})
+}
+
+/// [`geometry_only`] with the drawn triangles put through `drawn` before the
+/// BG is written ([`crate::geometry_drawn`]): the tiles are as ever.
+pub fn geometry_only_drawn(r: &Recipe, assets: &Path, custom: &Path, drawn: &dyn Fn(&mut Vec<crate::source::Tri>)) -> Result<(Stage, TileLevel), String> {
     let paths = Paths { assets: assets.to_path_buf(), custom: custom.to_path_buf(), src: None, levels: None };
-    let (stage_dir, data) = crate::geometry(r, &paths)?;
+    let (stage_dir, data) = crate::geometry_drawn(r, &paths, drawn)?;
     write::write_pads(&stage_dir, r, &data.fixed)?;
     write::write_setup(&stage_dir, r, &data.fixed)?;
     let stage = Stage::load(&AssetDir::new(assets).with_custom_dir(custom), &r.code)?;
