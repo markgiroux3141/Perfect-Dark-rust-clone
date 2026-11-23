@@ -48,6 +48,7 @@ pub mod place;
 pub mod plan;
 pub mod planner;
 pub mod pods;
+pub mod puts;
 pub mod py;
 pub mod pyrand;
 pub mod recipe;

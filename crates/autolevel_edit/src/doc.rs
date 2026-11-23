@@ -25,12 +25,13 @@
 //! words, and `clear_choice` gives the seed's own back.
 
 use crate::deadlist::{make, Made};
-use crate::planview::{Boxes, View};
+use crate::planview::{Boxes, Things, View};
 use autolevel::boxes::{self, Change, Trial};
 use autolevel::candidates::{self, Asked, Candidate, Candidates, Removal};
 use autolevel::choices::{self, Choices};
 use autolevel::level::Start;
 use autolevel::place::{Placed, Siting};
+use autolevel::puts;
 use autolevel::recipe::{self, Edit, Recipe};
 use std::sync::Arc;
 
@@ -344,7 +345,8 @@ impl Doc {
         // (nothing found through what was asked: the plan says so where the doorway is)
         let none = self.joins().filter(|found| found.found.is_empty() && !found.asked.plain()).map(|found| found.none_fits());
         let asked = if self.pick.is_some() { self.asked.clone() } else { Asked::default() };
-        View { pick: self.pick.clone(), asked, none, joins, hot, route: self.route.clone(), chosen, ..View::default() }
+        let things = Things { tool: None, put: self.puts() };
+        View { pick: self.pick.clone(), asked, none, joins, hot, route: self.route.clone(), chosen, things, ..View::default() }
     }
 
     // ------------------------------------------------------------ room boxes
@@ -467,6 +469,46 @@ impl Doc {
         self.push();
         self.recipe = new;
         true
+    }
+
+    /// Put a thing by place: `e` is a `window`, `piece` or `drop` edit (`puts::click` makes one
+    /// from a click), put with the recipe kept short (`puts::set`: a piece stood and then moved is
+    /// one edit). One step to undo; none if it changes nothing. One that does not fit is still
+    /// put, and the level says why (`puts`).
+    pub fn put(&mut self, e: Edit) -> bool {
+        let new = puts::set(&self.recipe, e);
+        if new == self.recipe {
+            return false;
+        }
+        self.push();
+        self.recipe = new;
+        true
+    }
+
+    /// The generator's own again at a place (`puts::clear`). False if nothing was put there.
+    pub fn clear_put(&mut self, room: &str, at: (i32, i32)) -> bool {
+        let new = puts::clear(&self.recipe, room, at);
+        if new == self.recipe {
+            return false;
+        }
+        self.push();
+        self.recipe = new;
+        true
+    }
+
+    /// What the recipe put by place, each with whether the last level made took it (`puts::listed`;
+    /// all taken while there is none).
+    pub fn puts(&self) -> Vec<(Edit, Result<(), String>)> {
+        match self.made() {
+            Some(made) => puts::listed(&self.recipe, &made.level),
+            None => self
+                .recipe
+                .edits
+                .iter()
+                .filter(|e| matches!(e, Edit::Window { .. } | Edit::Piece { .. } | Edit::Drop { .. }))
+                .map(|e| (e.clone(), Ok(())))
+                .collect(),
+        }
     }
 
     // ------------------------------------------------------------ the level

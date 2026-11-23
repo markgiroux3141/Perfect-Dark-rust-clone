@@ -8,7 +8,7 @@
 
 use crate::cells::{rect_cells, Cell, Cells};
 use crate::furnish::{meets, runs, Interior};
-use crate::level::{Level, Window};
+use crate::level::{Level, Put, Window};
 use crate::pyrand::PyRandom;
 use crate::space::DIRS;
 use crate::storeys::storey;
@@ -18,10 +18,64 @@ use std::collections::BTreeSet;
 /// wall cells, direction). Sorted, the ones from above come first, then the widest.
 type Found = (bool, i32, String, String, i32, Vec<Cell>, usize);
 
-/// The level's windows: at most `options.windows`, one to a corridor piece and two to a hall.
-pub fn windows(lv: &Level) -> Vec<Window> {
-    let (sp, grid) = (lv.spaces(), &lv.net.grid);
+/// A place a window could go (`places`): a corridor piece running along a hall's wall a cell
+/// away on storey `z`, two to four cells of wall between them (`wall`, in a line), the hall
+/// clear behind it, facing the way `d` (an index of `DIRS`, from the corridor into the hall).
+/// `level`: the corridor is on the hall's floor (glass only there).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Place {
+    pub piece: String,
+    pub hall: String,
+    pub z: i32,
+    pub wall: Vec<Cell>,
+    pub d: usize,
+    pub level: bool,
+}
+
+/// Every place a window could go, whether the level takes it or not: those a `window` edit can
+/// name (by one of its wall's cells), in the order the level takes them.
+pub fn places(lv: &Level) -> Vec<Place> {
+    found(lv).into_iter().map(|(level, _, piece, hall, z, wall, d)| Place { piece, hall, z, wall, d, level }).collect()
+}
+
+/// The level's windows: at most `options.windows`, one to a corridor piece and two to a hall;
+/// then those put by hand (`Put::Window`, which go past both limits), with those that could not
+/// be put and why.
+pub fn windows(lv: &Level) -> (Vec<Window>, Vec<(Put, String)>) {
     let mut rng = PyRandom::named(&format!("{}/windows", lv.seed));
+    let mut found = found(lv);
+    reroll(lv, &mut found);
+    let all = if lv.options.puts.is_empty() { Vec::new() } else { found.clone() };
+    let mut out: Vec<Window> = Vec::new();
+    let mut pieces: BTreeSet<String> = BTreeSet::new();
+    for (level, _, piece, hall, z, wall, d) in found {
+        if out.len() >= lv.options.windows {
+            break;
+        }
+        if pieces.contains(&piece) || out.iter().filter(|w| w.hall == hall).count() >= 2 {
+            continue;
+        }
+        pieces.insert(piece.clone());
+        // (an empty start: the window's own stream, by its hall and where it is in the wall)
+        let mut own = None;
+        let rng = lv.options.stream(&mut rng, &mut own, || format!("{}/{hall}/window/{z}/{},{}", lv.seed, wall[0].0, wall[0].1));
+        let mut kind = if !level && rng.random() < 0.3 { "rail" } else { "glass" };
+        // (its windows re-rolled: glass or rail from the hall's own stream; the draw above is
+        // made all the same, so the windows after it draw what they did)
+        let n = lv.options.reroll(&hall, "windows");
+        if n > 0 && !level {
+            let mut own = PyRandom::named(&format!("{}/{hall}/windows{n}/{z}/{},{}", lv.seed, wall[0].0, wall[0].1));
+            kind = if own.random() < 0.3 { "rail" } else { "glass" };
+        }
+        out.push(Window { piece, hall, z, wall, d, kind });
+    }
+    let unmet = put(lv, &all, &mut out);
+    (out, unmet)
+}
+
+/// Every place a window could go, sorted: those from above first, then the widest.
+fn found(lv: &Level) -> Vec<Found> {
+    let (sp, grid) = (lv.spaces(), &lv.net.grid);
     let mut found: Vec<Found> = Vec::new();
     for r in lv.net.routes() {
         for pc in r.pieces.iter().filter(|pc| matches!(pc.kind, "corridor" | "ramp")) {
@@ -82,31 +136,44 @@ pub fn windows(lv: &Level) -> Vec<Window> {
         }
     }
     found.sort();
-    reroll(lv, &mut found);
-    let mut out: Vec<Window> = Vec::new();
-    let mut pieces: BTreeSet<String> = BTreeSet::new();
-    for (level, _, piece, hall, z, wall, d) in found {
-        if out.len() >= lv.options.windows {
-            break;
-        }
-        if pieces.contains(&piece) || out.iter().filter(|w| w.hall == hall).count() >= 2 {
+    found
+}
+
+/// The windows put by hand (`Put::Window`), in the recipe's order, on the level's own: a window
+/// there made glass or rail, or taken out; a place the level left without one given it (past the
+/// level's limits). Returns those that could not be put, with why. New here (the editing
+/// roadmap's item 6): with none put, the windows are as they were.
+fn put(lv: &Level, all: &[Found], out: &mut Vec<Window>) -> Vec<(Put, String)> {
+    let mut unmet = Vec::new();
+    for p in &lv.options.puts {
+        let Put::Window { room, z, at, kind } = p else { continue };
+        let holds = |hall: &str, wz: i32, wall: &[Cell]| hall == room && wz == *z && wall.contains(at);
+        let floor = lv.spaces().iter().find(|s| s.key == *room).map(|s| s.floor);
+        if *kind == "rail" && floor == Some(*z) {
+            unmet.push((p.clone(), format!("a rail only where the corridor is above {room}'s floor")));
             continue;
         }
-        pieces.insert(piece.clone());
-        // (an empty start: the window's own stream, by its hall and where it is in the wall)
-        let mut own = None;
-        let rng = lv.options.stream(&mut rng, &mut own, || format!("{}/{hall}/window/{z}/{},{}", lv.seed, wall[0].0, wall[0].1));
-        let mut kind = if !level && rng.random() < 0.3 { "rail" } else { "glass" };
-        // (its windows re-rolled: glass or rail from the hall's own stream; the draw above is
-        // made all the same, so the windows after it draw what they did)
-        let n = lv.options.reroll(&hall, "windows");
-        if n > 0 && !level {
-            let mut own = PyRandom::named(&format!("{}/{hall}/windows{n}/{z}/{},{}", lv.seed, wall[0].0, wall[0].1));
-            kind = if own.random() < 0.3 { "rail" } else { "glass" };
+        if let Some(i) = out.iter().position(|w| holds(&w.hall, w.z, &w.wall)) {
+            match *kind {
+                "none" => drop(out.remove(i)),
+                kind => out[i].kind = kind,
+            }
+            continue;
         }
-        out.push(Window { piece, hall, z, wall, d, kind });
+        if *kind == "none" {
+            continue;
+        }
+        match all.iter().find(|f| holds(&f.3, f.4, &f.5)) {
+            Some((_, _, piece, hall, wz, wall, d)) => out.push(Window { piece: piece.clone(), hall: hall.clone(), z: *wz, wall: wall.clone(), d: *d, kind }),
+            None => unmet.push((
+                p.clone(),
+                format!(
+                    "no window fits {room}'s wall there on {z}: one opens onto a corridor running along the wall a cell away, with nothing against it inside"
+                ),
+            )),
+        }
     }
-    out
+    unmet
 }
 
 /// The places of each hall whose windows are re-rolled (`Options::rerolled`, "windows") dealt

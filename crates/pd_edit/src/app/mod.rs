@@ -2172,6 +2172,14 @@ impl App {
         }
     }
 
+    /// "Put things" in hand, with what it puts (`--shot-ui --things TOOL`).
+    pub(crate) fn things_generated(&mut self, tool: autolevel::puts::Tool) {
+        if let Some(g) = self.generating.as_mut() {
+            g.ed.set_tool(autolevel_edit::ui::Tool::Things);
+            g.ed.thing = tool;
+        }
+    }
+
     pub(crate) fn shot_setup(&mut self, step: Option<Step>, sel: Option<Sel>, tool: Option<Kind>) {
         if let Some(s) = step {
             self.go(s);

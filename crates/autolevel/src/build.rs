@@ -15,7 +15,7 @@
 use crate::cells::{rect_cells, Cell, Cells, Rect};
 use crate::deadends::{self, DeadEnd, Graph, Limits, NavCache};
 use crate::furnish::{Interior, Setup, GALLERIES_MIN, MEZZANINE_MIN, RING_MIN};
-use crate::level::{Options, Start};
+use crate::level::{Options, Put, Start};
 use crate::network::{components, Network};
 use crate::pods::Access;
 use crate::py;
@@ -326,6 +326,74 @@ fn more_drops<'a>(
     }
 }
 
+/// The drops put by hand (`Put::Drop`), in the recipe's order, on the generator's: each takes the
+/// place of its room's drop (a room has one at most), or takes it out. Returns those that could
+/// not be put, with why. With none put, `drops` is as it was. New here (the editing roadmap's
+/// item 6).
+fn put_drops(net: &Network, o: &Options, drops: &mut Vec<DropHole>) -> Vec<(Put, String)> {
+    let mut unmet = Vec::new();
+    for p in &o.puts {
+        let Put::Drop { room, at } = p else { continue };
+        if net.spaces().iter().any(|s| s.cellar.as_ref().is_some_and(|c| c.hall == *room)) {
+            unmet.push((p.clone(), format!("{room}'s drop is its cellar's hatch: it stays")));
+            continue;
+        }
+        match at.map(|at| drop_at(net, room, at)) {
+            None => drops.retain(|d| d.0 != *room),
+            Some(Ok(d)) => {
+                drops.retain(|old| old.0 != *room);
+                drops.push(d);
+            }
+            Some(Err(why)) => unmet.push((p.clone(), why)),
+        }
+    }
+    unmet
+}
+
+/// A drop through `room`'s floor with its low corner on the cell `at` (two cells square), into
+/// the room under it, on the generator's terms for its own (`openings`, `more_drops`): a cell in
+/// from both rooms' walls, clear of the upper room's doors, nothing between them, a fall of
+/// `MAX_FALL` storeys at most, into a room with a floor to land on. Err says why not. Whether
+/// what the lower room builds leaves room to land is only known once it is furnished
+/// (`lands_clear`).
+pub fn drop_at(net: &Network, room: &str, (x, y): (i32, i32)) -> Result<DropHole, String> {
+    use crate::storeys::index;
+    let sp = net.spaces();
+    let up = sp.iter().find(|s| s.key == room).ok_or_else(|| format!("no room {room}"))?;
+    if !up.host.is_empty() {
+        return Err(format!("{room} is a pod: it takes no drop"));
+    }
+    if up.decks.is_some() || up.pool.is_some() || up.flood.is_some() || !up.cuts.is_empty() || up.sunk.is_some() || up.base.is_some() {
+        return Err(format!("{room}'s floor takes no drop (water, a pit, its shape, a spiral or a base)"));
+    }
+    if !(up.x0 < x && x + 2 < up.x1 && up.y0 < y && y + 2 < up.y1) {
+        return Err(format!("a drop is a cell in from {room}'s walls"));
+    }
+    let low = sp
+        .iter()
+        .filter(|s| s.host.is_empty() && s.key != up.key && s.top < up.floor && s.x0 < x && x + 2 < s.x1 && s.y0 < y && y + 2 < s.y1)
+        .max_by_key(|s| s.top)
+        .ok_or_else(|| format!("no room under {room} there to land in (a cell in from its walls)"))?;
+    if low.pool.is_some() || low.flood.is_some() || !low.cuts.is_empty() || low.sunk.is_some() || low.decks.is_some() || low.base.is_some() {
+        return Err(format!("{} takes no drop into it (water, a pit, its shape, a spiral or a base)", low.key));
+    }
+    if index(up.floor) - index(low.floor) > crate::furnish::MAX_FALL {
+        return Err(format!("{}'s floor is more than {} storeys down", low.key, crate::furnish::MAX_FALL));
+    }
+    let mut aprons = Cells::new();
+    for d in net.doors(&up.key).iter().filter(|d| d.level == up.floor) {
+        aprons.extend(door_pad(up, d, 6, 1));
+    }
+    if !rect_cells((2 * x, 2 * y, 2 * x + 4, 2 * y + 4)).is_disjoint(&aprons) {
+        return Err(format!("too near one of {room}'s doors"));
+    }
+    let between: Vec<i32> = LEVELS.iter().copied().filter(|&z| low.top < z && storey(z).1 < up.floor).collect();
+    if between.iter().any(|&z| (x - 1..x + 3).any(|i| (y - 1..y + 3).any(|j| net.grid.owner_at(i, j, z) != 0))) {
+        return Err(format!("something lies between {room} and {} there", low.key));
+    }
+    Ok((up.key.clone(), low.key.clone(), (x, y, x + 2, y + 2)))
+}
+
 /// Is the column under a drop clear through a tall lower room (`low`) down to its floor, where
 /// a player can stand all over it? (A drop into a single-storey room needs no look.)
 fn lands_clear(low: &Interior, r: Rect) -> bool {
@@ -561,6 +629,8 @@ pub struct Build {
     /// Room -> what was chosen for its inside by hand (a recipe's "cover", "layout" and "reroll"
     /// edits; none otherwise). Set through `choose`.
     pub choices: BTreeMap<String, Choice>,
+    /// The drops put by hand (`Options::puts`) that were left out, with why.
+    pub unmet: Vec<(Put, String)>,
     /// Every inside worked out so far, by what it was made from.
     made: Vec<(Sig, Made)>,
     /// Each inside's standing blocks, for the dead-end finder (`made` keeps the insides alive).
@@ -587,6 +657,7 @@ impl Build {
             fixes: Vec::new(),
             keep: BTreeSet::new(),
             choices: BTreeMap::new(),
+            unmet: Vec::new(),
             made: Vec::new(),
             navs: NavCache::new(),
             tried: BTreeSet::new(),
@@ -619,8 +690,10 @@ impl Build {
     /// `Failed`) if a room can't be furnished; the build is then as it was.
     pub fn refresh(&mut self) -> Result<(), String> {
         let (mut drops, grates) = openings(self.seed, &self.net, &self.o);
+        // (the drops put by hand, after the generator's: no draw of its moves)
+        let mut unmet = put_drops(&self.net, &self.o, &mut drops);
         // (a drop into a tall room whose column that room built in is taken away, and the rooms
-        // furnished again: `lands_clear`. Only `more_drops` makes such a drop.)
+        // furnished again: `lands_clear`. Only `more_drops` and a hand make such a drop.)
         loop {
             let (interiors, unholed) = self.furnish_all(&drops, &grates)?;
             let blocked: Vec<String> = drops
@@ -629,14 +702,27 @@ impl Build {
                 .filter(|(_, low, r)| interiors.iter().find(|(k, _)| k == low).is_some_and(|(_, under)| !lands_clear(under, *r)))
                 .map(|d| d.0.clone())
                 .collect();
+            let lost = |room: &str, why: &str, unmet: &mut Vec<(Put, String)>| {
+                for p in self.o.puts.iter().filter(|p| matches!(p, Put::Drop { room: r, at: Some(_) } if r == room)) {
+                    unmet.retain(|(q, _)| q != p);
+                    unmet.push((p.clone(), why.to_string()));
+                }
+            };
             if !blocked.is_empty() {
+                for d in drops.iter().filter(|d| blocked.contains(&d.0)) {
+                    lost(&d.0, &format!("it would land on something {} built under it", d.1), &mut unmet);
+                }
                 drops.retain(|d| !blocked.contains(&d.0));
                 continue;
+            }
+            for d in drops.iter().filter(|d| unholed.contains(&d.0)) {
+                lost(&d.0, &format!("{} can't be furnished round a hole there", d.0), &mut unmet);
             }
             drops.retain(|d| !unholed.contains(&d.0));
             self.interiors = interiors;
             self.drops = drops;
             self.grates = grates;
+            self.unmet = unmet;
             return Ok(());
         }
     }
@@ -777,6 +863,7 @@ impl Build {
                         hole_side: self.spaces().iter().find_map(|c| c.cellar.as_ref().filter(|c| c.hall == *key && h.is_some()).map(|c| c.side)),
                         rescue,
                         parts: parts.clone(),
+                        puts: self.o.puts_in(key).filter(|p| matches!(p, Put::Stand { .. } | Put::Shift { .. })).cloned().collect(),
                     };
                     match Interior::new(s, doors, pods, rng, &self.access, setup).build() {
                         Ok(it) => return Ok((it, h.is_some())),

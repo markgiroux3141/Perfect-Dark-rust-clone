@@ -186,7 +186,13 @@ impl App {
                     g.ed.set_tool(PlanTool::Join);
                     g.ed.set_side(false);
                 }
+                let things = "Windows, pillars and crates, drops: click where one goes, on the plan, from the side or in 3D";
+                if ui.selectable_label(g.ed.tool == PlanTool::Things, "Put things").on_hover_text(things).clicked() {
+                    g.ed.set_tool(PlanTool::Things);
+                }
             });
+            // (the things tool's row, and what was put by place, each with whether it took)
+            g.ed.things_ui(ui);
             ui.horizontal(|ui| {
                 let side = g.ed.side;
                 if ui.selectable_label(side.is_none(), "From above").on_hover_text("The plan: rooms seen from above").clicked() && side.is_some() {

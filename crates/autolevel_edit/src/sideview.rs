@@ -19,9 +19,10 @@ use autolevel::boxes::{dragged, Change, Part};
 use autolevel::candidates::Asked;
 use autolevel::cells::{Cells, Rect};
 use autolevel::level::Level;
-use autolevel::recipe::Doorway;
+use autolevel::recipe::{Doorway, Edit};
 use autolevel::scatter::{Lot, STOREY};
 use autolevel::storeys::{snap_top, CEILINGS, LEVELS};
+use autolevel::windows::places;
 
 /// A cell, in units: the router's grid is 3 m, twice the furnisher's 59-unit half cell.
 pub const UNITS: f32 = 118.0;
@@ -271,6 +272,19 @@ pub fn wall_at(lv: &Level, s: &Section, at: P, grip: f32, first: &[&str]) -> Opt
     })
 }
 
+/// The cell a place on the side view is over and the storey it is on (the highest floor at or
+/// under its height): what a click there with the things tool names (`puts::click`).
+pub fn place_at(s: &Section, at: P) -> ((i32, i32), i32) {
+    let u = at.0.floor() as i32;
+    let cell = match s.axis {
+        Axis::X => (u, s.at),
+        Axis::Y => (s.at, u),
+    };
+    let height = at.1 * UNITS;
+    let z = autolevel::storeys::LEVELS.iter().copied().filter(|z| *z as f32 <= height + 1.0).max().unwrap_or(autolevel::storeys::LEVELS[0]);
+    (cell, z)
+}
+
 /// How tall a doorway is drawn (units): Felicity's doors'.
 const DOOR_UP: i32 = autolevel::felicity::DOOR_H;
 
@@ -287,6 +301,9 @@ pub struct SideView {
     pub boxes: Option<Boxes>,
     /// Pixels to a cell where it will be drawn, as near as is known: which names fit.
     pub scale: f32,
+    /// The things the recipe put by place, each with whether the level took it
+    /// (`puts::listed`): framed where the section cuts them, magenta or red.
+    pub things: Vec<(Edit, Result<(), String>)>,
 }
 
 struct Pen<'a> {
@@ -406,6 +423,70 @@ impl Pen<'_> {
     /// Half cells on the section, as runs (in half cells).
     fn cut_half(&self, cells: &Cells) -> Vec<(i32, i32)> {
         Self::runs(cells.iter().filter_map(|&c| self.s.on_half(c)).collect())
+    }
+
+    /// What stands on the floors (pillars to their height, crates), the windows and the drops
+    /// where the section cuts them; then the things put by hand, framed (magenta: put; red: the
+    /// level could not).
+    fn things(&mut self, lv: &Level, put: &[(Edit, Result<(), String>)]) {
+        let s = self.s;
+        // (a rectangle of half cells across the section: its span in cells, if the cut crosses it)
+        let span = |r: Rect| {
+            let (a0, a1, b0, b1) = if s.axis == Axis::X { (r.1, r.3, r.0, r.2) } else { (r.0, r.2, r.1, r.3) };
+            (a0 < 2 * s.at + 2 && 2 * s.at < a1).then_some((b0 as f32 / 2.0, b1 as f32 / 2.0))
+        };
+        for (_, it) in &lv.interiors {
+            let z = it.levels[0];
+            for c in &it.cover {
+                if let Some((u0, u1)) = span((c.0, c.1, c.2, c.3)) {
+                    let b = (u0, up(z), u1, up(z + c.4));
+                    self.rect(b, colour::COVER);
+                    self.outline(b, colour::COVER_EDGE, 1.0);
+                }
+            }
+        }
+        for w in &lv.windows {
+            for &c in &w.wall {
+                if let Some(u) = s.on(c) {
+                    let (col, lo, hi) = if w.kind == "rail" { (colour::BALCONY, w.z, w.z + 40) } else { (colour::GLASS, w.z + 40, w.z + 134) };
+                    self.line((u as f32 + 0.5, up(lo)), (u as f32 + 0.5, up(hi)), col, 3.0);
+                }
+            }
+        }
+        for (upper, _, r, _) in &lv.drops {
+            let hole = (2 * r.0, 2 * r.1, 2 * r.2, 2 * r.3);
+            if let (Some((u0, u1)), Some(a)) = (span(hole), lv.spaces().iter().find(|a| a.key == *upper)) {
+                self.line((u0, up(a.floor)), (u1, up(a.floor)), colour::DROP_MARK, 3.0);
+                let m = (u0 + u1) / 2.0;
+                self.line((m, up(a.floor)), (m, up(a.floor) - 1.2), colour::DROP_MARK, 1.5);
+            }
+        }
+        for (e, took) in put {
+            let col = if took.is_ok() { colour::ASKED } else { colour::DEAD_END };
+            let floor = |room: &str| lv.spaces().iter().find(|a| a.key == room).map_or(0, |a| a.floor);
+            let (cells, lo, hi): (Vec<(i32, i32)>, i32, i32) = match e {
+                Edit::Window { room, storey, at, .. } => {
+                    let wall = places(lv).into_iter().find(|p| p.hall == *room && p.z == *storey && p.wall.contains(at)).map_or(vec![*at], |p| p.wall);
+                    (wall, *storey, *storey + 236)
+                }
+                Edit::Piece { room, at, to, .. } => {
+                    let end = to.unwrap_or(*at);
+                    let it = lv.interiors.iter().find(|(k, _)| k == room).map(|(_, it)| it);
+                    let c = it.and_then(|it| it.piece_at(end).map(|i| it.cover[i])).filter(|_| took.is_ok());
+                    let cells = match c {
+                        Some(c) => (c.0 / 2..c.2 / 2).flat_map(|x| (c.1 / 2..c.3 / 2).map(move |y| (x, y))).collect(),
+                        None => vec![end],
+                    };
+                    (cells, floor(room), floor(room) + c.map_or(118, |c| c.4))
+                }
+                Edit::Drop { room, at: Some(at) } => (vec![*at, (at.0 + 1, at.1 + 1)], floor(room) - 40, floor(room) + 40),
+                _ => continue,
+            };
+            let on: Vec<i32> = cells.iter().filter_map(|&c| s.on(c)).collect();
+            if let (Some(&u0), Some(&u1)) = (on.iter().min(), on.iter().max()) {
+                self.outline((u0 as f32 - 0.15, up(lo) - 0.15, u1 as f32 + 1.15, up(hi) + 0.15), col, 2.0);
+            }
+        }
     }
 
     /// A room: solid where the section crosses it, a faint outline behind where it does not.
@@ -588,6 +669,9 @@ pub fn picture(lv: Option<&Level>, view: &SideView) -> Picture {
                 }
             }
         }
+    }
+    if let Some(lv) = lv {
+        pen.things(lv, &view.things);
     }
     if let Some(b) = &view.boxes {
         pen.boxes(b);

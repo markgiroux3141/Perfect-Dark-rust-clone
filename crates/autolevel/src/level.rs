@@ -134,7 +134,48 @@ pub struct Options {
     /// `PARTS`, which of its other streams), each drawn from a stream of its own in place of the
     /// room's. Filled as `forced` is; with none (every seed's own level) nothing moves. New here.
     pub rerolled: Vec<(String, &'static str, u32)>,
+    /// Single things put by hand where they are (a recipe's `window`, `piece` and `drop` edits),
+    /// in the recipe's order. Filled as `forced` is; with none (every seed's own level) nothing
+    /// is put, and every draw is as it was. New here (the editing roadmap's item 6).
+    pub puts: Vec<Put>,
 }
+
+/// A single thing put by hand, named by where it is, never by an index (indices shift with every
+/// remake): a recipe's `window`, `piece` or `drop` edit, as the stages are told it
+/// (`Options::puts`). Each is applied after the generator has drawn its own, so it moves no draw;
+/// one that does not fit is left out and says why (`Level::unmet`). New here: the Python has none.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Put {
+    /// The window into `room` on storey `z` whose wall holds the cell `at` (`windows::places`:
+    /// a cell of wall between the room and a corridor running along it) is `kind`: "glass",
+    /// "rail" or "none".
+    Window { room: String, z: i32, at: (i32, i32), kind: &'static str },
+    /// A piece stood on `room`'s floor with its low corner on the cell `at`, `size` cells square
+    /// (None: a pillar the size the room's colonnade has, a crate one cell): `what` is "pillar"
+    /// or "crate". What stood where it goes is taken out first.
+    Stand { room: String, at: (i32, i32), what: &'static str, size: Option<i32> },
+    /// The piece on `room`'s floor over the cell `at` (a pillar or crate, not a wall of the
+    /// room's shape) taken out (`to`: None), or moved so its low corner is on the cell `to`.
+    Shift { room: String, at: (i32, i32), to: Option<(i32, i32)> },
+    /// `room`'s drop: a hole two cells square through its floor with its low corner on the cell
+    /// `at`, into the room under it (in place of the one the generator gave it, if any), or none
+    /// (`at`: None). A cellar's hatch stays.
+    Drop { room: String, at: Option<(i32, i32)> },
+}
+
+impl Put {
+    /// The room it is put in.
+    pub fn room(&self) -> &str {
+        match self {
+            Put::Window { room, .. } | Put::Stand { room, .. } | Put::Shift { room, .. } | Put::Drop { room, .. } => room,
+        }
+    }
+}
+
+/// What a window may be made as (a recipe's `window` edit).
+pub const WINDOW_KINDS: [&str; 3] = ["glass", "rail", "none"];
+/// What a piece may be stood as (a recipe's `piece` edit), or "none": taken out.
+pub const PIECES: [&str; 3] = ["pillar", "crate", "none"];
 
 /// The parts of a room that may be re-rolled alone (a recipe's `reroll` edit with a `part`):
 /// its catwalks (the decks and their bridges, a towering tower's storey shapes), its ramps
@@ -205,6 +246,7 @@ impl Default for Options {
             start: Start::Seed,
             forced: Vec::new(),
             rerolled: Vec::new(),
+            puts: Vec::new(),
         }
     }
 }
@@ -277,6 +319,11 @@ impl Options {
     /// level's chance at nothing)?
     pub fn forces_on(&self, what: &str) -> bool {
         self.forced.iter().any(|(_, w, on)| *w == what && *on)
+    }
+
+    /// The things put by hand in `room`.
+    pub fn puts_in<'a>(&'a self, room: &'a str) -> impl Iterator<Item = &'a Put> + 'a {
+        self.puts.iter().filter(move |p| p.room() == room)
     }
 
     pub fn stream<'a>(&self, shared: &'a mut PyRandom, own: &'a mut Option<PyRandom>, name: impl FnOnce() -> String) -> &'a mut PyRandom {
@@ -1041,6 +1088,9 @@ pub struct Level {
     /// each light panel; none in Complex's.
     pub lamps: Vec<(String, (i32, i32, i32))>,
     pub report: Report,
+    /// The things put by hand (`Options::puts`) that were left out, each with why ("in front of a
+    /// door"). Empty with none put.
+    pub unmet: Vec<(Put, String)>,
 }
 
 impl Level {
@@ -1132,8 +1182,12 @@ pub fn stage_level(mut b: Build, dropped: Vec<String>) -> Result<Level, String> 
         fittings: Vec::new(),
         lamps: Vec::new(),
         report: Report::default(),
+        unmet: b.unmet,
     };
-    lv.windows = windows::windows(&lv);
+    lv.unmet.extend(lv.interiors.iter().flat_map(|(_, it)| it.unmet.iter().cloned()));
+    let (windows, unmet) = windows::windows(&lv);
+    lv.windows = windows;
+    lv.unmet.extend(unmet);
     planner::plan(&mut lv, &mut PyRandom::named(&format!("{seed}/plan")))?;
     let problems = lv.plan.check();
     if !problems.is_empty() {

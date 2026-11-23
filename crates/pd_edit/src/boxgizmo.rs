@@ -18,6 +18,8 @@
 //! counts a height in, so a drag up is handed over in those.
 
 use autolevel::boxes::Change;
+use autolevel::level::Level;
+use autolevel::recipe::Edit;
 use autolevel::scatter::Lot;
 use autolevel_edit::sideview::{self, Axis, Section, SidePart, UNITS};
 use glam::Vec3;
@@ -292,6 +294,42 @@ pub fn storey_at(pv: &Preview, o: Vec3, d: Vec3) -> Option<i32> {
     autolevel::storeys::LEVELS.into_iter().filter(|z| *z as f32 <= y + 4.0).max()
 }
 
+/// The cell and storey a click with the things tool names (`puts::click`): where the ray first
+/// meets the level, a hair past the surface (so a pillar's side is the pillar's own cell, a wall
+/// the cell behind its face), and the highest floor at or under the point met.
+pub fn place_at(pv: &Preview, o: Vec3, d: Vec3) -> Option<((i32, i32), i32)> {
+    let (start, t) = met(pv, o, d)?;
+    let (x, y) = cell(start + d * (t + 2.0));
+    let z = autolevel::storeys::LEVELS.into_iter().filter(|z| *z as f32 <= (start + d * t).y + 4.0).max()?;
+    Some(((x.floor() as i32, y.floor() as i32), z))
+}
+
+/// Where a thing put by place is in the world (low corner and high), to frame it: a window's
+/// wall cells on its storey, a pillar or crate where it stands (else the cell it was put on), a
+/// drop's hole in its room's floor. None for a drop taken out.
+pub fn thing_box(lv: &Level, e: &Edit, took: bool) -> Option<(Vec3, Vec3)> {
+    let floor = |room: &str| lv.spaces().iter().find(|s| s.key == room).map_or(0, |s| s.floor) as f32;
+    let (r, lo, hi) = match e {
+        Edit::Window { room, storey, at, .. } => {
+            let wall = autolevel::windows::places(lv).into_iter().find(|p| p.hall == *room && p.z == *storey && p.wall.contains(at)).map_or(vec![*at], |p| p.wall);
+            let (x0, y0) = (wall.iter().map(|c| c.0).min()?, wall.iter().map(|c| c.1).min()?);
+            let (x1, y1) = (wall.iter().map(|c| c.0).max()? + 1, wall.iter().map(|c| c.1).max()? + 1);
+            ((x0 as f32, y0 as f32, x1 as f32, y1 as f32), *storey as f32, (*storey + 236) as f32)
+        }
+        Edit::Piece { room, at, to, .. } => {
+            let end = to.unwrap_or(*at);
+            let it = lv.interiors.iter().find(|(k, _)| k == room).map(|(_, it)| it);
+            let c = it.and_then(|it| it.piece_at(end).map(|i| it.cover[i])).filter(|_| took);
+            let r = c.map_or((end.0 as f32, end.1 as f32, end.0 as f32 + 1.0, end.1 as f32 + 1.0), |c| (c.0 as f32 / 2.0, c.1 as f32 / 2.0, c.2 as f32 / 2.0, c.3 as f32 / 2.0));
+            (r, floor(room), floor(room) + c.map_or(118, |c| c.4) as f32)
+        }
+        Edit::Drop { room, at: Some(at) } => ((at.0 as f32, at.1 as f32, at.0 as f32 + 2.0, at.1 as f32 + 2.0), floor(room) - 30.0, floor(room) + 30.0),
+        _ => return None,
+    };
+    let (a, b) = (world((r.0, r.1), lo), world((r.2, r.3), hi));
+    Some((a.min(b), a.max(b)))
+}
+
 /// Where the ray `o + t d` first meets what is drawn of the preview (a tile, or with no
 /// ceilings drawn a room's top from under it), cut where the cutaway cuts: the ray's start
 /// (where it crosses the cut, from over it) and `t` along it from there.
@@ -351,6 +389,9 @@ pub struct Shown {
     /// The doorways asked for of a join (with "Join" in hand): each a panel on
     /// its wall, low corner and high, drawn on top.
     pub doors: Vec<(Vec3, Vec3)>,
+    /// The things put by place (`thing_box`), each with whether the level took
+    /// it: framed on top, magenta, or red where it did not.
+    pub marks: Vec<(Vec3, Vec3, bool)>,
 }
 
 /// The colour of a doorway asked for (the plan's `colour::ASKED`).
@@ -375,6 +416,11 @@ pub fn doorway_box(rect: (i32, i32, i32, i32), d: autolevel::recipe::Doorway, z:
 /// where walls hide them), the handles on top; a drag's boxes on top; the
 /// doorways asked for on top.
 pub fn draw(mesh: &mut Mesh3d, shown: &Shown, eye: Vec3) {
+    for &(lo, hi, took) in &shown.marks {
+        let col = if took { ASKED } else { REFUSED };
+        mesh.wire_box(true, lo - Vec3::splat(3.0), hi + Vec3::splat(3.0), col);
+        mesh.wire_box(true, lo - Vec3::splat(6.0), hi + Vec3::splat(6.0), col);
+    }
     for &(lo, hi) in &shown.doors {
         // (a panel standing in the wall's plane, its four edges doubled)
         let (a, b, c, d) = if lo.x == hi.x {

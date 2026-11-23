@@ -175,9 +175,12 @@ pub struct Generated {
     /// Doorways asked for of a join, drawn as the 3D view draws them: the
     /// room, the doorway on its wall, the storey's floor.
     pub doors: Vec<(String, autolevel::recipe::Doorway, i32)>,
+    /// The things tool (`--things`), and the pixels clicked with it (`--put`).
+    pub things: Option<autolevel::puts::Tool>,
+    pub puts: Vec<(f32, f32)>,
 }
 
-const GENERATED_USAGE: &str = "usage: pd_edit --shot-generated <out.png> [--seed N | --recipe FILE] [--at x,y,z,yaw,pitch | --view NAME | --room KEY] [--walk x,y,z,theta | --walk NAME [--forward TICKS] [--crouch]] [--select ROOM [--drag HANDLE:N]] [--no-ceilings] [--up-to FLOOR] [--pick PX,PY] [--door ROOM@SIDE:AT@FLOOR] [--plan] [--list] [--size WxH]\n  HANDLE: west east south north top bottom (faces) or x y z (arrows); N cells, or storeys for top, bottom and z\n  --door: a doorway asked for of a join (E N W or S, the cell along the wall), as medium3@W:26@0";
+const GENERATED_USAGE: &str = "usage: pd_edit --shot-generated <out.png> [--seed N | --recipe FILE] [--at x,y,z,yaw,pitch | --view NAME | --room KEY] [--walk x,y,z,theta | --walk NAME [--forward TICKS] [--crouch]] [--select ROOM [--drag HANDLE:N]] [--no-ceilings] [--up-to FLOOR] [--pick PX,PY] [--door ROOM@SIDE:AT@FLOOR] [--things TOOL --put PX,PY] [--plan] [--list] [--size WxH]\n  HANDLE: west east south north top bottom (faces) or x y z (arrows); N cells, or storeys for top, bottom and z\n  --door: a doorway asked for of a join (E N W or S, the cell along the wall), as medium3@W:26@0\n  --things glass|rail|no-window|pillar|crate|take-out|drop --put PX,PY: a click there with that tool (what it puts is put, the level made again, the things put framed)";
 
 impl Generated {
     pub fn parse(args: &[String]) -> Result<Generated, String> {
@@ -200,6 +203,8 @@ impl Generated {
             up_to: None,
             pick: None,
             doors: Vec::new(),
+            things: None,
+            puts: Vec::new(),
         };
         let numbers = |name: &str, v: &str| v.split(',').map(|s| s.trim().parse::<f32>()).collect::<Result<Vec<f32>, _>>().map_err(|e| format!("{name}: {e}"));
         let mut it = args.iter();
@@ -249,12 +254,24 @@ impl Generated {
                     let d = autolevel::recipe::Doorway::parse(d).ok_or_else(bad)?;
                     g.doors.push((room.to_string(), d, z.parse().map_err(|_| bad())?));
                 }
+                "--things" => {
+                    let v = val("--things")?;
+                    g.things = Some(autolevel_edit::cli::things_tool(&v).ok_or(format!("--things: glass, rail, no-window, pillar, crate, take-out or drop, not {v}"))?);
+                }
+                "--put" => {
+                    let v = numbers("--put", &val("--put")?)?;
+                    let [x, y] = v[..] else { return Err("--put PX,PY".into()) };
+                    g.puts.push((x, y));
+                }
                 s if !s.starts_with("--") && g.out.is_none() => g.out = Some(PathBuf::from(s)),
                 s => return Err(format!("{s:?}?\n{GENERATED_USAGE}")),
             }
         }
         if g.out.is_none() && !g.list {
             return Err(GENERATED_USAGE.into());
+        }
+        if !g.puts.is_empty() && g.things.is_none() {
+            return Err("--put needs --things TOOL".into());
         }
         if g.drag.is_some() && g.select.is_none() {
             return Err("--drag needs --select ROOM".into());
@@ -285,7 +302,7 @@ impl Generated {
         let t = autolevel::boxes::trial(recipe, &change, &base);
         let tried = t.lots.iter().filter(|a| a.key == *key || a.host == *key).cloned().collect();
         let line = format!("drag {}:{n}: {}{}", h.name(), crate::space::words(&change), t.refused.as_ref().map_or(String::new(), |why| format!(": refused: {why}")));
-        Ok((Shown { lot: Some(lot), tried, refused: t.refused.is_some(), hot: Some(h), doors: Vec::new() }, Some(line)))
+        Ok((Shown { lot: Some(lot), tried, refused: t.refused.is_some(), hot: Some(h), ..Shown::default() }, Some(line)))
     }
 
     /// The generator's recipe asked for: the file's, or the seed's own.
@@ -370,11 +387,11 @@ pub fn plan_with_camera(recipe: &autolevel::recipe::Recipe, eye: Vec3, yaw: f32,
 /// prints, the picture's path last (if one was asked for).
 pub fn run_generated(args: &[String]) -> Result<Vec<String>, String> {
     let g = Generated::parse(args)?;
-    let recipe = g.recipe()?;
+    let mut recipe = g.recipe()?;
     let paths = EditPaths::discover()?;
     let root = preview::Scratch::root();
     preview::Scratch::sweep(&root);
-    let pv = Preview::make_cut(&recipe, g.cut(), &paths.assets, &root)?;
+    let mut pv = Preview::make_cut(&recipe, g.cut(), &paths.assets, &root)?;
     let cut = if pv.cut.none() { String::new() } else { format!(" ({})", pv.cut.words()) };
     let mut said = vec![format!("preview of seed {}{}{cut}: {}", recipe.seed, if recipe.edits.is_empty() { String::new() } else { format!(" with {} edits", recipe.edits.len()) }, pv.line())];
     if g.list {
@@ -399,6 +416,39 @@ pub fn run_generated(args: &[String]) -> Result<Vec<String>, String> {
         }
         None => g.camera(&pv)?,
     };
+    // `--put`: clicks with the things tool, as the 3D view takes them (the camera's ray to the
+    // level, `boxgizmo::place_at`, `puts::click`); then the level is made again with them
+    let mut marks = Vec::new();
+    if let Some(tool) = g.things {
+        let mut doc = autolevel_edit::doc::Doc::new(recipe.clone(), false);
+        doc.regenerate()?;
+        let v = cam.view(w as f32 / h as f32, 15.0, 10000.0);
+        for &(px, py) in &g.puts {
+            let (o, d) = crate::camera::ray(&v, px, py, w as f32, h as f32);
+            let made = doc.made().cloned().ok_or("no level")?;
+            let put = crate::boxgizmo::place_at(&pv, o, d).ok_or("nothing there".to_string()).and_then(|(cell, z)| autolevel::puts::click(&made.level, tool, cell, Some(z)));
+            match put {
+                Ok(e) => {
+                    said.push(format!("put at {px:.0}, {py:.0}: {}", e.describe()));
+                    doc.put(e);
+                    doc.regenerate()?;
+                }
+                Err(why) => said.push(format!("nothing put at {px:.0}, {py:.0}: {why}")),
+            }
+        }
+        if let Some(made) = doc.made().cloned() {
+            for (e, took) in doc.puts() {
+                if let Err(why) = &took {
+                    said.push(format!("  not put: {}: {why}", e.describe()));
+                }
+                marks.extend(crate::boxgizmo::thing_box(&made.level, &e, took.is_ok()).map(|(a, b)| (a, b, took.is_ok())));
+            }
+        }
+        if doc.recipe != recipe {
+            recipe = doc.recipe.clone();
+            pv = Preview::make_cut(&recipe, g.cut(), &paths.assets, &root)?;
+        }
+    }
     if g.plan {
         let img = plan_with_camera(&recipe, cam.pos, cam.yaw, w, h)?;
         std::fs::write(&out, img.png()?).map_err(|e| format!("{}: {e}", out.display()))?;
@@ -426,6 +476,7 @@ pub fn run_generated(args: &[String]) -> Result<Vec<String>, String> {
     }
     let (mut shown, line) = g.gizmo(&recipe)?;
     said.extend(line);
+    shown.marks = marks;
     for (room, d, z) in &g.doors {
         let r = pv.rooms.iter().find(|r| r.key == *room).ok_or_else(|| format!("--door: no room {room}"))?;
         shown.doors.push(crate::boxgizmo::doorway_box(r.rect, *d, *z));
@@ -433,7 +484,7 @@ pub fn run_generated(args: &[String]) -> Result<Vec<String>, String> {
     let target = RenderTarget::on_device(&gpu.device, w, h, format, true);
     let mut enc = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("pd_edit shot-generated") });
     draw_bg(&renderer, &gpu.queue, &mut enc, &target, &view);
-    if shown.lot.is_some() || !shown.doors.is_empty() {
+    if shown.lot.is_some() || !shown.doors.is_empty() || !shown.marks.is_empty() {
         let mut mesh = crate::draw3d::Mesh3d::default();
         crate::boxgizmo::draw(&mut mesh, &shown, cam.pos);
         crate::draw3d::Draw3d::new(&gpu.device, format).draw(&gpu.device, &mut enc, &target, crate::camera::world_to_clip(&view), &mesh, true);

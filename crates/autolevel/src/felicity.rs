@@ -2096,6 +2096,7 @@ fn level(seed: u64, o: &Options, layout: Layout) -> Result<Level, String> {
         fittings,
         lamps,
         report,
+        unmet: Vec::new(),
     })
 }
 

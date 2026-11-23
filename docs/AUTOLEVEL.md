@@ -844,6 +844,9 @@ field, option or edit is an error that says which. With no edits a recipe gives 
 | `keep` (the dead end a room is in) | the dead-end pass | The pass leaves it alone (`Build::keep`). |
 | `cut` (a room's own decks stop at a storey) | after the pass | Refused if the room has a door higher up (`Build::cut`). |
 | `brightness`, `ceiling` | the finished level | They replace the planner's own choice. |
+| `window` (a room, a storey, a cell of the window's wall, `as` glass, rail or none) | the finished level (once the windows are chosen) | New (2026-11-23). The window there is made glass or rail, or taken out; a place the level left without one is given one, past the level's limits. Left out with why (`Level::unmet`) where no window fits, or for a rail on the room's own floor; refused only for an `as` that is none of them. |
+| `piece` (a room, a cell, `as` pillar, crate or none, or `to` a cell) | furnishing (once the room's cover is laid) | New (2026-11-23). A pillar or crate stood with its low corner on the cell (`size` cells square; none: a pillar the room's colonnade's width, a crate a cell), in place of what stood there; the one over the cell taken out, or moved by its low corner to `to`. Left out with why where it does not fit (off the floor, by a door, a ramp's foot, water or a drop, on another piece, under a deck's edge, cutting a door off). Refused without one of `as` and `to`. |
+| `drop` (a room, a cell or none) | furnishing (as the openings are chosen) | New (2026-11-23). The room's drop (two cells square, its low corner on the cell, into the room under it) in place of the generator's, or none. Left out with why on the generator's own terms (a cell in from both rooms' walls, clear of doors, nothing between, at most four storeys, a floor to land on). A cellar's hatch stays. |
 | `feature` (a room, one of `level::FEATURES`, on or off) | the rooms (shaped, flooded, sunken, cellar) or furnishing (platforms, holes, angled) | New (2026-11-23). In place of the level's chance for that room alone: on is a chance of 1, off of 0, drawn from the room's own stream as ever. A room the feature does not fit is left without it (the room's choices say so); refused only for an unknown feature. |
 
 **Which lots may overlap** (`place::Placed::check`, held to after all the lot edits, not after
@@ -2847,10 +2850,11 @@ Order of work, and where each stands:
    below. `reroll { room, n, part }` with a stream of its own per part (catwalks, ramps, cover,
    windows), so one part changes and the rest stays; five small pictures of re-rolls made in
    parallel, one click to keep.
-6. **Single elements by place.** Windows (`window { hall, storey, cell, glass|rail|none }`: in
-   an empty start a window's stream is already keyed by its place), pillars and crates added,
-   taken out or nudged, a drop put in a floor. Named by where they are, never by an index
-   (indices shift with every remake).
+6. **Single elements by place.** Done (2026-11-23): "Single things by place", below. `window { room, storey, at, as: glass|rail|none }`, `piece { room,
+   at, as: pillar|crate|none [, size] }` or `piece { room, at, to }`, `drop { room [, at] }`,
+   named by where they are, never by an index (indices shift with every remake); put after the
+   generator's own, so no draw moves; one that does not fit is left out with why. On the plan,
+   the side view, `pd_edit`'s Layout screen ("Put things") and its 3D view.
 7. **The cascade shown** ("Blank levels", piece 5): what an edit changed, lit, ghosted, listed.
    Wanted before 3 and 6 make edits that ripple.
 8. Lock one room and re-roll the rest; copy, paste and mirror a room with its choices; a room
@@ -3128,6 +3132,94 @@ Order of work, and where each stands:
   the level is made. A room at the level's edge sits off-centre in its tile (the tile's spare
   width shows its neighbours). Pillars can't be re-rolled (they stand by rule): item 6 is where
   they are placed by hand.
+
+### Single things by place (roadmap item 6, 2026-11-23)
+
+- **The edits:** `Edit::Window { room, storey, at, as }`, `Edit::Piece { room, at, as | to, size }`,
+  `Edit::Drop { room, at }` (the recipe table above). `recipe::put_of` makes each a `level::Put`
+  (`Window`, `Stand`, `Shift`, `Drop`), and `Recipe::effective` hands them to the stages as
+  `Options::puts` (as `forced` and `rerolled` go; not saved). With none, nothing runs: the answer
+  keys pass unchanged.
+- **Where each is put, after the generator's own** (so no draw moves; what follows fits itself
+  round it):
+  - **Windows** (`windows.rs`): the places are found as ever (`found`; `places(lv)` lists them
+    for an editor: a corridor piece along a hall's wall a cell away, its 2 to 4 wall cells,
+    `level` where the corridor is on the hall's floor); the level takes its own (the shared draw
+    made as ever); then `put`: the window whose wall holds `at` on that storey is made glass or
+    rail or taken out, else a place there is given one past `windows` and the one-a-piece,
+    two-a-hall limits. A window is named by any cell of its wall; an editor names it by the
+    first (`puts::click`).
+  - **Pieces** (`furnish/cover.rs`): `lay_cover` is now `site` (the floor as cover sees it) and
+    `lay_drawn` (the room's own shape, lane pillars, colonnade or crates, exactly as before), then
+    `put_pieces`: a `Stand` takes out what overlaps it and stands where `stand_piece` allows it
+    (on the floor, clear of the door aprons, ramps' feet, water and drops, on no other piece, a
+    pillar's `reach` not 0, and `place`'s connectivity), else puts back what it took out where it
+    was in `cover`; a `Shift` finds the piece over the cell (`piece_at`, never a shape's wall) and
+    stands it at `to` the same way (its height kept for a crate, `reach` again for a pillar). A
+    pillar is as tall as `reach` makes it; a crate 118. The ladders, rails and walks after it see
+    it. A room under 9 cells or a pod: "too small to stand anything in".
+  - **Drops** (`build.rs`): `put_drops` after `openings` (the grates are chosen first, so they
+    stay): each takes the place of its room's drop (`drop_at`, the generator's terms; one drop a
+    room) or takes it out; a cellar's hall keeps its hatch. A hand drop the lower room's furnishing
+    blocks (`lands_clear`) or the upper can't be furnished round is left out with that reason.
+  - Each left out is in `Level::unmet` (`Build::unmet`, `Interior::unmet`, `windows::windows`'s),
+    with why.
+- **What an editor asks** (`autolevel::puts`): `Tool` (glass, rail, no window, pillar, crate,
+  take out, drop); `click(lv, tool, cell, storey)` is the edit a click makes (the room under the
+  cell on the storey shown, `room_at`; a window by `window_at`: its wall, or the cell either side
+  of it; a piece taken out by its low corner; a click on a drop takes it out); `drag` moves a piece
+  by as many cells; `set` keeps the recipe short (a window or a room's drop replaces its earlier
+  edit; a piece stood and then moved is one edit stood where it went, moved twice one move, moved
+  back none, stood then taken out none); `clear` (a place's edits out); `listed` (each with
+  whether it took).
+- **`autolevel_edit`:** a third tool, **Things**, and under it a row of the seven; the line under
+  the plan says what a click puts (or why nothing can be); a click puts it, a drag of a pillar or
+  crate moves it ("let go: ..."). The plan frames each thing put in magenta (a line from where a
+  moved piece was, a cross on one taken out), in red with "not put" where the level did not take
+  it; a window tool dots every window place on the storey shown. The side view draws the cover
+  (pillars to their height, crates), windows (glass a band, rail low and orange) and drops where
+  it cuts them, frames the things put, and takes a click: the cell under it and the storey of its
+  height (`sideview::place_at`). The panel lists "things put by place", each with an x (the
+  generator's own again) and, in red, why one was not put. `Doc::put`, `clear_put`, `puts`;
+  `Editor::click_thing`, `drag_thing`, `put`, `clear_put`.
+- **`pd_edit`:** on the Layout screen, "Put things" beside "Join rooms" under "Change the plan",
+  and under it the same row of seven and the list (`Editor::things_ui`, shared). In the 3D view,
+  with it in hand a click puts what the tool puts where the ray meets the level
+  (`boxgizmo::place_at`: the cell a hair past the surface, so a pillar's side is the pillar and a
+  wall the cell behind its face, and the storey of the point met), and the line over the view says
+  what a click there puts; the things put are framed on top, magenta or red
+  (`boxgizmo::thing_box`, `Shown::marks`). `pd_edit --shot-generated OUT --things TOOL --put
+  PX,PY` (the click, the level made again, the frames drawn); `--shot-ui OUT --seed 40 --step
+  layout --things TOOL` (tall: `--size 1600x1500` shows "Change the plan").
+- **Command line:** `--window ROOM@STOREY@X,Y@glass|rail|none`, `--piece ROOM@X,Y@pillar|crate|none`,
+  `--nudge ROOM@X,Y@TX,TY`, `--drop ROOM@X,Y|none`, `--unput ROOM@X,Y`, `--things TOOL` (the tool,
+  its marks on the shot) and `--click X,Y` (with `--storey`); each prints "put:" or "not put: ...:
+  why".
+- **Checked:** `tests/recipe.rs` (a window by any wall cell made rail, none, given where `windows`
+  is 0, refused places and a rail on the floor with their words, the file both ways; vast's lane
+  pillar taken out by either cell, moved where it fits and refused under a deck's edge, off the
+  floor and where nothing stands, a crate and a pillar stood, one stood on another, a size, cells
+  along the walls refused, no other room's inside moves; colossal's drop taken out, loft2's into
+  vast at every spot either made with its walk or refused, refused where nothing is under it, the
+  generator's kept); `puts` (clicks name things the same way, the recipe kept short, the list);
+  two window tests (egui: the tool, the hover line, a crate clicked, a pillar taken out by its
+  second cell, nothing there refused in red, a drag moves the other, a window made rail on 276,
+  the list's x, undo; the side view's click names medium1's window on 276); the command line
+  (put, not put, a click, saved and the same picture again, unput, the refusals); `pd_edit`'s
+  (the 3D view: the hover line, a click on vast's floor is one `piece` edit, framed once made,
+  the room tool's click only selects). The answer keys
+  pass. Pictures read: seed 40's plan on the ground floor with a crate, a pillar moved and two
+  refused; the side view along y = 30 with the crate, the rail and loft2's pillar; two crates
+  clicked on vast's floor in 3D, framed; the Layout screen's "Put things" row
+  (`out/autolevel/things/`, scratch).
+- **Rough:** nobody has looked at the window. On the plan with every storey drawn a click finds
+  the highest room over the cell (loft2 over vast): choose a storey first. A window named by a
+  cell that is not its first (`--window` by hand) is a separate edit from the one a click makes.
+  Only drops between rooms: a pit in a platform (`furnish::pits`) is not yet put by hand. A
+  piece's size can't be changed but by `size` in the file. A drag shows no piece moving, only the
+  line under the plan; in 3D there is no drag (a click only). The Layout screen's footer still
+  gives the room tool's hints. Seed 40 with the default options has no window places at all (its
+  corridors run along no hall a cell away): the window tools find nothing there.
 
 ## Risks
 

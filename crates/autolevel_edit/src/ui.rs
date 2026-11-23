@@ -55,6 +55,7 @@ use autolevel::candidates::{Asked, Removal};
 use autolevel::cells::Rect;
 use autolevel::level::{Options, Start, COVER};
 use autolevel::place::{self, Placed};
+use autolevel::puts;
 use autolevel::recipe::{self, Doorway, Edit, Recipe};
 use autolevel::scatter::Lot;
 use autolevel::storeys::{snap_top, LEVELS};
@@ -89,6 +90,9 @@ pub enum Tool {
     Join,
     /// The room boxes: select, move, pull a side, draw a new one, delete.
     Rooms,
+    /// Single things by place (`Editor::thing`): a window made glass, rail or none, a pillar or
+    /// crate stood, taken out or dragged, a drop put in a floor.
+    Things,
 }
 
 /// What a drag on the plan has hold of.
@@ -103,6 +107,8 @@ enum Held {
     /// A room's box in the side view, as it was when the button went down, by this part of it,
     /// from this place (cells across, cells up).
     Side { lot: Lot, part: SidePart, from: P },
+    /// A pillar or crate on the plan, by the cell it was taken hold of at, on this storey.
+    Piece { from: (i32, i32), storey: Option<i32> },
 }
 
 /// What the drag in hand has come to: the change, what it would make of the lots, and for a
@@ -197,6 +203,8 @@ pub struct Editor {
     pub rows: Vec<(usize, egui::Rect)>,
     /// The tool in hand.
     pub tool: Tool,
+    /// What the things tool puts (`Tool::Things`).
+    pub thing: puts::Tool,
     /// Why the room change being tried, or the last one asked for, can't be made.
     pub refused: Option<String>,
     /// Where the last frame put the panel's controls for the tool and the room boxes, by name
@@ -260,6 +268,7 @@ impl Editor {
             fit: None,
             rows: Vec::new(),
             tool,
+            thing: puts::Tool::Piece("pillar"),
             refused: None,
             spots: Vec::new(),
             held: None,
@@ -818,6 +827,88 @@ impl Editor {
         }
     }
 
+    /// A click with the things tool on the cell `cell` (on storey `z`, where the view has one):
+    /// what it puts there (`puts::click`) is put, or in red why nothing can be.
+    pub fn click_thing(&mut self, cell: (i32, i32), z: Option<i32>) {
+        let Some(made) = self.doc.made().cloned() else {
+            return self.refuse("no level yet: wait for it to be made".to_string());
+        };
+        match puts::click(&made.level, self.thing, cell, z) {
+            Ok(e) => self.put(e),
+            Err(why) => self.refuse(why),
+        }
+    }
+
+    /// A drag with the things tool of the piece over `from` to the cell `to`: it is moved by as
+    /// many cells (`puts::drag`).
+    pub fn drag_thing(&mut self, from: (i32, i32), to: (i32, i32), z: Option<i32>) {
+        let Some(made) = self.doc.made().cloned() else { return };
+        match puts::drag(&made.level, from, to, z) {
+            Ok(e) => self.put(e),
+            Err(why) => self.refuse(why),
+        }
+    }
+
+    /// Put a thing by place (`Doc::put`); the level is made again, and the list says if it took.
+    pub fn put(&mut self, e: Edit) {
+        let said = e.describe();
+        self.refused = None;
+        self.status = if self.doc.put(e) { format!("put: {said}") } else { format!("{said}: so already") };
+    }
+
+    /// The generator's own again at a place (`Doc::clear_put`).
+    pub fn clear_put(&mut self, room: &str, at: (i32, i32)) {
+        if self.doc.clear_put(room, at) {
+            self.status = format!("{room} at {}, {}: the generator's own again", at.0, at.1);
+        }
+    }
+
+    /// Say why in red, with nothing done.
+    fn refuse(&mut self, why: String) {
+        self.status = why.clone();
+        self.refused = Some(why);
+    }
+
+    /// The things tool's row (what a click puts) and the list of what the recipe put by place,
+    /// each with whether the level took it and a button to take it out.
+    pub fn things_ui(&mut self, ui: &mut egui::Ui) {
+        if self.tool == Tool::Things {
+            ui.horizontal_wrapped(|ui| {
+                for (tool, name) in puts::Tool::ALL {
+                    let button = ui.selectable_label(self.thing == tool, name).on_hover_text(tool.hint());
+                    self.spots.push((format!("thing {name}"), button.rect));
+                    if button.clicked() {
+                        self.thing = tool;
+                    }
+                }
+            });
+            ui.weak(self.thing.hint());
+        }
+        let put = self.doc.puts();
+        if put.is_empty() {
+            return;
+        }
+        ui.label(format!("things put by place ({})", put.len()));
+        for (n, (e, took)) in put.iter().enumerate() {
+            ui.horizontal(|ui| {
+                let out = ui.small_button("x").on_hover_text("take it out: the generator's own there again");
+                self.spots.push((format!("unput {}", n + 1), out.rect));
+                match took {
+                    Ok(()) => drop(ui.label(e.describe())),
+                    Err(why) => red(ui, &format!("{}: not put: {why}", e.describe())),
+                }
+                if out.clicked() {
+                    let (room, at) = match e {
+                        Edit::Window { room, at, .. } | Edit::Piece { room, at, .. } => (room.clone(), *at),
+                        Edit::Drop { room, at } => (room.clone(), at.unwrap_or((0, 0))),
+                        _ => return,
+                    };
+                    self.clear_put(&room, at);
+                }
+            });
+        }
+    }
+
     /// The seed's own again for one kind of a room's choices (`choices::KINDS`).
     pub fn clear_choice(&mut self, room: &str, what: &str) {
         if self.doc.clear_choice(room, what) {
@@ -883,7 +974,7 @@ impl Editor {
                 drawn = Some(Lot { key: key.clone(), kind, x0, y0, x1, y1, floor, top, host: String::new() });
                 Some(Change::Add { key, kind: kind.to_string(), rect: (x0, y0, x1, y1), floor, top })
             }
-            Some(Held::Pan | Held::Side { .. }) | None => return,
+            Some(Held::Pan | Held::Side { .. } | Held::Piece { .. }) | None => return,
         };
         if self.tried.as_ref().map(|t| &t.change) != change.as_ref() {
             self.tried = change.and_then(|change| self.doc.try_change(&change).ok().map(|trial| Tried { change, trial, drawn }));
@@ -1063,6 +1154,11 @@ impl Editor {
             let tools = [
                 (Tool::Join, "Join", "click a room to see what it could be joined to, or a corridor to take it out"),
                 (Tool::Rooms, "Rooms", "the room boxes: click one to select it, drag it to move it, drag a side to pull it, draw a new one"),
+                (
+                    Tool::Things,
+                    "Things",
+                    "single things by place: a window made glass, rail or none, a pillar or crate stood, taken out or dragged, a drop put in a floor",
+                ),
             ];
             for (tool, name, does) in tools {
                 let button = ui.selectable_label(self.tool == tool, name).on_hover_text(does);
@@ -1073,6 +1169,7 @@ impl Editor {
             }
         });
         self.side_controls(ui);
+        self.things_ui(ui);
         if !ui.memory(|m| m.focused().is_some()) {
             self.seed_text = self.doc.recipe.seed.to_string();
         }
@@ -1938,6 +2035,16 @@ impl Editor {
             // (what the drag has hold of is what was under the pointer when the button went down)
             let from = ui.input(|i| i.pointer.press_origin()).or(resp.interact_pointer_pos());
             let held = from.map(|at| self.hold(lie(centre, zoom).from((at.x, at.y)), placed.as_ref(), GRIP / zoom));
+            // (the things tool with a pillar or crate under the pointer: a drag moves it)
+            let piece = from.map(|at| lie(centre, zoom).from((at.x, at.y))).map(|at| (at.0.floor() as i32, at.1.floor() as i32)).filter(|cell| {
+                self.tool == Tool::Things
+                    && matches!(self.thing, puts::Tool::Piece(_))
+                    && made.as_ref().is_some_and(|m| puts::drag(&m.level, *cell, *cell, self.storey).is_ok())
+            });
+            let held = match piece {
+                Some(from) => Some(Held::Piece { from, storey: self.storey }),
+                None => held,
+            };
             (self.held, self.tried) = (held, None);
         }
         if resp.dragged() && matches!(self.held, Some(Held::Pan)) {
@@ -1963,6 +2070,14 @@ impl Editor {
                 match self.tool {
                     Tool::Join => self.click(at),
                     Tool::Rooms => self.click_box(at, grip),
+                    Tool::Things => self.click_thing((at.0.floor() as i32, at.1.floor() as i32), self.storey),
+                }
+            }
+            if let (true, Some(Held::Piece { from, storey })) = (resp.drag_stopped(), &self.held) {
+                let (from, storey, to) = (*from, *storey, (at.0.floor() as i32, at.1.floor() as i32));
+                self.held = None;
+                if to != from {
+                    self.drag_thing(from, to, storey);
                 }
             }
             if let (true, Some(placed)) = (resp.dragged() || resp.drag_stopped(), &placed) {
@@ -1981,7 +2096,8 @@ impl Editor {
         };
         let mark = made.as_ref().and_then(|made| self.picked.and_then(|n| made.dead.rows().get(n).and_then(|r| r.mark.clone())));
         let boxes = placed.is_some().then(|| self.shown());
-        let view = View { storey: self.storey, mark, scale: zoom, boxes, ..self.doc.look(self.all, self.hot) };
+        let mut view = View { storey: self.storey, mark, scale: zoom, boxes, ..self.doc.look(self.all, self.hot) };
+        view.things.tool = (self.tool == Tool::Things).then_some(self.thing);
         let pic = match &made {
             Some(made) => planview::picture(&made.level, &view),
             // (no level, and the room tool in hand: the boxes alone, to be put right)
@@ -1996,6 +2112,17 @@ impl Editor {
             let within = |r: (i32, i32, i32, i32)| r.0 <= cell.0 && cell.0 < r.2 && r.1 <= cell.1 && cell.1 < r.3;
             // what is there, and what a click or a drag there would do with the tool in hand
             let (under, does): (Vec<&str>, String) = match (&placed, &made) {
+                (None, Some(made)) if self.tool == Tool::Things => {
+                    let does = match (&self.held, puts::click(&made.level, self.thing, cell, self.storey)) {
+                        (Some(Held::Piece { from, storey }), _) => match puts::drag(&made.level, *from, cell, *storey) {
+                            Ok(e) => format!("   let go: {}", e.describe()),
+                            Err(why) => format!("   {why}"),
+                        },
+                        (_, Ok(e)) => format!("   click: {}", e.describe()),
+                        (_, Err(why)) => format!("   {why}"),
+                    };
+                    (made.level.spaces().iter().filter(|s| within(s.rect())).map(|s| s.key.as_str()).collect(), does)
+                }
                 (Some(placed), _) => (placed.lots.iter().filter(|a| within(a.rect())).map(|a| a.key.as_str()).collect(), self.hint((x, y), placed, grip)),
                 (None, Some(made)) => {
                     let wall = self.wall_under(&made.level, (x, y));
@@ -2079,6 +2206,9 @@ impl Editor {
         if let Some(at) = resp.interact_pointer_pos().map(|at| fit.from((at.x, at.y))) {
             if resp.clicked() && self.tool == Tool::Join {
                 self.side_click(s, at, grip.min(0.45));
+            } else if resp.clicked() && self.tool == Tool::Things {
+                let (cell, z) = sideview::place_at(&s, at);
+                self.click_thing(cell, Some(z));
             } else if resp.clicked() {
                 let lots = placed.as_ref().map_or(Vec::new(), |p| p.lots.clone());
                 let hit = sideview::hit(&lots, &s, at, self.doc.selected(), grip);
@@ -2101,7 +2231,14 @@ impl Editor {
         }
         // (drawn after the drag is tried, so the box is where the pointer has it)
         let boxes = placed.is_some().then(|| self.shown());
-        let view = SideView { section: Some(s), boxes, scale: zoom, pick: self.doc.picked().map(|(r, z)| (r.to_string(), z)), asked: self.doc.asked().clone() };
+        let view = SideView {
+            section: Some(s),
+            boxes,
+            scale: zoom,
+            pick: self.doc.picked().map(|(r, z)| (r.to_string(), z)),
+            asked: self.doc.asked().clone(),
+            things: self.doc.puts(),
+        };
         let pic = sideview::picture(made.as_ref().map(|m| &m.level), &view);
         self.drawn.0 = pic.prims.len();
         let to = |p: P| {
@@ -3550,5 +3687,79 @@ mod tests {
         assert!(has(&said, "has: yes"), "{said:?}");
         press(&mut ed, &egui, "feature flooded auto");
         assert!(edits(&ed).is_empty());
+    }
+
+    #[test]
+    fn the_things_tool_stands_takes_out_and_drags_pieces_and_makes_a_window_rail() {
+        let (mut ed, egui) = (editor("--seed 40 --storey 0"), egui::Context::default());
+        pass(&mut ed, &egui, Vec::new());
+        press(&mut ed, &egui, "tool things");
+        press(&mut ed, &egui, "thing crate");
+        assert!(ed.tool == Tool::Things && ed.thing == puts::Tool::Piece("crate"));
+        still(&mut ed, &egui);
+        // the line under the plan says what a click puts; the click puts it, one edit
+        let at = px(&ed, (40.5, 30.5));
+        let said = frame(&mut ed, &egui, vec![egui::Event::PointerMoved(at)]);
+        assert!(has(&said, "click: vast: a crate at 40, 30"), "{said:?}");
+        lone_click(&mut ed, &egui, at);
+        assert_eq!(edits(&ed), ["vast: a crate at 40, 30"]);
+        settle(&mut ed);
+        assert!(ed.doc.made().unwrap().level.interior("vast").cover.contains(&(80, 60, 82, 62, 118, "housing")));
+        let said = pass(&mut ed, &egui, Vec::new());
+        assert!(has(&said, "things put by place (1)") && has(&said, "vast: a crate at 40, 30"), "{said:?}");
+        // take out: the lane pillar, clicked on its second cell, named by its low corner
+        press(&mut ed, &egui, "thing take out");
+        still(&mut ed, &egui);
+        let at = px(&ed, (42.5, 25.5));
+        lone_click(&mut ed, &egui, at);
+        assert_eq!(edits(&ed), ["vast: a crate at 40, 30", "vast: nothing at 41, 25"]);
+        settle(&mut ed);
+        // nothing there: refused in red, nothing put
+        still(&mut ed, &egui);
+        let at = px(&ed, (39.5, 22.5));
+        lone_click(&mut ed, &egui, at);
+        assert_eq!((edits(&ed).len(), ed.refused.as_deref()), (2, Some("nothing stands in vast there")));
+        // a drag moves the other lane pillar; let go, one edit, and the level took it
+        still(&mut ed, &egui);
+        let said = drag(&mut ed, &egui, (41.5, 34.5), (40.5, 32.5));
+        assert!(has(&said, "let go: vast: the piece at 41, 34 moved to 40, 32"), "{said:?}");
+        release(&mut ed, &egui, (40.5, 32.5));
+        assert_eq!(edits(&ed).last().map(String::as_str), Some("vast: the piece at 41, 34 moved to 40, 32"));
+        settle(&mut ed);
+        assert!(ed.doc.puts().iter().all(|(_, took)| took.is_ok()), "{:?}", ed.doc.puts());
+        assert!(ed.doc.made().unwrap().level.interior("vast").cover.contains(&(80, 64, 84, 66, 236, "housing")));
+        // a window made rail on 276, clicked on the room's own edge
+        ed.storey = Some(276);
+        press(&mut ed, &egui, "thing rail");
+        still(&mut ed, &egui);
+        let at = px(&ed, (50.5, 30.5));
+        lone_click(&mut ed, &egui, at);
+        assert_eq!(edits(&ed).last().map(String::as_str), Some("medium1: window at 49, 29 on 276: rail"));
+        settle(&mut ed);
+        assert_eq!(ed.doc.made().unwrap().level.windows.iter().map(|w| w.kind).collect::<Vec<_>>(), ["rail"]);
+        // the list's x takes one out: the generator's own there again
+        pass(&mut ed, &egui, Vec::new());
+        press(&mut ed, &egui, "unput 1");
+        assert_eq!(edits(&ed), ["vast: nothing at 41, 25", "vast: the piece at 41, 34 moved to 40, 32", "medium1: window at 49, 29 on 276: rail"]);
+        // undo brings it back
+        assert!(ed.doc.undo());
+        assert_eq!(edits(&ed).len(), 4);
+    }
+
+    #[test]
+    fn the_things_tool_in_the_side_view_names_the_cell_and_storey_clicked() {
+        let (mut ed, egui) = (editor("--seed 40"), egui::Context::default());
+        ed.set_tool(Tool::Things);
+        ed.thing = puts::Tool::Window("none");
+        ed.side = Some(Section { axis: Axis::Y, at: 49 });
+        pass(&mut ed, &egui, Vec::new());
+        still(&mut ed, &egui);
+        // the wall cell (49, 30) on 276, at window height
+        let fit = ed.side_fit.expect("the side view was drawn");
+        let (x, y) = fit.to((30.5, (276.0 + 100.0) / sideview::UNITS));
+        lone_click(&mut ed, &egui, egui::pos2(x, y));
+        assert_eq!(edits(&ed), ["medium1: window at 49, 29 on 276: none"]);
+        settle(&mut ed);
+        assert!(ed.doc.made().unwrap().level.windows.is_empty());
     }
 }

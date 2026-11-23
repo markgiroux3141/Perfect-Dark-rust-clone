@@ -638,3 +638,30 @@ fn with_join_in_hand_a_click_in_3d_picks_the_room_and_a_wall_asks_for_a_doorway(
     h.click(h.px(wall));
     assert_eq!((h.ed.doc.selected(), h.ed.doc.picked()), (Some("vast"), None));
 }
+
+#[test]
+fn with_put_things_in_hand_a_click_in_3d_puts_a_crate_where_it_meets_the_floor() {
+    let mut h = Hosted::new("things", seed(40));
+    assert!(h.space.settle(&seed(40)));
+    h.space.cam = h.space.preview().unwrap().room_camera("vast").expect("a camera over vast");
+    h.ed.set_tool(Tool::Things);
+    h.ed.thing = autolevel::puts::Tool::Piece("crate");
+    h.frame(Vec::new());
+    h.ed.doc.regenerate().unwrap();
+    // the pointer on vast's floor says what a click puts; the click puts it, framed once made
+    let at = h.px(world((41.5, 31.5), 0.0));
+    let said = h.frame(vec![egui::Event::PointerMoved(at)]);
+    assert!(has(&said, "click: vast: a crate at 41, 31"), "{said:?}");
+    h.click(at);
+    assert_eq!(h.ed.doc.recipe.edits, vec![Edit::Piece { room: "vast".into(), at: (41, 31), what: Some("crate".into()), size: None, to: None }]);
+    h.ed.doc.regenerate().unwrap();
+    h.frame(Vec::new());
+    assert_eq!(h.space.drawn.marks.len(), 1);
+    assert!(h.space.drawn.marks[0].2, "taken: magenta");
+    assert!(h.ed.doc.made().unwrap().level.interior("vast").cover.contains(&(82, 62, 84, 64, 118, "housing")));
+    // with the room tool, the same click selects
+    h.ed.set_tool(Tool::Rooms);
+    h.frame(Vec::new());
+    h.click(at);
+    assert_eq!((h.ed.doc.selected(), h.ed.doc.recipe.edits.len()), (Some("vast"), 1));
+}

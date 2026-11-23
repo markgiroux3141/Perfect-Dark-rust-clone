@@ -12,7 +12,7 @@
 //! boxes alone (`Done::failed`). A room's choice that is refused, or that no level can be made
 //! with, is shown on the level as it was: the room's box in red, the reason by it.
 
-use crate::cli::{Args, Choose, Side, SideAt};
+use crate::cli::{Args, Choose, PutArg, Side, SideAt};
 use crate::doc::Doc;
 use crate::planview::{Boxes, View};
 use crate::raster::Image;
@@ -20,6 +20,7 @@ use crate::sideview::{Section, SideView};
 use crate::strip::{self, Strip};
 use crate::{chosen, lots, routes, shot};
 use autolevel::boxes::{self, Change, Trial};
+use autolevel::puts;
 use autolevel::recipe::Recipe;
 
 /// What a command line came to.
@@ -180,7 +181,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
                     None,
                     doc.recipe.seed,
                     &format!("no level: {why}"),
-                    &SideView { section: Some(section), boxes: view.boxes, pick: view.pick.clone(), asked: view.asked.clone(), scale: 1.0 },
+                    &SideView { section: Some(section), boxes: view.boxes, pick: view.pick.clone(), asked: view.asked.clone(), scale: 1.0, things: Vec::new() },
                     args.width,
                 ))
             }
@@ -209,6 +210,34 @@ pub fn run(args: &Args) -> Result<Done, String> {
         }
     }
     let stopped = refused.is_some() || failed.is_some();
+    // things put by place, in the order given, the level made again after each
+    for p in args.puts.iter().filter(|_| !stopped) {
+        let e = match p {
+            PutArg::Edit(e) => e.clone(),
+            PutArg::Click(at) => {
+                let (tool, made) = (args.things.expect("--click has a tool"), doc.made().expect("the level was made").clone());
+                let e = puts::click(&made.level, tool, *at, args.storey).map_err(|why| format!("--click {},{}: {why}", at.0, at.1))?;
+                text.push_str(&format!("click {},{}: {}\n", at.0, at.1, e.describe()));
+                e
+            }
+            PutArg::Clear(room, at) => {
+                let done = doc.clear_put(room, *at);
+                text.push_str(&format!("unput: {room} at {}, {}{}\n", at.0, at.1, if done { "" } else { " (nothing was put there)" }));
+                doc.regenerate().map_err(|why| format!("--unput: no level: {why}"))?;
+                continue;
+            }
+        };
+        if !doc.put(e.clone()) {
+            text.push_str(&format!("put: {} (already so)\n", e.describe()));
+            continue;
+        }
+        doc.regenerate().map_err(|why| format!("{}: no level: {why}", e.describe()))?;
+        let took = doc.puts().into_iter().find(|(o, _)| *o == e).map_or(Ok(()), |(_, took)| took);
+        match took {
+            Ok(()) => text.push_str(&format!("put: {}\n", e.describe())),
+            Err(why) => text.push_str(&format!("not put: {}: {why}\n", e.describe())),
+        }
+    }
     let mut gone = None;
     // (after a refusal nothing more is changed: the level shown is the one refused of)
     for key in args.remove.iter().filter(|_| !stopped) {
@@ -255,7 +284,8 @@ pub fn run(args: &Args) -> Result<Done, String> {
         let found = doc.choices(room).map_err(|why| format!("--choices: {why} (--lots names them)"))?;
         text.push_str(&chosen::text(&found, made.level.space(room)));
     }
-    let view = View { storey: args.storey, gone, boxes, ..doc.look(args.all, None) };
+    let mut view = View { storey: args.storey, gone, boxes, ..doc.look(args.all, None) };
+    view.things.tool = args.things;
     let shot = match &args.side {
         Some(side) if args.shot.is_some() => {
             let section = section(side, Some(&made.level), view.boxes.as_ref())?;
@@ -269,7 +299,14 @@ pub fn run(args: &Args) -> Result<Done, String> {
                 Some(&made),
                 doc.recipe.seed,
                 &under,
-                &SideView { section: Some(section), boxes: view.boxes.clone(), pick: view.pick.clone(), asked: view.asked.clone(), scale: 1.0 },
+                &SideView {
+                    section: Some(section),
+                    boxes: view.boxes.clone(),
+                    pick: view.pick.clone(),
+                    asked: view.asked.clone(),
+                    scale: 1.0,
+                    things: view.things.put.clone(),
+                },
                 args.width,
             ))
         }

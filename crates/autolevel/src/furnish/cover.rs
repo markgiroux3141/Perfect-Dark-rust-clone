@@ -8,6 +8,7 @@
 
 use super::{bounds, grow, meets, overlap, Cover, Interior, CLEAR};
 use crate::cells::{rect_cells, Cells, Rect};
+use crate::level::Put;
 use crate::py;
 use crate::pyrand::PyRandom;
 use crate::space::door_pad;
@@ -23,6 +24,9 @@ pub struct Ladder {
     /// The side of it the ladder is on (0 south, 1 east, 2 north, 3 west).
     pub side: usize,
 }
+
+/// A crate's height, units.
+const CRATE: i32 = 118;
 
 /// The least headroom over a pillar's top for a ladder to it, units (a player is 1.6 m tall).
 const HEADROOM: i32 = 200;
@@ -98,11 +102,19 @@ impl Interior {
     }
 
     pub(super) fn lay_cover(&mut self) {
-        let z = self.levels[0];
-        let area = self.s.area();
-        if !self.s.host.is_empty() || area < 9 {
+        if !self.s.host.is_empty() || self.s.area() < 9 {
+            let why = format!("{} is too small to stand anything in", self.s.key);
+            self.unmet.extend(self.puts.iter().map(|p| (p.clone(), why.clone())));
             return;
         }
+        let mut st = self.site();
+        self.lay_drawn(&mut st);
+        self.put_pieces(&mut st);
+    }
+
+    /// The floor as cover sees it, before anything stands on it.
+    fn site(&self) -> Site {
+        let z = self.levels[0];
         let mut clear = self.apron(z, CLEAR);
         let low_only = self.apron(z, 6);
         for r in self.ramps.iter().filter(|r| r.lo == z) {
@@ -141,10 +153,16 @@ impl Interior {
             no_pillar.extend(r.top.iter().copied());
             no_pillar.extend(r.foot.iter().copied());
         }
-        let mut st = Site { z, clear, low_only, floor, placed: Vec::new(), full: self.s.top - z, above, no_pillar };
+        Site { z, clear, low_only, floor, placed: Vec::new(), full: self.s.top - z, above, no_pillar }
+    }
 
+    /// The cover the room draws for itself: its shape, the pillars that break its lanes, then a
+    /// colonnade or crates by its mode.
+    fn lay_drawn(&mut self, st: &mut Site) {
+        let z = self.levels[0];
+        let area = self.s.area();
         if self.shape.is_some() && self.levels.len() == 1 && self.pool.is_empty() {
-            self.shape_room(&mut st);
+            self.shape_room(st);
         }
         let mode = self.cover_mode;
         if mode == "none" || self.clutter <= 0.0 {
@@ -176,8 +194,8 @@ impl Interior {
                 for &(w, d) in sizes {
                     let x = py::round((mx - w as f64 / 2.0) / 2.0) as i32 * 2;
                     let y = py::round((my - d as f64 / 2.0) / 2.0) as i32 * 2;
-                    let h = self.reach(&st, x, y, w, d);
-                    if h != 0 && self.fits(&st, x, y, w, d, true) && self.place(&mut st, x, y, (w, d), h, self.pillar) {
+                    let h = self.reach(st, x, y, w, d);
+                    if h != 0 && self.fits(st, x, y, w, d, true) && self.place(st, x, y, (w, d), h, self.pillar) {
                         broken += 1;
                         break 'spots;
                     }
@@ -185,7 +203,7 @@ impl Interior {
             }
         }
         if mode == "pillars" {
-            self.colonnade(&mut st);
+            self.colonnade(st);
             return;
         }
         if mode == "lanes" {
@@ -201,10 +219,111 @@ impl Interior {
             }
             let x = self.rng.randrange(self.x0 as i64, (self.x1 - w + 1) as i64, 2) as i32;
             let y = self.rng.randrange(self.y0 as i64, (self.y1 - d + 1) as i64, 2) as i32;
-            if self.fits(&st, x, y, w, d, false) {
-                self.place(&mut st, x, y, (w, d), 118, "housing");
+            if self.fits(st, x, y, w, d, false) {
+                self.place(st, x, y, (w, d), 118, "housing");
             }
         }
+    }
+
+    /// The pieces put by hand (`Setup::puts`: `Put::Stand`, `Shift`), in the recipe's order, once
+    /// the room's own cover is laid: each stood, taken out or moved where it fits, else left as
+    /// it was, with why (`unmet`). New here (the editing roadmap's item 6): with none put, nothing
+    /// changes.
+    fn put_pieces(&mut self, st: &mut Site) {
+        for p in self.puts.clone() {
+            if let Err(why) = self.put_piece(st, &p) {
+                self.unmet.push((p, why));
+            }
+        }
+    }
+
+    fn put_piece(&mut self, st: &mut Site, p: &Put) -> Result<(), String> {
+        match p {
+            Put::Stand { at, what, size, .. } => {
+                let n = match (size, *what) {
+                    (Some(n), _) => 2 * n,
+                    (None, "pillar") => self.pillar_size(),
+                    _ => 2,
+                };
+                let r = (2 * at.0, 2 * at.1, 2 * at.0 + n, 2 * at.1 + n);
+                // (what stands where it goes is taken out first, and put back if it does not fit)
+                let gone = self.take(st, |c| overlap(r, (c.0, c.1, c.2, c.3)));
+                let tag = if *what == "pillar" { self.pillar } else { "housing" };
+                self.stand_piece(st, r, tag, *what == "pillar").inspect_err(|_| self.restore(st, gone))
+            }
+            Put::Shift { at, to, .. } => {
+                let i = self.piece_at(*at).ok_or_else(|| format!("nothing stands in {} at {}, {}", self.s.key, at.0, at.1))?;
+                let c = self.cover[i];
+                let gone = self.take(st, |o| *o == c);
+                let Some(to) = to else { return Ok(()) };
+                let r = (2 * to.0, 2 * to.1, 2 * to.0 + c.2 - c.0, 2 * to.1 + c.3 - c.1);
+                self.stand_piece(st, r, c.5, c.4 > CRATE).inspect_err(|_| self.restore(st, gone))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// The piece over a cell (a pillar or a crate, not a wall of the room's shape): its index in
+    /// `cover`.
+    pub fn piece_at(&self, (x, y): (i32, i32)) -> Option<usize> {
+        let cell = (2 * x, 2 * y, 2 * x + 2, 2 * y + 2);
+        self.cover.iter().position(|c| c.5 != "wall" && overlap(cell, (c.0, c.1, c.2, c.3)))
+    }
+
+    /// How wide a pillar stands in this room, h: as its colonnade's (two cells in the widest).
+    pub fn pillar_size(&self) -> i32 {
+        if self.w.min(self.d) >= 28 {
+            4
+        } else {
+            2
+        }
+    }
+
+    /// The pieces `which` picks taken off the floor (never a wall of the room's shape), with where
+    /// each was in `cover`.
+    fn take(&mut self, st: &mut Site, which: impl Fn(&Cover) -> bool) -> Vec<(usize, Cover)> {
+        let gone: Vec<(usize, Cover)> = self.cover.iter().copied().enumerate().filter(|(_, c)| c.5 != "wall" && which(c)).collect();
+        for (_, c) in &gone {
+            self.cover.retain(|o| o != c);
+            st.placed.retain(|o| o != c);
+        }
+        gone
+    }
+
+    /// Pieces taken off (`take`) put back where they were in `cover`.
+    fn restore(&mut self, st: &mut Site, gone: Vec<(usize, Cover)>) {
+        for (i, c) in gone {
+            self.cover.insert(i.min(self.cover.len()), c);
+            st.placed.push(c);
+        }
+    }
+
+    /// A piece stood by hand on `r` (h): on the floor, clear of doors, ramps' feet, water and
+    /// drops, on no other piece, a pillar clear of a deck's edge, and cutting no door off. Err
+    /// says what is in the way.
+    fn stand_piece(&mut self, st: &mut Site, r: Rect, tag: &'static str, tall: bool) -> Result<(), String> {
+        let (key, (x, y, w, d)) = (&self.s.key, (r.0, r.1, r.2 - r.0, r.3 - r.1));
+        let cells = rect_cells(r);
+        if !cells.is_subset(&st.floor) {
+            return Err(format!("not on {key}'s floor (off it, water, a hole or a pit)"));
+        }
+        if meets(&cells, &st.clear) {
+            return Err("too near a door, a ramp's foot, the water or a drop".to_string());
+        }
+        if tall && meets(&cells, &st.low_only) {
+            return Err("too near a door for anything tall".to_string());
+        }
+        if st.placed.iter().any(|c| overlap(r, (c.0, c.1, c.2, c.3))) {
+            return Err("on another piece or a wall".to_string());
+        }
+        let h = if tall { self.reach(st, x, y, w, d) } else { CRATE };
+        if h == 0 {
+            return Err("it would clip a deck's edge, a ramp or a pod over it".to_string());
+        }
+        if !self.place(st, x, y, (w, d), h, tag) {
+            return Err("it would cut a door off from the others".to_string());
+        }
+        Ok(())
     }
 
     /// A ladder up each pillar that stops at the first storey's ceiling with headroom over it, on a

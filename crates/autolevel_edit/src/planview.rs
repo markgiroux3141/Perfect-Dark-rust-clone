@@ -35,11 +35,13 @@ use autolevel::deadends::DeadEnd;
 use autolevel::furnish::rectangles;
 use autolevel::level::Level;
 use autolevel::plan::MODULE;
-use autolevel::recipe::Doorway;
+use autolevel::puts;
+use autolevel::recipe::{Doorway, Edit};
 use autolevel::route::{Point, Route};
 use autolevel::scatter::Lot;
 use autolevel::space::{Space, DIRS};
 use autolevel::storeys::{snap_top, LEVELS};
+use autolevel::windows::{places, Place};
 
 /// A place on the plan, in cells.
 pub type P = (f32, f32);
@@ -272,6 +274,29 @@ pub struct View {
     /// What the recipe chooses for single rooms, to say on the plan: (the room's key, the
     /// words, as `choices::Chosen::words` gives them: "layout ring, cover none").
     pub chosen: Vec<(String, String)>,
+    /// The things put by place (windows, pillars and crates, drops), and the tool in hand.
+    pub things: Things,
+}
+
+/// The things put by place, to draw on the plan: each `window`, `piece` and `drop` edit's place,
+/// framed in magenta where the level took it and in red with why where it did not; with a window
+/// tool in hand, every place a window could go, dotted.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Things {
+    /// The tool in hand (None: the things tool is not).
+    pub tool: Option<puts::Tool>,
+    /// What the recipe put, each with whether the level took it (`puts::listed`).
+    pub put: Vec<(Edit, Result<(), String>)>,
+}
+
+impl Things {
+    /// The places to dot: every window place, with a window tool in hand.
+    pub fn places(&self, lv: &Level) -> Vec<Place> {
+        match self.tool {
+            Some(puts::Tool::Window(_)) => places(lv),
+            _ => Vec::new(),
+        }
+    }
 }
 
 /// The room boxes as the recipe places them, to draw over the level and take hold of: the
@@ -347,6 +372,7 @@ impl Default for View {
             gone: None,
             boxes: None,
             chosen: Vec::new(),
+            things: Things::default(),
         }
     }
 }
@@ -1008,6 +1034,62 @@ impl Pic<'_> {
         }
     }
 
+    /// The things put by place (`View::things`), and the window places with a window tool.
+    fn things(&mut self) {
+        let (lv, view) = (self.lv, self.view);
+        let px = 1.0 / view.scale;
+        let shown: Vec<Place> = view.things.places(lv).into_iter().filter(|p| view.storey.is_none_or(|z| z == p.z)).collect();
+        for p in &shown {
+            for &(x, y) in &p.wall {
+                self.list().push(Prim::Circle { c: (x as f32 + 0.5, y as f32 + 0.5), r: 0.22, col: colour::HANDLE, filled: true });
+            }
+        }
+        for (e, took) in &view.things.put {
+            let floor = |room: &str| lv.spaces().iter().find(|s| s.key == room).map(|s| s.floor);
+            let (b, z, gone): (Box2, Option<i32>, bool) = match e {
+                Edit::Window { room, storey, at, .. } => {
+                    let wall = places(lv).into_iter().find(|p| p.hall == *room && p.z == *storey && p.wall.contains(at)).map_or(vec![*at], |p| p.wall);
+                    let (x0, y0) = (wall.iter().map(|c| c.0).min().unwrap_or(at.0), wall.iter().map(|c| c.1).min().unwrap_or(at.1));
+                    let (x1, y1) = (wall.iter().map(|c| c.0).max().unwrap_or(at.0), wall.iter().map(|c| c.1).max().unwrap_or(at.1));
+                    ((x0 as f32, y0 as f32, x1 as f32 + 1.0, y1 as f32 + 1.0), Some(*storey), matches!(e, Edit::Window { kind, .. } if kind == "none"))
+                }
+                Edit::Piece { room, at, what, to, .. } => {
+                    let end = to.unwrap_or(*at);
+                    let it = lv.interiors.iter().find(|(k, _)| k == room).map(|(_, it)| it);
+                    // (where it stands now, if it does; else the cell it was put on)
+                    let r = it.and_then(|it| it.piece_at(end).map(|i| it.cover[i])).filter(|_| took.is_ok());
+                    let b = r.map_or((end.0 as f32, end.1 as f32, end.0 as f32 + 1.0, end.1 as f32 + 1.0), |c| {
+                        (c.0 as f32 / 2.0, c.1 as f32 / 2.0, c.2 as f32 / 2.0, c.3 as f32 / 2.0)
+                    });
+                    if to.is_some() {
+                        // a line from where it was
+                        let col = if took.is_ok() { colour::ASKED } else { colour::DEAD_END };
+                        self.line((at.0 as f32 + 0.5, at.1 as f32 + 0.5), ((b.0 + b.2) / 2.0, (b.1 + b.3) / 2.0), col, 1.5);
+                    }
+                    (b, floor(room), what.as_deref() == Some("none"))
+                }
+                Edit::Drop { room, at: Some(at) } => ((at.0 as f32, at.1 as f32, at.0 as f32 + 2.0, at.1 as f32 + 2.0), floor(room), false),
+                Edit::Drop { .. } => continue,
+                _ => continue,
+            };
+            if z.is_some_and(|z| !self.shown(z)) {
+                continue;
+            }
+            let col = if took.is_ok() { colour::ASKED } else { colour::DEAD_END };
+            let pad = 2.0 * px;
+            let b = (b.0 - pad, b.1 - pad, b.2 + pad, b.3 + pad);
+            self.frame(b, col, 2.0);
+            if gone {
+                self.line((b.0, b.1), (b.2, b.3), col, 2.0);
+                self.line((b.0, b.3), (b.2, b.1), col, 2.0);
+            }
+            if took.is_err() {
+                // (why is in the list beside the plan: words here would lie on each other)
+                self.text(((b.0 + b.2) / 2.0, b.3 + 7.0 * px), "not put", colour::REFUSAL, 8.0);
+            }
+        }
+    }
+
     /// Outline what a mark holds.
     fn ring(&mut self, m: &Mark, col: Rgba, width_px: f32) {
         let (lv, view) = (self.lv, self.view);
@@ -1228,6 +1310,7 @@ pub fn picture(lv: &Level, view: &View) -> Picture {
     pic.labels();
     pic.dead_ends();
     pic.chosen();
+    pic.things();
     if let Some(m) = &view.mark {
         pic.ring(m, colour::MARK, 3.0);
         if let Some((at, _)) = m.at {

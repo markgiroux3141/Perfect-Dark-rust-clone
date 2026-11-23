@@ -1,6 +1,6 @@
 //! `pd_edit --shot-ui <out.png> [<code>] [--size WxH] [--frames N] [--step
 //! home|layout|items|test] [--select KIND INDEX] [--generate [SEED]] [--room
-//! KEY [--vary PART]] [--side] [--3d [--no-ceilings]] [--import FILE.glb] [--tool KIND] [--hover X,Y] [--run-test]`: the whole editor window (its panels
+//! KEY [--vary PART]] [--side] [--3d [--no-ceilings]] [--things TOOL] [--import FILE.glb] [--tool KIND] [--hover X,Y] [--run-test]`: the whole editor window (its panels
 //! and the view between them) as a PNG, with no window. The app runs headless
 //! (`App::ui` on an egui context with no window, `App::update` between
 //! passes) until the level asked for has loaded and nothing is running, then
@@ -43,6 +43,9 @@ struct Shot {
     import: Option<PathBuf>,
     tool: Option<Kind>,
     hover: Option<egui::Pos2>,
+    /// "Put things" in hand on a generated level, with this tool (glass, rail, no-window,
+    /// pillar, crate, take-out, drop).
+    things: Option<autolevel::puts::Tool>,
 }
 
 fn kind_named(name: &str) -> Result<Kind, String> {
@@ -82,6 +85,10 @@ fn parse(args: &[String]) -> Result<Shot, String> {
             "--room" => s.room = Some(val(&mut it, "--room")?),
             "--vary" => s.vary = Some(val(&mut it, "--vary")?),
             "--side" => s.side = true,
+            "--things" => {
+                let v = val(&mut it, "--things")?;
+                s.things = Some(autolevel_edit::cli::things_tool(&v).ok_or(format!("--things: glass, rail, no-window, pillar, crate, take-out or drop, not {v}"))?);
+            }
             "--3d" => s.three_d = true,
             "--no-ceilings" => s.no_ceilings = true,
             "--import" => s.import = Some(PathBuf::from(val(&mut it, "--import")?)),
@@ -143,6 +150,9 @@ pub fn run(args: &[String]) -> Result<PathBuf, String> {
             }
             if shot.side {
                 app.show_generated_side();
+            }
+            if let Some(tool) = shot.things {
+                app.things_generated(tool);
             }
             if shot.three_d {
                 app.show_generated_3d(shot.no_ceilings);

@@ -439,7 +439,19 @@ impl Space {
             let (o, d) = ray(p);
             pv.filter(|_| joining).and_then(|pv| boxgizmo::doorway_at(pv, o, d))
         };
-        if resp.clicked() {
+        // With "Put things" in hand, a click puts what the tool puts where the ray meets the
+        // level (`Editor::click_thing`, as the plan's click does).
+        let things = ed.tool == Tool::Things;
+        let place_at = |p: egui::Pos2, pv: Option<&Preview>| {
+            let (o, d) = ray(p);
+            pv.filter(|_| things).and_then(|pv| boxgizmo::place_at(pv, o, d))
+        };
+        if resp.clicked() && things {
+            if let Some((cell, z)) = resp.interact_pointer_pos().and_then(|p| place_at(p, self.preview())) {
+                ed.click_thing(cell, Some(z));
+                self.note = Some((ed.status().to_string(), ed.refused.is_some()));
+            }
+        } else if resp.clicked() {
             if let Some(p) = resp.interact_pointer_pos().filter(|p| handle_at(*p).is_none()) {
                 let (o, d) = ray(p);
                 if let Some((room, door, z)) = wall_at(p, self.preview()) {
@@ -486,13 +498,23 @@ impl Space {
             }
             None => (Vec::new(), false),
         };
-        self.drawn = Shown { lot, tried, refused, hot, doors };
+        let marks = ed.doc.made().map_or(Vec::new(), |made| {
+            ed.doc.puts().iter().filter_map(|(e, took)| boxgizmo::thing_box(&made.level, e, took.is_ok()).map(|(a, b)| (a, b, took.is_ok()))).collect()
+        });
+        self.drawn = Shown { lot, tried, refused, hot, doors, marks };
         let line = match (self.held.as_ref().and_then(|h| h.tried.as_ref()), hot, key.as_deref()) {
             (Some((c, t)), _, _) => Some(match &t.refused {
                 Some(why) => (format!("{}: refused: {why}", words(c)), true),
                 None => (words(c), false),
             }),
-            (None, Some(h), Some(k)) => Some((h.does(k), false)),
+            (None, Some(h), Some(k)) if !things => Some((h.does(k), false)),
+            _ if things => resp.hover_pos().and_then(|p| place_at(p, self.preview())).and_then(|(cell, z)| {
+                let made = ed.doc.made()?;
+                Some(match autolevel::puts::click(&made.level, ed.thing, cell, Some(z)) {
+                    Ok(e) => (format!("click: {}", e.describe()), false),
+                    Err(why) => (why, true),
+                })
+            }),
             _ => hover_wall.map(|(room, d, z)| {
                 let picked = ed.doc.picked().is_some_and(|(r, _)| r == room);
                 let does = if picked { format!("{room}'s doorway {} on {z}", d.short()) } else { format!("only join to {room}, through {}", d.words()) };

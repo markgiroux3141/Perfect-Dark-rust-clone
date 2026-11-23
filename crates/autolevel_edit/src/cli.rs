@@ -111,6 +111,27 @@ pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
                         flooded, sunken, cellar (a big hall on the ground), platforms, holes
                         (drops through them), angled (catwalks across its air). On: wherever it
                         fits; off: none; auto: the level's chance again
+  --window ROOM@STOREY@X,Y@glass|rail|none
+                        the window into the room on that storey whose wall holds the cell X,Y (a
+                        cell of wall between the room and a corridor running along it a cell away):
+                        glass, rail (only where the corridor is above the room's floor) or none. A
+                        place the level left without one is given one
+  --piece ROOM@X,Y@pillar|crate|none
+                        a pillar or crate stood on the room's floor with its low corner on X,Y (in
+                        place of what stood there), or none: the one over X,Y taken out
+  --nudge ROOM@X,Y@TX,TY
+                        the pillar or crate over X,Y moved so its low corner is on TX,TY
+  --drop ROOM@X,Y|none  the room's drop: a hole two cells square through its floor (low corner on
+                        X,Y) into the room under it, in place of the generator's; or none
+  --unput ROOM@X,Y      the generator's own again at that place (what --window, --piece, --nudge or
+                        --drop put there taken out; a drop's: the room's)
+  --things glass|rail|no-window|pillar|crate|take-out|drop
+                        the things tool in hand: --click puts with it, and the plan shows its marks
+                        (a window tool dots every place a window could go)
+  --click X,Y           a click with the things tool on the cell X,Y (on --storey, if given): what it
+                        would put is put. Things are put in the order given, after the room's
+                        choices; the level is made again after each, and one the level could not
+                        put says why (the plan frames it in red with the reason; magenta: put)
   --own ROOM@layout|cover|inside|brightness|ceiling|FEATURE|reroll-PART|all
                         the seed's own again for that choice, or for all of the room's
   --choices ROOM        print the room's choices: what it has, whether the seed or the recipe
@@ -180,6 +201,10 @@ pub struct Args {
     pub vary_from: u32,
     /// Which of them to keep, counting from 1 (`--keep`).
     pub keep: Option<usize>,
+    /// Things put by place (`--window`, `--piece`, `--nudge`, `--drop`, `--unput`, `--click`).
+    pub puts: Vec<PutArg>,
+    /// The things tool in hand (`--things`).
+    pub things: Option<autolevel::puts::Tool>,
 }
 
 /// Where `--side` cuts: its axis, and a row or column of cells, or a room's middle.
@@ -224,6 +249,22 @@ pub enum Choose {
     Own { room: String, what: String },
 }
 
+/// A thing put by place, as the line asks for it.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PutArg {
+    /// A `window`, `piece` or `drop` edit.
+    Edit(Edit),
+    /// A click on a cell with the things tool (`--things`).
+    Click((i32, i32)),
+    /// The generator's own again at a room's place.
+    Clear(String, (i32, i32)),
+}
+
+/// The things tools as the line names them (`puts::Tool::ALL`, a dash for a space).
+pub fn things_tool(v: &str) -> Option<autolevel::puts::Tool> {
+    autolevel::puts::Tool::ALL.iter().find(|(_, name)| name.replace(' ', "-") == v).map(|(t, _)| *t)
+}
+
 impl Args {
     /// Is there something to do that needs no window?
     pub fn headless(&self) -> bool {
@@ -233,7 +274,7 @@ impl Args {
     /// Does it change the recipe by what the recipe makes: its lots (the room flags) or its
     /// level (a room's choices, `--remove`, `--pick`)?
     pub fn changes(&self) -> bool {
-        !self.boxes.is_empty() || !self.choose.is_empty() || !self.remove.is_empty() || self.pick.is_some() || self.variants.is_some()
+        !self.boxes.is_empty() || !self.choose.is_empty() || !self.remove.is_empty() || self.pick.is_some() || self.variants.is_some() || !self.puts.is_empty()
     }
 
     /// Does a snapshot draw the room boxes? Asked for (`--rooms`), or any room flag is given.
@@ -307,6 +348,8 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
         variants: None,
         vary_from: 1,
         keep: None,
+        puts: Vec::new(),
+        things: None,
     };
     // a room, then @ and its choice: ("vast", "ring") of "--layout vast@ring"
     let choice = |n: usize, what: &str| {
@@ -463,6 +506,56 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
                     _ => return Err(bad()),
                 });
             }
+            "window" => {
+                let what = "a storey, @, a cell of its wall and @ glass, rail or none, as medium1@276@49,30@rail";
+                let (room, v) = choice(n, what)?;
+                let bad = || format!("--window: a room, then @ and {what}, not {}", args[n + 1]);
+                let parts: Vec<&str> = v.split('@').collect();
+                let [z, at, kind] = parts[..] else { return Err(bad()) };
+                let (storey, at) = (floor("--window: a storey's floor", z)?, cells::<2>(at).ok_or_else(bad)?);
+                out.puts.push(PutArg::Edit(Edit::Window { room, storey, at: (at[0], at[1]), kind: kind.to_string() }));
+            }
+            "piece" => {
+                let what = "a cell, then @ and pillar, crate or none, as vast@40,30@crate";
+                let (room, v) = choice(n, what)?;
+                let bad = || format!("--piece: a room, then @ and {what}, not {}", args[n + 1]);
+                let (at, kind) = v.split_once('@').ok_or_else(bad)?;
+                let at = cells::<2>(at).ok_or_else(bad)?;
+                out.puts.push(PutArg::Edit(Edit::Piece { room, at: (at[0], at[1]), what: Some(kind.to_string()), size: None, to: None }));
+            }
+            "nudge" => {
+                let what = "the cell of a piece, then @ and the cell its low corner goes to, as vast@41,25@40,32";
+                let (room, v) = choice(n, what)?;
+                let bad = || format!("--nudge: a room, then @ and {what}, not {}", args[n + 1]);
+                let (at, to) = v.split_once('@').ok_or_else(bad)?;
+                let (at, to) = (cells::<2>(at).ok_or_else(bad)?, cells::<2>(to).ok_or_else(bad)?);
+                out.puts.push(PutArg::Edit(Edit::Piece { room, at: (at[0], at[1]), what: None, size: None, to: Some((to[0], to[1])) }));
+            }
+            "drop" => {
+                let what = "a cell (the drop's low corner) or none, as loft2@42,30";
+                let (room, v) = choice(n, what)?;
+                let at = match v {
+                    "none" => None,
+                    _ => Some(cells::<2>(v).map(|c| (c[0], c[1])).ok_or_else(|| format!("--drop: a room, then @ and {what}, not {}", args[n + 1]))?),
+                };
+                out.puts.push(PutArg::Edit(Edit::Drop { room, at }));
+            }
+            "unput" => {
+                let what = "a cell, as vast@40,30";
+                let (room, v) = choice(n, what)?;
+                let at = cells::<2>(v).ok_or_else(|| format!("--unput: a room, then @ and {what}, not {}", args[n + 1]))?;
+                out.puts.push(PutArg::Clear(room, (at[0], at[1])));
+            }
+            "things" => {
+                let v = value(n)?;
+                let names: Vec<String> = autolevel::puts::Tool::ALL.iter().map(|(_, name)| name.replace(' ', "-")).collect();
+                out.things = Some(things_tool(v).ok_or_else(|| format!("--things: one of {}, not {v}", names.join(" ")))?);
+            }
+            "click" => {
+                let v = value(n)?;
+                let at = cells::<2>(v).ok_or_else(|| format!("--click: a cell, as 40,30, not {v}"))?;
+                out.puts.push(PutArg::Click((at[0], at[1])));
+            }
             "own" => {
                 let what = "what is the seed's own again (layout cover inside brightness ceiling, a feature, or all), as vast@layout";
                 let (room, v) = choice(n, what)?;
@@ -500,6 +593,9 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
     }
     if !out.asked.plain() && out.pick.is_none() {
         return Err("--door, --to, --to-door, --via: of a join from what? Name the room and storey with --pick".to_string());
+    }
+    if out.things.is_none() && out.puts.iter().any(|p| matches!(p, PutArg::Click(_))) {
+        return Err("--click: with what? Name the tool with --things".to_string());
     }
     if out.trial && out.boxes.is_empty() {
         return Err("--try: of what? Name a change with --move, --rect, --pin, --delete or --add".to_string());

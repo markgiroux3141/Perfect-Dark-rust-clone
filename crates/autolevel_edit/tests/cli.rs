@@ -256,3 +256,56 @@ fn a_shot_is_written_twice_the_same_and_the_list_is_printed() {
     assert!(!bad.status.success() && String::from_utf8_lossy(&bad.stderr).contains("autolevel_edit: walkway: 1 or 2 cells"));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn things_are_put_by_place_clicked_saved_and_taken_out_again() {
+    let dir = std::env::temp_dir().join(format!("autolevel_edit_things_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let at = |name: &str| dir.join(name).to_string_lossy().into_owned();
+    let python = ["--seed", "40", "--flooded", "0", "--shaped", "0", "--sunken", "0"];
+    let line = |more: &[&str]| -> Vec<String> { python.iter().chain(more).map(|s| s.to_string()).collect() };
+    fn words(v: &[String]) -> Vec<&str> {
+        v.iter().map(String::as_str).collect()
+    }
+    // put, each with whether the level took it; a click with a tool; saved and read back
+    let (recipe, shot) = (at("things.json"), at("things.png"));
+    let args = line(&[
+        "--piece",
+        "vast@40,30@crate",
+        "--nudge",
+        "vast@41,34@41,30",
+        "--things",
+        "rail",
+        "--storey",
+        "276",
+        "--click",
+        "50,30",
+        "--save-recipe",
+        &recipe,
+        "--shot",
+        &shot,
+    ]);
+    let text = run(&words(&args));
+    assert!(text.contains("put: vast: a crate at 40, 30\n"), "{text}");
+    assert!(text.contains("not put: vast: the piece at 41, 34 moved to 41, 30: it would clip a deck's edge, a ramp or a pod over it\n"), "{text}");
+    assert!(text.contains("click 50,30: medium1: window at 49, 29 on 276: rail\nput: medium1: window at 49, 29 on 276: rail\n"), "{text}");
+    let saved = std::fs::read_to_string(&recipe).unwrap();
+    assert!(saved.contains(r#""edit": "piece""#) && saved.contains(r#""edit": "window""#), "{saved}");
+    // the recipe makes the same picture by itself
+    let again = at("again.png");
+    run(&["--recipe", &recipe, "--storey", "276", "--things", "rail", "--shot", &again]);
+    assert_eq!(std::fs::read(&shot).unwrap(), std::fs::read(&again).unwrap());
+    // taken out again: the generator's own there
+    let text = run(&["--recipe", &recipe, "--unput", "vast@40,30", "--unput", "medium1@49,29", "--unput", "vast@0,0", "--save-recipe", &recipe]);
+    assert!(text.contains("unput: vast at 40, 30\nunput: medium1 at 49, 29\nunput: vast at 0, 0 (nothing was put there)\n"), "{text}");
+    let saved = std::fs::read_to_string(&recipe).unwrap();
+    assert!(!saved.contains("crate") && !saved.contains("window") && saved.contains(r#""to": ["#), "{saved}");
+    // a drop, and what can't be asked
+    let text = run(&words(&line(&["--drop", "colossal@none"])));
+    assert!(text.contains("put: colossal: no drop\n"), "{text}");
+    assert_eq!(refused(&words(&line(&["--click", "1,1"]))), "autolevel_edit: --click: with what? Name the tool with --things");
+    assert!(refused(&words(&line(&["--things", "hammer"]))).contains("--things: one of glass rail no-window pillar crate take-out drop, not hammer"));
+    assert!(refused(&words(&line(&["--piece", "vast@40@crate"]))).contains("--piece: a room, then @ and a cell"));
+    let (_, why) = fails(&words(&line(&["--things", "take-out", "--storey", "0", "--click", "39,22"])));
+    assert_eq!(why, "autolevel_edit: --click 39,22: nothing stands in vast there");
+}

@@ -321,6 +321,9 @@ pub struct Setup {
     /// name of its own streams ("{seed}/{key}/catwalks2"; an attempt draws from
     /// "{name}/{attempt}"). None (every seed's level): everything from the room's stream.
     pub parts: Vec<(&'static str, String)>,
+    /// Pieces stood, taken out or moved by hand in this room (`level::Put::Stand`, `Shift`), in
+    /// the recipe's order, put once the cover is laid (`cover::put_pieces`). None: as ever.
+    pub puts: Vec<crate::level::Put>,
 }
 
 impl Default for Setup {
@@ -346,6 +349,7 @@ impl Default for Setup {
             hole_side: None,
             rescue: false,
             parts: Vec::new(),
+            puts: Vec::new(),
         }
     }
 }
@@ -448,6 +452,9 @@ pub struct Interior {
     pub landed: BTreeMap<i32, Cells>,
     /// `Setup::parts`.
     pub parts: Vec<(&'static str, String)>,
+    /// `Setup::puts`, and those of them that did not fit, with why.
+    pub puts: Vec<crate::level::Put>,
+    pub unmet: Vec<(crate::level::Put, String)>,
 }
 
 impl std::fmt::Debug for Interior {
@@ -570,6 +577,8 @@ impl Interior {
             stranded: Vec::new(),
             landed: BTreeMap::new(),
             parts: how.parts,
+            puts: how.puts,
+            unmet: Vec::new(),
         }
     }
 

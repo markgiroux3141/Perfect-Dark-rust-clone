@@ -37,7 +37,7 @@
 
 use crate::build::{takes, Build, JOIN_COST, JOIN_SEARCH, LAYOUTS};
 use crate::cells::Rect;
-use crate::level::{self, Level, Options, Start, COVER};
+use crate::level::{self, Level, Options, Put, Start, COVER};
 use crate::network::{components, Network};
 use crate::place::{self, Placed, Scale};
 use crate::py;
@@ -243,6 +243,44 @@ pub enum Edit {
     /// (a pod, one too narrow, a cellar under a hall not on the ground) is left without it, and
     /// the room's choices say so. Err for a feature that is none of them. New here.
     Feature { room: String, feature: String, on: bool },
+    /// The window into `room` on `storey` whose wall holds the cell `at` (a cell of wall between
+    /// the room and a corridor running along it a cell away: `windows::places`) is `as`: "glass",
+    /// "rail" (only where the corridor is above the room's floor) or "none". A place the level
+    /// left without a window is given one, past the level's limits. New here (the editing
+    /// roadmap's item 6); one that does not fit is left out and says why (`Level::unmet`).
+    Window {
+        room: String,
+        storey: i32,
+        at: (i32, i32),
+        #[serde(rename = "as")]
+        kind: String,
+    },
+    /// What stands on `room`'s floor at the cell `at`: with `as` ("pillar" or "crate"), one is
+    /// stood with its low corner there, `size` cells square (none given: a pillar as wide as the
+    /// room's colonnade's, a crate one cell), in place of what stood there; with `as` "none", the
+    /// pillar or crate over the cell is taken out; with `to`, it is moved so its low corner is on
+    /// that cell. Put once the room's own cover is laid, so it moves no draw; one that does not
+    /// fit (off the floor, before a door, on a deck's edge, cutting a door off) is left out and
+    /// says why. Err without one of `as` and `to`. New here.
+    Piece {
+        room: String,
+        at: (i32, i32),
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        what: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        size: Option<i32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        to: Option<(i32, i32)>,
+    },
+    /// `room`'s drop: a hole two cells square through its floor with its low corner on the cell
+    /// `at`, into the room under it, in place of the one the generator gave it (a room has one at
+    /// most); none given, it has none. A cellar's hatch stays. One that does not fit (by a door,
+    /// nothing under it, a room between, too far to fall) is left out and says why. New here.
+    Drop {
+        room: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<(i32, i32)>,
+    },
 }
 
 impl Edit {
@@ -265,6 +303,9 @@ impl Edit {
             Edit::Keep { .. } => "keep",
             Edit::Cut { .. } => "cut",
             Edit::Feature { .. } => "feature",
+            Edit::Window { .. } => "window",
+            Edit::Piece { .. } => "piece",
+            Edit::Drop { .. } => "drop",
         }
     }
 
@@ -274,6 +315,8 @@ impl Edit {
             Edit::Move { .. } | Edit::Resize { .. } | Edit::Add { .. } | Edit::Delete { .. } | Edit::Pin { .. } | Edit::Height { .. } => Stage::Lots,
             Edit::Join { .. } | Edit::Remove { .. } => Stage::Routes,
             Edit::Layout { .. } | Edit::Cover { .. } | Edit::Brightness { .. } | Edit::Ceiling { .. } | Edit::Reroll { .. } => Stage::Interiors,
+            // (drops are chosen as the rooms are furnished, windows once they are)
+            Edit::Window { .. } | Edit::Piece { .. } | Edit::Drop { .. } => Stage::Interiors,
             Edit::Keep { .. } | Edit::Cut { .. } => Stage::DeadEnds,
             // (the room's shape, water, pit and cellar are rolled with the rooms; the rest by its furnisher)
             Edit::Feature { feature, .. } => match crate::level::FEATURES.iter().find(|(f, _)| f == feature) {
@@ -306,7 +349,10 @@ impl Edit {
             | Edit::Reroll { room, .. }
             | Edit::Keep { room }
             | Edit::Cut { room, .. }
-            | Edit::Feature { room, .. } => vec![room],
+            | Edit::Feature { room, .. }
+            | Edit::Window { room, .. }
+            | Edit::Piece { room, .. }
+            | Edit::Drop { room, .. } => vec![room],
         }
     }
 
@@ -347,6 +393,18 @@ impl Edit {
             Edit::Keep { room } => format!("keep {room}'s dead end"),
             Edit::Cut { room, above } => format!("cut {room}: no deck of its own above {above}"),
             Edit::Feature { room, feature, on } => format!("{room}: {feature} {}", if *on { "on" } else { "off" }),
+            Edit::Window { room, storey, at, kind } => format!("{room}: window at {}, {} on {storey}: {kind}", at.0, at.1),
+            Edit::Piece { room, at, to: Some(to), .. } => format!("{room}: the piece at {}, {} moved to {}, {}", at.0, at.1, to.0, to.1),
+            Edit::Piece { room, at, what, size, .. } => {
+                let what = what.as_deref().unwrap_or("?");
+                match (what, size) {
+                    ("none", _) => format!("{room}: nothing at {}, {}", at.0, at.1),
+                    (_, Some(n)) => format!("{room}: a {what} at {}, {} ({n} cells)", at.0, at.1),
+                    _ => format!("{room}: a {what} at {}, {}", at.0, at.1),
+                }
+            }
+            Edit::Drop { room, at: Some(at) } => format!("{room}: a drop at {}, {}", at.0, at.1),
+            Edit::Drop { room, at: None } => format!("{room}: no drop"),
         }
     }
 }
@@ -670,10 +728,11 @@ impl Recipe {
     }
 
     /// The options the stages are made with: the recipe's, with what its `feature` edits chose
-    /// for single rooms (`Options::forced`). The recipe's own when it has none. Err for a
+    /// for single rooms (`Options::forced`), its part re-rolls (`rerolled`) and the things it put
+    /// by place (`puts`: `window`, `piece`, `drop`). The recipe's own when it has none. Err for a
     /// feature that is none of `level::FEATURES`.
     pub fn effective(&self) -> Result<std::borrow::Cow<'_, Options>, String> {
-        let (mut forced, mut rerolled) = (Vec::new(), Vec::new());
+        let (mut forced, mut rerolled, mut puts) = (Vec::new(), Vec::new(), Vec::new());
         for e in &self.edits {
             match e {
                 Edit::Feature { room, feature, on } => {
@@ -689,13 +748,14 @@ impl Recipe {
                     };
                     rerolled.push((room.clone(), name, *n));
                 }
+                e @ (Edit::Window { .. } | Edit::Piece { .. } | Edit::Drop { .. }) => puts.push(put_of(e)?),
                 _ => {}
             }
         }
-        if forced.is_empty() && rerolled.is_empty() {
+        if forced.is_empty() && rerolled.is_empty() && puts.is_empty() {
             return Ok(std::borrow::Cow::Borrowed(&self.options));
         }
-        Ok(std::borrow::Cow::Owned(Options { forced, rerolled, ..self.options.clone() }))
+        Ok(std::borrow::Cow::Owned(Options { forced, rerolled, puts, ..self.options.clone() }))
     }
 
     /// The recipe with the generator's own bases and grown pods left out, if it has any to leave
@@ -922,6 +982,35 @@ impl Recipe {
     }
 }
 
+/// A `window`, `piece` or `drop` edit as the stages are told it (`level::Put`). Err for what it
+/// cannot be (a window as a door, a piece neither stood nor moved, a size out of range).
+pub fn put_of(e: &Edit) -> Result<Put, String> {
+    match e {
+        Edit::Window { room, storey, at, kind } => {
+            let kind = level::WINDOW_KINDS
+                .into_iter()
+                .find(|k| k == kind)
+                .ok_or_else(|| format!("window: as one of {}, not {kind:?}", level::WINDOW_KINDS.join(", ")))?;
+            Ok(Put::Window { room: room.clone(), z: *storey, at: *at, kind })
+        }
+        Edit::Piece { room, at, what, size, to } => match (what.as_deref(), to) {
+            (None, Some(to)) if size.is_none() => Ok(Put::Shift { room: room.clone(), at: *at, to: Some(*to) }),
+            (Some("none"), None) if size.is_none() => Ok(Put::Shift { room: room.clone(), at: *at, to: None }),
+            (Some(what), None) if what != "none" => {
+                let what =
+                    level::PIECES[..2].iter().find(|p| **p == what).ok_or_else(|| format!("piece: as one of {}, not {what:?}", level::PIECES.join(", ")))?;
+                if let Some(n) = size.filter(|n| !(1..=3).contains(n)) {
+                    return Err(format!("piece: a size of 1 to 3 cells, not {n}"));
+                }
+                Ok(Put::Stand { room: room.clone(), at: *at, what, size: *size })
+            }
+            _ => Err("piece: one of \"as\" (pillar, crate, none) and \"to\" (where it moves), and a size only with a pillar or crate".to_string()),
+        },
+        Edit::Drop { room, at } => Ok(Put::Drop { room: room.clone(), at: *at }),
+        _ => Err(format!("{}: not a thing put by place", e.name())),
+    }
+}
+
 /// Set a room's entry in one of the level's lists, in its place if it has one.
 fn put<T>(rows: &mut Vec<(String, T)>, room: &str, v: T) {
     match rows.iter_mut().find(|(k, _)| k == room) {
@@ -1029,6 +1118,10 @@ mod tests {
             Edit::Cut { room: s("spire1"), above: 827 },
             Edit::Height { room: s("medium3"), floor: 276, top: 787 },
             Edit::Feature { room: s("vast"), feature: s("flooded"), on: true },
+            Edit::Window { room: s("medium1"), storey: 276, at: (49, 30), kind: s("rail") },
+            Edit::Piece { room: s("vast"), at: (40, 30), what: Some(s("crate")), size: None, to: None },
+            Edit::Piece { room: s("vast"), at: (41, 25), what: None, size: None, to: Some((40, 32)) },
+            Edit::Drop { room: s("colossal"), at: None },
         ]
     }
 

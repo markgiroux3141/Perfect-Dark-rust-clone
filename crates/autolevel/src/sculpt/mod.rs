@@ -430,6 +430,7 @@ fn finish(
         fittings: Vec::new(),
         lamps: Vec::new(),
         report,
+        unmet: Vec::new(),
     })
 }
 

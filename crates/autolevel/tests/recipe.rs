@@ -991,3 +991,178 @@ fn a_join_takes_the_doorway_asked_for_or_says_none_fits_there() {
     assert!(!save(&recipe(40, vec![join("medium3", 0, "medium1", None, None)])).contains("door"));
     assert_eq!(e.describe(), "join medium3 on 0 to medium1, from its east wall at 26, to its west wall at 27, by a vent");
 }
+
+// ---------------------------------------------------------------- single things by place
+
+fn window(room: &str, storey: i32, at: (i32, i32), kind: &str) -> Edit {
+    Edit::Window { room: s(room), storey, at, kind: s(kind) }
+}
+
+fn piece(room: &str, at: (i32, i32), what: &str) -> Edit {
+    Edit::Piece { room: s(room), at, what: Some(s(what)), size: None, to: None }
+}
+
+fn nudge(room: &str, at: (i32, i32), to: (i32, i32)) -> Edit {
+    Edit::Piece { room: s(room), at, what: None, size: None, to: Some(to) }
+}
+
+fn drop_at(room: &str, at: Option<(i32, i32)>) -> Edit {
+    Edit::Drop { room: s(room), at }
+}
+
+/// Every room's inside but `room`'s is as it was.
+fn the_rest_as_was(a: &Level, b: &Level, room: &str, what: &str) {
+    for (key, it) in a.interiors.iter().filter(|(k, _)| k != room) {
+        assert_eq!(inside(it), inside(b.interior(key)), "{key} under {what}");
+    }
+}
+
+#[test]
+fn a_window_is_named_by_its_place_made_glass_rail_or_none_and_given_where_none_was() {
+    let plain = made(40, vec![]);
+    // seed 40's one window: medium1's on 276, wall cells (49, 29) to (49, 31)
+    let w = plain.windows.iter().find(|w| w.hall == "medium1").expect("medium1's window");
+    assert_eq!((w.z, w.kind, w.wall.clone()), (276, "glass", vec![(49, 29), (49, 30), (49, 31)]));
+    // rail, by any cell of its wall; nothing else changes
+    for at in [(49, 29), (49, 31)] {
+        let lv = made(40, vec![window("medium1", 276, at, "rail")]);
+        let got: Vec<_> = lv.windows.iter().map(|w| (w.hall.as_str(), w.z, w.kind, w.wall.clone())).collect();
+        assert_eq!(got, vec![("medium1", 276, "rail", w.wall.clone())]);
+        assert!(lv.unmet.is_empty());
+        the_rest_as_was(&plain, &lv, "", "a rail");
+    }
+    // none: taken out
+    let lv = made(40, vec![window("medium1", 276, (49, 30), "none")]);
+    assert!(lv.windows.is_empty() && lv.unmet.is_empty());
+    // a level with no windows (`windows` 0) is given one where its place is
+    let mut r = recipe(40, vec![window("medium1", 276, (49, 30), "glass")]);
+    r.options.windows = 0;
+    let lv = r.generate().unwrap();
+    assert_eq!(lv.windows.iter().map(|w| (w.hall.as_str(), w.kind)).collect::<Vec<_>>(), vec![("medium1", "glass")]);
+    r.edits.clear();
+    assert!(r.generate().unwrap().windows.is_empty());
+    // where no window fits, or a rail on the room's own floor: left out, and why
+    let lv = made(40, vec![window("vast", 0, (36, 25), "glass"), window("medium1", 0, (49, 30), "rail")]);
+    assert_eq!(lv.windows.len(), 1);
+    let why: Vec<&str> = lv.unmet.iter().map(|(_, w)| w.as_str()).collect();
+    assert!(why[0].starts_with("no window fits vast's wall there on 0") && why[1] == "a rail only where the corridor is above medium1's floor", "{why:?}");
+    // the file both ways, and what it can't be
+    let r = recipe(40, vec![window("medium1", 276, (49, 30), "rail")]);
+    let text = save(&r);
+    assert!(text.contains(r#""edit": "window""#) && text.contains(r#""as": "rail""#), "{text}");
+    assert_eq!(load(&text).unwrap(), r);
+    assert_eq!(err(40, vec![window("medium1", 276, (49, 30), "door")]), "window: as one of glass, rail, none, not \"door\"");
+    assert_eq!(r.edits[0].describe(), "medium1: window at 49, 30 on 276: rail");
+}
+
+#[test]
+fn a_pillar_or_crate_is_stood_taken_out_or_moved_by_where_it_is() {
+    let plain = made(40, vec![]);
+    let was = plain.interior("vast");
+    // vast's two lane pillars, two cells by one
+    assert_eq!(was.cover, vec![(82, 50, 86, 52, 236, "housing"), (82, 68, 86, 70, 236, "housing")]);
+    // taken out, by either of its cells; no other room's inside moves
+    for at in [(41, 25), (42, 25)] {
+        let lv = made(40, vec![piece("vast", at, "none")]);
+        assert_eq!(lv.interior("vast").cover, vec![(82, 68, 86, 70, 236, "housing")]);
+        assert!(lv.unmet.is_empty());
+        the_rest_as_was(&plain, &lv, "vast", "a pillar out");
+        assert_eq!(lv.windows, plain.windows);
+    }
+    // moved: its size and height kept where it fits (clear of the catwalks' edges over it),
+    // else left where it was, and why
+    for to in [(40, 32), (43, 34)] {
+        let lv = made(40, vec![nudge("vast", (41, 25), to)]);
+        assert!(lv.unmet.is_empty(), "{to:?}: {:?}", lv.unmet);
+        assert_eq!(lv.interior("vast").cover, vec![(82, 68, 86, 70, 236, "housing"), (2 * to.0, 2 * to.1, 2 * to.0 + 4, 2 * to.1 + 2, 236, "housing")]);
+        the_rest_as_was(&plain, &lv, "vast", "a pillar moved");
+    }
+    let lv = made(40, vec![nudge("vast", (41, 25), (41, 30))]);
+    assert_eq!((lv.interior("vast").cover.clone(), lv.unmet[0].1.as_str()), (was.cover.clone(), "it would clip a deck's edge, a ramp or a pod over it"));
+    let lv = made(40, vec![nudge("vast", (41, 25), (60, 25))]);
+    assert_eq!((lv.interior("vast").cover.clone(), lv.unmet[0].1.as_str()), (was.cover.clone(), "not on vast's floor (off it, water, a hole or a pit)"));
+    let lv = made(40, vec![nudge("vast", (39, 30), (41, 30))]);
+    assert_eq!(lv.unmet[0].1, "nothing stands in vast at 39, 30");
+    // stood: a crate one cell square, a pillar as wide as the room's colonnade's; one stood on
+    // another takes its place
+    let lv = made(40, vec![piece("vast", (40, 30), "crate"), piece("vast", (40, 32), "pillar")]);
+    assert!(lv.unmet.is_empty(), "{:?}", lv.unmet);
+    let cover = &lv.interior("vast").cover;
+    assert!(cover.contains(&(80, 60, 82, 62, 118, "housing")) && cover.contains(&(80, 64, 82, 66, 236, "housing")), "{cover:?}");
+    the_rest_as_was(&plain, &lv, "vast", "a crate and a pillar");
+    let lv = made(40, vec![piece("vast", (42, 34), "crate")]);
+    assert_eq!(lv.interior("vast").cover, vec![(82, 50, 86, 52, 236, "housing"), (84, 68, 86, 70, 118, "housing")]);
+    // a size given; one in a doorway's way, or off the floor, is left out and says why
+    let lv = made(40, vec![Edit::Piece { room: s("vast"), at: (40, 32), what: Some(s("pillar")), size: Some(2), to: None }]);
+    assert!(lv.interior("vast").cover.contains(&(80, 64, 84, 68, 236, "housing")), "{:?}", lv.unmet);
+    let mut reasons = std::collections::BTreeSet::new();
+    for x in 37..47 {
+        for y in [20, 21, 36, 37] {
+            let lv = made(40, vec![piece("vast", (x, y), "pillar")]);
+            if let Some((_, why)) = lv.unmet.first() {
+                reasons.insert(why.clone());
+                assert_eq!(lv.interior("vast").cover, was.cover);
+            }
+        }
+    }
+    assert!(!reasons.is_empty(), "every cell along vast's walls took a pillar");
+    // the file both ways, and what it can't be
+    let r = recipe(40, vec![piece("vast", (40, 30), "crate"), nudge("vast", (41, 25), (41, 30)), piece("vast", (41, 34), "none")]);
+    let text = save(&r);
+    assert!(text.contains(r#""as": "crate""#) && text.contains(r#""to": ["#) && !text.contains("size"), "{text}");
+    assert_eq!(load(&text).unwrap(), r);
+    assert_eq!(
+        r.edits.iter().map(|e| e.describe()).collect::<Vec<_>>(),
+        ["vast: a crate at 40, 30", "vast: the piece at 41, 25 moved to 41, 30", "vast: nothing at 41, 34"]
+    );
+    let bad = |e: Edit| err(40, vec![e]);
+    assert!(bad(Edit::Piece { room: s("vast"), at: (1, 1), what: None, size: None, to: None }).starts_with("piece: one of \"as\""));
+    assert_eq!(bad(piece("vast", (40, 30), "barrel")), "piece: as one of pillar, crate, none, not \"barrel\"");
+    assert_eq!(bad(Edit::Piece { room: s("vast"), at: (40, 30), what: Some(s("crate")), size: Some(5), to: None }), "piece: a size of 1 to 3 cells, not 5");
+}
+
+#[test]
+fn a_drop_is_put_in_a_floor_or_taken_out_and_one_that_cannot_land_says_why() {
+    let plain = made(40, vec![]);
+    assert_eq!(plain.drops, vec![(s("colossal"), s("small7"), (14, 39, 16, 41), Some(0))]);
+    // taken out: colossal and small7 lose it, nothing else moves
+    let lv = made(40, vec![drop_at("colossal", None)]);
+    assert!(lv.drops.is_empty() && lv.unmet.is_empty() && !lv.walks.iter().any(|(k, _)| k.starts_with("drop_")));
+    for (key, it) in plain.interiors.iter().filter(|(k, _)| !["colossal", "small7"].contains(&k.as_str())) {
+        assert_eq!(inside(it), inside(lv.interior(key)), "{key}");
+    }
+    // put: loft2 (on 827) over vast (up to 787), every spot a cell in from both rooms' walls
+    let (mut made_, mut why) = (Vec::new(), std::collections::BTreeSet::new());
+    for x in 41..=43 {
+        for y in 28..=32 {
+            let lv = made(40, vec![drop_at("loft2", Some((x, y)))]);
+            match lv.unmet.first() {
+                None => {
+                    let d = lv.drops.iter().find(|d| d.0 == "loft2").expect("loft2's drop");
+                    assert_eq!((d.1.as_str(), d.2), ("vast", (x, y, x + 2, y + 2)));
+                    assert!(d.3.is_some() && lv.walks.iter().any(|(k, _)| k == "drop_loft2_vast"), "({x}, {y})");
+                    assert!(lv.drops.iter().any(|d| d.0 == "colossal"), "the generator's own drop stays");
+                    made_.push((x, y));
+                }
+                Some((_, w)) => {
+                    assert!(lv.drops.iter().all(|d| d.0 != "loft2"));
+                    why.insert(w.clone());
+                }
+            }
+        }
+    }
+    assert!(!made_.is_empty(), "no drop from loft2 into vast: {why:?}");
+    // in place of the room's own; refused where nothing is under it, and the room's own stays
+    let lv = made(40, vec![drop_at("colossal", Some((5, 20)))]);
+    assert_eq!(lv.drops, plain.drops);
+    assert_eq!(lv.unmet[0].1, "no room under colossal there to land in (a cell in from its walls)");
+    let lv = made(40, vec![drop_at("colossal", Some((14, 39)))]);
+    assert_eq!((lv.drops.clone(), lv.unmet.len()), (plain.drops.clone(), 0));
+    assert_eq!(made(40, vec![drop_at("medium1", Some((50, 30)))]).unmet[0].1, "a drop is a cell in from medium1's walls");
+    // the file both ways
+    let r = recipe(40, vec![drop_at("loft2", Some((42, 30))), drop_at("colossal", None)]);
+    let text = save(&r);
+    assert!(text.contains(r#""edit": "drop""#) && text.contains(r#""at": ["#), "{text}");
+    assert_eq!(load(&text).unwrap(), r);
+    assert_eq!(r.edits.iter().map(|e| e.describe()).collect::<Vec<_>>(), ["loft2: a drop at 42, 30", "colossal: no drop"]);
+}
