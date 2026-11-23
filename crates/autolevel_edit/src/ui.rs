@@ -48,6 +48,7 @@ use crate::jobs::{Job, Search};
 use crate::planview::{self, colour, Boxes, Hit, Prim, Rgba, Swatch, View, P};
 use crate::raster::Fit;
 use crate::sideview::{self, Axis, Section, SideHit, SidePart, SideView};
+use crate::strip::{self, Strip, Tile};
 use crate::{routes, shot};
 use autolevel::boxes::{self, Change, Part, Trial};
 use autolevel::candidates::{Asked, Removal};
@@ -227,6 +228,8 @@ pub struct Editor {
     side_look: Option<(P, f32)>,
     /// How the last frame laid the side view on the window.
     pub side_fit: Option<Fit>,
+    /// The variants strip: re-rolls of a room's part, made side by side (None: not open).
+    pub strip: Option<Strip>,
 }
 
 impl Editor {
@@ -270,6 +273,7 @@ impl Editor {
             side: None,
             side_look: None,
             side_fit: None,
+            strip: None,
         }
         .with_side(args.side.as_ref())
     }
@@ -400,6 +404,156 @@ impl Editor {
                 self.search = Some(Search::spawn(self.doc.recipe.clone(), pick, self.doc.rev()));
             }
         }
+        // the variants strip: its re-rolls taken once made; closed once the recipe has changed
+        // other than by keeping one of them
+        if let Some(s) = self.strip.as_mut() {
+            s.poll(self.doc.made().map(|m| &m.level));
+            if !s.fits(&self.doc.recipe) {
+                self.strip = None;
+            }
+        }
+    }
+
+    /// Open the variants strip for `room`'s part (None: its whole inside): its next re-rolls,
+    /// made side by side on a thread. The same again closes it.
+    pub fn vary(&mut self, room: &str, part: Option<&'static str>) {
+        if self.strip.as_ref().is_some_and(|s| s.room == room && s.part == part) {
+            self.strip = None;
+            return;
+        }
+        self.strip = Some(Strip::start(&self.doc.recipe, self.doc.made().cloned(), room, part, 1));
+    }
+
+    /// The strip's next re-rolls, in place of these.
+    pub fn vary_more(&mut self) {
+        if let Some(s) = &self.strip {
+            self.strip = Some(s.more(&self.doc.recipe));
+        }
+    }
+
+    /// Keep a tile of the strip (`None`: the room as it was when the strip was opened): its edit
+    /// made, and its level, already made, the one on show. One step to undo.
+    pub fn keep_variant(&mut self, k: Option<usize>) {
+        let Some(t) = self.strip.as_ref().and_then(|s| match k {
+            Some(k) => s.tiles.get(k).cloned(),
+            None => s.was.clone(),
+        }) else {
+            return;
+        };
+        let Ok(made) = t.made.clone() else {
+            self.status = format!("{}: it makes no level", t.variant.edit.describe());
+            return;
+        };
+        match self.doc.adopt(t.variant.edit.clone(), &t.variant.recipe, made) {
+            Ok(()) => {
+                self.refused = None;
+                self.status = format!("kept: {}", t.variant.edit.describe());
+                self.chose = Some(self.doc.rev());
+            }
+            Err(why) => (self.status, self.refused) = (why.clone(), Some(why)),
+        }
+    }
+
+    /// The variants strip for `room`, if it is open for that room: a heading, the room as it was
+    /// and each re-roll as a small picture (`tile` big), the one the room has now framed, a
+    /// click keeping one; "more" and "close". Shared with `pd_edit`'s Layout screen.
+    pub fn strip_ui(&mut self, ui: &mut egui::Ui, room: &str, tile: egui::Vec2) {
+        let Some(s) = self.strip.as_ref().filter(|s| s.room == room) else { return };
+        let had = s.had(&self.doc.recipe);
+        let mut keep = None;
+        let (mut more, mut close) = (false, false);
+        let mut spots = Vec::new();
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(s.heading(&self.doc.recipe)).strong());
+            if s.busy() {
+                ui.spinner();
+                ui.weak(format!("making {} re-rolls side by side", autolevel::variants::SHOWN));
+            }
+        });
+        if let Some(why) = &s.error {
+            ui.colored_label(egui::Color32::from_rgb(255, 110, 110), why);
+        }
+        let mut shown: Vec<(Option<usize>, &Tile, String)> = Vec::new();
+        if let Some(t) = &s.was {
+            let word = if had == t.variant.n { "now" } else { "before" };
+            shown.push((None, t, format!("{word}: {}", autolevel::variants::label(s.part, t.variant.n))));
+        }
+        for (i, t) in s.tiles.iter().enumerate() {
+            shown.push((Some(i), t, autolevel::variants::label(s.part, t.variant.n)));
+        }
+        // (rows laid out by hand: a wrapped row can't tell how wide a tile with its caption is)
+        let gap = ui.spacing().item_spacing.x;
+        let across = (((ui.available_width() + gap) / (tile.x + gap)).floor() as usize).max(1);
+        for row in shown.chunks(across) {
+            ui.horizontal(|ui| {
+                for (k, t, caption) in row {
+                    ui.vertical(|ui| {
+                        ui.set_width(tile.x);
+                        let (rect, r) = ui.allocate_exact_size(tile, egui::Sense::click());
+                        spots.push((k.map_or("variant was".to_string(), |k| format!("variant {}", k + 1)), rect));
+                        let painter = ui.painter_at(rect);
+                        painter.rect_filled(rect, 2.0, col(colour::BACKGROUND));
+                        match &t.pic {
+                            Some((prims, (lo, hi))) => {
+                                let fit = Fit::inside(*lo, *hi, rect.width(), rect.height());
+                                let to = |p: P| {
+                                    let (x, y) = fit.to(p);
+                                    rect.min + egui::vec2(x, y)
+                                };
+                                paint(&painter, prims, &to, fit.scale);
+                            }
+                            None => {
+                                painter.text(
+                                    rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    "no level",
+                                    egui::FontId::proportional(13.0),
+                                    egui::Color32::from_rgb(255, 120, 120),
+                                );
+                            }
+                        }
+                        // (what the picture can't say, over it: the same as now, or no level)
+                        let note = Strip::note(t);
+                        if k.is_some() && !note.is_empty() {
+                            painter.rect_filled(rect, 2.0, egui::Color32::from_black_alpha(150));
+                            painter.text(rect.center(), egui::Align2::CENTER_CENTER, note, egui::FontId::proportional(12.0), egui::Color32::from_gray(210));
+                        }
+                        let lit = t.variant.n == had && t.made.is_ok();
+                        let edge = if lit {
+                            col(strip::LIT)
+                        } else if r.hovered() {
+                            egui::Color32::WHITE
+                        } else {
+                            egui::Color32::from_gray(70)
+                        };
+                        painter.rect_stroke(rect.shrink(1.0), 2.0, egui::Stroke::new(if lit { 3.0 } else { 1.0 }, edge), egui::StrokeKind::Inside);
+                        let r = r.on_hover_text(if lit { "the one it has now".to_string() } else { format!("keep {}", t.variant.edit.describe()) });
+                        if r.clicked() && !lit {
+                            keep = Some(*k);
+                        }
+                        ui.add(egui::Label::new(egui::RichText::new(caption).small()).truncate());
+                    });
+                }
+            });
+        }
+        ui.horizontal(|ui| {
+            let b = ui.add_enabled(!s.busy() && s.error.is_none(), egui::Button::new("more")).on_hover_text("the next re-rolls");
+            spots.push(("variants more".to_string(), b.rect));
+            more = b.clicked();
+            let b = ui.button("close");
+            spots.push(("variants close".to_string(), b.rect));
+            close = b.clicked();
+        });
+        self.spots.extend(spots);
+        if let Some(k) = keep {
+            self.keep_variant(k);
+        }
+        if more {
+            self.vary_more();
+        }
+        if close {
+            self.strip = None;
+        }
     }
 
     /// An empty start (no rooms but the ones drawn; the seed only decorates them), or the
@@ -421,7 +575,7 @@ impl Editor {
     /// Is the level on show the recipe's own (made, or found impossible), and anything picked
     /// looked into?
     pub fn settled(&self) -> bool {
-        self.job.is_none() && !self.doc.stale() && self.search.is_none() && !self.doc.wants_joins()
+        self.job.is_none() && !self.doc.stale() && self.search.is_none() && !self.doc.wants_joins() && !self.strip.as_ref().is_some_and(Strip::busy)
     }
 
     /// A click on the plan at `at` (cells): a room is picked to join from (on the storey shown,
@@ -1349,6 +1503,34 @@ impl Editor {
         if let Some(why) = &c.unfurnished {
             ui.add(egui::Label::new(egui::RichText::new(why).weak()).wrap());
         }
+        // re-rolls side by side: the whole inside, or one part of it, the rest as it was
+        let mut vary = None;
+        let open = |part: Option<&str>| self.strip.as_ref().is_some_and(|s| s.room == room && s.part == part);
+        let lit: Vec<bool> = std::iter::once(open(None)).chain(c.parts.iter().map(|p| open(Some(p.name)))).collect();
+        ui.horizontal_wrapped(|ui| {
+            ui.label("re-rolls");
+            let b = ui.add_enabled(!pod, egui::SelectableLabel::new(lit[0], "inside")).on_hover_text("five other insides side by side");
+            self.spots.push(("vary inside".to_string(), b.rect));
+            if b.clicked() {
+                vary = Some(None);
+            }
+            for (p, &lit) in c.parts.iter().zip(&lit[1..]) {
+                let n = if p.n > 0 { format!(" {}", p.n) } else { String::new() };
+                let b = ui.add_enabled(p.cannot.is_none(), egui::SelectableLabel::new(lit, format!("{}{n}", p.name)));
+                let b = match &p.cannot {
+                    Some(why) => b.on_disabled_hover_text(why.as_str()),
+                    None => b.on_hover_text(format!("five other {} side by side, the rest as it is", p.name)),
+                };
+                self.spots.push((format!("vary {}", p.name), b.rect));
+                if b.clicked() {
+                    vary = Some(Some(p.name));
+                }
+            }
+        });
+        if let Some(part) = vary {
+            self.vary(room, part);
+        }
+        self.strip_ui(ui, room, egui::vec2(112.0, 92.0));
         ui.horizontal(|ui| {
             ui.label("brightness");
             let own = ui.selectable_label(c.chosen.brightness.is_none(), "the usual").on_hover_text("what the level gives it");
@@ -3021,6 +3203,58 @@ mod tests {
         // its brightness and its ceiling are its own all the same
         press(&mut ed, &egui, "ceiling grille");
         assert_eq!(edits(&ed), ["small8: ceiling grille"]);
+    }
+
+    #[test]
+    fn a_strip_of_re_rolls_is_made_side_by_side_and_one_is_kept_with_a_click() {
+        let (mut ed, egui) = inside("colossal");
+        still(&mut ed, &egui);
+        // the row of parts: vast-sized catwalks to re-roll, a pod's none
+        let said = frame(&mut ed, &egui, Vec::new());
+        assert!(has(&said, "re-rolls") && has(&said, "catwalks") && has(&said, "windows"), "{said:?}");
+        // open the catwalks' strip: five re-rolls made on a thread, and the room as it is now
+        let at = spot(&ed, "vary catwalks");
+        lone_click(&mut ed, &egui, at);
+        assert!(ed.strip.as_ref().is_some_and(|s| s.part == Some("catwalks") && s.busy()));
+        settle(&mut ed);
+        still(&mut ed, &egui);
+        let said = frame(&mut ed, &egui, Vec::new());
+        assert!(has(&said, "colossal's catwalks: now the seed's own") && has(&said, "now: the seed's own") && has(&said, "catwalks 5"), "{said:?}");
+        let s = ed.strip.as_ref().unwrap();
+        assert_eq!(s.tiles.iter().map(|t| t.variant.n).collect::<Vec<_>>(), [1, 2, 3, 4, 5]);
+        let three = s.tiles[2].made.clone().unwrap();
+        // a click on the third keeps it: one edit, and its level is the one on show at once
+        let at = spot(&ed, "variant 3");
+        lone_click(&mut ed, &egui, at);
+        assert_eq!((edits(&ed), ed.status.as_str()), (vec!["colossal: catwalks 3".to_string()], "kept: colossal: catwalks 3"));
+        assert!(!ed.doc.stale() && std::sync::Arc::ptr_eq(ed.doc.made().unwrap(), &three));
+        ed.tick();
+        let said = frame(&mut ed, &egui, Vec::new());
+        assert!(ed.strip.is_some() && has(&said, "now catwalks 3") && has(&said, "before: the seed's own"), "{said:?}");
+        // the first tile has the room back as it was: no edit
+        still(&mut ed, &egui);
+        let at = spot(&ed, "variant was");
+        lone_click(&mut ed, &egui, at);
+        assert!(ed.doc.recipe.edits.is_empty() && ed.status == "kept: colossal: catwalks 0", "{:?} {}", edits(&ed), ed.status);
+        // "more": the next five; "close"
+        still(&mut ed, &egui);
+        let at = spot(&ed, "variants more");
+        lone_click(&mut ed, &egui, at);
+        settle(&mut ed);
+        assert_eq!(ed.strip.as_ref().unwrap().tiles.iter().map(|t| t.variant.n).collect::<Vec<_>>(), [6, 7, 8, 9, 10]);
+        assert!(ed.strip.as_ref().unwrap().was.is_some(), "the room as it was stays first");
+        still(&mut ed, &egui);
+        let at = spot(&ed, "variants close");
+        lone_click(&mut ed, &egui, at);
+        assert!(ed.strip.is_none());
+        // any other change closes it
+        ed.vary("colossal", None);
+        settle(&mut ed);
+        ed.set_choice(Edit::Cover { room: "vast".into(), cover: "none".into() });
+        ed.tick();
+        assert!(ed.strip.is_none());
+        // undo steps: keep, back
+        assert!(ed.doc.undo() && ed.doc.undo() && ed.doc.undo() && !ed.doc.undo());
     }
 
     #[test]

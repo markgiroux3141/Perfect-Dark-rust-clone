@@ -17,6 +17,7 @@ use crate::doc::Doc;
 use crate::planview::{Boxes, View};
 use crate::raster::Image;
 use crate::sideview::{Section, SideView};
+use crate::strip::{self, Strip};
 use crate::{chosen, lots, routes, shot};
 use autolevel::boxes::{self, Change, Trial};
 use autolevel::recipe::Recipe;
@@ -35,6 +36,8 @@ pub struct Done {
     /// Why the recipe makes no level: its rooms (the snapshot shows the room boxes instead), or
     /// with a room's choice (the snapshot shows the level as it was). A failure too.
     pub failed: Option<String>,
+    /// The variants strip (`--variants` with `--shot`): written beside the snapshot.
+    pub strip: Option<Image>,
 }
 
 /// A room's choice the line could not make.
@@ -146,7 +149,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
     let mut text = String::new();
     let level = args.shot.is_some() || args.list || args.routes || args.changes() || !args.choices.is_empty();
     if !(level || args.lots) {
-        return Ok(Done { recipe: doc.recipe, text, shot: None, refused: None, failed: None });
+        return Ok(Done { recipe: doc.recipe, text, shot: None, refused: None, failed: None, strip: None });
     }
     // the room boxes first, as lots come first in the generator; the level is made after them
     let trial = rooms(&mut doc, args, &mut text)?;
@@ -163,7 +166,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
         text.push_str(&lots::text(trial.as_ref().map_or(&placed.lots, |t| &t.lots), placed.site, trial.is_some()));
     }
     if !level {
-        return Ok(Done { recipe: doc.recipe, text, shot: None, refused, failed: None });
+        return Ok(Done { recipe: doc.recipe, text, shot: None, refused, failed: None, strip: None });
     }
     if let Err(why) = doc.regenerate() {
         // (with the room boxes to show, a recipe that makes no level still has its picture)
@@ -183,7 +186,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
             }
             _ => args.shot.is_some().then(|| shot::render_bare(doc.recipe.seed, &why, &view, args.width)),
         };
-        return Ok(Done { recipe: doc.recipe, text, shot, refused, failed: Some(why) });
+        return Ok(Done { recipe: doc.recipe, text, shot, refused, failed: Some(why), strip: None });
     }
     if let (Some(shown), None) = (&boxes, &trial) {
         // (the generator leaves out a room nothing reaches, and a pod with no way in: say so)
@@ -228,6 +231,25 @@ pub fn run(args: &Args) -> Result<Done, String> {
             doc.regenerate().map_err(|why| format!("--join {n}: {why}"))?;
         }
     }
+    // the variants strip: the next re-rolls of a room's part, made side by side; one kept
+    let mut strip = None;
+    if let Some((room, part)) = args.variants.as_ref().filter(|_| !stopped) {
+        let now = doc.made().expect("the level was made").clone();
+        let s = Strip::now(&doc.recipe, room, *part, args.vary_from, Some(&now.level));
+        text.push_str(&strip::text(&s, &doc.recipe));
+        if args.shot.is_some() {
+            strip = Some(strip::render(&s, &now, &doc.recipe));
+        }
+        if let Some(why) = &s.error {
+            return Err(format!("--variants: {why}"));
+        }
+        if let Some(k) = args.keep {
+            let t = s.tiles.get(k - 1).ok_or_else(|| format!("--keep: the strip has {} re-rolls, not {k}", s.tiles.len()))?;
+            let made = t.made.clone().map_err(|why| format!("--keep {k}: no level: {why}"))?;
+            doc.adopt(t.variant.edit.clone(), &t.variant.recipe, made)?;
+            text.push_str(&format!("kept: {k}  {}\n", t.variant.edit.describe()));
+        }
+    }
     let made = doc.made().expect("the level was made").clone();
     for room in &args.choices {
         let found = doc.choices(room).map_err(|why| format!("--choices: {why} (--lots names them)"))?;
@@ -259,7 +281,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
     if args.routes {
         text.push_str(&routes::text(&made.level));
     }
-    Ok(Done { recipe: doc.recipe, text, shot, refused, failed })
+    Ok(Done { recipe: doc.recipe, text, shot, refused, failed, strip })
 }
 
 #[cfg(test)]
@@ -531,7 +553,8 @@ mod tests {
         assert_eq!((row("brightness"), row("ceiling")), ("brightness 90 chosen in the recipe".to_string(), "ceiling grille chosen in the recipe".to_string()));
         assert!(row("layout").ends_with(" the seed's own") && row("inside") == "inside 0 the seed's own", "{}", done.text);
         assert!(done.text.contains("\n  could take layout mezzanine\n  feature shaped "), "{}", done.text);
-        assert!(done.text.contains("\n  feature angled     has none  the level's chance\nautolevel seed 40: 29 rooms, "), "{}", done.text);
+        assert!(done.text.contains("\n  feature angled     has none  the level's chance\n  part catwalks "), "{}", done.text);
+        assert!(done.text.contains("\n  part windows "), "{}", done.text);
         assert_eq!(
             done.recipe.edits,
             [
@@ -555,7 +578,7 @@ mod tests {
             listed.text
         );
         assert!(
-            listed.text.contains("\nchoices for small8 (a small room, a pod of vast, 4 x 3 cells, 551 to 787): ") && listed.text.lines().count() == 34,
+            listed.text.contains("\nchoices for small8 (a small room, a pod of vast, 4 x 3 cells, 551 to 787): ") && listed.text.lines().count() == 42,
             "{}",
             listed.text
         );
@@ -677,5 +700,37 @@ mod tests {
         assert!(cli::parse(&words("--height medium5@276"), &no).unwrap_err().starts_with("--height: a room, its floor and its top"));
         let err = run(&args("--seed 40 --side x@nowhere --shot side.png")).err();
         assert!(err.as_deref().is_some_and(|e| e.starts_with("--side: no room nowhere")), "{err:?}");
+    }
+
+    #[test]
+    fn re_rolls_are_listed_drawn_and_one_kept_from_the_command_line() {
+        // a part re-rolled by hand, the seed's own again with 0
+        let done = run(&args("--seed 40 --reroll colossal@catwalks@3")).unwrap();
+        assert_eq!(done.recipe.edits.iter().map(Edit::describe).collect::<Vec<_>>(), ["colossal: catwalks 3"]);
+        let done = run(&args("--seed 40 --reroll colossal@catwalks@3 --reroll colossal@catwalks@0 --choices colossal")).unwrap();
+        assert!(done.recipe.edits.is_empty() && done.text.contains("  part catwalks "), "{}", done.text);
+        // the strip: listed, numbered, drawn beside the snapshot, and number 3 kept
+        let done = run(&args("--seed 40 --variants colossal@catwalks --keep 3 --shot plan.png")).unwrap();
+        assert!(done.text.contains("variants: colossal's catwalks: now the seed's own\n  1  catwalks 1"), "{}", done.text);
+        assert!(done.text.contains("kept: 3  colossal: catwalks 3"), "{}", done.text);
+        assert_eq!(done.recipe.edits.iter().map(Edit::describe).collect::<Vec<_>>(), ["colossal: catwalks 3"]);
+        let strip = done.strip.expect("a strip with --shot");
+        assert_eq!(strip.w, 10 + 6 * 270);
+        // from another stream; the whole inside; --own takes a part's re-roll back
+        let done = run(&args("--seed 40 --variants vast --from 7")).unwrap();
+        assert!(done.text.contains("variants: vast's inside: now the seed's own\n  1  inside 7") && done.strip.is_none(), "{}", done.text);
+        let done = run(&args("--seed 40 --reroll vast@ramps@2 --own vast@reroll-ramps")).unwrap();
+        assert!(done.recipe.edits.is_empty() && done.text.contains("vast: the seed's own ramps again"), "{}", done.text);
+        // what can't be
+        assert_eq!(
+            run(&args("--seed 40 --variants small8")).err().as_deref(),
+            Some("--variants: reroll: small8 is a pod of vast: it is not furnished by itself")
+        );
+        assert_eq!(run(&args("--seed 40 --variants vast --keep 9")).err().as_deref(), Some("--keep: the strip has 5 re-rolls, not 9"));
+        let no = |path: &str| Err(format!("{path}: no files here"));
+        let words = |line: &str| line.split_whitespace().map(str::to_string).collect::<Vec<_>>();
+        assert!(cli::parse(&words("--variants vast@pillars"), &no).unwrap_err().starts_with("--variants: a room, or a room then @ and a part"));
+        assert!(cli::parse(&words("--reroll vast@catwalks"), &no).unwrap_err().starts_with("--reroll: a room, then @ and a part"));
+        assert_eq!(cli::parse(&words("--keep 2"), &no).unwrap_err(), "--keep, --from: of what? Name the room and part with --variants");
     }
 }

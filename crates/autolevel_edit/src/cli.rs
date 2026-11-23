@@ -6,6 +6,7 @@
 
 use autolevel::boxes::{self, Change};
 use autolevel::candidates::Asked;
+use autolevel::level::PARTS;
 use autolevel::recipe::{self, Doorway, Edit, Recipe};
 use autolevel::storeys::LEVELS;
 
@@ -89,6 +90,17 @@ pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
                         what stands on the room's floor (--cover with no ROOM@ is the level's option)
   --inside ROOM@N       the room furnished from its Nth other stream of random numbers: another
                         inside, its doors as they were (0: the seed's own)
+  --reroll ROOM@PART@N  one part of the room's inside from its Nth other stream, the rest as it
+                        was: catwalks (and its layout), ramps (where they go), cover (where it
+                        stands: crates, a notch or cross wall; pillars stand by rule) or windows
+                        (which places along its walls, glass or rail). 0: the seed's own
+  --variants ROOM[@PART]
+                        the next five re-rolls of the room's part (PART as --reroll's, or inside,
+                        the default: its whole inside), made side by side and listed, numbered;
+                        with --shot also a strip of small pictures, FILE.variants.png, the room as
+                        it is now first. Done after --pick
+  --from N              with --variants: the re-rolls from stream N (default 1)
+  --keep N              with --variants: keep number N (the recipe and the snapshot have it)
   --brightness ROOM@0..255
                         what the room's floor is baked to
   --ceiling ROOM@plain|ceiling_tile|ceiling_dark|grille
@@ -99,7 +111,7 @@ pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
                         flooded, sunken, cellar (a big hall on the ground), platforms, holes
                         (drops through them), angled (catwalks across its air). On: wherever it
                         fits; off: none; auto: the level's chance again
-  --own ROOM@layout|cover|inside|brightness|ceiling|FEATURE|all
+  --own ROOM@layout|cover|inside|brightness|ceiling|FEATURE|reroll-PART|all
                         the seed's own again for that choice, or for all of the room's
   --choices ROOM        print the room's choices: what it has, whether the seed or the recipe
                         chose it, and each layout it could take or why it can't. Printed for
@@ -162,6 +174,12 @@ pub struct Args {
     pub choices: Vec<String>,
     /// The snapshot is the side view along this section, not the plan.
     pub side: Option<Side>,
+    /// Re-rolls of a room's part (None: its whole inside) to make side by side (`--variants`).
+    pub variants: Option<(String, Option<&'static str>)>,
+    /// The first stream they start from (`--from`; 1 by default).
+    pub vary_from: u32,
+    /// Which of them to keep, counting from 1 (`--keep`).
+    pub keep: Option<usize>,
 }
 
 /// Where `--side` cuts: its axis, and a row or column of cells, or a room's middle.
@@ -215,7 +233,7 @@ impl Args {
     /// Does it change the recipe by what the recipe makes: its lots (the room flags) or its
     /// level (a room's choices, `--remove`, `--pick`)?
     pub fn changes(&self) -> bool {
-        !self.boxes.is_empty() || !self.choose.is_empty() || !self.remove.is_empty() || self.pick.is_some()
+        !self.boxes.is_empty() || !self.choose.is_empty() || !self.remove.is_empty() || self.pick.is_some() || self.variants.is_some()
     }
 
     /// Does a snapshot draw the room boxes? Asked for (`--rooms`), or any room flag is given.
@@ -286,6 +304,9 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
         choose: Vec::new(),
         choices: Vec::new(),
         side: None,
+        variants: None,
+        vary_from: 1,
+        keep: None,
     };
     // a room, then @ and its choice: ("vast", "ring") of "--layout vast@ring"
     let choice = |n: usize, what: &str| {
@@ -396,6 +417,27 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
                 let (room, ceiling) = choice(n, "its ceiling (plain ceiling_tile ceiling_dark grille), as vast@grille")?;
                 out.choose.push(Choose::Set(Edit::Ceiling { room, ceiling: ceiling.to_string() }));
             }
+            "reroll" => {
+                let what = format!("a part ({}), @ and which of its streams (0: the seed's own), as vast@catwalks@2", PARTS.join(" "));
+                let (room, v) = choice(n, &what)?;
+                let bad = || format!("--reroll: a room, then @ and {what}, not {}", args[n + 1]);
+                let (part, k) = v.split_once('@').ok_or_else(bad)?;
+                let part = PARTS.iter().find(|p| **p == part).ok_or_else(bad)?;
+                let k = k.parse().map_err(|_| bad())?;
+                out.choose.push(Choose::Set(Edit::Reroll { room, n: k, part: Some(part.to_string()) }));
+            }
+            "variants" => {
+                let v = value(n)?;
+                let bad = || format!("--variants: a room, or a room then @ and a part ({} or inside), as vast@catwalks, not {v}", PARTS.join(" "));
+                out.variants = Some(match v.split_once('@') {
+                    Some((room, "inside")) if !room.is_empty() => (room.to_string(), None),
+                    Some((room, part)) if !room.is_empty() => (room.to_string(), Some(*PARTS.iter().find(|p| **p == part).ok_or_else(bad)?)),
+                    None if !v.is_empty() => (v.to_string(), None),
+                    _ => return Err(bad()),
+                });
+            }
+            "from" => out.vary_from = number(n)?.try_into().ok().filter(|k| *k > 0).ok_or("--from: a stream, from 1")?,
+            "keep" => out.keep = Some(number(n)?.try_into().ok().filter(|k| *k > 0).ok_or("--keep: a number of the --variants strip, from 1")?),
             "inside" => {
                 let what = "which inside, a whole number (0: the seed's own), as vast@2";
                 let (room, v) = choice(n, what)?;
@@ -425,7 +467,10 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
                 let what = "what is the seed's own again (layout cover inside brightness ceiling, a feature, or all), as vast@layout";
                 let (room, v) = choice(n, what)?;
                 let feature = autolevel::level::FEATURES.iter().any(|(f, _)| *f == v);
+                // (a part's re-roll: reroll-catwalks, reroll-cover, ...)
+                let part = v.strip_prefix("reroll-").and_then(crate::strip::part);
                 let kind = match v {
+                    _ if part.is_some() => crate::strip::kind(part),
                     "inside" => "reroll",
                     "layout" | "cover" | "brightness" | "ceiling" | "all" => v,
                     _ if feature => v,
@@ -449,6 +494,9 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
     }
     if out.join.is_some() && out.pick.is_none() {
         return Err("--join: of what? Name the room and storey with --pick".to_string());
+    }
+    if (out.keep.is_some() || out.vary_from != 1) && out.variants.is_none() {
+        return Err("--keep, --from: of what? Name the room and part with --variants".to_string());
     }
     if !out.asked.plain() && out.pick.is_none() {
         return Err("--door, --to, --to-door, --via: of a join from what? Name the room and storey with --pick".to_string());

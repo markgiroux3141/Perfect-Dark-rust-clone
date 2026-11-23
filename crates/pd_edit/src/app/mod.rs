@@ -2139,6 +2139,14 @@ impl App {
         }
     }
 
+    /// Open the variants strip of a generated level's room, for one part of
+    /// its inside or ("inside") all of it (`--shot-ui --room KEY --vary PART`).
+    pub(crate) fn vary_generated(&mut self, key: &str, part: &str) {
+        if let Some(g) = self.generating.as_mut() {
+            g.ed.vary(key, autolevel_edit::strip::part(part));
+        }
+    }
+
     /// Show a generated level in 3D, its ceilings left out if asked
     /// (`--shot-ui --3d [--no-ceilings]`).
     pub(crate) fn show_generated_3d(&mut self, no_ceilings: bool) {

@@ -504,6 +504,18 @@ impl Doc {
         true
     }
 
+    /// Keep a re-roll from the variants strip: its edit made as a choice (`set_choice`), and the
+    /// level already made for it taken as the recipe's own, so nothing is made again. The level
+    /// is taken only if the recipe then is the one it was made from (`recipe`).
+    pub fn adopt(&mut self, e: Edit, recipe: &Recipe, made: Arc<Made>) -> Result<(), String> {
+        self.set_choice(e)?;
+        if self.recipe == *recipe {
+            self.made = Some((self.rev, made));
+            self.failed = None;
+        }
+        Ok(())
+    }
+
     /// The last level made: the recipe's own unless `stale` or `error`.
     pub fn made(&self) -> Option<&Arc<Made>> {
         self.made.as_ref().map(|(_, made)| made)

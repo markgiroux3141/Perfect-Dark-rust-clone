@@ -49,6 +49,7 @@ pub mod raster;
 pub mod routes;
 pub mod shot;
 pub mod sideview;
+pub mod strip;
 /// The window's panels (egui, through the engine): behind the `window` feature, so the rest of
 /// the lib builds without the engine. Public so that `pd_edit` can host them.
 #[cfg(feature = "window")]

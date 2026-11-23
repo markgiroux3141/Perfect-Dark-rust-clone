@@ -840,7 +840,7 @@ field, option or edit is an error that says which. With no edits a recipe gives 
 | `remove` (a route, by any of its pieces' keys) | routing | Refused if the level would fall in two. It cannot name a corridor the dead-end pass adds later: `keep` stops one. Keys shift when lots change. |
 | `cover` (one of `level::COVER`) | furnishing | In place of the dress's own cover; the room's shape and pillar stay. Refused for a pod. |
 | `layout` ("ring", "galleries", "mezzanine", "none") | furnishing | A hall's first upper storey, on every attempt. Refused for a room of one storey, a tower or spire, one too small for it (a ring 8 by 8 cells, galleries 7 by 8, a mezzanine 5 by 10), and when no attempt can be furnished with it: it never falls back to another. "none" keeps a balcony the room would have had anyway. |
-| `reroll` (n) | furnishing | The room is dressed and furnished from other streams of random numbers (`{seed}/{key}/reroll{n}/dress`, `.../{attempt}`); 0 is the seed's own. A spire's spiral is not re-rolled (it is laid before routing). |
+| `reroll` (n) | furnishing | The room is dressed and furnished from other streams of random numbers (`{seed}/{key}/reroll{n}/dress`, `.../{attempt}`); 0 is the seed's own. A spire's spiral is not re-rolled (it is laid before routing). New (2026-11-23): `"part"` (one of `level::PARTS`: catwalks, ramps, cover, windows): only that part from a stream of its own, the rest as it was ("Re-rolls side by side", below); one of each part a room, left out of the file when not given. |
 | `keep` (the dead end a room is in) | the dead-end pass | The pass leaves it alone (`Build::keep`). |
 | `cut` (a room's own decks stop at a storey) | after the pass | Refused if the room has a door higher up (`Build::cut`). |
 | `brightness`, `ceiling` | the finished level | They replace the planner's own choice. |
@@ -2843,9 +2843,10 @@ Order of work, and where each stands:
    doorway picked on each room's wall on the plan, in the side view and in 3D, the way cycled
    (auto / corridor / vent, and "straight"). L, stairs and a forced ramp are noted there and
    not built (they need new search state in the router).
-5. **Per-part re-rolls and a variants strip.** `reroll { room, part }` with a stream of its own
-   per part (catwalks, cover, windows), so one part changes and the rest stays; 4 to 6 small
-   pictures of re-rolls made in parallel (as the Join tool's candidates are), one click to keep.
+5. **Per-part re-rolls and a variants strip.** Done (2026-11-23): "Re-rolls side by side",
+   below. `reroll { room, n, part }` with a stream of its own per part (catwalks, ramps, cover,
+   windows), so one part changes and the rest stays; five small pictures of re-rolls made in
+   parallel, one click to keep.
 6. **Single elements by place.** Windows (`window { hall, storey, cell, glass|rail|none }`: in
    an empty start a window's stream is already keyed by its place), pillars and crates added,
    taken out or nudged, a drop put in a floor. Named by where they are, never by an index
@@ -3056,6 +3057,77 @@ Order of work, and where each stands:
   the router's ramps already; forcing one between rooms on the same storey needs a head that
   must climb and come down. "stairs" has no piece in the corridor kit: `stairs.rs` lays a room's
   ramps, not a corridor's. None of the three is built.
+
+### Re-rolls side by side (roadmap item 5, 2026-11-23)
+
+- **The edit:** `Edit::Reroll` gains `part` (`level::PARTS`: "catwalks", "ramps", "cover",
+  "windows"; none: the whole inside, as ever). `Recipe::effective` puts the part re-rolls in
+  `Options::rerolled` (as features go in `forced`; not saved), and `Options::reroll(room, part)`
+  is the stream a part is on (the last edit for it). Unknown part: "reroll: a part is one of
+  catwalks, ramps, cover, windows, not \"pillars\""; a pod is refused as the whole re-roll is.
+- **Where each part draws, and how it is moved:** the room's attempt stream
+  (`{seed}/{key}/{attempt}`) is shared by the layout draw (`build::layout`, a tower's ring or
+  ends), `lay_pool`, `lay_decks` (a mezzanine's side, a basin's ring, bridges), `place_ramps`
+  (the score's jitter) and `lay_cover` (crates, a notch or a cross wall). `Interior::part(name,
+  lay)` lays a re-rolled part from `{seed}/{key}/{part}{n}/{attempt}` (under `reroll{m}/` if the
+  whole room is re-rolled too) and first lays it on a throw-away copy from the room's stream, so
+  the stream is left where the seed's level leaves it and **the parts after it draw the numbers
+  they did** (they still fit themselves round what the part became: the decks are trimmed where
+  a ramp lands, so a ramps re-roll moves deck edges too). The catwalks take the layout draw with
+  them (`.../{part}{n}/layout/{attempt}`; drawn on the room's stream all the same) and a towering
+  tower's storey shapes (`.../shape/{attempt}/{z}`). Windows (`windows::reroll`): a hall's own
+  places are dealt out again among the slots they hold in the sorted list
+  (`{seed}/{hall}/windows{n}`), and glass or rail is drawn from `.../windows{n}/{z}/{x},{y}` after
+  the shared draw is made anyway; a place it takes can be a corridor piece's one window that
+  another hall had (the only way a part re-roll reaches another room). With no part re-roll
+  nothing of this runs: the answer keys pass unchanged.
+- **What is drawn and what is not:** pillars (`colonnade`) and a lane's pillars stand by rule,
+  so a cover re-roll of a room of "pillars", "lanes" or none with no shape changes nothing:
+  `choices::Part::cannot` says so, as it does for a room with none of a part, and for a pod.
+  `Choices::parts` (`Part { name, n, count, cannot }`); each part is a choice kind of its own
+  (`choices::PART_KINDS`, "reroll catwalks", ...), so `set` keeps one a room and `clear` (and
+  `--own ROOM@all`) takes it out.
+- **Side by side** (`autolevel::variants`): `variants(recipe, level, room, part, from, count)` is
+  the recipes of the next streams (the one it has skipped), each with the re-roll made as a
+  choice; `made` makes their levels on threads (`side_by_side`, which `candidates::verdicts` now
+  uses too); `part_of` is a part as text, to tell a re-roll that came out the same; `label`.
+- **The strip** (`autolevel_edit::strip`): `Strip::start` makes five re-rolls' levels (as the
+  editor's `Made`) on a thread; its tiles are re-rolls of the recipe with the room's re-roll of
+  that kind taken out (`base`), so keeping one leaves the rest good and any other change closes
+  it (`fits`). Each tile's picture is worked out once (`pic`: the plan's shapes, every storey,
+  or the floor alone for cover, cut to the room's box and two cells round it). `was` is the room
+  as it was when the strip was opened. `Doc::adopt` keeps a tile: its edit made as a choice and
+  its level, already made, the one on show (nothing is made again).
+  - **The generator's room panel:** a "re-rolls" row (inside, catwalks, ramps, cover, windows,
+    each greyed with why a re-roll changes nothing), the strip under it: the first tile the room
+    as it was ("now" or "before"), then five, the one it has now framed in amber, a re-roll that
+    came out the same or makes no level dimmed with those words over it; a click keeps one
+    (status "kept: colossal: catwalks 3", one step to undo); "more" (the next five) and "close".
+    `Editor::vary`, `vary_more`, `keep_variant`, `strip_ui` (shared).
+  - **`pd_edit`'s Layout screen:** under "Try another inside", "Try five": Inside, Catwalks,
+    Ramps, Cover, Windows, and the same strip, tiles 88 by 72 laid in rows by hand.
+- **Command line:** `autolevel_edit --reroll ROOM@PART@N` (0: the seed's own); `--variants
+  ROOM[@PART] [--from N] [--keep N]` lists the five, numbered, and with `--shot FILE.png` writes
+  the strip to `FILE.variants.png` (the room now, then each, captioned); `--own
+  ROOM@reroll-PART`; `--choices` has a "part" line each. `pd_edit --shot-ui OUT --seed 40 --step
+  layout --room colossal --vary catwalks` (opened once the level is made).
+- **Checked:** `a_part_of_a_rooms_inside_is_rolled_again_and_the_rest_stays` (cover on vast made
+  crates: its places move, decks and ramps don't, the same every time; ramps: what is laid before
+  them stays; catwalks: colossal's change on some stream; no other room's inside moves for any;
+  with the whole inside re-rolled too only the part moves; windows change on some stream, no
+  inside moves; the file both ways; the errors; 0 is the same level); `variants` (the streams,
+  the one it has skipped, each the level its recipe makes); the strip (five, kept one leaves it
+  good, any other change stale, the PNG's size, a pod refused); a window test (egui clicks: open
+  catwalks, five made, the third kept with its level adopted at once, the first tile has the room
+  back, "more" is 6 to 10, "close", another change closes it, the steps to undo); the command line
+  (made, kept, saved, `--from`, `--own`, the refusals). Pictures read: colossal's catwalks strip
+  (3, 4 and 5 differ, 1 and 2 the same), vast's cover strip with crates, vast's ramps strip, the
+  Layout screen with the strip open.
+- **Rough:** nobody has looked at the window. Ramps re-rolls are hard to tell apart at this size
+  (item 7's lit differences would help). The first tile is missing if the strip is opened before
+  the level is made. A room at the level's edge sits off-centre in its tile (the tile's spare
+  width shows its neighbours). Pillars can't be re-rolled (they stand by rule): item 6 is where
+  they are placed by hand.
 
 ## Risks
 

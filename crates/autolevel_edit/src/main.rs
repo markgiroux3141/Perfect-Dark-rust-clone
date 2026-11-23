@@ -40,6 +40,15 @@ fn run() -> Result<(), String> {
         std::fs::write(path, img.png()?).map_err(|e| format!("{path}: {e}"))?;
         println!("shot: {path} ({} x {})", img.w, img.h);
     }
+    if let (Some(path), Some(img)) = (&args.shot, &done.strip) {
+        // (beside the snapshot: plan.png's strip is plan.variants.png)
+        let path = match path.strip_suffix(".png") {
+            Some(stem) => format!("{stem}.variants.png"),
+            None => format!("{path}.variants.png"),
+        };
+        std::fs::write(&path, img.png()?).map_err(|e| format!("{path}: {e}"))?;
+        println!("variants: {path} ({} x {})", img.w, img.h);
+    }
     print!("{}", done.text);
     if let Some(why) = stopped {
         return Err(why);

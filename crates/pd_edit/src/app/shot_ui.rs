@@ -1,6 +1,6 @@
 //! `pd_edit --shot-ui <out.png> [<code>] [--size WxH] [--frames N] [--step
 //! home|layout|items|test] [--select KIND INDEX] [--generate [SEED]] [--room
-//! KEY] [--side] [--3d [--no-ceilings]] [--import FILE.glb] [--tool KIND] [--hover X,Y] [--run-test]`: the whole editor window (its panels
+//! KEY [--vary PART]] [--side] [--3d [--no-ceilings]] [--import FILE.glb] [--tool KIND] [--hover X,Y] [--run-test]`: the whole editor window (its panels
 //! and the view between them) as a PNG, with no window. The app runs headless
 //! (`App::ui` on an egui context with no window, `App::update` between
 //! passes) until the level asked for has loaded and nothing is running, then
@@ -30,6 +30,8 @@ struct Shot {
     generate: Option<u64>,
     /// A generated level's room to select (its key: `vast`, `medium1`).
     room: Option<String>,
+    /// The variants strip to open for that room: a part, or "inside".
+    vary: Option<String>,
     /// Run the simulant test first (Test & play's numbers).
     run_test: bool,
     /// Show a generated level from the side (through `room`, if it is given).
@@ -78,6 +80,7 @@ fn parse(args: &[String]) -> Result<Shot, String> {
             "--seed" => s.generate = Some(val(&mut it, "--seed")?.parse().map_err(|_| "--seed N")?),
             "--run-test" => s.run_test = true,
             "--room" => s.room = Some(val(&mut it, "--room")?),
+            "--vary" => s.vary = Some(val(&mut it, "--vary")?),
             "--side" => s.side = true,
             "--3d" => s.three_d = true,
             "--no-ceilings" => s.no_ceilings = true,
@@ -125,6 +128,7 @@ pub fn run(args: &[String]) -> Result<PathBuf, String> {
     let deadline = Duration::from_secs(180);
     let mut n = 0;
     let mut tested = false;
+    let mut varied = false;
     // Until the level has loaded (an import, a placement, the generator's
     // level and its preview) and the frames asked for have run.
     loop {
@@ -144,12 +148,20 @@ pub fn run(args: &[String]) -> Result<PathBuf, String> {
                 app.show_generated_3d(shot.no_ceilings);
             }
         }
+        // (the strip once the level is made: its first tile is the room as it is)
+        if let (Some(room), Some(part), false) = (&shot.room, &shot.vary, varied) {
+            if n >= 3 && app.settled() {
+                app.vary_generated(room, part);
+                varied = true;
+                continue;
+            }
+        }
         if shot.run_test && !tested && n >= 3 && app.settled() {
             app.run_test();
             tested = true;
             continue;
         }
-        if n >= shot.frames && app.settled() && tested == shot.run_test {
+        if n >= shot.frames && app.settled() && tested == shot.run_test && varied == shot.vary.is_some() {
             break;
         }
         if started.elapsed() > deadline {

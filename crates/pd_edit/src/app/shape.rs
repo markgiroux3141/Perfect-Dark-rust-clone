@@ -301,6 +301,17 @@ fn ceiling_word(ceiling: &str) -> &'static str {
     }
 }
 
+/// A part of a room's inside as the Layout screen names it, and what trying
+/// five of it changes.
+fn part_word(part: &str) -> (&'static str, &'static str) {
+    match part {
+        "catwalks" => ("Catwalks", "Where the catwalks run, and their layout; the rest as it is"),
+        "ramps" => ("Ramps", "Where the ramps go; the rest as it is"),
+        "cover" => ("Cover", "Where the crates stand (pillars stand by rule); the rest as it is"),
+        _ => ("Windows", "Which places along its walls have windows, glass or rail; the rest as it is"),
+    }
+}
+
 /// What the room panel was asked to do (done once it is drawn).
 /// A feature's name on the panel, and what it adds (`autolevel::level::FEATURES`).
 fn feature_word(name: &str) -> (&'static str, &'static str) {
@@ -447,6 +458,31 @@ impl App {
                     ask = Some(if n == 1 { Ask::Clear("reroll") } else { Ask::Set(recipe::Edit::Reroll { room: room.clone(), n: n - 1, part: None }) });
                 }
             });
+            // re-rolls side by side: the whole inside, or one part of it with the rest kept
+            let mut vary = None;
+            let open = |part: Option<&str>| g.ed.strip.as_ref().is_some_and(|s| s.room == room && s.part == part);
+            let lit: Vec<bool> = std::iter::once(open(None)).chain(c.parts.iter().map(|p| open(Some(p.name)))).collect();
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Try five").on_hover_text("Five other versions side by side: click one to keep it");
+                if ui.add_enabled(!pod, egui::SelectableLabel::new(lit[0], "Inside")).on_hover_text("The whole inside").clicked() {
+                    vary = Some(None);
+                }
+                for (p, &lit) in c.parts.iter().zip(&lit[1..]) {
+                    let (word, does) = part_word(p.name);
+                    let b = ui.add_enabled(p.cannot.is_none(), egui::SelectableLabel::new(lit, word));
+                    let b = match &p.cannot {
+                        Some(why) => b.on_disabled_hover_text(why.as_str()),
+                        None => b.on_hover_text(does),
+                    };
+                    if b.clicked() {
+                        vary = Some(Some(p.name));
+                    }
+                }
+            });
+            if let Some(part) = vary {
+                g.ed.vary(&room, part);
+            }
+            g.ed.strip_ui(ui, &room, egui::vec2(88.0, 72.0));
             if let Some(why) = &c.unfurnished {
                 theme::help(ui, why);
             }
