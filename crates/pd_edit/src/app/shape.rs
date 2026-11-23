@@ -441,10 +441,10 @@ impl App {
             ui.horizontal(|ui| {
                 let n = c.chosen.reroll.unwrap_or(0);
                 if ui.add_enabled(!pod, egui::Button::new("Try another inside")).on_hover_text("Furnish it again, from other random numbers").clicked() {
-                    ask = Some(Ask::Set(recipe::Edit::Reroll { room: room.clone(), n: n + 1 }));
+                    ask = Some(Ask::Set(recipe::Edit::Reroll { room: room.clone(), n: n + 1, part: None }));
                 }
                 if n > 0 && ui.button("Back").on_hover_text("The inside before this one").clicked() {
-                    ask = Some(if n == 1 { Ask::Clear("reroll") } else { Ask::Set(recipe::Edit::Reroll { room: room.clone(), n: n - 1 }) });
+                    ask = Some(if n == 1 { Ask::Clear("reroll") } else { Ask::Set(recipe::Edit::Reroll { room: room.clone(), n: n - 1, part: None }) });
                 }
             });
             if let Some(why) = &c.unfurnished {

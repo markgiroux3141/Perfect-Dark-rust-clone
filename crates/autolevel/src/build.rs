@@ -696,6 +696,8 @@ impl Build {
     /// What was chosen for the room by hand (`choices`) comes in here. A re-roll `n` moves the
     /// dress and every attempt to streams of its own, "{seed}/{key}/reroll{n}/dress" and
     /// "{seed}/{key}/reroll{n}/{attempt}" (no other stream has four parts, and no key a slash).
+    /// A part re-rolled alone (`Options::rerolled`: catwalks, ramps, cover) draws from
+    /// "{seed}/{key}/{part}{n}/{attempt}" (`Interior::part`), the rest from the room's own.
     /// A chosen cover replaces the dress's and nothing else of it; a chosen layout replaces the
     /// one drawn on every attempt, the later ones too, and if none can be furnished with it the
     /// Err says so: the room is never given another instead.
@@ -707,6 +709,15 @@ impl Build {
             0 => format!("{seed}/{key}/{part}"),
             n => format!("{seed}/{key}/reroll{n}/{part}"),
         };
+        // (parts re-rolled alone: "{seed}/{key}/catwalks2", under the room's re-roll if it has one)
+        let parts: Vec<(&'static str, String)> = crate::level::PARTS
+            .into_iter()
+            .filter(|p| *p != "windows")
+            .filter_map(|p| match self.o.reroll(key, p) {
+                0 => None,
+                n => Some((p, stream(&format!("{p}{n}")))),
+            })
+            .collect();
         let mut how = dress(s, &self.o, &mut PyRandom::named(&stream("dress")));
         match pick.cover {
             // what a level of mixed cover would have drawn for it, from the same stream
@@ -732,6 +743,13 @@ impl Build {
                     let mut rng = PyRandom::named(&stream(&attempt.to_string()));
                     let tower = ["ring", "ends"][((rng.random() < 0.5) as usize) ^ (attempt % 2)];
                     let (balcony, lay) = layout(s, doors, pods, &mut rng, attempt);
+                    // (the catwalks re-rolled: their layout drawn again from their own stream,
+                    // "{name}/layout/{attempt}"; the room's stream has drawn it all the same)
+                    let catwalks = parts.iter().find(|(p, _)| *p == "catwalks").map(|(_, name)| PyRandom::named(&format!("{name}/layout/{attempt}")));
+                    let (tower, (balcony, lay)) = match catwalks {
+                        Some(mut own) => (["ring", "ends"][((own.random() < 0.5) as usize) ^ (attempt % 2)], layout(s, doors, pods, &mut own, attempt)),
+                        None => (tower, (balcony, lay)),
+                    };
                     let (balcony, lay) = match pick.layout {
                         None => (balcony, lay),
                         // (a balcony is drawn only when no layout was: it stays if so)
@@ -758,6 +776,7 @@ impl Build {
                         attempt,
                         hole_side: self.spaces().iter().find_map(|c| c.cellar.as_ref().filter(|c| c.hall == *key && h.is_some()).map(|c| c.side)),
                         rescue,
+                        parts: parts.clone(),
                     };
                     match Interior::new(s, doors, pods, rng, &self.access, setup).build() {
                         Ok(it) => return Ok((it, h.is_some())),

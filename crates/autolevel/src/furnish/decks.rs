@@ -210,7 +210,9 @@ impl Interior {
                 cells.extend(mz);
             }
             if varied && own {
-                let mut rng = PyRandom::named(&format!("{}/shape/{}/{z}", self.stream, self.attempt));
+                // (catwalks re-rolled: from their own streams, "{name}/shape/{attempt}/{z}")
+                let base = self.part_stream("catwalks").unwrap_or(&self.stream);
+                let mut rng = PyRandom::named(&format!("{base}/shape/{}/{z}", self.attempt));
                 let choices: Vec<usize> = (0..SHAPES.len()).filter(|&k| below != Some(k)).collect();
                 let shape = *rng.choice(&choices);
                 let wall = rng.below(4) as usize;

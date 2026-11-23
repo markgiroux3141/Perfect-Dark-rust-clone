@@ -317,6 +317,10 @@ pub struct Setup {
     /// The rescue: ladders and bridges where ramps can't join the room (`stitch`). Only once
     /// every attempt without it has failed (`Build::furnish`).
     pub rescue: bool,
+    /// Parts re-rolled by hand (`level::PARTS`: "catwalks", "ramps", "cover"), each with the
+    /// name of its own streams ("{seed}/{key}/catwalks2"; an attempt draws from
+    /// "{name}/{attempt}"). None (every seed's level): everything from the room's stream.
+    pub parts: Vec<(&'static str, String)>,
 }
 
 impl Default for Setup {
@@ -341,6 +345,7 @@ impl Default for Setup {
             attempt: 0,
             hole_side: None,
             rescue: false,
+            parts: Vec::new(),
         }
     }
 }
@@ -441,6 +446,8 @@ pub struct Interior {
     pub crossings: Vec<(i32, Cells)>,
     stranded: Vec<Cells>,
     pub landed: BTreeMap<i32, Cells>,
+    /// `Setup::parts`.
+    pub parts: Vec<(&'static str, String)>,
 }
 
 impl std::fmt::Debug for Interior {
@@ -562,7 +569,30 @@ impl Interior {
             crossings: Vec::new(),
             stranded: Vec::new(),
             landed: BTreeMap::new(),
+            parts: how.parts,
         }
+    }
+
+    /// The name of a re-rolled part's own streams (`Setup::parts`), None if it is not re-rolled.
+    pub(crate) fn part_stream(&self, part: &str) -> Option<&str> {
+        self.parts.iter().find(|(p, _)| *p == part).map(|(_, name)| name.as_str())
+    }
+
+    /// One part of the inside (`level::PARTS`) laid by `lay`. Re-rolled, it draws from its own
+    /// stream ("{name}/{attempt}") in place of the room's, and the room's stream is left where
+    /// laying it from there would have left it (it is laid so on a copy, which is thrown away),
+    /// so the parts after it draw what they would have. Not re-rolled: just `lay`.
+    fn part(&mut self, part: &str, lay: impl Fn(&mut Interior) -> Result<(), String>) -> Result<(), String> {
+        let Some(name) = self.part_stream(part).map(|n| format!("{n}/{}", self.attempt)) else {
+            return lay(self);
+        };
+        let mut copy = self.clone();
+        copy.parts.clear();
+        let _ = lay(&mut copy);
+        self.rng = PyRandom::named(&name);
+        let made = lay(self);
+        self.rng = copy.rng;
+        made
     }
 
     /// Which band of the room storey `z` is in: storeys joined by ramps inside the room are one
@@ -624,13 +654,16 @@ impl Interior {
             }
         }
         self.lay_pool()?;
-        self.lay_decks();
-        self.shape_decks();
+        self.part("catwalks", |it| {
+            it.lay_decks();
+            it.shape_decks();
+            Ok(())
+        })?;
         self.lay_sunk();
         if self.rescue {
             self.land_roofs();
         }
-        self.place_ramps(40)?;
+        self.part("ramps", |it| it.place_ramps(40))?;
         if self.rescue {
             self.stitch()?;
         }
@@ -646,7 +679,10 @@ impl Interior {
         self.lay_angled();
         self.lay_tanks();
         self.lay_pits();
-        self.lay_cover();
+        self.part("cover", |it| {
+            it.lay_cover();
+            Ok(())
+        })?;
         self.lay_ladders();
         let rails = self.lay_rails();
         self.rails = self.cut_rails(rails);

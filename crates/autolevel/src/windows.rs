@@ -82,6 +82,7 @@ pub fn windows(lv: &Level) -> Vec<Window> {
         }
     }
     found.sort();
+    reroll(lv, &mut found);
     let mut out: Vec<Window> = Vec::new();
     let mut pieces: BTreeSet<String> = BTreeSet::new();
     for (level, _, piece, hall, z, wall, d) in found {
@@ -95,10 +96,39 @@ pub fn windows(lv: &Level) -> Vec<Window> {
         // (an empty start: the window's own stream, by its hall and where it is in the wall)
         let mut own = None;
         let rng = lv.options.stream(&mut rng, &mut own, || format!("{}/{hall}/window/{z}/{},{}", lv.seed, wall[0].0, wall[0].1));
-        let kind = if !level && rng.random() < 0.3 { "rail" } else { "glass" };
+        let mut kind = if !level && rng.random() < 0.3 { "rail" } else { "glass" };
+        // (its windows re-rolled: glass or rail from the hall's own stream; the draw above is
+        // made all the same, so the windows after it draw what they did)
+        let n = lv.options.reroll(&hall, "windows");
+        if n > 0 && !level {
+            let mut own = PyRandom::named(&format!("{}/{hall}/windows{n}/{z}/{},{}", lv.seed, wall[0].0, wall[0].1));
+            kind = if own.random() < 0.3 { "rail" } else { "glass" };
+        }
         out.push(Window { piece, hall, z, wall, d, kind });
     }
     out
+}
+
+/// The places of each hall whose windows are re-rolled (`Options::rerolled`, "windows") dealt
+/// out again among the slots they hold in the list, from the hall's own stream
+/// ("{seed}/{hall}/windows{n}"): its windows may go to other places along its walls, while every
+/// other hall's places stay where they were in the list. (A place it now takes can be a corridor
+/// piece's one window, or one of the level's last, that another hall had.) New here.
+fn reroll(lv: &Level, found: &mut [Found]) {
+    let halls: BTreeSet<&str> = lv.options.rerolled.iter().filter(|(_, p, _)| *p == "windows").map(|(h, _, _)| h.as_str()).collect();
+    for hall in halls {
+        // (the last edit for a hall is the one it goes by)
+        let n = lv.options.reroll(hall, "windows");
+        if n == 0 {
+            continue;
+        }
+        let slots: Vec<usize> = (0..found.len()).filter(|&i| found[i].3 == *hall).collect();
+        let mut places: Vec<Found> = slots.iter().map(|&i| found[i].clone()).collect();
+        PyRandom::named(&format!("{}/{hall}/windows{n}", lv.seed)).shuffle(&mut places);
+        for (&i, place) in slots.iter().zip(places) {
+            found[i] = place;
+        }
+    }
 }
 
 /// Is a hall clear behind these wall cells on storey `z`, two cells deep?

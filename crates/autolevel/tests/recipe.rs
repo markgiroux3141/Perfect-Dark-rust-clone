@@ -42,7 +42,7 @@ fn layout(room: &str, layout: &str) -> Edit {
 }
 
 fn reroll(room: &str, n: u32) -> Edit {
-    Edit::Reroll { room: s(room), n }
+    Edit::Reroll { room: s(room), n, part: None }
 }
 
 fn recipe(seed: u64, edits: Vec<Edit>) -> Recipe {
@@ -513,6 +513,81 @@ fn a_rooms_inside_is_rolled_again_from_another_stream() {
 
     assert_eq!(err(40, vec![reroll("small8", 1)]), "reroll: small8 is a pod of vast: it is not furnished by itself");
     assert_eq!(err(40, vec![reroll("attic", 1)]), "reroll: no room attic");
+}
+
+fn part(room: &str, part: &str, n: u32) -> Edit {
+    Edit::Reroll { room: s(room), n, part: Some(s(part)) }
+}
+
+#[test]
+fn a_part_of_a_rooms_inside_is_rolled_again_and_the_rest_stays() {
+    let plain = recipe(40, vec![]).furnished().unwrap().0;
+    let roll = |edits: Vec<Edit>| recipe(40, edits).furnished().unwrap().0;
+    let was = plain.interior("vast").unwrap();
+    // the parts of an inside, as text
+    let decks = |it: &Interior| format!("{:?}", (&it.deck, &it.bridge, it.bridges, &it.shapes));
+    let ramps = |it: &Interior| format!("{:?}", it.ramps);
+    let placed = |it: &Interior| format!("{:?}", (it.cover_mode, &it.cover));
+    // the cover: where it stands changes, the decks and the ramps under it do not (crates are
+    // drawn; vast's lane pillars stand by rule)
+    assert_eq!(was.cover_mode, "lanes");
+    let crates = || cover("vast", "crates");
+    let base = roll(vec![crates()]);
+    let old = base.interior("vast").unwrap();
+    let b = roll(vec![crates(), part("vast", "cover", 1)]);
+    let it = b.interior("vast").unwrap();
+    assert_ne!(placed(it), placed(old));
+    assert_eq!((decks(it), ramps(it), it.cover_mode), (decks(old), ramps(old), "crates"));
+    assert_eq!(placed(it), placed(roll(vec![crates(), part("vast", "cover", 1)]).interior("vast").unwrap()), "the same every time");
+    assert_ne!(placed(it), placed(roll(vec![crates(), part("vast", "cover", 2)]).interior("vast").unwrap()));
+    for (key, it) in base.interiors.iter().filter(|(k, _)| k != "vast") {
+        assert_eq!(inside(it), inside(b.interior(key).unwrap()), "{key}");
+    }
+    // the ramps: where they go changes, what was laid before them does not (the decks are
+    // trimmed where a ramp lands, so they follow the ramps)
+    let laid = |it: &Interior| format!("{:?}", (it.layout, it.balcony, it.tower, &it.bridge, it.bridges, &it.shapes));
+    let rolled: Vec<String> = (1..=4).map(|n| ramps(roll(vec![part("vast", "ramps", n)]).interior("vast").unwrap())).collect();
+    assert!(rolled.iter().any(|r| *r != ramps(was)), "a ramp moves on some stream");
+    for n in 1..=4 {
+        assert_eq!(laid(roll(vec![part("vast", "ramps", n)]).interior("vast").unwrap()), laid(was));
+    }
+    // the catwalks: another set of decks on some stream
+    let rolled: Vec<String> = (1..=4).map(|n| decks(roll(vec![part("colossal", "catwalks", n)]).interior("colossal").unwrap())).collect();
+    assert!(rolled.iter().any(|d| *d != decks(plain.interior("colossal").unwrap())), "the catwalks change on some stream");
+    // no other room's inside moves, for any of them
+    for e in [part("medium3", "cover", 1), part("vast", "ramps", 2), part("colossal", "catwalks", 3)] {
+        let b = roll(vec![e.clone()]);
+        let room = e.rooms()[0];
+        for (key, it) in plain.interiors.iter().filter(|(k, _)| k != room) {
+            assert_eq!(inside(it), inside(b.interior(key).unwrap()), "{key} under {}", e.describe());
+        }
+    }
+    // with the whole inside re-rolled too, the part goes on from that one: only its part moves
+    let whole = roll(vec![crates(), reroll("vast", 2)]);
+    let both = roll(vec![crates(), reroll("vast", 2), part("vast", "cover", 1)]);
+    let (w, b) = (whole.interior("vast").unwrap(), both.interior("vast").unwrap());
+    assert_eq!((decks(w), ramps(w)), (decks(b), ramps(b)));
+    assert_ne!(placed(w), placed(b));
+    // windows: a hall's windows go elsewhere along its walls, or to rail, on some stream; no room's
+    // inside moves
+    let lv = made(40, vec![]);
+    let hall = lv.windows.first().expect("seed 40 has windows").hall.clone();
+    let theirs = |lv: &Level| format!("{:?}", lv.windows.iter().filter(|w| w.hall == hall).collect::<Vec<_>>());
+    let rolled: Vec<Level> = (1..=6).map(|n| made(40, vec![part(&hall, "windows", n)])).collect();
+    assert!(rolled.iter().any(|r| theirs(r) != theirs(&lv)), "{hall}'s windows change on some stream");
+    for r in &rolled {
+        assert!(lv.interiors.iter().all(|(k, it)| inside(it) == inside(r.interior(k))));
+    }
+    // the file both ways, and the errors
+    let r = recipe(40, vec![part("vast", "catwalks", 2), reroll("vast", 1)]);
+    let text = save(&r);
+    assert!(text.contains("\"part\": \"catwalks\""), "{text}");
+    assert_eq!(load(&text).unwrap(), r);
+    assert!(!save(&recipe(40, vec![reroll("vast", 1)])).contains("part"));
+    assert_eq!(err(40, vec![part("vast", "pillars", 1)]), "reroll: a part is one of catwalks, ramps, cover, windows, not \"pillars\"");
+    assert_eq!(err(40, vec![part("small8", "cover", 1)]), "reroll: small8 is a pod of vast: it is not furnished by itself");
+    // 0 is the room's own: the same level
+    assert!(same(&made(40, vec![part("vast", "cover", 0)]), &lv));
 }
 
 // ---------------------------------------------------------------- the file, and twice the same

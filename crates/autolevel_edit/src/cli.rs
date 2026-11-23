@@ -400,7 +400,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
                 let what = "which inside, a whole number (0: the seed's own), as vast@2";
                 let (room, v) = choice(n, what)?;
                 let n = v.parse().map_err(|_| format!("--inside: a room, then @ and {what}, not {}", args[n + 1]))?;
-                out.choose.push(Choose::Set(Edit::Reroll { room, n }));
+                out.choose.push(Choose::Set(Edit::Reroll { room, n, part: None }));
             }
             "brightness" => {
                 let what = "a number from 0 to 255, as vast@120";
@@ -606,7 +606,7 @@ mod tests {
             [
                 set(Edit::Layout { room: "colossal".into(), layout: "ring".into() }),
                 set(Edit::Cover { room: "vast".into(), cover: "none".into() }),
-                set(Edit::Reroll { room: "vast".into(), n: 2 }),
+                set(Edit::Reroll { room: "vast".into(), n: 2, part: None }),
                 set(Edit::Brightness { room: "vast".into(), value: 90 }),
                 set(Edit::Ceiling { room: "vast".into(), ceiling: "grille".into() }),
                 Choose::Own { room: "tower".into(), what: "reroll".into() },

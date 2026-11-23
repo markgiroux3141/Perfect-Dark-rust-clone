@@ -61,5 +61,6 @@ pub mod spiral;
 pub mod stairs;
 pub mod storeys;
 pub mod trek;
+pub mod variants;
 pub mod walks;
 pub mod windows;

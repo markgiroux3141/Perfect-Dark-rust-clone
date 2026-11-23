@@ -1334,14 +1334,14 @@ impl Editor {
             let another = ui.add_enabled(!pod, egui::Button::new("another")).on_hover_text("furnish it again, from other random numbers");
             self.spots.push(("inside another".to_string(), another.rect));
             if another.clicked() {
-                ask = Some(Ask::Set(Edit::Reroll { room: room.to_string(), n: n + 1 }));
+                ask = Some(Ask::Set(Edit::Reroll { room: room.to_string(), n: n + 1, part: None }));
             }
             if n > 0 {
                 let back = ui.button("back").on_hover_text("the inside before this one");
                 self.spots.push(("inside back".to_string(), back.rect));
                 if back.clicked() {
                     // (the one before the first is the seed's own: no edit)
-                    ask = Some(if n == 1 { Ask::Clear("reroll") } else { Ask::Set(Edit::Reroll { room: room.to_string(), n: n - 1 }) });
+                    ask = Some(if n == 1 { Ask::Clear("reroll") } else { Ask::Set(Edit::Reroll { room: room.to_string(), n: n - 1, part: None }) });
                 }
                 ui.label(format!("inside {n}"));
             }

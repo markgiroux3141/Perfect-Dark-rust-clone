@@ -29,8 +29,6 @@ use crate::scatter::rect_gap;
 use crate::storeys::index;
 use std::collections::{BTreeMap, BTreeSet};
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
 
 /// Cells: how far off a room looks for something to join by hand (as far as the dead-end pass
 /// ever looks).
@@ -379,20 +377,7 @@ pub fn fits(recipe: &Recipe, c: &Candidate) -> Result<(), String> {
 
 /// `fits` for each, in order. A level apiece, so they are made side by side on threads.
 fn verdicts(recipe: &Recipe, found: &[Candidate]) -> Vec<Result<(), String>> {
-    let workers = std::thread::available_parallelism().map_or(1, |n| n.get()).min(found.len());
-    let next = AtomicUsize::new(0);
-    let out: Mutex<Vec<Option<Result<(), String>>>> = Mutex::new(vec![None; found.len()]);
-    std::thread::scope(|s| {
-        for _ in 0..workers {
-            s.spawn(|| loop {
-                let n = next.fetch_add(1, Ordering::Relaxed);
-                let Some(c) = found.get(n) else { break };
-                let verdict = fits(recipe, c);
-                out.lock().expect("no worker stops with the list held")[n] = Some(verdict);
-            });
-        }
-    });
-    out.into_inner().expect("the workers are done").into_iter().map(|v| v.expect("every one was tried")).collect()
+    crate::variants::side_by_side(found, |c| fits(recipe, c))
 }
 
 // ------------------------------------------------------------ taking a route out

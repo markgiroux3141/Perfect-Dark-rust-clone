@@ -537,7 +537,7 @@ mod tests {
             [
                 Edit::Layout { room: "colossal".into(), layout: "ring".into() },
                 Edit::Cover { room: "vast".into(), cover: "none".into() },
-                Edit::Reroll { room: "medium1".into(), n: 3 },
+                Edit::Reroll { room: "medium1".into(), n: 3, part: None },
                 Edit::Brightness { room: "vast".into(), value: 90 },
                 Edit::Ceiling { room: "vast".into(), ceiling: "grille".into() },
             ]

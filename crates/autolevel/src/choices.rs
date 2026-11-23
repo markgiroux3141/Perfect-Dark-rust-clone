@@ -20,12 +20,16 @@
 //! attempt can be furnished with) comes back from making it, as any failed recipe does.
 
 use crate::build::{takes, LAYOUTS};
-use crate::level::{Level, COVER, FEATURES};
+use crate::level::{Level, COVER, FEATURES, PARTS};
 use crate::py;
 use crate::recipe::{Edit, Recipe, CEILINGS};
 
 /// The kinds of choice, by their edits' names, in the order a panel shows them.
 pub const KINDS: [&str; 5] = ["layout", "cover", "reroll", "brightness", "ceiling"];
+
+/// The kinds of a part's re-roll (a `reroll` edit with a `part`), in `PARTS`' order: each is a
+/// kind of its own, so a room has one re-roll of each part and one of its whole inside.
+pub const PART_KINDS: [&str; 4] = ["reroll catwalks", "reroll ramps", "reroll cover", "reroll windows"];
 
 /// What the recipe's edits choose for one room: the last of each kind.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -37,6 +41,8 @@ pub struct Chosen {
     pub ceiling: Option<String>,
     /// Features chosen on or off, in `FEATURES`' order.
     pub features: Vec<(&'static str, bool)>,
+    /// Parts re-rolled alone (`PARTS`), with which of their other streams, in `PARTS`' order.
+    pub parts: Vec<(&'static str, u32)>,
 }
 
 impl Chosen {
@@ -55,6 +61,7 @@ impl Chosen {
         out.extend(self.brightness.map(|v| format!("brightness {v}")));
         out.extend(self.ceiling.as_ref().map(|v| format!("ceiling {v}")));
         out.extend(self.features.iter().map(|(f, on)| format!("{f} {}", if *on { "on" } else { "off" })));
+        out.extend(self.parts.iter().map(|(p, n)| format!("{p} {n}")));
         out.join(", ")
     }
 }
@@ -85,6 +92,21 @@ pub struct Choices {
     pub chosen: Chosen,
     /// Each of `FEATURES`: whether the room has it in the level, and why it can't (None: it may).
     pub features: Vec<Feature>,
+    /// Each of `PARTS`: which stream it is drawn from, and why re-rolling it would change nothing.
+    pub parts: Vec<Part>,
+}
+
+/// One part of a room's inside, as its choices show it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Part {
+    pub name: &'static str,
+    /// Which of its other streams it is drawn from (0: the room's own).
+    pub n: u32,
+    /// How many of it the room has in the level made (pieces of catwalk storeys, ramps, pieces
+    /// of cover, windows).
+    pub count: usize,
+    /// Why a re-roll of it would change nothing (a pod; none of it in the room). None: it may.
+    pub cannot: Option<String>,
 }
 
 /// One feature of a room, as its choices show it.
@@ -102,6 +124,8 @@ pub struct Feature {
 /// The room and the kind of a choice edit ("layout", "cover", ...). None for any other edit.
 pub fn kind(e: &Edit) -> Option<(&str, &'static str)> {
     match e {
+        // (each part's re-roll is a kind of its own)
+        Edit::Reroll { room, part: Some(part), .. } => PARTS.iter().position(|p| p == part).map(|i| (room.as_str(), PART_KINDS[i])),
         Edit::Layout { room, .. } | Edit::Cover { room, .. } | Edit::Reroll { room, .. } | Edit::Brightness { room, .. } | Edit::Ceiling { room, .. } => {
             Some((room, e.name()))
         }
@@ -118,7 +142,12 @@ pub fn chosen(recipe: &Recipe, room: &str) -> Chosen {
         match e {
             Edit::Layout { layout, .. } => c.layout = Some(layout.clone()),
             Edit::Cover { cover, .. } => c.cover = Some(cover.clone()),
-            Edit::Reroll { n, .. } => c.reroll = Some(*n),
+            Edit::Reroll { n, part: None, .. } => c.reroll = Some(*n),
+            Edit::Reroll { n, part: Some(part), .. } => {
+                let what = PARTS[PARTS.iter().position(|p| p == part).expect("a part's kind")];
+                c.parts.retain(|(p, _)| *p != what);
+                c.parts.push((what, *n));
+            }
             Edit::Brightness { value, .. } => c.brightness = Some(*value),
             Edit::Ceiling { ceiling, .. } => c.ceiling = Some(ceiling.clone()),
             Edit::Feature { on, .. } => {
@@ -130,7 +159,21 @@ pub fn chosen(recipe: &Recipe, room: &str) -> Chosen {
         }
     }
     c.features.sort_by_key(|(f, _)| FEATURES.iter().position(|(g, _)| g == f));
+    c.parts.sort_by_key(|(p, _)| PARTS.iter().position(|q| q == p));
     c
+}
+
+/// How many of a part (`PARTS`) `room` has in `lv`: storeys with catwalk, ramps, pieces of
+/// cover, windows.
+fn count(lv: &Level, room: &str, part: &str) -> usize {
+    let it = lv.interiors.iter().find(|(k, _)| k == room).map(|(_, it)| it);
+    match part {
+        "catwalks" => it.map_or(0, |it| it.deck.values().filter(|cells| !cells.is_empty()).count()),
+        "ramps" => it.map_or(0, |it| it.ramps.len()),
+        "cover" => it.map_or(0, |it| it.cover.len()),
+        "windows" => lv.windows.iter().filter(|w| w.hall == room).count(),
+        _ => 0,
+    }
 }
 
 /// Does `room` have the feature `what` in `lv`?
@@ -212,6 +255,26 @@ pub fn of(recipe: &Recipe, lv: &Level, room: &str) -> Result<Choices, String> {
                 cannot: cannot(s, name),
             })
             .collect(),
+        parts: PARTS
+            .iter()
+            .map(|&name| {
+                let n = chosen(recipe, room).parts.iter().find(|(p, _)| *p == name).map_or(0, |(_, n)| *n);
+                let count = count(lv, room, name);
+                // (pillars and a lane's pillars stand where the rule puts them: only crates and
+                // a room's notch or cross wall are drawn)
+                let ruled = name == "cover" && it.is_some_and(|it| it.shaped.is_empty() && matches!(it.cover_mode, "pillars" | "lanes" | "none"));
+                let cannot = if !s.host.is_empty() {
+                    Some(pod(room, &s.host))
+                } else if ruled && n == 0 {
+                    Some(format!("{room}'s cover is {}: it stands where the rule puts it, nothing is drawn", it.map_or("none", |it| it.cover_mode)))
+                } else if count == 0 && n == 0 {
+                    Some(format!("{room} has no {name} to re-roll"))
+                } else {
+                    None
+                };
+                Part { name, n, count, cannot }
+            })
+            .collect(),
     })
 }
 
@@ -239,6 +302,9 @@ pub fn refusal(lv: Option<&Level>, e: &Edit) -> Option<String> {
                 return Some(one_of("cover", &COVER));
             }
             space(room).filter(|s| !s.host.is_empty()).map(|s| format!("cover: {}", pod(room, &s.host)))
+        }
+        Edit::Reroll { part: Some(part), .. } if !PARTS.contains(&part.as_str()) => {
+            Some(format!("reroll: a part is one of {}, not {part:?}", PARTS.join(", ")))
         }
         Edit::Reroll { room, .. } => space(room).filter(|s| !s.host.is_empty()).map(|s| format!("reroll: {}", pod(room, &s.host))),
         Edit::Brightness { value, .. } => (!(0..=255).contains(value)).then(|| format!("brightness: 0 to 255, not {value}")),
@@ -283,7 +349,7 @@ pub fn set(recipe: &Recipe, e: Edit) -> Result<Recipe, String> {
 /// one room: every such edit taken out.
 pub fn clear(recipe: &Recipe, room: &str, what: &str) -> Recipe {
     let mut out = recipe.clone();
-    let known = KINDS.contains(&what) || FEATURES.iter().any(|(f, _)| *f == what);
+    let known = KINDS.contains(&what) || PART_KINDS.contains(&what) || FEATURES.iter().any(|(f, _)| *f == what);
     out.edits.retain(|e| kind(e) != Some((room, what)) || !known);
     out
 }
@@ -325,8 +391,9 @@ mod tests {
             brightness: Some(90),
             ceiling: Some("grille".into()),
             features: vec![("flooded", true), ("cellar", false)],
+            parts: vec![("catwalks", 3), ("windows", 1)],
         };
-        assert_eq!(every.words(), "layout ring, cover none, inside 2, brightness 90, ceiling grille, flooded on, cellar off");
+        assert_eq!(every.words(), "layout ring, cover none, inside 2, brightness 90, ceiling grille, flooded on, cellar off, catwalks 3, windows 1");
         assert_eq!(Chosen::default().words(), "");
         // a recipe written by hand may have two: both go for the one
         let mut twice = r.clone();
@@ -339,9 +406,9 @@ mod tests {
         assert_eq!(back.edits.iter().map(Edit::describe).collect::<Vec<_>>(), ["remove c23", "vast: brightness 120", "colossal: cover none"]);
         assert_eq!(clear(&back, "vast", "remove"), back);
         // another inside, and the seed's own inside, which is no edit
-        let rolled = set(&back, Edit::Reroll { room: "vast".into(), n: 2 }).unwrap();
+        let rolled = set(&back, Edit::Reroll { room: "vast".into(), n: 2, part: None }).unwrap();
         assert_eq!(chosen(&rolled, "vast").reroll, Some(2));
-        assert_eq!(set(&rolled, Edit::Reroll { room: "vast".into(), n: 0 }).unwrap(), back);
+        assert_eq!(set(&rolled, Edit::Reroll { room: "vast".into(), n: 0, part: None }).unwrap(), back);
         assert_eq!(set(&r, Edit::Keep { room: "vast".into() }).unwrap_err(), "keep: not a choice for one room");
     }
 
@@ -384,7 +451,7 @@ mod tests {
         assert_eq!(refusal(lv, &cover("small8", "none")).as_deref(), Some("cover: small8 is a pod of vast: it is not furnished by itself"));
         assert_eq!(refusal(lv, &cover("vast", "hedges")).as_deref(), Some("cover: one of ('mixed', 'pillars', 'crates', 'none')"));
         assert_eq!(
-            refusal(lv, &Edit::Reroll { room: "small8".into(), n: 1 }).as_deref(),
+            refusal(lv, &Edit::Reroll { room: "small8".into(), n: 1, part: None }).as_deref(),
             Some("reroll: small8 is a pod of vast: it is not furnished by itself")
         );
         assert_eq!(refusal(lv, &Edit::Brightness { room: "vast".into(), value: 300 }).as_deref(), Some("brightness: 0 to 255, not 300"));

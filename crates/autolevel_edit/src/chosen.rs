@@ -117,7 +117,7 @@ mod tests {
         // what the recipe chose says so (the level here is still the seed's: what it has is as it was)
         let mut r = recipe.clone();
         r.edits.push(Edit::Layout { room: "colossal".into(), layout: "ring".into() });
-        r.edits.push(Edit::Reroll { room: "colossal".into(), n: 2 });
+        r.edits.push(Edit::Reroll { room: "colossal".into(), n: 2, part: None });
         r.edits.push(Edit::Brightness { room: "colossal".into(), value: 90 });
         let said = of(&r, "colossal");
         assert!(row(&said, "layout").ends_with(" chosen in the recipe") && row(&said, "cover").ends_with(" the seed's own"), "{said}");
@@ -148,9 +148,9 @@ mod tests {
         assert_eq!(make(&mut d, cover("none")), "vast: cover none");
         assert_eq!(make(&mut d, cover("crates")), "vast: cover crates (in place of: vast: cover none)");
         assert_eq!(make(&mut d, cover("crates")), "vast: cover crates: nothing changes, it is so already");
-        assert_eq!(make(&mut d, Edit::Reroll { room: "vast".into(), n: 2 }), "vast: inside 2");
-        assert_eq!(make(&mut d, Edit::Reroll { room: "vast".into(), n: 0 }), "vast: inside 0, the seed's own (in place of: vast: inside 2)");
-        assert_eq!(make(&mut d, Edit::Reroll { room: "vast".into(), n: 0 }), "vast: inside 0, the seed's own: nothing changes, it is so already");
+        assert_eq!(make(&mut d, Edit::Reroll { room: "vast".into(), n: 2, part: None }), "vast: inside 2");
+        assert_eq!(make(&mut d, Edit::Reroll { room: "vast".into(), n: 0, part: None }), "vast: inside 0, the seed's own (in place of: vast: inside 2)");
+        assert_eq!(make(&mut d, Edit::Reroll { room: "vast".into(), n: 0, part: None }), "vast: inside 0, the seed's own: nothing changes, it is so already");
         assert_eq!(make(&mut d, Edit::Layout { room: "colossal".into(), layout: "ring".into() }), "colossal: layout ring");
         // the seed's own again, for one kind or for all
         assert_eq!(owned("vast", "cover", &["cover"]), "vast: the seed's own cover again");

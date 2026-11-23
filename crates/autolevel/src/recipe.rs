@@ -220,7 +220,19 @@ pub enum Edit {
     /// A room is furnished from its `n`th other stream of random numbers (0: the seed's own):
     /// its dress (cover, shape, pillars) and every attempt at its inside. Its doors stay, and a
     /// spire's spiral, which is laid out before anything is routed. Err for a pod.
-    Reroll { room: String, n: u32 },
+    ///
+    /// With a `part` (one of `level::PARTS`: "catwalks", "ramps", "cover", "windows"; new here,
+    /// the editing roadmap's item 5), only that part is drawn from a stream of its own, and the
+    /// rest of the room from the stream it had: the draws the part would have made are made
+    /// and thrown away, so the parts after it draw the numbers they did (they still fit
+    /// themselves round what the part became). One of each part per room; with no `part` it
+    /// is the whole inside, as ever.
+    Reroll {
+        room: String,
+        n: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        part: Option<String>,
+    },
     /// The dead end this room is in is left as it is.
     Keep { room: String },
     /// A room's own decks stop at the storey `above`.
@@ -330,7 +342,8 @@ impl Edit {
             Edit::Cover { room, cover } => format!("{room}: cover {cover}"),
             Edit::Brightness { room, value } => format!("{room}: brightness {value}"),
             Edit::Ceiling { room, ceiling } => format!("{room}: ceiling {ceiling}"),
-            Edit::Reroll { room, n } => format!("{room}: inside {n}"),
+            Edit::Reroll { room, n, part: None } => format!("{room}: inside {n}"),
+            Edit::Reroll { room, n, part: Some(part) } => format!("{room}: {part} {n}"),
             Edit::Keep { room } => format!("keep {room}'s dead end"),
             Edit::Cut { room, above } => format!("cut {room}: no deck of its own above {above}"),
             Edit::Feature { room, feature, on } => format!("{room}: {feature} {}", if *on { "on" } else { "off" }),
@@ -660,20 +673,29 @@ impl Recipe {
     /// for single rooms (`Options::forced`). The recipe's own when it has none. Err for a
     /// feature that is none of `level::FEATURES`.
     pub fn effective(&self) -> Result<std::borrow::Cow<'_, Options>, String> {
-        let mut forced = Vec::new();
+        let (mut forced, mut rerolled) = (Vec::new(), Vec::new());
         for e in &self.edits {
-            if let Edit::Feature { room, feature, on } = e {
-                let Some(&(name, _)) = level::FEATURES.iter().find(|(f, _)| f == feature) else {
-                    let names: Vec<&str> = level::FEATURES.iter().map(|(f, _)| *f).collect();
-                    return Err(format!("feature: one of {}, not {feature:?}", names.join(", ")));
-                };
-                forced.push((room.clone(), name, *on));
+            match e {
+                Edit::Feature { room, feature, on } => {
+                    let Some(&(name, _)) = level::FEATURES.iter().find(|(f, _)| f == feature) else {
+                        let names: Vec<&str> = level::FEATURES.iter().map(|(f, _)| *f).collect();
+                        return Err(format!("feature: one of {}, not {feature:?}", names.join(", ")));
+                    };
+                    forced.push((room.clone(), name, *on));
+                }
+                Edit::Reroll { room, n, part: Some(part) } => {
+                    let Some(&name) = level::PARTS.iter().find(|p| *p == part) else {
+                        return Err(format!("reroll: a part is one of {}, not {part:?}", level::PARTS.join(", ")));
+                    };
+                    rerolled.push((room.clone(), name, *n));
+                }
+                _ => {}
             }
         }
-        if forced.is_empty() {
+        if forced.is_empty() && rerolled.is_empty() {
             return Ok(std::borrow::Cow::Borrowed(&self.options));
         }
-        Ok(std::borrow::Cow::Owned(Options { forced, ..self.options.clone() }))
+        Ok(std::borrow::Cow::Owned(Options { forced, rerolled, ..self.options.clone() }))
     }
 
     /// The recipe with the generator's own bases and grown pods left out, if it has any to leave
@@ -724,7 +746,9 @@ impl Recipe {
                     takes(s, lay.unwrap_or("none")).map_err(|why| format!("layout: {why}"))?;
                     b.choose("layout", room)?.layout = Some(lay);
                 }
-                Edit::Reroll { room, n } => b.choose("reroll", room)?.reroll = *n,
+                Edit::Reroll { room, n, part: None } => b.choose("reroll", room)?.reroll = *n,
+                // (told through `Options::rerolled`, by `effective`; a pod is refused here)
+                Edit::Reroll { room, part: Some(_), .. } => drop(b.choose("reroll", room)?),
                 _ => {}
             }
         }
@@ -1000,7 +1024,7 @@ mod tests {
             Edit::Cover { room: s("vast"), cover: s("pillars") },
             Edit::Brightness { room: s("vast"), value: 128 },
             Edit::Ceiling { room: s("vast"), ceiling: s("grille") },
-            Edit::Reroll { room: s("vast"), n: 2 },
+            Edit::Reroll { room: s("vast"), n: 2, part: None },
             Edit::Keep { room: s("tiny3") },
             Edit::Cut { room: s("spire1"), above: 827 },
             Edit::Height { room: s("medium3"), floor: 276, top: 787 },

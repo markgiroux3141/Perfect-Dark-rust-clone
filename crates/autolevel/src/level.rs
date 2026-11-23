@@ -130,7 +130,17 @@ pub struct Options {
     /// options either: `Recipe` fills it from its edits for the stages (`Recipe::effective`),
     /// and with none (every seed's own level) nothing is rolled differently. New here.
     pub forced: Vec<(String, &'static str, bool)>,
+    /// Parts of single rooms re-rolled (a recipe's `reroll` edits with a `part`: the room, one of
+    /// `PARTS`, which of its other streams), each drawn from a stream of its own in place of the
+    /// room's. Filled as `forced` is; with none (every seed's own level) nothing moves. New here.
+    pub rerolled: Vec<(String, &'static str, u32)>,
 }
+
+/// The parts of a room that may be re-rolled alone (a recipe's `reroll` edit with a `part`):
+/// its catwalks (the decks and their bridges, a towering tower's storey shapes), its ramps
+/// (where they go), its cover (where it stands) and its windows (which of the places along its
+/// walls take them, and glass or rail). New here: the Python has none.
+pub const PARTS: [&str; 4] = ["catwalks", "ramps", "cover", "windows"];
 
 /// The features a single room may be given or kept from (a recipe's `feature` edit), each with
 /// the stage that rolls it: `true` where it is rolled over the rooms before anything is routed
@@ -194,6 +204,7 @@ impl Default for Options {
             tries: 8,
             start: Start::Seed,
             forced: Vec::new(),
+            rerolled: Vec::new(),
         }
     }
 }
@@ -254,6 +265,12 @@ impl Options {
             Some(false) => 0.0,
             None => level,
         }
+    }
+
+    /// Which of its other streams a room's part (`PARTS`) is drawn from: 0 is the room's own,
+    /// as ever (the last of a recipe's `reroll` edits for it).
+    pub fn reroll(&self, room: &str, part: &str) -> u32 {
+        self.rerolled.iter().rev().find(|(r, p, _)| r == room && *p == part).map_or(0, |&(_, _, n)| n)
     }
 
     /// Is a feature chosen for some room (so a stage that rolls it has to look, even with the

@@ -810,7 +810,7 @@ mod tests {
         // brightness, a ceiling, another inside: the level has them
         d.set_choice(Edit::Brightness { room: "vast".into(), value: 90 }).unwrap();
         d.set_choice(Edit::Ceiling { room: "vast".into(), ceiling: "grille".into() }).unwrap();
-        d.set_choice(Edit::Reroll { room: "colossal".into(), n: 1 }).unwrap();
+        d.set_choice(Edit::Reroll { room: "colossal".into(), n: 1, part: None }).unwrap();
         d.regenerate().unwrap();
         let now = d.choices("vast").unwrap();
         assert_eq!((now.brightness, now.ceiling), (Some(90), Some("grille")));
@@ -822,7 +822,7 @@ mod tests {
         );
         // the seed's own again: the edit goes; nothing chosen, nothing to clear
         assert!(d.clear_choice("vast", "cover") && !d.clear_choice("vast", "cover") && !d.clear_choice("tower", "layout"));
-        d.set_choice(Edit::Reroll { room: "colossal".into(), n: 0 }).unwrap();
+        d.set_choice(Edit::Reroll { room: "colossal".into(), n: 0, part: None }).unwrap();
         assert_eq!(d.recipe.edits.iter().map(Edit::name).collect::<Vec<_>>(), ["brightness", "ceiling"]);
         assert!(d.undo() && d.recipe.edits.len() == 3);
     }
