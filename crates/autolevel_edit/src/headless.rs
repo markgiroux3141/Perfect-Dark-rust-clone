@@ -177,7 +177,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
                     None,
                     doc.recipe.seed,
                     &format!("no level: {why}"),
-                    &SideView { section: Some(section), boxes: view.boxes, scale: 1.0 },
+                    &SideView { section: Some(section), boxes: view.boxes, pick: view.pick.clone(), asked: view.asked.clone(), scale: 1.0 },
                     args.width,
                 ))
             }
@@ -219,6 +219,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
         let made = doc.made().expect("the level was made").clone();
         let s = made.level.spaces().iter().find(|s| s.key == *room).ok_or_else(|| format!("--pick: no room {room} (the plan names them)"))?;
         doc.pick(room, storey.unwrap_or(s.floor));
+        doc.ask(args.asked.clone());
         let found = doc.find_joins().map_err(|why| format!("--pick: {why}"))?;
         text.push_str(&routes::joins_text(&made.level, &found));
         if let Some(n) = args.join {
@@ -246,7 +247,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
                 Some(&made),
                 doc.recipe.seed,
                 &under,
-                &SideView { section: Some(section), boxes: view.boxes.clone(), scale: 1.0 },
+                &SideView { section: Some(section), boxes: view.boxes.clone(), pick: view.pick.clone(), asked: view.asked.clone(), scale: 1.0 },
                 args.width,
             ))
         }
@@ -323,6 +324,18 @@ mod tests {
         assert_eq!(err("--seed 40 --pick small8"), "--pick: small8 is a pod: it is joined inside vast");
         assert_eq!(err("--seed 40 --pick attic"), "--pick: no room attic (the plan names them)");
         assert!(err("--seed 40 --pick tower@1654").starts_with("--pick: tower takes doors on "));
+        // through a doorway asked for (medium3 moved beside medium1): listed, drawn, made with it
+        let line = "--seed 40 --move medium3@62,24 --pick medium3@0 --to medium1 --shot plan.png --width 900";
+        let through = run(&args(&format!("{line} --door W:26 --join 1"))).unwrap();
+        assert!(through.text.contains("medium3 on 0 (from its west wall at 26, to medium1 alone) could be joined to 1 room"), "{}", through.text);
+        let join = through.recipe.edits.iter().find(|e| e.name() == "join").expect("the join");
+        assert!(matches!(join, Edit::Join { door: Some(d), to, .. } if (d.side, d.at) == ('W', 26) && to == "medium1"), "{join:?}");
+        // where none fits through it: said in the recipe's words, and nothing to join
+        let refused = run(&args(&format!("{line} --door W:28"))).unwrap();
+        let why = "medium3 on 0 (from its west wall at 28, to medium1 alone): no corridor fits from medium3 on 0 to medium1 through the doorways asked for";
+        assert!(refused.text.contains(why), "{}", refused.text);
+        assert!(err(&format!("{line} --door W:28 --join 1")).starts_with("--join: no join 1: there are 0"));
+        assert_eq!(err(&format!("{line} --door N:90")), "--pick: medium3 has no doorway N 90 (its walls run 62 to 68)");
     }
 
     /// A room of the level a recipe makes: its box.

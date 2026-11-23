@@ -50,11 +50,11 @@ use crate::raster::Fit;
 use crate::sideview::{self, Axis, Section, SideHit, SidePart, SideView};
 use crate::{routes, shot};
 use autolevel::boxes::{self, Change, Part, Trial};
-use autolevel::candidates::Removal;
+use autolevel::candidates::{Asked, Removal};
 use autolevel::cells::Rect;
 use autolevel::level::{Options, Start, COVER};
 use autolevel::place::{self, Placed};
-use autolevel::recipe::{self, Edit, Recipe};
+use autolevel::recipe::{self, Doorway, Edit, Recipe};
 use autolevel::scatter::Lot;
 use autolevel::storeys::{snap_top, LEVELS};
 use engine::app::{Ctx, Game};
@@ -396,8 +396,8 @@ impl Editor {
             self.doc.accept_joins(search.rev(), &search.pick, result);
         }
         if self.search.is_none() && self.doc.wants_joins() {
-            if let Some((room, storey)) = self.doc.picked() {
-                self.search = Some(Search::spawn(self.doc.recipe.clone(), (room.to_string(), storey), self.doc.rev()));
+            if let Some(pick) = self.doc.pick_asked() {
+                self.search = Some(Search::spawn(self.doc.recipe.clone(), pick, self.doc.rev()));
             }
         }
     }
@@ -427,9 +427,17 @@ impl Editor {
     /// A click on the plan at `at` (cells): a room is picked to join from (on the storey shown,
     /// if it takes doors there, or else its own floor), a corridor is picked, and a click on
     /// nothing picks nothing.
+    ///
+    /// With a room picked, a click on a wall (within a grip of it, inside or out) asks for a
+    /// doorway there instead (`doorway`): on the picked room's walls its own, on another room's
+    /// the room at the other end and its doorway.
     pub fn click(&mut self, at: P) {
         let Some(made) = self.doc.made().cloned() else { return };
         self.hot = None;
+        if let Some((room, d)) = self.wall_under(&made.level, at) {
+            self.doorway(&room, d, None);
+            return;
+        }
         match planview::hit(&made.level, at, self.storey) {
             Some(Hit::Room(key)) => {
                 let s = made.level.space(&key);
@@ -446,6 +454,141 @@ impl Editor {
             }
             None => self.doc.unpick(),
         }
+    }
+
+    /// The wall a click on the plan at `at` is on, and the doorway there, while a room is picked
+    /// (the picked room's walls and the room asked for first): a grip as the room tool's, at
+    /// most 0.45 of a cell, so a cell's middle is still the room.
+    fn wall_under(&self, lv: &autolevel::level::Level, at: P) -> Option<(String, Doorway)> {
+        let (room, _) = self.doc.picked()?;
+        let grip = self.look.map_or(0.3, |(_, zoom)| GRIP / zoom).min(0.45);
+        let to = self.doc.asked().to.clone().unwrap_or_default();
+        planview::wall_hit(lv, at, grip, self.storey, &[room, to.as_str()])
+    }
+
+    /// A doorway on a room's wall asked for: on the plan, the side view (with the storey its
+    /// height is on) or the 3D view. With no room picked, the room is picked (on `storey` if it
+    /// takes doors there) with that doorway; on the picked room's wall it is the doorway its join
+    /// goes through (on `storey`, if given and it takes doors there), and the same one again lets
+    /// it go; on another room's wall, only joins to that room through that doorway are looked
+    /// for, and the same one again goes back to every room. The joins are then looked for again.
+    pub fn doorway(&mut self, room: &str, d: Doorway, storey: Option<i32>) {
+        let Some(made) = self.doc.made().cloned() else { return };
+        let Some(s) = made.level.spaces().iter().find(|s| s.key == room) else { return };
+        if !s.host.is_empty() {
+            self.status = format!("{room} is a pod: it is joined inside {}", s.host);
+            return;
+        }
+        let takes = storey.filter(|z| s.door_levels().contains(z));
+        self.hot = None;
+        let mut asked = self.doc.asked().clone();
+        match self.doc.picked().map(|(r, z)| (r.to_string(), z)) {
+            Some((picked, z)) if picked == room => {
+                let moved = takes.is_some_and(|t| t != z);
+                if moved {
+                    self.doc.pick(room, takes.expect("just looked"));
+                }
+                if asked.door == Some(d) && !moved {
+                    asked.door = None;
+                    self.status = format!("{room}: the router's choice of doorway again");
+                } else {
+                    asked.door = Some(d);
+                    self.status = format!("joining {room} on {} from {}", self.doc.picked().map_or(z, |p| p.1), d.words());
+                }
+            }
+            Some(_) => {
+                if asked.to.as_deref() == Some(room) && asked.to_door == Some(d) {
+                    (asked.to, asked.to_door) = (None, None);
+                    self.status = "joins to every room near again".to_string();
+                } else {
+                    (asked.to, asked.to_door) = (Some(room.to_string()), Some(d));
+                    self.status = format!("only joins to {room}, through {}", d.words());
+                }
+            }
+            None => {
+                self.doc.pick(room, takes.unwrap_or_else(|| planview::pick_storey(s, self.storey)));
+                asked = Asked { door: Some(d), ..Asked::default() };
+                self.status = format!("joining {room} from {}", d.words());
+            }
+        }
+        self.doc.ask(asked);
+    }
+
+    /// A click in the side view along `s` with "Join" in hand: on a room's end wall, a doorway
+    /// there on the storey the height is on (`doorway`); on a room, that room picked on that
+    /// storey (if it takes doors there, else its own floor); on nothing, nothing picked.
+    pub fn side_click(&mut self, s: Section, at: P, grip: f32) {
+        let Some(made) = self.doc.made().cloned() else { return };
+        let picked = self.doc.picked().map(|(r, _)| r.to_string()).unwrap_or_default();
+        let to = self.doc.asked().to.clone().unwrap_or_default();
+        if let Some((room, d, z)) = sideview::wall_at(&made.level, &s, at, grip, &[picked.as_str(), to.as_str()]) {
+            self.doorway(&room, d, Some(z));
+            return;
+        }
+        let height = at.1 * sideview::UNITS;
+        let (u, lv) = (at.0.floor() as i32, &made.level);
+        let inside = |a: &&autolevel::space::Space| {
+            let (u0, u1) = s.span(a.rect());
+            s.crosses(a.rect()) && u0 <= u && u < u1 && a.floor as f32 <= height && height <= a.top as f32
+        };
+        // (a pod over its hall: it is what the eye sees there)
+        match lv.spaces().iter().filter(inside).max_by_key(|a| !a.host.is_empty()) {
+            Some(a) => {
+                let z = a.door_levels().into_iter().filter(|z| *z as f32 <= height).max();
+                let key = a.key.clone();
+                self.pick_join(&key, z);
+            }
+            None => self.doc.unpick(),
+        }
+    }
+
+    /// Pick a room to join from, on `storey` if it takes doors there (else the storey shown, if
+    /// it does, or its own floor): what a click on a room does in the side view and the 3D view
+    /// with "Join" in hand. A pod is not picked: the status says whose it is.
+    pub fn pick_join(&mut self, room: &str, storey: Option<i32>) {
+        let Some(made) = self.doc.made().cloned() else { return };
+        let Some(s) = made.level.spaces().iter().find(|s| s.key == room) else { return };
+        if !s.host.is_empty() {
+            self.status = format!("{room} is a pod: it is joined inside {}", s.host);
+            return;
+        }
+        let z = storey.filter(|z| s.door_levels().contains(z)).unwrap_or_else(|| planview::pick_storey(s, self.storey));
+        self.doc.pick(room, z);
+        self.hot = None;
+        self.status.clear();
+    }
+
+    /// What the last thing done came to: the plan's status line.
+    pub fn status(&self) -> &str {
+        &self.status
+    }
+
+    /// The way the joins from the pick are made: the router's choice (None), a corridor or a vent.
+    pub fn set_via(&mut self, via: Option<String>) {
+        let asked = Asked { via, ..self.doc.asked().clone() };
+        self.hot = None;
+        self.doc.ask(asked);
+    }
+
+    /// What the `n`th join's "way" button does: only joins to its room are looked for, the next
+    /// way round (the router's choice, a corridor, a vent).
+    pub fn cycle_way(&mut self, n: usize) {
+        let Some(c) = self.doc.joins().and_then(|found| found.get(n)).cloned() else { return };
+        let asked = self.doc.asked();
+        let to_door = if asked.to.as_deref() == Some(c.to.as_str()) { asked.to_door } else { None };
+        let via = Asked::next_via(asked.via.as_deref());
+        self.status = format!("joins to {} {}", c.to, via.as_deref().map_or("by the router's choice".to_string(), |v| format!("by a {v}")));
+        let asked = Asked { to: Some(c.to.clone()), to_door, via, ..asked.clone() };
+        self.hot = None;
+        self.doc.ask(asked);
+    }
+
+    /// Joins to every room near again, through the picked room's doorway and by the way chosen
+    /// still.
+    pub fn any_room(&mut self) {
+        let asked = Asked { to: None, to_door: None, ..self.doc.asked().clone() };
+        self.hot = None;
+        self.doc.ask(asked);
     }
 
     // ------------------------------------------------------------ room boxes
@@ -1371,6 +1514,52 @@ impl Editor {
 
     /// What is picked on the plan: a room, with the corridors that could be made from it and a
     /// button for each, or a corridor, with a button to take it out.
+    /// What is asked of the joins from the picked room: its doorway, the room at the other end
+    /// and that one's doorway (each let go with a button), and the way (auto, corridor, vent).
+    fn asking(&mut self, ui: &mut egui::Ui, room: &str) {
+        let asked = self.doc.asked().clone();
+        ui.horizontal_wrapped(|ui| match asked.door {
+            Some(d) => {
+                ui.colored_label(col(colour::ASKED), format!("doorway: {}", d.words()));
+                let r = ui.small_button("any").on_hover_text("the router's choice of doorway");
+                self.spots.push(("door any".to_string(), r.rect));
+                if r.clicked() {
+                    self.doc.ask(Asked { door: None, ..asked.clone() });
+                }
+            }
+            None => {
+                ui.weak(format!("doorway: the router's choice (click {room}'s wall on the plan for one there)"));
+            }
+        });
+        if let Some(to) = &asked.to {
+            ui.horizontal_wrapped(|ui| {
+                let there = asked.to_door.map_or(String::new(), |d| format!(", {}", d.words()));
+                ui.colored_label(col(colour::ASKED), format!("only to {to}{there}"));
+                let r = ui.small_button("every room").on_hover_text("joins to every room near again");
+                self.spots.push(("every room".to_string(), r.rect));
+                if r.clicked() {
+                    self.any_room();
+                }
+            });
+        }
+        ui.horizontal(|ui| {
+            ui.label("way:");
+            for (name, via) in [("auto", None), ("corridor", Some("corridor")), ("vent", Some("vent")), ("straight", Some("straight"))] {
+                let tip = match via {
+                    None => "a corridor, failing that a vent (where the level has vents)",
+                    Some("corridor") => "a corridor (with ramps, or a door through the wall): never a vent",
+                    Some("vent") => "a crawl vent, even where a corridor would fit or the level has none",
+                    _ => "a corridor with no turn in it (ramps up or down along the line), or none",
+                };
+                let r = ui.selectable_label(asked.via.as_deref() == via, name).on_hover_text(tip);
+                self.spots.push((format!("via {name}"), r.rect));
+                if r.clicked() && asked.via.as_deref() != via {
+                    self.set_via(via.map(str::to_string));
+                }
+            }
+        });
+    }
+
     fn joining(&mut self, ui: &mut egui::Ui) {
         let Some(made) = self.doc.made().cloned() else { return };
         let mut rows = Vec::new();
@@ -1393,6 +1582,7 @@ impl Editor {
                         self.doc.unpick();
                     }
                 });
+                self.asking(ui, &room);
                 if let Some(why) = self.doc.joins_error() {
                     ui.colored_label(col(colour::DEAD_END), why);
                 } else if let Some(found) = self.doc.joins().cloned() {
@@ -1401,7 +1591,10 @@ impl Editor {
                     if found.found.len() > found.rooms {
                         ui.checkbox(&mut self.all, "draw every one of them, not only each room's cheapest");
                     }
-                    let mut chosen = None;
+                    let (mut chosen, mut cycled) = (None, None);
+                    if found.found.is_empty() && !found.asked.plain() {
+                        ui.add(egui::Label::new(egui::RichText::new(found.none_fits()).color(col(colour::DEAD_END))).wrap());
+                    }
                     for (k, c) in found.found.iter().enumerate() {
                         let n = k + 1;
                         if k == found.rooms {
@@ -1410,6 +1603,14 @@ impl Editor {
                         let row = ui.horizontal(|ui| {
                             if ui.small_button("join").on_hover_text("make this corridor").clicked() {
                                 chosen = Some(n);
+                            }
+                            let way = self.doc.asked().via.clone().unwrap_or_else(|| "auto".to_string());
+                            let b = ui
+                                .small_button(way)
+                                .on_hover_text("only joins to this room, the next way: auto (a corridor, failing that a vent), corridor, vent");
+                            self.spots.push((format!("way {n}"), b.rect));
+                            if b.clicked() {
+                                cycled = Some(n);
                             }
                             let note = routes::join_note(&made.level, c).map_or(String::new(), |note| format!("  [{note}]"));
                             ui.label(format!("{n}  {}{note}", c.text()));
@@ -1421,6 +1622,8 @@ impl Editor {
                     }
                     if let Some(n) = chosen {
                         self.choose(n);
+                    } else if let Some(n) = cycled {
+                        self.cycle_way(n);
                     }
                 } else {
                     ui.label("looking for corridors that fit...");
@@ -1613,10 +1816,14 @@ impl Editor {
             let (under, does): (Vec<&str>, String) = match (&placed, &made) {
                 (Some(placed), _) => (placed.lots.iter().filter(|a| within(a.rect())).map(|a| a.key.as_str()).collect(), self.hint((x, y), placed, grip)),
                 (None, Some(made)) => {
-                    let click = match planview::hit(&made.level, (x, y), self.storey) {
-                        Some(Hit::Room(key)) => format!("   click: join {key} to another room"),
-                        Some(Hit::Route(key)) => format!("   click: pick {key}"),
-                        None => String::new(),
+                    let wall = self.wall_under(&made.level, (x, y));
+                    let picked = self.doc.picked().map(|(r, _)| r.to_string());
+                    let click = match (wall, planview::hit(&made.level, (x, y), self.storey)) {
+                        (Some((key, d)), _) if picked.as_deref() == Some(key.as_str()) => format!("   click: {key}'s doorway {} ({})", d.short(), d.words()),
+                        (Some((key, d)), _) => format!("   click: only join to {key}, through {}", d.words()),
+                        (None, Some(Hit::Room(key))) => format!("   click: join {key} to another room"),
+                        (None, Some(Hit::Route(key))) => format!("   click: pick {key}"),
+                        (None, None) => String::new(),
                     };
                     (made.level.spaces().iter().filter(|s| within(s.rect())).map(|s| s.key.as_str()).collect(), click)
                 }
@@ -1640,7 +1847,7 @@ impl Editor {
         let made = self.doc.made().cloned();
         let placed = self.doc.lots().ok();
         let boxes = placed.is_some().then(|| self.shown());
-        let view = SideView { section: Some(s), boxes, scale: 1.0 };
+        let view = SideView { section: Some(s), boxes, scale: 1.0, ..SideView::default() };
         let (lo, hi) = sideview::bounds(made.as_ref().map(|m| &m.level), &view);
         if self.side_look.is_none() || resp.double_clicked() {
             let fit = Fit::inside(lo, hi, rect.width().max(1.0), rect.height().max(1.0));
@@ -1688,7 +1895,9 @@ impl Editor {
         let fit = lie(centre, zoom);
         self.side_fit = Some(fit);
         if let Some(at) = resp.interact_pointer_pos().map(|at| fit.from((at.x, at.y))) {
-            if resp.clicked() {
+            if resp.clicked() && self.tool == Tool::Join {
+                self.side_click(s, at, grip.min(0.45));
+            } else if resp.clicked() {
                 let lots = placed.as_ref().map_or(Vec::new(), |p| p.lots.clone());
                 let hit = sideview::hit(&lots, &s, at, self.doc.selected(), grip);
                 self.select(hit.as_ref().map(|h| h.key.as_str()));
@@ -1710,7 +1919,7 @@ impl Editor {
         }
         // (drawn after the drag is tried, so the box is where the pointer has it)
         let boxes = placed.is_some().then(|| self.shown());
-        let view = SideView { section: Some(s), boxes, scale: zoom };
+        let view = SideView { section: Some(s), boxes, scale: zoom, pick: self.doc.picked().map(|(r, z)| (r.to_string(), z)), asked: self.doc.asked().clone() };
         let pic = sideview::picture(made.as_ref().map(|m| &m.level), &view);
         self.drawn.0 = pic.prims.len();
         let to = |p: P| {
@@ -1895,6 +2104,20 @@ mod tests {
         frame(ed, egui, vec![button(false)]);
     }
 
+    /// `click`, a second after the last one: never the second of a double click (frames carry
+    /// no time of their own, so two clicks are always quick enough to be one, and a double click
+    /// on the plan frames the level again).
+    fn lone_click(ed: &mut Editor, egui: &egui::Context, at: egui::Pos2) {
+        let button = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        let screen = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1500.0, 950.0));
+        let later = egui.input(|i| i.time) + 1.0;
+        frame(ed, egui, vec![egui::Event::PointerMoved(at)]);
+        for (dt, e) in [(0.0, button(true)), (0.05, button(false))] {
+            let input = egui::RawInput { screen_rect: Some(screen), time: Some(later + dt), events: vec![e], ..Default::default() };
+            let _ = egui.run(input, |egui| ed.show(egui));
+        }
+    }
+
     /// Wait for the level, and for what could be joined to the pick.
     fn settle(ed: &mut Editor) {
         ed.tick();
@@ -1914,6 +2137,18 @@ mod tests {
         ed.set_tool(Tool::Rooms);
         pass(&mut ed, &egui, Vec::new());
         (ed, egui)
+    }
+
+    /// Frames drawn until the plan (or the side view) lies still: the panel beside it takes a
+    /// frame or two to grow to what it lists, and the plan moves with it.
+    fn still(ed: &mut Editor, egui: &egui::Context) {
+        for _ in 0..8 {
+            let was = (ed.fit, ed.side_fit);
+            frame(ed, egui, Vec::new());
+            if (ed.fit, ed.side_fit) == was {
+                return;
+            }
+        }
     }
 
     /// Where a place on the plan (cells) is in the window.
@@ -2026,6 +2261,117 @@ mod tests {
             ed.tick();
         }
         assert_eq!(ed.doc.made().unwrap().level.net.routes().len(), made.level.net.routes().len());
+    }
+
+    #[test]
+    fn a_click_on_a_wall_asks_for_a_doorway_and_the_way_is_cycled() {
+        // medium3 moved beside medium1 (as autolevel's own tests have it)
+        let mut ed = editor("--seed 40");
+        let egui = egui::Context::default();
+        ed.doc.change(&Change::Move { room: "medium3".into(), to: (62, 24) }).unwrap();
+        settle(&mut ed);
+        pass(&mut ed, &egui, Vec::new());
+        let made = ed.doc.made().unwrap().clone();
+        let (m3, m1) = (made.level.space("medium3").rect(), made.level.space("medium1").rect());
+        assert_eq!(m3, (62, 24, 69, 32));
+        // a click on medium3 picks it; with nothing picked a wall is only a room
+        let at = px(&ed, (65.5, 28.0));
+        lone_click(&mut ed, &egui, at);
+        assert_eq!((ed.doc.picked(), ed.doc.asked().plain()), (Some(("medium3", 0)), true));
+        settle(&mut ed);
+        // (the panel grows with the list, and the plan beside it moves: aimed when it is still)
+        still(&mut ed, &egui);
+        // the pointer on its west wall says what a click does; the click asks for that doorway
+        let west = px(&ed, (62.0, 26.5));
+        let said = frame(&mut ed, &egui, vec![egui::Event::PointerMoved(west)]);
+        assert!(has(&said, "click: medium3's doorway W:26 (its west wall at 26)"), "{:?}", said.iter().filter(|t| t.starts_with("cell")).collect::<Vec<_>>());
+        lone_click(&mut ed, &egui, west);
+        let w26 = Doorway { side: 'W', at: 26 };
+        assert_eq!((ed.doc.picked(), ed.doc.asked().door), (Some(("medium3", 0)), Some(w26)));
+        assert_eq!(ed.status, "joining medium3 on 0 from its west wall at 26");
+        settle(&mut ed);
+        let found = ed.doc.joins().unwrap().clone();
+        assert!(!found.found.is_empty() && found.found.iter().all(|c| (c.route.a.side, c.route.a.a) == ('W', 26) && c.door == Some(w26)), "{}", found.text());
+        let said = pass(&mut ed, &egui, Vec::new());
+        assert!(
+            has(&said, "doorway: its west wall at 26") && has(&said, "door W:26") && has(&said, "(from its west wall at 26) could be joined to"),
+            "{said:?}"
+        );
+        // a click on medium1's east wall, on a row they share: only joins to medium1, through there
+        still(&mut ed, &egui);
+        let row = (m1.1.max(m3.1) + 1) as f32 + 0.5;
+        let east = px(&ed, (m1.2 as f32, row));
+        lone_click(&mut ed, &egui, east);
+        let e = Doorway { side: 'E', at: row as i32 };
+        assert_eq!((ed.doc.asked().to.as_deref(), ed.doc.asked().to_door), (Some("medium1"), Some(e)));
+        settle(&mut ed);
+        let said = pass(&mut ed, &egui, Vec::new());
+        let found = ed.doc.joins().unwrap().clone();
+        assert!(
+            found.found.iter().all(|c| c.to == "medium1" && c.to_door == Some(e)) && has(&said, &format!("only to medium1, its east wall at {}", e.at)),
+            "{said:?}"
+        );
+        if found.found.is_empty() {
+            // (nothing through both: the panel and the plan say so, in the recipe's words)
+            let why = "no corridor fits from medium3 on 0 to medium1 through the doorways asked for";
+            assert!(said.iter().filter(|t| t.contains(why)).count() >= 2, "{said:?}");
+        }
+        // the same wall again: every room near again
+        still(&mut ed, &egui);
+        let east = px(&ed, (m1.2 as f32, row));
+        lone_click(&mut ed, &egui, east);
+        assert!(ed.doc.asked().to.is_none() && ed.doc.asked().door == Some(w26));
+        // the way: vents only, then a row's way button cycles it for that row's room
+        settle(&mut ed);
+        pass(&mut ed, &egui, Vec::new());
+        let at = spot(&ed, "via vent");
+        lone_click(&mut ed, &egui, at);
+        assert_eq!(ed.doc.asked().via.as_deref(), Some("vent"));
+        settle(&mut ed);
+        let vents = ed.doc.joins().unwrap().clone();
+        assert!(vents.found.iter().all(|c| c.kind() == "vent"), "{}", vents.text());
+        let at = spot(&ed, "via auto");
+        lone_click(&mut ed, &egui, at);
+        settle(&mut ed);
+        pass(&mut ed, &egui, Vec::new());
+        let first = ed.doc.joins().unwrap().found[0].clone();
+        let at = spot(&ed, "way 1");
+        lone_click(&mut ed, &egui, at);
+        assert_eq!((ed.doc.asked().to.as_deref(), ed.doc.asked().via.as_deref()), (Some(first.to.as_str()), Some("corridor")));
+        settle(&mut ed);
+        pass(&mut ed, &egui, Vec::new());
+        let at = spot(&ed, "every room");
+        lone_click(&mut ed, &egui, at);
+        assert!(ed.doc.asked().to.is_none() && ed.doc.asked().via.as_deref() == Some("corridor"));
+        // the same doorway again lets it go
+        settle(&mut ed);
+        still(&mut ed, &egui);
+        let west = px(&ed, (62.0, 26.5));
+        lone_click(&mut ed, &egui, west);
+        assert_eq!(ed.doc.asked().door, None);
+        assert_eq!(ed.status, "medium3: the router's choice of doorway again");
+        // the side view along the row y = 26: a click on medium3's west end, on the ground, is
+        // that doorway again; one on another storey's height of a room picks it there
+        settle(&mut ed);
+        ed.side = Some(Section { axis: Axis::X, at: 26 });
+        still(&mut ed, &egui);
+        let side = |ed: &Editor, p: P| {
+            let (x, y) = ed.side_fit.expect("the side view was drawn").to(p);
+            egui::pos2(x, y)
+        };
+        let at = side(&ed, (62.0, sideview::up(100)));
+        lone_click(&mut ed, &egui, at);
+        assert_eq!((ed.doc.picked(), ed.doc.asked().door), (Some(("medium3", 0)), Some(w26)));
+        // a choice made through it keeps the doorway in the recipe's join
+        settle(&mut ed);
+        ed.choose(1);
+        assert!(
+            matches!(ed.doc.recipe.edits.last(), Some(Edit::Join { door: Some(d), via: Some(v), .. }) if *d == w26 && v == "corridor"),
+            "{:?}",
+            ed.doc.recipe.edits
+        );
+        settle(&mut ed);
+        assert!(ed.doc.error().is_none(), "{:?}", ed.doc.error());
     }
 
     #[test]

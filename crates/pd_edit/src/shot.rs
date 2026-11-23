@@ -172,9 +172,12 @@ pub struct Generated {
     pub up_to: Option<i32>,
     /// A pixel to pick the room under, as a click there would.
     pub pick: Option<(f32, f32)>,
+    /// Doorways asked for of a join, drawn as the 3D view draws them: the
+    /// room, the doorway on its wall, the storey's floor.
+    pub doors: Vec<(String, autolevel::recipe::Doorway, i32)>,
 }
 
-const GENERATED_USAGE: &str = "usage: pd_edit --shot-generated <out.png> [--seed N | --recipe FILE] [--at x,y,z,yaw,pitch | --view NAME | --room KEY] [--walk x,y,z,theta | --walk NAME [--forward TICKS] [--crouch]] [--select ROOM [--drag HANDLE:N]] [--no-ceilings] [--up-to FLOOR] [--pick PX,PY] [--plan] [--list] [--size WxH]\n  HANDLE: west east south north top bottom (faces) or x y z (arrows); N cells, or storeys for top, bottom and z";
+const GENERATED_USAGE: &str = "usage: pd_edit --shot-generated <out.png> [--seed N | --recipe FILE] [--at x,y,z,yaw,pitch | --view NAME | --room KEY] [--walk x,y,z,theta | --walk NAME [--forward TICKS] [--crouch]] [--select ROOM [--drag HANDLE:N]] [--no-ceilings] [--up-to FLOOR] [--pick PX,PY] [--door ROOM@SIDE:AT@FLOOR] [--plan] [--list] [--size WxH]\n  HANDLE: west east south north top bottom (faces) or x y z (arrows); N cells, or storeys for top, bottom and z\n  --door: a doorway asked for of a join (E N W or S, the cell along the wall), as medium3@W:26@0";
 
 impl Generated {
     pub fn parse(args: &[String]) -> Result<Generated, String> {
@@ -196,6 +199,7 @@ impl Generated {
             no_ceilings: false,
             up_to: None,
             pick: None,
+            doors: Vec::new(),
         };
         let numbers = |name: &str, v: &str| v.split(',').map(|s| s.trim().parse::<f32>()).collect::<Result<Vec<f32>, _>>().map_err(|e| format!("{name}: {e}"));
         let mut it = args.iter();
@@ -237,6 +241,14 @@ impl Generated {
                     let [x, y] = v[..] else { return Err("--pick PX,PY".into()) };
                     g.pick = Some((x, y));
                 }
+                "--door" => {
+                    let v = val("--door")?;
+                    let bad = || format!("--door ROOM@SIDE:AT@FLOOR, as medium3@W:26@0, not {v}");
+                    let mut parts = v.split('@');
+                    let (Some(room), Some(d), Some(z), None) = (parts.next(), parts.next(), parts.next(), parts.next()) else { return Err(bad()) };
+                    let d = autolevel::recipe::Doorway::parse(d).ok_or_else(bad)?;
+                    g.doors.push((room.to_string(), d, z.parse().map_err(|_| bad())?));
+                }
                 s if !s.starts_with("--") && g.out.is_none() => g.out = Some(PathBuf::from(s)),
                 s => return Err(format!("{s:?}?\n{GENERATED_USAGE}")),
             }
@@ -273,7 +285,7 @@ impl Generated {
         let t = autolevel::boxes::trial(recipe, &change, &base);
         let tried = t.lots.iter().filter(|a| a.key == *key || a.host == *key).cloned().collect();
         let line = format!("drag {}:{n}: {}{}", h.name(), crate::space::words(&change), t.refused.as_ref().map_or(String::new(), |why| format!(": refused: {why}")));
-        Ok((Shown { lot: Some(lot), tried, refused: t.refused.is_some(), hot: Some(h) }, Some(line)))
+        Ok((Shown { lot: Some(lot), tried, refused: t.refused.is_some(), hot: Some(h), doors: Vec::new() }, Some(line)))
     }
 
     /// The generator's recipe asked for: the file's, or the seed's own.
@@ -408,13 +420,20 @@ pub fn run_generated(args: &[String]) -> Result<Vec<String>, String> {
     if let Some((px, py)) = g.pick {
         let (o, d) = crate::camera::ray(&view, px, py, w as f32, h as f32);
         said.push(format!("picked at {px:.0}, {py:.0}: {}", crate::boxgizmo::pick_room(&pv, o, d).unwrap_or_else(|| "no room".to_string())));
+        if let Some((room, door, z)) = crate::boxgizmo::doorway_at(&pv, o, d) {
+            said.push(format!("  on a wall: {room}'s doorway {} on {z} ({})", door.short(), door.words()));
+        }
     }
-    let (shown, line) = g.gizmo(&recipe)?;
+    let (mut shown, line) = g.gizmo(&recipe)?;
     said.extend(line);
+    for (room, d, z) in &g.doors {
+        let r = pv.rooms.iter().find(|r| r.key == *room).ok_or_else(|| format!("--door: no room {room}"))?;
+        shown.doors.push(crate::boxgizmo::doorway_box(r.rect, *d, *z));
+    }
     let target = RenderTarget::on_device(&gpu.device, w, h, format, true);
     let mut enc = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("pd_edit shot-generated") });
     draw_bg(&renderer, &gpu.queue, &mut enc, &target, &view);
-    if shown.lot.is_some() {
+    if shown.lot.is_some() || !shown.doors.is_empty() {
         let mut mesh = crate::draw3d::Mesh3d::default();
         crate::boxgizmo::draw(&mut mesh, &shown, cam.pos);
         crate::draw3d::Draw3d::new(&gpu.device, format).draw(&gpu.device, &mut enc, &target, crate::camera::world_to_clip(&view), &mesh, true);

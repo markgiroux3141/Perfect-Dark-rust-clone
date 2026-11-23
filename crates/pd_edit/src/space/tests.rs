@@ -591,3 +591,50 @@ fn the_cutaway_is_made_into_the_preview_and_the_bar_steps_it() {
     rig.click("ceilings");
     assert!(rig.settle() && rig.space.preview().unwrap().line().split(", made in").next() == whole.split(", made in").next());
 }
+
+#[test]
+fn with_join_in_hand_a_click_in_3d_picks_the_room_and_a_wall_asks_for_a_doorway() {
+    use crate::boxgizmo;
+    let mut h = Hosted::new("doorway", seed(40));
+    // over vast from outside its south-west corner, its ceiling cut away (as the gizmo's test)
+    h.space.cut.ceilings = true;
+    assert!(h.space.settle(&seed(40)));
+    h.space.cam = FlyCam::new(Vec3::new(3160.0, 2200.0, -1020.0), 143f32.to_radians(), (-36f32).to_radians());
+    h.frame(Vec::new());
+    assert_eq!(h.ed.tool, Tool::Join);
+    // (the generator's own level, which the window's tick makes on a thread)
+    h.ed.doc.regenerate().unwrap();
+    // a click on its floor: selected, and picked to join from on the storey the click met
+    // (over that spot it meets a catwalk on 551 first: the storey a door there would be on)
+    let said = h.click(h.px(world((42.0, 29.0), 0.0)));
+    assert_eq!((h.ed.doc.selected(), h.ed.doc.picked()), (Some("vast"), Some(("vast", 551))));
+    assert!(has(&said, "vast selected and picked to join by a door on 551: click a wall for a doorway there"), "{said:?}");
+    // its east wall's inside face at a head's height on the ground, where the camera sees it
+    // past the catwalks: what a click there asks for
+    let ray = |h: &Hosted, p: Vec3| {
+        let rect = h.space.rect.unwrap();
+        let view = h.space.cam.view(rect.width() / rect.height(), 15.0, 10000.0);
+        let p = h.px(p) - rect.min;
+        crate::camera::ray(&view, p.x, p.y, rect.width(), rect.height())
+    };
+    let asks = |h: &Hosted, p: Vec3| {
+        let (o, d) = ray(h, p);
+        boxgizmo::doorway_at(h.space.preview().unwrap(), o, d)
+    };
+    let seen = (20..38).map(|y| (y, world((46.98, y as f32 + 0.5), 120.0))).find(|&(y, p)| asks(&h, p) == Some(("vast".to_string(), autolevel::recipe::Doorway { side: 'E', at: y }, 0)));
+    let (y, wall) = seen.expect("somewhere along vast's east wall the camera sees it");
+    let east = autolevel::recipe::Doorway { side: 'E', at: y };
+    // the pointer on it says so; a click asks for it (the pick goes down to the ground with
+    // it), and it is drawn on its wall
+    let said = h.frame(vec![egui::Event::PointerMoved(h.px(wall))]);
+    assert!(has(&said, &format!("click: vast's doorway E:{y} on 0")), "{said:?}");
+    h.click(h.px(wall));
+    assert_eq!((h.ed.doc.picked(), h.ed.doc.asked().door), (Some(("vast", 0)), Some(east)));
+    assert_eq!(h.space.drawn.doors, vec![boxgizmo::doorway_box((37, 20, 47, 38), east, 0)]);
+    assert!(!h.space.overlay().top_tris.is_empty());
+    // with the room tool in hand a click on a wall only selects
+    h.ed.set_tool(Tool::Rooms);
+    h.frame(Vec::new());
+    h.click(h.px(wall));
+    assert_eq!((h.ed.doc.selected(), h.ed.doc.picked()), (Some("vast"), None));
+}

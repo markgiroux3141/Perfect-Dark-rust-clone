@@ -892,7 +892,7 @@ fn a_join_takes_the_doorway_asked_for_or_says_none_fits_there() {
     // a doorway that is no place on its wall, and a way that is none
     let why = err(40, vec![join("medium3", 0, "medium1", Some(Doorway { side: 'N', at: 90 }), None)]);
     assert!(why.contains("join: medium3 has no doorway N 90 (its walls run 61 to 67)"), "{why}");
-    assert!(err(40, vec![join("medium3", 0, "medium1", None, Some("tunnel"))]).contains("join: by a tunnel? (a corridor or a vent)"));
+    assert!(err(40, vec![join("medium3", 0, "medium1", None, Some("tunnel"))]).contains("join: by a tunnel? (a corridor, a vent or straight)"));
     // by a vent: a vent it is, though the corridor would fit
     let vent = made(40, vec![mv("medium3", (62, 24)), join("medium3", 0, "medium1", None, Some("vent"))]);
     let v = vent.net.routes().iter().find(|r| r.a.room == "medium3" && r.b.room == "medium1").expect("the vent");

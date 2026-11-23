@@ -5,7 +5,8 @@
 //! to swap in.
 
 use crate::deadlist::{make, Made};
-use autolevel::candidates::{candidates, Candidates};
+use crate::doc::Pick;
+use autolevel::candidates::{candidates_asked, Candidates};
 use autolevel::recipe::Recipe;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
@@ -53,16 +54,16 @@ impl Task<Made> {
 
 /// What could be joined to a picked room, being found.
 pub struct Search {
-    /// The room and storey it is looking from.
-    pub pick: (String, i32),
+    /// The room and storey it is looking from, and what is asked of the joins.
+    pub pick: Pick,
     task: Task<Candidates>,
 }
 
 impl Search {
     /// Start looking for the corridors that could be made from `pick` in `recipe`'s level.
-    pub fn spawn(recipe: Recipe, pick: (String, i32), rev: u64) -> Search {
-        let (room, storey) = pick.clone();
-        Search { pick, task: Task::run(rev, move || candidates(&recipe, &room, storey)) }
+    pub fn spawn(recipe: Recipe, pick: Pick, rev: u64) -> Search {
+        let (room, storey, asked) = pick.clone();
+        Search { pick, task: Task::run(rev, move || candidates_asked(&recipe, &room, storey, &asked)) }
     }
 
     /// The document's count of changes when it was started.

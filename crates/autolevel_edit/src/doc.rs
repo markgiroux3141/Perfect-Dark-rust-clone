@@ -7,9 +7,10 @@
 //! to `accept`. Until then the last level made stays to look at.
 //!
 //! What is picked is here too, though it is no part of the recipe and undo leaves it alone: a
-//! room and a storey to join from (`pick`), with the corridors that could be made from there
-//! (`find_joins` here and now, or a `jobs::Search` handed to `accept_joins`; `choose` adds one
-//! to the recipe as a `join` edit), or a corridor (`pick_route`; `remove_route` takes it out, or
+//! room and a storey to join from (`pick`), what is asked of the joins from it (`ask`: a
+//! doorway on its wall, the room at the other end and a doorway on that one's, the way), with
+//! the corridors that could be made from there (`find_joins` here and now, or a `jobs::Search`
+//! handed to `accept_joins`; `choose` adds one to the recipe as a `join` edit), or a corridor (`pick_route`; `remove_route` takes it out, or
 //! says why not).
 //!
 //! Room boxes (milestone 3) are changed through `autolevel::boxes`: `select` a room, ask what a
@@ -26,7 +27,7 @@
 use crate::deadlist::{make, Made};
 use crate::planview::{Boxes, View};
 use autolevel::boxes::{self, Change, Trial};
-use autolevel::candidates::{self, Candidate, Candidates, Removal};
+use autolevel::candidates::{self, Asked, Candidate, Candidates, Removal};
 use autolevel::choices::{self, Choices};
 use autolevel::level::Start;
 use autolevel::place::{Placed, Siting};
@@ -39,9 +40,12 @@ type Base = (u64, Siting, Start, Result<Arc<Placed>, String>);
 /// The most steps kept to undo.
 pub const UNDO: usize = 500;
 
+/// A room picked to join from: its key, the storey, and what is asked of the joins.
+pub type Pick = (String, i32, Asked);
+
 /// What a search for joins came to: the count of the recipe's changes and the pick it was
 /// made for, and what it found (or why it could not look).
-type Found = (u64, (String, i32), Result<Arc<Candidates>, String>);
+type Found = (u64, Pick, Result<Arc<Candidates>, String>);
 
 /// A recipe, its history and its level.
 pub struct Doc {
@@ -58,6 +62,8 @@ pub struct Doc {
     failed: Option<(u64, String)>,
     /// The room picked to join from, and the storey.
     pick: Option<(String, i32)>,
+    /// What is asked of the joins from it (nothing with no pick).
+    asked: Asked,
     /// What could be joined to a pick: the last search's result.
     found: Option<Found>,
     /// The route picked, by its key.
@@ -81,6 +87,7 @@ impl Doc {
             made: None,
             failed: None,
             pick: None,
+            asked: Asked::default(),
             found: None,
             route: None,
             selected: None,
@@ -225,25 +232,49 @@ impl Doc {
     // ------------------------------------------------------------ what is picked
 
     /// Pick a room and the storey to join it from. What could be joined to it is then to be
-    /// found: `find_joins`, or on a thread.
+    /// found: `find_joins`, or on a thread. What was asked stays for the same room on another
+    /// storey (its doorways are on its walls whichever), and goes for another room.
     pub fn pick(&mut self, room: &str, storey: i32) {
+        if self.pick.as_ref().is_none_or(|(r, _)| r != room) {
+            self.asked = Asked::default();
+        }
         self.pick = Some((room.to_string(), storey));
         self.route = None;
     }
 
     /// Nothing is picked: no room, no route.
     pub fn unpick(&mut self) {
-        (self.pick, self.route) = (None, None);
+        (self.pick, self.route, self.asked) = (None, None, Asked::default());
     }
 
     pub fn picked(&self) -> Option<(&str, i32)> {
         self.pick.as_ref().map(|(room, z)| (room.as_str(), *z))
     }
 
+    /// The pick with what is asked of it: what a search is made for.
+    pub fn pick_asked(&self) -> Option<Pick> {
+        self.pick.as_ref().map(|(room, z)| (room.clone(), *z, self.asked.clone()))
+    }
+
+    /// Ask this of the joins from the pick (a doorway, the room at the other end, the way): they
+    /// are then looked for again. No edit: nothing to undo. False with no pick.
+    pub fn ask(&mut self, asked: Asked) -> bool {
+        if self.pick.is_none() {
+            return false;
+        }
+        self.asked = asked;
+        true
+    }
+
+    /// What is asked of the joins from the pick.
+    pub fn asked(&self) -> &Asked {
+        &self.asked
+    }
+
     /// The search's result for the pick and the recipe as they stand.
     fn found(&self) -> Option<&Result<Arc<Candidates>, String>> {
         let (rev, pick, result) = self.found.as_ref()?;
-        (*rev == self.rev && Some(pick) == self.pick.as_ref()).then_some(result)
+        (*rev == self.rev && Some(pick) == self.pick_asked().as_ref()).then_some(result)
     }
 
     /// Is a room picked, with nothing found for it and the recipe as they stand?
@@ -253,16 +284,16 @@ impl Doc {
 
     /// Find what could be joined to the pick, here and now.
     pub fn find_joins(&mut self) -> Result<Arc<Candidates>, String> {
-        let (room, storey) = self.pick.clone().ok_or("no room is picked")?;
-        let result = candidates::candidates(&self.recipe, &room, storey);
-        self.accept_joins(self.rev, &(room, storey), result);
+        let pick = self.pick_asked().ok_or("no room is picked")?;
+        let result = candidates::candidates_asked(&self.recipe, &pick.0, pick.1, &pick.2);
+        self.accept_joins(self.rev, &pick, result);
         self.found().expect("just found").clone()
     }
 
     /// Take a search's result, made for `pick` and the recipe as it was at `rev`. False (and
     /// nothing kept) if either has changed since.
-    pub fn accept_joins(&mut self, rev: u64, pick: &(String, i32), result: Result<Candidates, String>) -> bool {
-        if rev != self.rev || Some(pick) != self.pick.as_ref() {
+    pub fn accept_joins(&mut self, rev: u64, pick: &Pick, result: Result<Candidates, String>) -> bool {
+        if rev != self.rev || Some(pick) != self.pick_asked().as_ref() {
             return false;
         }
         self.found = Some((rev, pick.clone(), result.map(Arc::new)));
@@ -286,7 +317,7 @@ impl Doc {
         let found = self.joins().ok_or("nothing has been found to join yet")?;
         let c = found.get(n).ok_or_else(|| format!("no join {n}: there are {}", found.found.len()))?.clone();
         self.add(c.edit());
-        self.pick = None;
+        (self.pick, self.asked) = (None, Asked::default());
         self.route = Some(c.route.key().to_string());
         Ok(c)
     }
@@ -294,7 +325,7 @@ impl Doc {
     /// Pick a corridor, stub or vent, by its route's key.
     pub fn pick_route(&mut self, key: &str) {
         self.route = Some(key.to_string());
-        self.pick = None;
+        (self.pick, self.asked) = (None, Asked::default());
     }
 
     pub fn picked_route(&self) -> Option<&str> {
@@ -310,7 +341,10 @@ impl Doc {
             found.found.iter().enumerate().map(|(k, c)| (k + 1, c.clone())).filter(|(n, _)| shown(*n)).collect()
         });
         let chosen = choices::all(&self.recipe).into_iter().map(|(room, c)| (room, c.words())).collect();
-        View { pick: self.pick.clone(), joins, hot, route: self.route.clone(), chosen, ..View::default() }
+        // (nothing found through what was asked: the plan says so where the doorway is)
+        let none = self.joins().filter(|found| found.found.is_empty() && !found.asked.plain()).map(|found| found.none_fits());
+        let asked = if self.pick.is_some() { self.asked.clone() } else { Asked::default() };
+        View { pick: self.pick.clone(), asked, none, joins, hot, route: self.route.clone(), chosen, ..View::default() }
     }
 
     // ------------------------------------------------------------ room boxes
@@ -367,7 +401,9 @@ impl Doc {
         if let Change::Delete { room } = change {
             self.selected = None;
             if self.pick.as_ref().is_some_and(|(r, _)| r == room) {
-                self.pick = None;
+                (self.pick, self.asked) = (None, Asked::default());
+            } else if self.asked.to.as_ref() == Some(room) {
+                (self.asked.to, self.asked.to_door) = (None, None);
             }
         } else {
             self.selected = Some(change.room().to_string());
@@ -630,9 +666,12 @@ mod tests {
         d.pick("tower", 551);
         assert!(d.wants_joins() && d.joins().is_none());
         let rev = d.rev();
-        assert!(!d.accept_joins(rev, &("tower".to_string(), 276), Ok((*found).clone())));
-        assert!(!d.accept_joins(rev - 1, &("tower".to_string(), 551), Ok((*found).clone())));
-        assert!(d.accept_joins(rev, &("tower".to_string(), 551), Err("no room tower".into())));
+        let pick = |z: i32| ("tower".to_string(), z, Asked::default());
+        assert!(!d.accept_joins(rev, &pick(276), Ok((*found).clone())));
+        assert!(!d.accept_joins(rev - 1, &pick(551), Ok((*found).clone())));
+        let vent = Asked { via: Some("vent".into()), ..Asked::default() };
+        assert!(!d.accept_joins(rev, &("tower".to_string(), 551, vent), Ok((*found).clone())));
+        assert!(d.accept_joins(rev, &pick(551), Err("no room tower".into())));
         assert_eq!((d.joins().is_none(), d.joins_error()), (true, Some("no room tower")));
         d.pick("small8", 551);
         assert_eq!(d.find_joins().unwrap_err(), "small8 is a pod: it is joined inside vast");
@@ -792,7 +831,7 @@ mod tests {
     fn a_search_finds_the_joins_on_a_thread() {
         let mut d = Doc::new(Recipe::before_bases(40), true);
         d.pick("tower", 551);
-        let search = crate::jobs::Search::spawn(d.recipe.clone(), ("tower".to_string(), 551), d.rev());
+        let search = crate::jobs::Search::spawn(d.recipe.clone(), d.pick_asked().unwrap(), d.rev());
         let result = loop {
             match search.poll() {
                 Some(result) => break result,

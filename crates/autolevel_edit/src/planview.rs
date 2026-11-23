@@ -29,12 +29,13 @@
 
 use autolevel::boxes::Part;
 use autolevel::build::Fix;
-use autolevel::candidates::{footprint, Candidate};
+use autolevel::candidates::{footprint, Asked, Candidate};
 use autolevel::cells::{Cell, Cells, Rect};
 use autolevel::deadends::DeadEnd;
 use autolevel::furnish::rectangles;
 use autolevel::level::Level;
 use autolevel::plan::MODULE;
+use autolevel::recipe::Doorway;
 use autolevel::route::{Point, Route};
 use autolevel::scatter::Lot;
 use autolevel::space::{Space, DIRS};
@@ -140,6 +141,10 @@ pub mod colour {
     pub const TITLE: Rgba = [236, 238, 244, 255];
     /// The room picked to join from.
     pub const PICK: Rgba = [80, 232, 255, 255];
+    /// The places on a picked room's walls a doorway can be asked for (a tick a cell), and the
+    /// doorway asked for.
+    pub const HANDLE: Rgba = [80, 232, 255, 120];
+    pub const ASKED: Rgba = [255, 120, 255, 255];
     /// A corridor that could be made: its floor (pale, so what is under it shows), its edge, the
     /// disc its number is on and the number.
     pub const JOIN: Rgba = [244, 246, 255, 150];
@@ -249,6 +254,11 @@ pub struct View {
     pub scale: f32,
     /// The room picked to join from, and the storey its door would be on.
     pub pick: Option<(String, i32)>,
+    /// What is asked of its joins: the doorways (drawn on their walls), the room at the other
+    /// end (framed), the way.
+    pub asked: Asked,
+    /// Nothing was found through what was asked: what the recipe's join says, written by the pick.
+    pub none: Option<String>,
     /// Corridors that could be made from it, each with its number in the list.
     pub joins: Vec<(usize, Candidate)>,
     /// The number of the one under the pointer.
@@ -324,7 +334,20 @@ pub fn hit_box(lots: &[Lot], at: P, storey: Option<i32>, selected: Option<&str>,
 
 impl Default for View {
     fn default() -> Self {
-        View { storey: None, mark: None, scale: 25.0, pick: None, joins: Vec::new(), hot: None, route: None, gone: None, boxes: None, chosen: Vec::new() }
+        View {
+            storey: None,
+            mark: None,
+            scale: 25.0,
+            pick: None,
+            asked: Asked::default(),
+            none: None,
+            joins: Vec::new(),
+            hot: None,
+            route: None,
+            gone: None,
+            boxes: None,
+            chosen: Vec::new(),
+        }
     }
 }
 
@@ -355,6 +378,30 @@ pub fn hit(lv: &Level, at: P, storey: Option<i32>) -> Option<Hit> {
         (None, Some(s)) => Some(Hit::Room(s.key.clone())),
         (None, None) => None,
     }
+}
+
+/// The doorway on a room's wall at `at` (cells), if `at` is within `grip` cells of one of its
+/// walls (inside or out) and along it: the nearest wall, and the cell along it.
+pub fn wall_at(s: &Space, at: P, grip: f32) -> Option<Doorway> {
+    wall_of(s.rect(), at, grip).map(|(_, d)| d)
+}
+
+/// `wall_at` for a rectangle of cells, with how far `at` is off the wall (cells).
+pub fn wall_of(r: Rect, at: P, grip: f32) -> Option<(f32, Doorway)> {
+    let (x0, y0, x1, y1) = cell_box(r);
+    let walls = [('E', at.0 - x1, at.1, y0, y1), ('W', at.0 - x0, at.1, y0, y1), ('N', at.1 - y1, at.0, x0, x1), ('S', at.1 - y0, at.0, x0, x1)];
+    let near = walls.into_iter().filter(|&(_, off, along, lo, hi)| off.abs() <= grip && lo <= along && along < hi);
+    near.min_by(|p, q| p.1.abs().total_cmp(&q.1.abs())).map(|(side, off, along, _, _)| (off.abs(), Doorway { side, at: along.floor() as i32 }))
+}
+
+/// The room whose wall a click at `at` is on, and the doorway there: the rooms in `first` before
+/// the rest (the picked room, the room asked for), and of the rest only those `hit` would pick on
+/// the storey shown (pods are joined inside their halls: none of theirs).
+pub fn wall_hit(lv: &Level, at: P, grip: f32, storey: Option<i32>, first: &[&str]) -> Option<(String, Doorway)> {
+    let rooms = lv.spaces().iter().filter(|s| s.host.is_empty());
+    let shown = |s: &&Space| storey.is_none_or(|z| s.storeys().contains(&z) || s.floor == z);
+    let firsts = first.iter().filter_map(|k| lv.spaces().iter().find(|s| s.key == *k && s.host.is_empty()));
+    firsts.chain(rooms.filter(shown)).find_map(|s| wall_at(s, at, grip).map(|d| (s.key.clone(), d)))
 }
 
 /// The storey a room picked on the plan is joined from: the one shown, if the room takes doors
@@ -1075,6 +1122,59 @@ impl Pic<'_> {
         }
     }
 
+    /// What is asked of the picked room's joins, over everything (the room boxes too): the
+    /// places on its walls a doorway can be asked for and the one asked for, the room asked for
+    /// framed with its doorway, and why nothing fits through them, in red.
+    fn asked(&mut self) {
+        let (lv, view) = (self.lv, self.view);
+        let Some(s) = view.pick.as_ref().and_then(|(room, _)| lv.spaces().iter().find(|s| s.key == *room)) else { return };
+        self.doorways(s, view.asked.door);
+        if let Some(t) = view.asked.to.as_ref().and_then(|to| lv.spaces().iter().find(|s| s.key == *to)) {
+            let b = cell_box(t.rect());
+            self.frame((b.0 - 0.25, b.1 - 0.25, b.2 + 0.25, b.3 + 0.25), colour::HANDLE, 2.0);
+            self.text(((b.0 + b.2) / 2.0, b.1 - 0.25 - 8.0 / view.scale), &format!("to {} alone", t.key), colour::PICK, 8.0);
+            self.doorways(t, view.asked.to_door);
+        }
+        if let Some(why) = &view.none {
+            let b = cell_box(s.rect());
+            let at = ((b.0 + b.2) / 2.0, b.1 - 0.25 - 20.0 / view.scale);
+            let w = why.chars().count() as f32 * 6.0 / view.scale / 2.0 + 0.2;
+            self.rect((at.0 - w, at.1 - 6.0 / view.scale, at.0 + w, at.1 + 6.0 / view.scale), colour::PANEL);
+            self.text(at, why, colour::DEAD_END, 8.0);
+        }
+    }
+
+    /// The places on a room's walls a doorway can be asked for: a short tick outside the wall at
+    /// each cell's middle (where a cell is big enough to see one), and the doorway asked for, a
+    /// cell of wall drawn thick and named.
+    fn doorways(&mut self, s: &Space, asked: Option<Doorway>) {
+        let (x0, y0, x1, y1) = cell_box(s.rect());
+        let out = 0.25;
+        if self.view.scale >= 8.0 {
+            for x in s.x0..s.x1 {
+                let m = x as f32 + 0.5;
+                self.line((m, y1 + out * 0.4), (m, y1 + out), colour::HANDLE, 2.0);
+                self.line((m, y0 - out * 0.4), (m, y0 - out), colour::HANDLE, 2.0);
+            }
+            for y in s.y0..s.y1 {
+                let m = y as f32 + 0.5;
+                self.line((x1 + out * 0.4, m), (x1 + out, m), colour::HANDLE, 2.0);
+                self.line((x0 - out * 0.4, m), (x0 - out, m), colour::HANDLE, 2.0);
+            }
+        }
+        let Some(d) = asked else { return };
+        let a = d.at as f32;
+        // (the words inside the room, where its corridor is not)
+        let (p, q, label) = match d.side {
+            'E' => ((x1, a), (x1, a + 1.0), (x1 - 1.6, a + 0.5)),
+            'W' => ((x0, a), (x0, a + 1.0), (x0 + 1.6, a + 0.5)),
+            'N' => ((a, y1), (a + 1.0, y1), (a + 0.5, y1 - 0.6)),
+            _ => ((a, y0), (a + 1.0, y0), (a + 0.5, y0 + 0.6)),
+        };
+        self.line(p, q, colour::ASKED, 7.0);
+        self.text(label, &format!("door {}", d.short()), colour::ASKED, 8.0);
+    }
+
     /// A route just taken out, where it was.
     fn gone(&mut self, r: &Route) {
         self.ghost(r, colour::GONE, colour::DEAD_END, 3.0);
@@ -1142,6 +1242,7 @@ pub fn picture(lv: &Level, view: &View) -> Picture {
     }
     pic.joins();
     lots(&mut pic.out, view, Some(lv), (lo, hi));
+    pic.asked();
     Picture { prims: pic.out, lo, hi, legend: legend(lv, view) }
 }
 
@@ -1515,6 +1616,10 @@ pub fn legend(lv: &Level, view: &View) -> Vec<Key> {
     }
     if view.pick.is_some() {
         out.push(key(Swatch::Ring, colour::PICK, "room picked to join"));
+        out.push(key(Swatch::Line, colour::HANDLE, "click its wall: a doorway there"));
+    }
+    if view.asked.doorways() {
+        out.push(key(Swatch::Line, colour::ASKED, "doorway asked for"));
     }
     if !view.joins.is_empty() {
         out.push(key(Swatch::Fill, colour::JOIN_DISC, "could be made (numbered as listed)"));

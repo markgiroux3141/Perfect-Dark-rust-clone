@@ -16,8 +16,10 @@
 
 use crate::planview::{colour, Boxes, Key, Picture, Prim, Rgba, Swatch, P};
 use autolevel::boxes::{dragged, Change, Part};
+use autolevel::candidates::Asked;
 use autolevel::cells::{Cells, Rect};
 use autolevel::level::Level;
+use autolevel::recipe::Doorway;
 use autolevel::scatter::{Lot, STOREY};
 use autolevel::storeys::{snap_top, CEILINGS, LEVELS};
 
@@ -246,10 +248,41 @@ pub fn drag(lot: &Lot, s: &Section, part: SidePart, from: P, to: P) -> Option<Ch
     (!same).then_some(change)
 }
 
+/// The doorway on a room's end wall at `at` in the side view along `s` (within `grip` cells of
+/// it across, and between the room's floor and top), and the storey the height is on: the
+/// rooms in `first` before the rest, pods never (they are joined inside their halls). The
+/// doorway's cell along the wall is the section's row or column.
+pub fn wall_at(lv: &Level, s: &Section, at: P, grip: f32, first: &[&str]) -> Option<(String, Doorway, i32)> {
+    let height = at.1 * UNITS;
+    let firsts = first.iter().filter_map(|k| lv.spaces().iter().find(|a| a.key == *k));
+    let rooms = firsts.chain(lv.spaces().iter()).filter(|a| a.host.is_empty() && s.crosses(a.rect()));
+    rooms.filter(|a| a.floor as f32 <= height && height <= a.top as f32).find_map(|a| {
+        let (u0, u1) = s.span(a.rect());
+        let (lo, hi) = if s.axis == Axis::X { ('W', 'E') } else { ('S', 'N') };
+        let side = if (at.0 - u0 as f32).abs() <= grip {
+            lo
+        } else if (at.0 - u1 as f32).abs() <= grip {
+            hi
+        } else {
+            return None;
+        };
+        let storey = a.door_levels().into_iter().filter(|z| *z as f32 <= height).max()?;
+        Some((a.key.clone(), Doorway { side, at: s.at }, storey))
+    })
+}
+
+/// How tall a doorway is drawn (units): Felicity's doors'.
+const DOOR_UP: i32 = autolevel::felicity::DOOR_H;
+
 /// What to show in the side view.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SideView {
     pub section: Option<Section>,
+    /// The room picked to join from and the storey (drawn ringed, its end walls' doorways
+    /// ticked), and what is asked of its joins (the doorways asked for, where the section cuts
+    /// them).
+    pub pick: Option<(String, i32)>,
+    pub asked: Asked,
     /// The room boxes (the room tool is in hand), drawn over the level.
     pub boxes: Option<Boxes>,
     /// Pixels to a cell where it will be drawn, as near as is known: which names fit.
@@ -292,6 +325,41 @@ impl Pen<'_> {
 
     fn text(&mut self, at: P, text: String, col: Rgba, size_px: f32, centred: bool) {
         self.out.push(Prim::Text { at, text, col, size_px, centred });
+    }
+
+    /// The room picked to join from, ringed, with a tick outside each end wall the section cuts
+    /// on the storey its door is on (a click there asks for a doorway), and the doorways asked
+    /// for where the section cuts them: the picked room's on that storey, the other room's on
+    /// every storey it takes doors on.
+    fn join(&mut self, lv: &Level, room: &str, z: i32, asked: &Asked) {
+        let s = self.s;
+        let (lo, hi) = if s.axis == Axis::X { ('W', 'E') } else { ('S', 'N') };
+        let Some(a) = lv.spaces().iter().find(|a| a.key == room && s.crosses(a.rect())) else { return };
+        let (u0, u1) = s.span(a.rect());
+        self.outline((u0 as f32 - 0.2, up(a.floor) - 0.1, u1 as f32 + 0.2, up(a.top) + 0.1), colour::PICK, 3.0);
+        let (b, t) = (up(z), up(z + DOOR_UP));
+        for u in [u0 as f32 - 0.6, u1 as f32 + 0.6] {
+            self.line((u - 0.2, (b + t) / 2.0), (u + 0.2, (b + t) / 2.0), colour::HANDLE, 2.0);
+        }
+        let mut doors = vec![(a, asked.door, vec![z])];
+        if let Some(t) = asked.to.as_ref().and_then(|to| lv.spaces().iter().find(|t| t.key == *to)) {
+            doors.push((t, asked.to_door, t.door_levels()));
+        }
+        for (a, d, zs) in doors {
+            let Some(d) = d.filter(|d| d.at == s.at && (d.side == lo || d.side == hi)) else { continue };
+            if !s.crosses(a.rect()) {
+                continue;
+            }
+            let (u0, u1) = s.span(a.rect());
+            let u = if d.side == lo { u0 } else { u1 } as f32;
+            for z in &zs {
+                self.line((u, up(*z)), (u, up(z + DOOR_UP)), colour::ASKED, 7.0);
+            }
+            // (inside the room: the gap between two rooms is where the other's words go)
+            let label = if d.side == lo { u + 2.2 } else { u - 2.2 };
+            let first = zs.first().copied().unwrap_or(a.floor);
+            self.text((label, up(first + DOOR_UP) + 0.3), format!("door {}", d.short()), colour::ASKED, 8.0, true);
+        }
     }
 
     /// The floor lines (labelled with their heights) and ceiling lines, and the cells across.
@@ -524,6 +592,9 @@ pub fn picture(lv: Option<&Level>, view: &SideView) -> Picture {
     if let Some(b) = &view.boxes {
         pen.boxes(b);
     }
+    if let (Some(lv), Some((room, z))) = (lv, &view.pick) {
+        pen.join(lv, room, *z, &view.asked);
+    }
     let legend = vec![
         Key { swatch: Swatch::Fill, col: alpha(colour::STOREY[1], 120), text: "a room the section cuts, in its floor's colour".to_string() },
         Key { swatch: Swatch::Ring, col: alpha(colour::STOREY[1], 80), text: "a room in front or behind".to_string() },
@@ -601,7 +672,7 @@ mod tests {
         let made = fixture::seed40();
         let vast = made.level.space("vast").rect();
         let s = Section::through(Axis::X, vast);
-        let view = SideView { section: Some(s), boxes: None, scale: 8.0 };
+        let view = SideView { section: Some(s), scale: 8.0, ..SideView::default() };
         let pic = picture(Some(&made.level), &view);
         let (lo, hi) = (pic.lo, pic.hi);
         assert!(lo.0 < vast.0 as f32 && hi.0 > vast.2 as f32, "the hall is in the bounds: {lo:?} {hi:?}");

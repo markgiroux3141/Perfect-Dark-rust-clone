@@ -5,7 +5,8 @@
 //! so tests reach it; `headless::run` does what it asks for.
 
 use autolevel::boxes::{self, Change};
-use autolevel::recipe::{self, Edit, Recipe};
+use autolevel::candidates::Asked;
+use autolevel::recipe::{self, Doorway, Edit, Recipe};
 use autolevel::storeys::LEVELS;
 
 pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
@@ -47,6 +48,14 @@ pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
                         on the plan, numbered as listed: each room's cheapest, or with --all every one
   --join N              make number N of that list: a join added to the recipe. What is drawn is
                         what is made: the same cells, the same doors, the same key
+  --door SIDE:AT        with --pick: only joins through this doorway on the room's wall (E N W or S,
+                        and the cell along it of the door's low end: x on N or S, y on E or W),
+                        as E:26. The plan draws it, and a --join made with it keeps it
+  --to ROOM             with --pick: only joins to this room (near or not)
+  --to-door ROOM@SIDE:AT
+                        with --pick: only joins to this room, through this doorway on its wall
+  --via WAY             with --pick: joins by a corridor (never a vent) or a vent (even where a
+                        corridor fits); none: a corridor, failing that a vent
   --all                 the snapshot draws every corridor --pick lists, not only each room's cheapest
   --rooms               the snapshot draws the room boxes over the level, as the recipe places
                         them (any of the room flags below turns this on)
@@ -130,6 +139,8 @@ pub struct Args {
     pub remove: Vec<String>,
     /// The room to join from, and the storey (None: its own floor).
     pub pick: Option<(String, Option<i32>)>,
+    /// What is asked of the joins from the pick (`--door`, `--to`, `--to-door`, `--via`).
+    pub asked: Asked,
     /// Which of the corridors found for the pick to make, counting from 1.
     pub join: Option<usize>,
     /// Draw every corridor found for the pick, not only each room's cheapest.
@@ -264,6 +275,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
         routes: false,
         remove: Vec::new(),
         pick: None,
+        asked: Asked::default(),
         join: None,
         all: false,
         rooms: false,
@@ -318,6 +330,24 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
                     None if !v.is_empty() => (v.to_string(), None),
                     _ => return Err(format!("--pick: a room's key and a storey, as tower@551, not {v}")),
                 });
+            }
+            "door" => {
+                let v = value(n)?;
+                out.asked.door = Some(Doorway::parse(v).ok_or_else(|| format!("--door: a wall (E N W or S), then : and a cell along it, as E:26, not {v}"))?);
+            }
+            "to" => out.asked.to = Some(value(n)?.to_string()),
+            "to_door" => {
+                let v = value(n)?;
+                let read = room_at(v).and_then(|(room, d)| Some((room.to_string(), Doorway::parse(d)?)));
+                let (room, d) = read.ok_or_else(|| format!("--to-door: a room, then @ and a doorway on its wall, as medium1@W:27, not {v}"))?;
+                (out.asked.to, out.asked.to_door) = (Some(room), Some(d));
+            }
+            "via" => {
+                let v = value(n)?;
+                if !recipe::VIAS.contains(&v) {
+                    return Err(format!("--via: {} (none: a corridor, failing that a vent), not {v}", recipe::VIAS.join(" or ")));
+                }
+                out.asked.via = Some(v.to_string());
             }
             "rooms" => (out.rooms, took) = (true, 1),
             "lots" => (out.lots, took) = (true, 1),
@@ -420,6 +450,9 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
     if out.join.is_some() && out.pick.is_none() {
         return Err("--join: of what? Name the room and storey with --pick".to_string());
     }
+    if !out.asked.plain() && out.pick.is_none() {
+        return Err("--door, --to, --to-door, --via: of a join from what? Name the room and storey with --pick".to_string());
+    }
     if out.trial && out.boxes.is_empty() {
         return Err("--try: of what? Name a change with --move, --rect, --pin, --delete or --add".to_string());
     }
@@ -486,6 +519,15 @@ mod tests {
         let plain = args("--seed 40").unwrap();
         assert!(!plain.changes() && !plain.routes && !plain.all && plain.join.is_none());
         assert_eq!(args("--join 2").unwrap_err(), "--join: of what? Name the room and storey with --pick");
+        // what is asked of the joins: a doorway each end, the room at the other, the way
+        let a = args("--pick medium3@0 --door w:26 --to-door medium1@E:30 --via vent --join 1").unwrap();
+        let (w, e) = (Doorway { side: 'W', at: 26 }, Doorway { side: 'E', at: 30 });
+        assert_eq!(a.asked, Asked { door: Some(w), to: Some("medium1".into()), to_door: Some(e), via: Some("vent".into()) });
+        assert_eq!(args("--pick medium3 --to medium1").unwrap().asked.to.as_deref(), Some("medium1"));
+        assert_eq!(args("--door E:26").unwrap_err(), "--door, --to, --to-door, --via: of a join from what? Name the room and storey with --pick");
+        assert_eq!(args("--pick medium3 --door X:26").unwrap_err(), "--door: a wall (E N W or S), then : and a cell along it, as E:26, not X:26");
+        assert_eq!(args("--pick medium3 --to-door medium1").unwrap_err(), "--to-door: a room, then @ and a doorway on its wall, as medium1@W:27, not medium1");
+        assert_eq!(args("--pick medium3 --via tunnel").unwrap_err(), "--via: corridor or vent or straight (none: a corridor, failing that a vent), not tunnel");
         assert_eq!(args("--pick tower --join 0").unwrap_err(), "--join: a number of the --pick list, from 1");
         assert_eq!(
             args("--pick tower@550").unwrap_err(),

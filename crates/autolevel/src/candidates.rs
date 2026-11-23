@@ -23,7 +23,7 @@ use crate::deadlist::fix_text;
 use crate::level::{Level, Options};
 use crate::network::Network;
 use crate::py;
-use crate::recipe::{self, Edit, Recipe};
+use crate::recipe::{self, Doorway, Edit, Recipe};
 use crate::route::Route;
 use crate::scatter::rect_gap;
 use crate::storeys::index;
@@ -66,6 +66,57 @@ pub fn footprint(r: &Route) -> BTreeSet<Spot> {
     out
 }
 
+/// What a person asked of the joins looked for, past the room and storey picked: the doorway on
+/// the picked room's wall, the room at the other end and the doorway on its wall, and the way
+/// (one of `recipe::VIAS`). None of it given: the router's choice, to every room within reach.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Asked {
+    pub door: Option<Doorway>,
+    /// Only joins to this room are looked for (within reach or not).
+    pub to: Option<String>,
+    /// The doorway on `to`'s wall (with no `to`, nothing).
+    pub to_door: Option<Doorway>,
+    pub via: Option<String>,
+}
+
+impl Asked {
+    /// Nothing asked: the router's choice everywhere.
+    pub fn plain(&self) -> bool {
+        *self == Asked::default()
+    }
+
+    /// Is a doorway asked for at either end?
+    pub fn doorways(&self) -> bool {
+        self.door.is_some() || self.to_door.is_some()
+    }
+
+    /// What was asked, in words: "from its east wall at 26, to medium1, its west wall at 27, by
+    /// a vent" (empty: nothing).
+    pub fn words(&self) -> String {
+        let mut out = Vec::new();
+        if let Some(d) = self.door {
+            out.push(format!("from {}", d.words()));
+        }
+        match (&self.to, self.to_door) {
+            (Some(to), Some(d)) => out.push(format!("to {to}, {}", d.words())),
+            (Some(to), None) => out.push(format!("to {to} alone")),
+            _ => {}
+        }
+        if let Some(v) = &self.via {
+            out.push(format!("by a {v}"));
+        }
+        out.join(", ")
+    }
+
+    /// The way after `via`, as a button cycles them: the router's choice, a corridor, a vent.
+    pub fn next_via(via: Option<&str>) -> Option<String> {
+        match via {
+            None => Some(recipe::VIAS[0].to_string()),
+            Some(v) => recipe::VIAS.iter().skip_while(|w| **w != v).nth(1).map(|w| w.to_string()),
+        }
+    }
+}
+
 /// A join that could be made.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Candidate {
@@ -78,12 +129,17 @@ pub struct Candidate {
     /// The route as it would be made: its key, its pieces and their cells, its two doors, its
     /// centre line.
     pub route: Route,
+    /// The doorways and the way it was found through, as asked (none: the router's choice).
+    pub door: Option<Doorway>,
+    pub to_door: Option<Doorway>,
+    pub via: Option<String>,
 }
 
 impl Candidate {
     /// The edit that makes it: added to the end of the recipe it was found for, it gives `route`.
     pub fn edit(&self) -> Edit {
-        Edit::Join { room: self.room.clone(), storey: self.storey, to: self.to.clone(), on: vec![self.on], door: None, to_door: None, via: None }
+        let (door, to_door, via) = (self.door, self.to_door, self.via.clone());
+        Edit::Join { room: self.room.clone(), storey: self.storey, to: self.to.clone(), on: vec![self.on], door, to_door, via }
     }
 
     /// corridor (with or without ramps), stub (a door through the wall) or vent.
@@ -122,6 +178,8 @@ pub fn how(r: &Route) -> String {
 pub struct Candidates {
     pub room: String,
     pub storey: i32,
+    /// What was asked of them past the room and storey.
+    pub asked: Asked,
     /// Those that can be made. Lists and the plan number them from 1: first each room's
     /// cheapest, the cheapest of those first (`rooms` of them), then the other storeys those
     /// rooms could take the door on, again the cheapest first.
@@ -149,9 +207,14 @@ impl Candidates {
     pub fn text_with(&self, note: impl Fn(&Candidate) -> Option<String>) -> String {
         let (room, storey) = (&self.room, self.storey);
         let s = |n: usize| if n == 1 { "" } else { "s" };
+        let asked = match self.asked.words() {
+            w if w.is_empty() => String::new(),
+            w => format!(" ({w})"),
+        };
         let mut out = match (self.rooms, self.found.len()) {
+            (0, _) if !self.asked.plain() => format!("{room} on {storey}{asked}: {}\n", self.none_fits()),
             (0, _) => format!("{room} on {storey}: nothing within reach can be joined to it\n"),
-            (rooms, ways) => format!("{room} on {storey} could be joined to {rooms} room{} ({ways} way{}):\n", s(rooms), s(ways)),
+            (rooms, ways) => format!("{room} on {storey}{asked} could be joined to {rooms} room{} ({ways} way{}):\n", s(rooms), s(ways)),
         };
         for (n, c) in self.found.iter().enumerate() {
             if n == self.rooms {
@@ -173,25 +236,54 @@ impl Candidates {
         }
         if !by_room.is_empty() {
             let rooms: Vec<String> = by_room.iter().map(|(to, zs)| format!("{to} on {}", zs.join(", "))).collect();
-            out.push_str(&format!("   -  no corridor fits to: {}\n", rooms.join("; ")));
+            out.push_str(&format!("   -  no {} fits{} to: {}\n", self.what(), self.through(), rooms.join("; ")));
         }
         out
+    }
+
+    /// What the recipe's join says where nothing was found: "no corridor fits from medium3 on 0
+    /// to medium1 through the doorways asked for" (to any room near: "to the rooms near it").
+    pub fn none_fits(&self) -> String {
+        let to = self.asked.to.as_deref().unwrap_or("the rooms near it");
+        format!("no {} fits from {} on {} to {to}{}", self.what(), self.room, self.storey, self.through())
+    }
+
+    fn what(&self) -> &'static str {
+        match self.asked.via.as_deref() {
+            Some("vent") => "vent",
+            Some("straight") => "straight corridor",
+            _ => "corridor",
+        }
+    }
+
+    fn through(&self) -> &'static str {
+        if self.asked.doorways() {
+            " through the doorways asked for"
+        } else {
+            ""
+        }
     }
 }
 
 /// The joins that could be made from `room` on `storey`, to every room within `REACH` cells on
 /// every storey it takes doors on within `STOREYS` of that one.
 pub fn candidates(recipe: &Recipe, room: &str, storey: i32) -> Result<Candidates, String> {
-    candidates_within(recipe, room, storey, REACH, STOREYS)
+    candidates_within(recipe, room, storey, REACH, STOREYS, &Asked::default())
 }
 
-/// `candidates`, looking `reach` cells off and `storeys` storeys up and down.
+/// `candidates`, through the doorways and by the way asked for.
+pub fn candidates_asked(recipe: &Recipe, room: &str, storey: i32, asked: &Asked) -> Result<Candidates, String> {
+    candidates_within(recipe, room, storey, REACH, STOREYS, asked)
+}
+
+/// `candidates`, looking `reach` cells off and `storeys` storeys up and down, as `asked`.
 ///
 /// Err if the recipe makes no network, `room` is not one of its rooms or is a pod, or it takes
-/// no door on `storey`.
-pub fn candidates_within(recipe: &Recipe, room: &str, storey: i32, reach: i32, storeys: i32) -> Result<Candidates, String> {
+/// no door on `storey`; or a doorway asked for is off its room's walls, the room asked for is
+/// none or a pod, or the way is not one of `recipe::VIAS`.
+pub fn candidates_within(recipe: &Recipe, room: &str, storey: i32, reach: i32, storeys: i32, asked: &Asked) -> Result<Candidates, String> {
     let (_, net) = recipe.routed()?;
-    let (fits, none) = routes(&net, &recipe.options, room, storey, reach, storeys)?;
+    let (fits, none) = routes(&net, &recipe.options, room, storey, reach, storeys, asked)?;
     let checked = verdicts(recipe, &fits);
     let (mut found, mut refused) = (Vec::new(), Vec::new());
     for (c, verdict) in fits.into_iter().zip(checked) {
@@ -204,16 +296,17 @@ pub fn candidates_within(recipe: &Recipe, room: &str, storey: i32, reach: i32, s
     let mut seen: BTreeSet<String> = BTreeSet::new();
     let (best, rest): (Vec<Candidate>, Vec<Candidate>) = found.into_iter().partition(|c| seen.insert(c.to.clone()));
     let rooms = best.len();
-    Ok(Candidates { room: room.to_string(), storey, found: best.into_iter().chain(rest).collect(), rooms, refused, none })
+    Ok(Candidates { room: room.to_string(), storey, asked: asked.clone(), found: best.into_iter().chain(rest).collect(), rooms, refused, none })
 }
 
 /// What `routes` finds: the corridors that fit, and the (room, storey) none fits to.
 pub type Fits = (Vec<Candidate>, Vec<(String, i32)>);
 
 /// The routes a join from `room` on `storey` would add to this network: to each room within
-/// `reach` cells, on each storey it takes doors on within `storeys` of that one, the cheapest
-/// first; and the (room, storey) no corridor fits to. Nothing is made: `net` is as it was.
-pub fn routes(net: &Network, o: &Options, room: &str, storey: i32, reach: i32, storeys: i32) -> Result<Fits, String> {
+/// `reach` cells (or to the room asked for alone, near or not), on each storey it takes doors on
+/// within `storeys` of that one, through the doorways and by the way asked for, the cheapest
+/// first; and the (room, storey) none fits to. Nothing is made: `net` is as it was.
+pub fn routes(net: &Network, o: &Options, room: &str, storey: i32, reach: i32, storeys: i32, asked: &Asked) -> Result<Fits, String> {
     let sp = net.spaces();
     let a = sp.iter().find(|s| s.key == room).ok_or_else(|| format!("no room {room}"))?;
     if !a.host.is_empty() {
@@ -223,20 +316,42 @@ pub fn routes(net: &Network, o: &Options, room: &str, storey: i32, reach: i32, s
         let on: Vec<String> = a.door_levels().iter().map(|z| z.to_string()).collect();
         return Err(format!("{room} takes doors on {}, not on {storey}", on.join(", ")));
     }
+    if let Some(why) = asked.door.and_then(|d| d.off(a)) {
+        return Err(why);
+    }
+    if let Some(to) = &asked.to {
+        let t = sp.iter().find(|s| s.key == *to).ok_or_else(|| format!("no room {to}"))?;
+        if !t.host.is_empty() {
+            return Err(format!("{to} is a pod: it is joined inside {}", t.host));
+        }
+        if t.key == room {
+            return Err(format!("{room} to itself"));
+        }
+        if let Some(why) = asked.to_door.and_then(|d| d.off(t)) {
+            return Err(why);
+        }
+    }
+    if let Some(v) = asked.via.as_deref().filter(|v| !recipe::VIAS.contains(v)) {
+        return Err(format!("by a {v}? (a corridor, a vent or straight)"));
+    }
+    let to_door = asked.to.as_ref().and(asked.to_door);
     let apart = |z: i32| (index(z) as i32 - index(storey) as i32).abs();
     let (mut fits, mut none) = (Vec::new(), Vec::new());
     for t in sp.iter().filter(|t| t.key != room && t.host.is_empty()) {
         let (dx, dy) = rect_gap(a.rect(), t.rect());
-        if dx + dy > reach {
-            continue;
+        match &asked.to {
+            Some(to) if *to != t.key => continue,
+            None if dx + dy > reach => continue,
+            _ => {}
         }
         for z in t.door_levels().into_iter().filter(|z| apart(*z) <= storeys) {
             // the recipe's own join, on a copy: what it adds is what the edit will add
             let mut tried = net.clone();
-            match recipe::join(&mut tried, o, room, storey, &t.key, &[z], (None, None), None) {
+            match recipe::join(&mut tried, o, room, storey, &t.key, &[z], (asked.door, to_door), asked.via.as_deref()) {
                 Ok(()) => {
                     let route = tried.routes().last().expect("a join adds a route").clone();
-                    fits.push(Candidate { room: room.to_string(), storey, to: t.key.clone(), on: z, route });
+                    let via = asked.via.clone();
+                    fits.push(Candidate { room: room.to_string(), storey, to: t.key.clone(), on: z, route, door: asked.door, to_door, via });
                 }
                 Err(_) => none.push((t.key.clone(), z)),
             }
@@ -455,7 +570,7 @@ mod tests {
         );
         assert_eq!((found.get(1), found.get(0), found.get(22)), (Some(&found.found[0]), None, None));
         // looking less far finds fewer
-        let near = candidates_within(&recipe, "tower", 551, 2, 0).unwrap();
+        let near = candidates_within(&recipe, "tower", 551, 2, 0, &Asked::default()).unwrap();
         assert_eq!(near.found.iter().map(|c| (c.to.as_str(), c.on)).collect::<Vec<_>>(), [("loft3", 551), ("vast", 551)]);
         // what can't be looked from says why
         let err = |room: &str, storey: i32| candidates(&recipe, room, storey).unwrap_err();
@@ -501,6 +616,85 @@ mod tests {
         // with no vents in the level's options there is none to offer
         let dry = Recipe { options: Options { vents: 0, ..Options::before_bases() }, ..recipe };
         assert!(candidates(&dry, "medium4", -276).unwrap().found.iter().all(|c| c.kind() != "vent"));
+    }
+
+    #[test]
+    fn candidates_go_through_the_doorways_and_by_the_way_asked_for() {
+        // medium3 moved beside medium1 (as tests/recipe.rs has it): its walls are 62..69 x 24..32
+        let recipe = Recipe { edits: vec![Edit::Move { room: "medium3".into(), to: (62, 24) }], ..Recipe::new(40) };
+        let to = |door: Option<Doorway>, via: Option<&str>| Asked { door, to: Some("medium1".into()), to_door: None, via: via.map(str::to_string) };
+        let plain = candidates_asked(&recipe, "medium3", 0, &to(None, None)).unwrap();
+        assert!(!plain.found.is_empty() && plain.found.iter().all(|c| c.to == "medium1" && c.door.is_none()), "{}", plain.text());
+        // the router's own door, asked for: the same route, and the edit names the doorway
+        let own = &plain.found[0];
+        let d = Doorway { side: own.route.a.side, at: own.route.a.a };
+        let asked = candidates_asked(&recipe, "medium3", 0, &to(Some(d), None)).unwrap();
+        assert_eq!(asked.found[0].route, own.route, "{}", asked.text());
+        assert!(matches!(asked.found[0].edit(), Edit::Join { door: Some(e), .. } if e == d));
+        // every doorway on the west wall: those found have their door there and are made so;
+        // the rest say none fits through it, in the recipe's words
+        let (mut found, mut none) = (0, 0);
+        for at in 24..32 {
+            let w = Doorway { side: 'W', at };
+            let got = candidates_asked(&recipe, "medium3", 0, &to(Some(w), None)).unwrap();
+            match got.found.first() {
+                Some(c) => {
+                    assert!(got.found.iter().all(|c| (c.route.a.side, c.route.a.a) == ('W', at)), "{}", got.text());
+                    let (_, lv) = chosen(&recipe, c);
+                    assert_made(&lv, c);
+                    found += 1;
+                }
+                None => {
+                    let text = got.text();
+                    let why = "no corridor fits from medium3 on 0 to medium1 through the doorways asked for";
+                    assert!(
+                        got.none_fits() == why && text.starts_with(&format!("medium3 on 0 (from its west wall at {at}, to medium1 alone): {why}\n")),
+                        "{text}"
+                    );
+                    none += 1;
+                }
+            }
+        }
+        assert!(found > 0 && none > 0, "{found} found, {none} none on the west wall");
+        // by a vent: vents only, the edit says so
+        let vents = candidates_asked(&recipe, "medium3", 0, &to(None, Some("vent"))).unwrap();
+        assert!(!vents.found.is_empty() && vents.found.iter().all(|c| c.kind() == "vent" && c.via.as_deref() == Some("vent")), "{}", vents.text());
+        let (_, lv) = chosen(&recipe, &vents.found[0]);
+        assert_made(&lv, &vents.found[0]);
+        // the other room's doorway, as its route found it: the same route again
+        let there = Doorway { side: own.route.b.side, at: own.route.b.a };
+        let both = candidates_asked(&recipe, "medium3", 0, &Asked { to_door: Some(there), ..to(Some(d), None) }).unwrap();
+        assert_eq!((both.found[0].route.clone(), both.found[0].to_door), (own.route.clone(), Some(there)));
+        // what is asked that can't be
+        let err = |a: Asked| candidates_asked(&recipe, "medium3", 0, &a).unwrap_err();
+        assert_eq!(err(to(Some(Doorway { side: 'N', at: 90 }), None)), "medium3 has no doorway N 90 (its walls run 62 to 68)");
+        assert_eq!(err(Asked { to: Some("attic".into()), ..Asked::default() }), "no room attic");
+        assert_eq!(err(to(None, Some("tunnel"))), "by a tunnel? (a corridor, a vent or straight)");
+        // the way cycles: the router's choice, a corridor, a vent, straight, and round
+        let ways = [None, Some("corridor"), Some("vent"), Some("straight")].map(Asked::next_via);
+        assert_eq!(ways, [Some("corridor".into()), Some("vent".into()), Some("straight".into()), None]);
+        // asking nothing is the plain search
+        assert_eq!(candidates_asked(&recipe, "medium3", 0, &Asked::default()).unwrap(), candidates(&recipe, "medium3", 0).unwrap());
+    }
+
+    #[test]
+    fn a_straight_join_has_no_turn() {
+        let recipe = Recipe::before_bases(40);
+        let plain = candidates(&recipe, "tower", 551).unwrap();
+        let straight = candidates_asked(&recipe, "tower", 551, &Asked { via: Some("straight".into()), ..Asked::default() }).unwrap();
+        // the centre line, looked at from above: every step the way of the one before
+        let turns = |c: &Candidate| {
+            let steps: Vec<(f64, f64)> =
+                c.route.path.windows(2).map(|w| ((w[1].0 - w[0].0) as f64, (w[1].1 - w[0].1) as f64)).filter(|d| *d != (0.0, 0.0)).collect();
+            steps.windows(2).filter(|w| w[0].0 * w[1].1 - w[0].1 * w[1].0 != 0.0 || w[0].0 * w[1].0 + w[0].1 * w[1].1 < 0.0).count()
+        };
+        assert!(plain.found.iter().any(|c| turns(c) > 0), "seed 40's tower has joins that turn");
+        assert!(!straight.found.is_empty() && straight.found.len() < plain.found.len(), "{}", straight.text());
+        assert!(straight.found.iter().all(|c| turns(c) == 0 && c.kind() != "vent" && c.via.as_deref() == Some("straight")), "{}", straight.text());
+        let c = straight.found.iter().max_by_key(|c| c.cells().len()).unwrap();
+        let (_, lv) = chosen(&recipe, c);
+        assert_made(&lv, c);
+        assert!(straight.text().contains("   -  no straight corridor fits to: "), "{}", straight.text());
     }
 
     #[test]

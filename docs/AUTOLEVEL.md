@@ -2838,11 +2838,11 @@ Order of work, and where each stands:
    `boxes::trial` alone (a millisecond), red with the refusal; the level is made again when it
    is let go, as on the plan. Plus a cutaway (ceilings hidden, storeys above N hidden) to see
    into tall halls. `pd_edit::gizmo` exists for items: look there first.
-4. **Corridors drawn by hand, and their style.** Step 1 done (2026-11-23): the edit ("Joins
-   through a doorway", below). Next: the editor's part, picking the doorway on the plan, the
-   side view and in 3D, and cycling the way. A doorway picked on each room's wall (the Join
-   tool picks rooms only): a `door`/`via` field on `join`; and a corridor's style cycled
-   (straight, L, stairs, ramp, vent).
+4. **Corridors drawn by hand, and their style.** Done (2026-11-23): step 1 the edit ("Joins
+   through a doorway", below), step 2 the editor's part ("Picking the doorway", below): a
+   doorway picked on each room's wall on the plan, in the side view and in 3D, the way cycled
+   (auto / corridor / vent, and "straight"). L, stairs and a forced ramp are noted there and
+   not built (they need new search state in the router).
 5. **Per-part re-rolls and a variants strip.** `reroll { room, part }` with a stream of its own
    per part (catwalks, cover, windows), so one part changes and the rest stays; 4 to 6 small
    pictures of re-rolls made in parallel (as the Join tool's candidates are), one click to keep.
@@ -2980,10 +2980,82 @@ Order of work, and where each stands:
   refused with the message, the router's own door among those made; a doorway off the wall; a
   way that is none; a vent asked for is a vent; a corridor asked for where one is made anyway is
   the same level; the file both ways). The answer keys pass.
-- **Not yet:** the editor's part (a doorway picked on a room's wall on the plan, the side view
-  and the 3D view; the way cycled in the Join tool's list); styles beyond corridor and vent
-  ("straight", "L", "stairs", "ramp" need the router to take terms for them: `Terms::straight`
-  and `turn` are the nearest); a command-line flag (a recipe file carries the edit).
+- **Not yet:** the editor's part (step 2, below); styles beyond corridor and vent (below).
+
+### Picking the doorway (roadmap item 4, step 2, 2026-11-23)
+
+- **What is asked:** `candidates::Asked { door, to, to_door, via }`: a doorway on the picked
+  room's wall, the room at the other end (only joins to it are looked for, near or not) and a
+  doorway on its wall, and the way. `candidates_asked(recipe, room, storey, &asked)` (and
+  `candidates_within`, `routes`, which take it too) pass them to the recipe's own `join` on a
+  copy, as ever, so what is previewed is what is made; each `Candidate` carries them, and its
+  `edit()` is the `join` with `door`, `to_door` and `via` set. What can't be asked is an error
+  up front (`Doorway::off`, shared with `join`: "medium3 has no doorway N 90 (its walls run 62
+  to 68)"; "no room attic"; "by a tunnel?"). Nothing found is `Candidates::none_fits()`, the
+  recipe's words: "no corridor fits from medium3 on 0 to medium1 through the doorways asked
+  for". `Asked::default()` is the plain search, exactly as before.
+- **The editor** (`autolevel_edit`): the pick is `(room, storey)` plus `Doc::asked` (`ask`,
+  `pick_asked`; a search is for the pick and what was asked together, `doc::Pick`, so one
+  started before a change of either is not taken). Another room picked forgets what was asked;
+  the same room on another storey keeps it. `Editor::doorway(room, door, storey)` is the click
+  on a wall, wherever it is made: on the picked room's wall, its doorway (on that storey, if a
+  height was clicked and it takes doors there); the same one again lets it go; on another
+  room's wall, only joins to that room through that doorway (the same again: every room near);
+  with nothing picked, the room is picked with that doorway. `set_via`, `cycle_way(n)` (a row's
+  way button: only that row's room, the next way round) and `any_room` are the panel's.
+  - **The plan:** with a room picked, a click within a grip of a wall (the room tool's, at most
+    0.45 of a cell, inside or out) is a doorway (`planview::wall_hit`, the picked room and the
+    room asked for first); a cell's middle is still the room. The picked room's walls get a tick
+    a cell outside (where cells are 8 px or more), the doorways asked for a thick magenta cell of
+    wall with "door W:26" inside the room, the room asked for a frame and "to medium1 alone", and
+    nothing found the refusal in red on a panel under the pick. All of it is drawn over the room
+    boxes. The line under the plan says what a click on a wall does.
+  - **The side view:** with "Join" in hand a click on a room's end wall is that wall's doorway at
+    the section's row or column, on the storey the height is on (`sideview::wall_at`); a click on
+    a room picks it on that storey (`Editor::pick_join`). The picked room is ringed, its ends
+    ticked at the door's height, the doorways asked for drawn on their walls where the section
+    cuts them (the other room's on each storey it takes doors on).
+  - **The panel:** under the storeys, "doorway: its west wall at 26 [any]", "only to medium1,
+    its east wall at 30 [every room]", "way: auto | corridor | vent"; each row of the list a way
+    button; nothing found, the refusal in red.
+  - **pd_edit's 3D view:** with "Join" in hand a click on a room selects it and picks it to join
+    from, on the storey the click met (`boxgizmo::storey_at`); with a room picked, a click that
+    meets the level within 0.45 of a cell of a room's wall (`boxgizmo::doorway_at`, pods never,
+    from inside or out) is that doorway, on the storey of the height met (so a click on the
+    ground floor's wall moves a pick on a catwalk's storey down to it). The doorways asked for
+    are magenta panels on their walls, a cell wide and a door tall (`boxgizmo::doorway_box`,
+    `Shown::doors`), drawn on top; the line over the view says what a click on a wall does.
+- **Command line:** `autolevel_edit --pick ROOM@Z [--door SIDE:AT] [--to ROOM | --to-door
+  ROOM@SIDE:AT] [--via corridor|vent] [--join N]` (each needs `--pick`); with `--shot` the plan
+  or `--side` view draws them. `pd_edit --shot-generated OUT --door ROOM@SIDE:AT@FLOOR` draws a
+  doorway panel; `--pick PX,PY` also says which wall's doorway a click there asks for.
+- **Checked:** `candidates_go_through_the_doorways_and_by_the_way_asked_for` (the router's own
+  door asked for is the same route; every doorway on medium3's west wall either has its door
+  there and is made so, or says none fits in those words; vents only; both ends; the errors; the
+  plain search unchanged); a window test (egui clicks: pick, the hover line, a wall, the other
+  room's wall and again, "via vent", a row's way button, "every room", the same wall again, the
+  side view's click, a join made through the doorway keeps it); the command line (made, saved,
+  refused, a doorway off the wall); pd_edit's (the 3D click picks on the storey met, a wall
+  spot the camera sees asks for its doorway, drawn; with the room tool a wall only selects).
+  Pictures read: seed 40 with medium3 moved, W:26 to medium1 made and W:28 with E:30 refused on
+  the plan; the side view along y = 30 with both doorways; vast's E:28 on 0 and 276 in 3D.
+- **Rough:** nobody has looked at the window. The ticks are faint and lie under a selected
+  box's grips; the doorways' words can sit on a corridor's key. A doorway is a cell: a wider
+  door the router makes starts there. The egui tests found that the plan moves for a frame or
+  two while the panel grows to its list, and that clicks a frame apart are a double click there
+  (it frames the level again): a quick second click on a wall in the window may do that too.
+- **Styles beyond corridor and vent:** what each would take of the router. "straight" (no turn)
+  fits as an override, and is built: `via: "straight"` (`recipe::VIAS`' third) is the join's
+  terms with a turn dearer than the whole budget and no limit on a run's length
+  (`Terms::turn`, `straight: 0`), never a vent; "no straight corridor fits ..." where none does.
+  It is a way button and a "way:" choice like the others (`a_straight_join_has_no_turn`: seed
+  40's tower on 551, every one found has no turn in its centre line, the longest made as shown).
+  An `Asked` via of "vent" still falls back as a vent; "corridor" and "straight" never do. "L" (one turn) needs a count of
+  turns in the search's state (`route_with`'s heads are (x, y, z, dir, run)): a turn budget of
+  its own, None as now. "ramp" (a ramp wherever the storeys differ, never a stair of stubs) is
+  the router's ramps already; forcing one between rooms on the same storey needs a head that
+  must climb and come down. "stairs" has no piece in the corridor kit: `stairs.rs` lays a room's
+  ramps, not a corridor's. None of the three is built.
 
 ## Risks
 

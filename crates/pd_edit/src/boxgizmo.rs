@@ -255,6 +255,47 @@ impl Grab {
 /// tiles, so a click through a doorway picks the room beyond. None where the
 /// ray meets nothing, or a corridor (no room's box).
 pub fn pick_room(pv: &Preview, o: Vec3, d: Vec3) -> Option<String> {
+    let (start, t) = met(pv, o, d)?;
+    let cut = pv.cut.height();
+    let shown = |r: &&RoomBox| cut.is_none_or(|h| (r.floor as f32) < h);
+    let holder = |p: Vec3| {
+        pv.rooms.iter().filter(shown).filter(|r| within(r, p, 4.0)).min_by_key(|r| (r.host.is_empty(), (r.rect.2 - r.rect.0) * (r.rect.3 - r.rect.1))).map(|r| r.key.clone())
+    };
+    // (in the air the surface is seen from, else just past it: a wall seen from outside)
+    holder(start + d * (t - 4.0)).or_else(|| holder(start + d * (t + 4.0)))
+}
+
+/// How near a wall's plane (cells) a click must meet the level to ask for a doorway in it.
+pub const WALL_GRIP: f32 = 0.45;
+
+/// The doorway a click asks for (with "Join" in hand): where the ray meets the level (as
+/// [`pick_room`] reads it) within [`WALL_GRIP`] of a room's wall, between its floor and top
+/// (pods never: they are joined inside their halls), the nearest such wall; with the storey
+/// the point is on (the highest floor at or under it).
+pub fn doorway_at(pv: &Preview, o: Vec3, d: Vec3) -> Option<(String, autolevel::recipe::Doorway, i32)> {
+    let (start, t) = met(pv, o, d)?;
+    let p = start + d * t;
+    let at = cell(p);
+    let cut = pv.cut.height();
+    let rooms = pv.rooms.iter().filter(|r| r.host.is_empty() && cut.is_none_or(|h| (r.floor as f32) < h));
+    let rooms = rooms.filter(|r| r.floor as f32 - 4.0 <= p.y && p.y <= r.top as f32 + 4.0);
+    let (key, door) = rooms.filter_map(|r| autolevel_edit::planview::wall_of(r.rect, at, WALL_GRIP).map(|(off, d)| (off, r.key.clone(), d))).min_by(|a, b| a.0.total_cmp(&b.0)).map(|(_, k, d)| (k, d))?;
+    let storey = autolevel::storeys::LEVELS.into_iter().filter(|z| *z as f32 <= p.y + 4.0).max()?;
+    Some((key, door, storey))
+}
+
+/// The storey of the place the ray first meets (the highest floor at or under
+/// it): where a click in 3D picks a room to join from.
+pub fn storey_at(pv: &Preview, o: Vec3, d: Vec3) -> Option<i32> {
+    let (start, t) = met(pv, o, d)?;
+    let y = (start + d * t).y;
+    autolevel::storeys::LEVELS.into_iter().filter(|z| *z as f32 <= y + 4.0).max()
+}
+
+/// Where the ray `o + t d` first meets what is drawn of the preview (a tile, or with no
+/// ceilings drawn a room's top from under it), cut where the cutaway cuts: the ray's start
+/// (where it crosses the cut, from over it) and `t` along it from there.
+fn met(pv: &Preview, o: Vec3, d: Vec3) -> Option<(Vec3, f32)> {
     let cut = pv.cut.height();
     let start = match cut {
         Some(h) if o.y > h => {
@@ -280,14 +321,7 @@ pub fn pick_room(pv: &Preview, o: Vec3, d: Vec3) -> Option<String> {
             }
         }
     }
-    if !t.is_finite() {
-        return None;
-    }
-    let holder = |p: Vec3| {
-        pv.rooms.iter().filter(shown).filter(|r| within(r, p, 4.0)).min_by_key(|r| (r.host.is_empty(), (r.rect.2 - r.rect.0) * (r.rect.3 - r.rect.1))).map(|r| r.key.clone())
-    };
-    // (in the air the surface is seen from, else just past it: a wall seen from outside)
-    holder(start + d * (t - 4.0)).or_else(|| holder(start + d * (t + 4.0)))
+    t.is_finite().then_some((start, t))
 }
 
 /// Is `p` in the room's box, within `pad` units of its floor and top?
@@ -314,11 +348,43 @@ pub struct Shown {
     pub refused: bool,
     /// The handle under the pointer or held.
     pub hot: Option<Handle>,
+    /// The doorways asked for of a join (with "Join" in hand): each a panel on
+    /// its wall, low corner and high, drawn on top.
+    pub doors: Vec<(Vec3, Vec3)>,
+}
+
+/// The colour of a doorway asked for (the plan's `colour::ASKED`).
+pub const ASKED: [f32; 4] = [1.0, 0.47, 1.0, 1.0];
+
+/// A doorway on a room's wall (the rectangle `rect` in cells), on the storey
+/// whose floor is `z`, as a panel in the world: a cell wide, a door tall.
+pub fn doorway_box(rect: (i32, i32, i32, i32), d: autolevel::recipe::Doorway, z: i32) -> (Vec3, Vec3) {
+    let (x0, y0, x1, y1) = rect;
+    let a = d.at as f32;
+    let (p, q) = match d.side {
+        'E' => ((x1 as f32, a), (x1 as f32, a + 1.0)),
+        'W' => ((x0 as f32, a), (x0 as f32, a + 1.0)),
+        'N' => ((a, y1 as f32), (a + 1.0, y1 as f32)),
+        _ => ((a, y0 as f32), (a + 1.0, y0 as f32)),
+    };
+    let (lo, hi) = (world(p, z as f32), world(q, (z + autolevel::felicity::DOOR_H) as f32));
+    (lo.min(hi), lo.max(hi))
 }
 
 /// Draw it into `mesh`, seen from `eye`: the box's edges in the scene (faint
-/// where walls hide them), the handles on top; a drag's boxes on top.
+/// where walls hide them), the handles on top; a drag's boxes on top; the
+/// doorways asked for on top.
 pub fn draw(mesh: &mut Mesh3d, shown: &Shown, eye: Vec3) {
+    for &(lo, hi) in &shown.doors {
+        // (a panel standing in the wall's plane, its four edges doubled)
+        let (a, b, c, d) = if lo.x == hi.x {
+            (lo, Vec3::new(lo.x, lo.y, hi.z), hi, Vec3::new(lo.x, hi.y, lo.z))
+        } else {
+            (lo, Vec3::new(hi.x, lo.y, lo.z), hi, Vec3::new(lo.x, hi.y, hi.z))
+        };
+        mesh.quad(true, a, b, c, d, [ASKED[0], ASKED[1], ASKED[2], 0.45]);
+        mesh.wire_box(true, lo - Vec3::splat(2.0), hi + Vec3::splat(2.0), ASKED);
+    }
     let Some(lot) = &shown.lot else { return };
     let (lo, hi) = world_box(lot);
     let dragging = !shown.tried.is_empty();

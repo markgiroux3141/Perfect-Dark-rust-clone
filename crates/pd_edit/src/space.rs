@@ -32,7 +32,7 @@ use autolevel::boxes::{Change, Trial};
 use autolevel::recipe as gen;
 use autolevel::storeys::{CEILINGS, LEVELS};
 use autolevel_edit::raster::Fit;
-use autolevel_edit::ui::Editor;
+use autolevel_edit::ui::{Editor, Tool};
 use engine::egui;
 use pd_render::View;
 use pd_sim::world::WorldRes;
@@ -432,17 +432,51 @@ impl Space {
         } else if self.held.is_some() && !resp.dragged_by(primary) {
             self.held = None;
         }
+        // With "Join" in hand and a room picked to join from, a click on a wall
+        // asks for a doorway there (the plan's click on a wall, `Editor::doorway`).
+        let joining = ed.tool == Tool::Join && ed.doc.picked().is_some();
+        let wall_at = |p: egui::Pos2, pv: Option<&Preview>| {
+            let (o, d) = ray(p);
+            pv.filter(|_| joining).and_then(|pv| boxgizmo::doorway_at(pv, o, d))
+        };
         if resp.clicked() {
             if let Some(p) = resp.interact_pointer_pos().filter(|p| handle_at(*p).is_none()) {
                 let (o, d) = ray(p);
-                let picked = self.preview().and_then(|pv| boxgizmo::pick_room(pv, o, d));
-                ed.select(picked.as_deref());
-                self.note = Some(match &picked {
-                    Some(k) => (format!("{k} selected: drag a face to size it, an arrow to move it"), false),
-                    None => ("no room there (a corridor, or nothing)".to_string(), false),
-                });
+                if let Some((room, door, z)) = wall_at(p, self.preview()) {
+                    ed.doorway(&room, door, Some(z));
+                    self.note = Some((ed.status().to_string(), false));
+                } else {
+                    let picked = self.preview().and_then(|pv| boxgizmo::pick_room(pv, o, d));
+                    ed.select(picked.as_deref());
+                    self.note = Some(match &picked {
+                        Some(k) => (format!("{k} selected: drag a face to size it, an arrow to move it"), false),
+                        None => ("no room there (a corridor, or nothing)".to_string(), false),
+                    });
+                    // ("Join" in hand: picked to join from too, on the storey the click met)
+                    if let (Some(k), Tool::Join) = (&picked, ed.tool) {
+                        let z = self.preview().and_then(|pv| boxgizmo::storey_at(pv, o, d));
+                        ed.pick_join(k, z);
+                        if ed.doc.picked().is_some_and(|(r, _)| r == k) {
+                            let z = ed.doc.picked().map_or(0, |(_, z)| z);
+                            self.note = Some((format!("{k} selected and picked to join by a door on {z}: click a wall for a doorway there"), false));
+                        }
+                    }
+                }
             }
         }
+        let doors = ed.doc.made().map_or(Vec::new(), |made| {
+            let asked = ed.doc.asked();
+            let mut out = Vec::new();
+            let space = |k: &str| made.level.spaces().iter().find(|s| s.key == k);
+            if let Some((s, z, d)) = ed.doc.picked().and_then(|(r, z)| Some((space(r)?, z, asked.door?))) {
+                out.push(boxgizmo::doorway_box(s.rect(), d, z));
+            }
+            if let Some((t, d)) = asked.to.as_deref().and_then(|to| Some((space(to)?, asked.to_door?))) {
+                out.extend(t.door_levels().into_iter().map(|z| boxgizmo::doorway_box(t.rect(), d, z)));
+            }
+            out
+        });
+        let hover_wall = resp.hover_pos().filter(|p| self.held.is_none() && handle_at(*p).is_none()).and_then(|p| wall_at(p, self.preview()));
         // what it draws, and the line under the pointer
         let hot = self.held.as_ref().map(|h| h.grab.handle).or_else(|| resp.hover_pos().and_then(handle_at));
         let (tried, refused) = match self.held.as_ref().and_then(|h| h.tried.as_ref()) {
@@ -452,14 +486,18 @@ impl Space {
             }
             None => (Vec::new(), false),
         };
-        self.drawn = Shown { lot, tried, refused, hot };
+        self.drawn = Shown { lot, tried, refused, hot, doors };
         let line = match (self.held.as_ref().and_then(|h| h.tried.as_ref()), hot, key.as_deref()) {
             (Some((c, t)), _, _) => Some(match &t.refused {
                 Some(why) => (format!("{}: refused: {why}", words(c)), true),
                 None => (words(c), false),
             }),
             (None, Some(h), Some(k)) => Some((h.does(k), false)),
-            _ => None,
+            _ => hover_wall.map(|(room, d, z)| {
+                let picked = ed.doc.picked().is_some_and(|(r, _)| r == room);
+                let does = if picked { format!("{room}'s doorway {} on {z}", d.short()) } else { format!("only join to {room}, through {}", d.words()) };
+                (format!("click: {does}"), false)
+            }),
         };
         if let Some((line, wrong)) = line {
             let painter = ui.painter_at(rect);

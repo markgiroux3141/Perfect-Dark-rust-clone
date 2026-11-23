@@ -122,11 +122,34 @@ impl Doorway {
         };
         format!("its {wall} wall at {}", self.at)
     }
+
+    /// Why it is no doorway of the room `s` ("medium3 has no doorway N 90 (its walls run 61 to
+    /// 67)"), or None: it is one of its walls' cells.
+    pub fn off(&self, s: &crate::space::Space) -> Option<String> {
+        let (lo, hi) = if matches!(self.side, 'N' | 'S') { (s.x0, s.x1) } else { (s.y0, s.y1) };
+        (!matches!(self.side, 'E' | 'N' | 'W' | 'S') || self.at < lo || self.at >= hi)
+            .then(|| format!("{} has no doorway {} {} (its walls run {lo} to {})", s.key, self.side, self.at, hi - 1))
+    }
+
+    /// "E:26", as the command line takes it.
+    pub fn short(&self) -> String {
+        format!("{}:{}", self.side, self.at)
+    }
+
+    /// "E:26" (or "e:26") read back.
+    pub fn parse(text: &str) -> Option<Doorway> {
+        let (side, at) = text.split_once(':')?;
+        let side = side.trim().to_ascii_uppercase();
+        let side = side.chars().next().filter(|c| side.len() == 1 && matches!(c, 'E' | 'N' | 'W' | 'S'))?;
+        Some(Doorway { side, at: at.trim().parse().ok()? })
+    }
 }
 
-/// What a `join` is made as: a corridor (with ramps, or a stub through a wall), a vent, or
-/// (none given) a corridor, failing that a vent.
-pub const VIAS: [&str; 2] = ["corridor", "vent"];
+/// What a `join` is made as: a corridor (with ramps, or a stub through a wall), a vent, a
+/// straight corridor (no turn: the router's own terms with a turn dearer than the whole budget
+/// and no limit on a run's length; new here, an override no seed's recipe takes), or (none
+/// given) a corridor, failing that a vent.
+pub const VIAS: [&str; 3] = ["corridor", "vent", "straight"];
 
 /// One change made by hand.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -912,25 +935,28 @@ pub(crate) fn join(
         return Err(format!("join: {to} takes doors on {}, not on {z}", list(&b.door_levels())));
     }
     if let Some(v) = via.filter(|v| !VIAS.contains(v)) {
-        return Err(format!("join: by a {v}? (a corridor or a vent)"));
+        return Err(format!("join: by a {v}? (a corridor, a vent or straight)"));
     }
     for (d, s) in [(doors.0, a), (doors.1, b)] {
-        let Some(d) = d else { continue };
-        let (lo, hi) = if matches!(d.side, 'N' | 'S') { (s.x0, s.x1) } else { (s.y0, s.y1) };
-        if !matches!(d.side, 'E' | 'N' | 'W' | 'S') || d.at < lo || d.at >= hi {
-            return Err(format!("join: {} has no doorway {} {} (its walls run {lo} to {})", s.key, d.side, d.at, hi - 1));
+        if let Some(why) = d.and_then(|d| d.off(s)) {
+            return Err(format!("join: {why}"));
         }
     }
     let (da, db) = (doors.0.map(|d| (d.side, d.at)), doors.1.map(|d| (d.side, d.at)));
     let lb = (!on.is_empty()).then(|| on.to_vec());
-    let terms = Terms { max_cost: JOIN_COST, la: Some(vec![storey]), lb: lb.clone(), da, db, search: JOIN_SEARCH, storeyed: true, ..Terms::default() };
+    let mut terms = Terms { max_cost: JOIN_COST, la: Some(vec![storey]), lb: lb.clone(), da, db, search: JOIN_SEARCH, storeyed: true, ..Terms::default() };
+    if via == Some("straight") {
+        // (a turn costs more than a corridor may: none is taken; and a run may be any length)
+        (terms.turn, terms.straight) = (JOIN_COST + 1.0, 0);
+    }
     let mut r = if via == Some("vent") { None } else { net.grid.route(a, b, &terms) };
     let vents = o.vents != 0 || via == Some("vent");
-    if r.is_none() && via != Some("corridor") && vents && a.vent_levels().contains(&storey) {
+    if r.is_none() && matches!(via, None | Some("vent")) && vents && a.vent_levels().contains(&storey) {
         r = net.grid.vent(a, b, &VentTerms { la: Some(vec![storey]), lb, da, db, ..VentTerms::default() });
     }
     let what = match via {
         Some("vent") => "vent",
+        Some("straight") => "straight corridor",
         _ => "corridor",
     };
     let through = match doors {
