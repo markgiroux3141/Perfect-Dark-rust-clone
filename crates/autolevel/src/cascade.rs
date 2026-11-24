@@ -429,7 +429,9 @@ fn insides(a: &Level, b: &Level, out: &mut Vec<Change>) {
         // what it is laid out as
         let lay = |i: &crate::furnish::Interior| i.layout.unwrap_or(if i.tower.is_empty() { "none" } else { i.tower });
         let mut said = Vec::new();
-        if lay(o) != lay(it) {
+        // (a layout's name alone may change with nothing built otherwise: said only with its decks)
+        let decks_moved = o.deck.iter().map(|(&z, cells)| (f.z(z), f.cells(cells))).collect::<BTreeMap<i32, Cells>>() != it.deck;
+        if lay(o) != lay(it) && decks_moved {
             said.push(format!("catwalks are {} now (were {})", lay(it), lay(o)));
         }
         let shape = |i: &crate::furnish::Interior| match i.cuts.len() {

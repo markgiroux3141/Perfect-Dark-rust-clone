@@ -14,15 +14,17 @@
 //! is: a move along the section (the body dragged across), a floor (dragged up or down: a `pin`),
 //! a height (its top or bottom edge: `Change::Height`), or a side pulled (an end).
 
-use crate::planview::{colour, Boxes, Key, Picture, Prim, Rgba, Swatch, P};
+use crate::planview::{colour, numbered, Boxes, Key, Picture, Prim, Rgba, Swatch, P};
 use autolevel::boxes::{dragged, Change, Part};
 use autolevel::candidates::Asked;
+use autolevel::cascade::{Cascade, Spot};
 use autolevel::cells::{Cells, Rect};
 use autolevel::level::Level;
 use autolevel::recipe::{Doorway, Edit};
 use autolevel::scatter::{Lot, STOREY};
 use autolevel::storeys::{snap_top, CEILINGS, LEVELS};
 use autolevel::windows::places;
+use std::sync::Arc;
 
 /// A cell, in units: the router's grid is 3 m, twice the furnisher's 59-unit half cell.
 pub const UNITS: f32 = 118.0;
@@ -304,6 +306,9 @@ pub struct SideView {
     /// The things the recipe put by place, each with whether the level took it
     /// (`puts::listed`): framed where the section cuts them, magenta or red.
     pub things: Vec<(Edit, Result<(), String>)>,
+    /// What the last change changed (`autolevel::cascade`), where the section cuts it: lit, a
+    /// dashed ghost where it was, an arrow for a move, numbered as the list numbers it.
+    pub cascade: Option<Arc<Cascade>>,
 }
 
 struct Pen<'a> {
@@ -485,6 +490,61 @@ impl Pen<'_> {
             let on: Vec<i32> = cells.iter().filter_map(|&c| s.on(c)).collect();
             if let (Some(&u0), Some(&u1)) = (on.iter().min(), on.iter().max()) {
                 self.outline((u0 as f32 - 0.15, up(lo) - 0.15, u1 as f32 + 1.15, up(hi) + 0.15), col, 2.0);
+            }
+        }
+    }
+
+    /// A spot of the cascade where the section cuts it: its span along the section (cells) and
+    /// its heights, as a box of the picture. A room's box is cut where the section crosses it.
+    fn spot(&self, sp: &Spot) -> Option<(f32, f32, f32, f32)> {
+        let (x0, y0, x1, y1) = sp.rect;
+        let (a0, a1, b0, b1) = if self.s.axis == Axis::X { (y0, y1, x0, x1) } else { (x0, x1, y0, y1) };
+        (a0 < 2 * self.s.at + 2 && 2 * self.s.at < a1).then(|| (b0 as f32 / 2.0, up(sp.lo), b1 as f32 / 2.0, up(sp.hi.max(sp.lo + 20))))
+    }
+
+    /// A box's outline in dashes.
+    fn dashed(&mut self, (l, b, r, t): (f32, f32, f32, f32), col: Rgba, width_px: f32) {
+        for (p, q) in [((l, b), (r, b)), ((r, b), (r, t)), ((r, t), (l, t)), ((l, t), (l, b))] {
+            let len = ((q.0 - p.0).powi(2) + (q.1 - p.1).powi(2)).sqrt();
+            let n = (len / 0.85).ceil().max(1.0) as usize;
+            for k in 0..n {
+                let (s0, s1) = (k as f32 / n as f32, (k as f32 + 0.6) / n as f32);
+                self.line((p.0 + (q.0 - p.0) * s0, p.1 + (q.1 - p.1) * s0), (p.0 + (q.0 - p.0) * s1, p.1 + (q.1 - p.1) * s1), col, width_px);
+            }
+        }
+    }
+
+    /// What the last change changed, where the section cuts it.
+    fn cascade(&mut self, c: &Cascade) {
+        let axis = self.s.axis;
+        let along = move |p: (f32, f32, i32)| if axis == Axis::X { p.0 } else { p.1 };
+        for (n, ch) in numbered(c) {
+            let room = ch.what == "room";
+            let (mut cut, mut first) = (false, None);
+            for b in ch.was.iter().filter_map(|sp| self.spot(sp)).collect::<Vec<_>>() {
+                if !room {
+                    self.rect(b, colour::GHOST_FILL);
+                }
+                self.dashed(b, colour::GHOST, if room { 2.0 } else { 1.5 });
+                (cut, first) = (true, first.or(Some(b)));
+            }
+            for b in ch.now.iter().filter_map(|sp| self.spot(sp)).collect::<Vec<_>>() {
+                if !room {
+                    self.rect(b, colour::LIT_FILL);
+                }
+                self.outline(b, colour::LIT, if room { 3.0 } else { 1.5 });
+                (cut, first) = (true, Some(b));
+            }
+            if let (true, Some((a, b))) = (cut, ch.arrow) {
+                let (p, q) = ((along(a), up(a.2)), (along(b), up(b.2)));
+                if (p.0 - q.0).abs() + (p.1 - q.1).abs() > 0.3 {
+                    self.line(p, q, colour::MOVED, 2.0);
+                    self.out.push(Prim::Circle { c: q, r: 0.3, col: colour::MOVED, filled: true });
+                }
+            }
+            if let (Some((l, _, _, t)), Some(n)) = (first, n) {
+                let fill = if ch.now.is_empty() { colour::GHOST } else { colour::LIT };
+                self.out.push(Prim::Badge { at: (l, t), text: n.to_string(), fill, col: colour::CASCADE_NUMBER, r_px: 7.0, size_px: 8.0 });
             }
         }
     }
@@ -673,6 +733,9 @@ pub fn picture(lv: Option<&Level>, view: &SideView) -> Picture {
     if let Some(lv) = lv {
         pen.things(lv, &view.things);
     }
+    if let (Some(_), Some(c)) = (lv, &view.cascade) {
+        pen.cascade(c);
+    }
     if let Some(b) = &view.boxes {
         pen.boxes(b);
     }
@@ -687,6 +750,11 @@ pub fn picture(lv: Option<&Level>, view: &SideView) -> Picture {
         Key { swatch: Swatch::Line, col: colour::VENT, text: "a vent".to_string() },
         Key { swatch: Swatch::Ring, col: colour::PICK, text: "selected: drag it across or up, or its top, bottom or ends".to_string() },
     ];
+    let mut legend = legend;
+    if view.cascade.as_ref().is_some_and(|c| !c.is_empty()) {
+        legend.push(Key { swatch: Swatch::Line, col: colour::LIT, text: "the last change: new or changed (numbered as listed)".to_string() });
+        legend.push(Key { swatch: Swatch::Line, col: colour::GHOST, text: "where it was (dashed)".to_string() });
+    }
     Picture { prims: pen.out, lo, hi, legend }
 }
 

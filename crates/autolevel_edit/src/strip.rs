@@ -9,11 +9,17 @@
 //! tile is that recipe with one re-roll put in, the one it has now being the first tile. So
 //! keeping a tile leaves the others good (the recipe's base is the same), and any other change
 //! to the recipe makes the strip stale (`fits`).
+//!
+//! Each tile is compared with the room as it was when the strip was opened (`Strip::was`, else
+//! the level on show): what the re-roll changed in and round the room is lit on its picture,
+//! what it took away a ghost (`autolevel::cascade`), and said (`Tile::changes`), so re-rolls
+//! that look alike at this size (a ramp moved a cell) can be told apart.
 
 use crate::deadlist::{make, Made};
 use crate::jobs::Task;
 use crate::planview::{colour, picture, Prim, Rgba, View, P};
 use crate::raster::{rasterise, Fit, Image, EDGE};
+use autolevel::cascade::{diff, Cascade};
 use autolevel::choices::{self, PART_KINDS};
 use autolevel::level::{Level, PARTS};
 use autolevel::recipe::Recipe;
@@ -30,14 +36,24 @@ pub struct Tile {
     pub same: bool,
     /// Its small picture, worked out once: the shapes and the bounds they are cut to.
     pub pic: Option<Pic>,
+    /// What it changed in and round the room, against the room as it was (`Cascade::lines`):
+    /// empty for the room as it was, or one that came out the same.
+    pub changes: Vec<String>,
 }
 
 /// A small picture: the plan's shapes, and the part of it (cells) it shows.
 pub type Pic = (Vec<Prim>, (P, P));
 
-/// `room`'s `part` in `lv` as a small picture (None for a room `lv` lacks).
-pub fn pic(lv: &Level, room: &str, part: Option<&str>) -> Option<Pic> {
-    Some((prims(lv, storey(lv, room, part)), bounds(lv, room)?))
+/// `room`'s `part` in `lv` as a small picture (None for a room `lv` lacks), lit where it
+/// differs from the room as it was (`against`).
+pub fn pic(lv: &Level, room: &str, part: Option<&str>, against: Option<&Cascade>) -> Option<Pic> {
+    Some((prims(lv, storey(lv, room, part), against.cloned().map(Arc::new)), bounds(lv, room)?))
+}
+
+/// What `lv` changed in and round `room` from `was` (the room's box and two cells round it).
+pub fn against(was: &Level, lv: &Level, room: &str) -> Option<Cascade> {
+    let s = lv.spaces().iter().find(|s| s.key == room)?;
+    Some(diff(was, lv).within(room, (s.x0 - 2, s.y0 - 2, s.x1 + 2, s.y1 + 2)))
 }
 
 /// What the strip's thread makes: the re-rolls and their levels.
@@ -91,9 +107,10 @@ impl Strip {
         let n = variants::now(recipe, room, part);
         let was = made.map(|m| Tile {
             variant: Variant { n, edit: variants::edit(room, part, n), recipe: recipe.clone() },
-            pic: pic(&m.level, room, part),
+            pic: pic(&m.level, room, part, None),
             made: Ok(m),
             same: true,
+            changes: Vec::new(),
         });
         Strip { task: Some(task), was, ..Strip::start_idle(recipe, room, part, from) }
     }
@@ -133,12 +150,17 @@ impl Strip {
         match result {
             Ok(made) => {
                 let had = level.map(|lv| variants::part_of(lv, &self.room, self.part));
+                // (each against the room as it was when the strip was opened, else as it is)
+                let was = self.was.as_ref().and_then(|t| t.made.clone().ok());
+                let first = was.as_ref().map(|m| &m.level).or(level);
                 self.tiles = made
                     .into_iter()
                     .map(|(variant, made)| {
                         let same = matches!((&made, &had), (Ok(m), Some(had)) if variants::part_of(&m.level, &self.room, self.part) == *had);
-                        let pic = made.as_ref().ok().and_then(|m| pic(&m.level, &self.room, self.part));
-                        Tile { variant, made: made.map(Arc::new), same, pic }
+                        let c = made.as_ref().ok().zip(first).and_then(|(m, w)| against(w, &m.level, &self.room));
+                        let pic = made.as_ref().ok().and_then(|m| pic(&m.level, &self.room, self.part, c.as_ref()));
+                        let changes = c.map_or(Vec::new(), |c| c.lines());
+                        Tile { variant, made: made.map(Arc::new), same, pic, changes }
                     })
                     .collect();
                 self.error = None;
@@ -197,16 +219,17 @@ pub fn storey(lv: &Level, room: &str, part: Option<&str>) -> Option<i32> {
 }
 
 /// The plan of `lv` for a small picture (one storey, or every storey with the lowest
-/// underneath): its shapes alone, no words (they would not fit).
-pub fn prims(lv: &Level, storey: Option<i32>) -> Vec<Prim> {
-    let view = View { storey, scale: 6.0, ..View::default() };
+/// underneath): its shapes alone, no words (they would not fit), with what changed lit.
+pub fn prims(lv: &Level, storey: Option<i32>, cascade: Option<Arc<Cascade>>) -> Vec<Prim> {
+    let view = View { storey, scale: 6.0, cascade, ..View::default() };
     picture(lv, &view).prims.into_iter().filter(|p| !matches!(p, Prim::Text { .. } | Prim::Badge { .. })).collect()
 }
 
-/// A tile's picture, `w` by `h` pixels: `room`'s `part` in `lv`.
-pub fn thumb(lv: &Level, room: &str, part: Option<&str>, w: usize, h: usize) -> Image {
+/// A tile's picture, `w` by `h` pixels: `room`'s `part` in `lv`, lit where it differs from `was`.
+pub fn thumb(lv: &Level, room: &str, part: Option<&str>, was: Option<&Level>, w: usize, h: usize) -> Image {
+    let c = was.and_then(|was| against(was, lv, room)).map(Arc::new);
     match bounds(lv, room) {
-        Some((lo, hi)) => rasterise(&prims(lv, storey(lv, room, part)), &Fit::inside(lo, hi, w as f32, h as f32), w, h, colour::BACKGROUND),
+        Some((lo, hi)) => rasterise(&prims(lv, storey(lv, room, part), c), &Fit::inside(lo, hi, w as f32, h as f32), w, h, colour::BACKGROUND),
         None => Image::new(w, h, colour::BACKGROUND),
     }
 }
@@ -221,7 +244,9 @@ pub fn render(strip: &Strip, now: &Made, recipe: &Recipe) -> Image {
     const H: usize = 200;
     const GAP: usize = 10;
     let n = strip.tiles.len() + 1;
-    let (width, height) = (GAP + n * (W + GAP), 30 + H + 40 + GAP);
+    // (under each tile its caption, what it can't show, and up to four of its changes)
+    let (width, height) = (GAP + n * (W + GAP), 30 + H + 40 + 4 * 12 + GAP);
+    let was = strip.was.as_ref().and_then(|t| t.made.as_ref().ok()).map_or(&now.level, |m| &m.level);
     let mut img = Image::new(width, height, [10, 11, 15, 255]);
     let white: Rgba = [230, 232, 238, 255];
     let words = match &strip.error {
@@ -230,16 +255,16 @@ pub fn render(strip: &Strip, now: &Made, recipe: &Recipe) -> Image {
     };
     img.text(GAP as i64, 9, &words, 2, white, Some(EDGE));
     // (a caption, and under it what the picture can't say)
-    let shown =
-        std::iter::once((format!("now: {}", variants::label(strip.part, strip.had(recipe))), "", Some(&now.level), true)).chain(
-            strip.tiles.iter().enumerate().map(|(i, t)| {
-                (format!("{}  {}", i + 1, variants::label(strip.part, t.variant.n)), Strip::note(t), t.made.as_ref().ok().map(|m| &m.level), false)
-            }),
-        );
-    for (k, (caption, note, lv, lit)) in shown.enumerate() {
+    let none: &[String] = &[];
+    let shown = std::iter::once((format!("now: {}", variants::label(strip.part, strip.had(recipe))), "", Some(&now.level), true, none)).chain(
+        strip.tiles.iter().enumerate().map(|(i, t)| {
+            (format!("{}  {}", i + 1, variants::label(strip.part, t.variant.n)), Strip::note(t), t.made.as_ref().ok().map(|m| &m.level), false, &t.changes[..])
+        }),
+    );
+    for (k, (caption, note, lv, lit, changes)) in shown.enumerate() {
         let x = GAP + k * (W + GAP);
         let pic = match lv {
-            Some(lv) => thumb(lv, &strip.room, strip.part, W, H),
+            Some(lv) => thumb(lv, &strip.room, strip.part, (!lit).then_some(was), W, H),
             None => {
                 let mut pic = Image::new(W, H, [40, 16, 18, 255]);
                 pic.text(10, H as i64 / 2 - 8, "no level", 2, [255, 120, 120, 255], Some(EDGE));
@@ -252,6 +277,11 @@ pub fn render(strip: &Strip, now: &Made, recipe: &Recipe) -> Image {
         img.paste(&pic, x, 30);
         img.text(x as i64, (30 + H + 6) as i64, &caption, 2, white, Some(EDGE));
         img.text(x as i64 + 24, (30 + H + 24) as i64, note, 2, [150, 154, 166, 255], Some(EDGE));
+        for (i, line) in changes.iter().take(4).enumerate() {
+            let line = if i == 3 && changes.len() > 4 { format!("and {} more", changes.len() - 3) } else { line.clone() };
+            let fit: String = line.chars().take(W / 6).collect();
+            img.text(x as i64, (30 + H + 42 + 12 * i) as i64, &fit, 1, colour::LIT, Some(EDGE));
+        }
     }
     img
 }
@@ -265,6 +295,9 @@ pub fn text(strip: &Strip, recipe: &Recipe) -> String {
     for (i, t) in strip.tiles.iter().enumerate() {
         let why = t.made.as_ref().err().map_or(String::new(), |why| format!(" ({why})"));
         out.push_str(&format!("  {}  {}{why}\n", i + 1, strip.caption(t)));
+        for line in &t.changes {
+            out.push_str(&format!("       {line}\n"));
+        }
     }
     out
 }
@@ -293,7 +326,11 @@ mod tests {
         assert!(!s.fits(&other));
         // the picture: the room now, then a tile each
         let img = render(&s, made, &r);
-        assert_eq!((img.w, img.h), (10 + 6 * 270, 30 + 200 + 40 + 10));
+        assert_eq!((img.w, img.h), (10 + 6 * 270, 30 + 200 + 40 + 48 + 10));
+        // each tile says what it changed in colossal against the room as it was
+        for t in &s.tiles {
+            assert_eq!(t.same, t.changes.is_empty(), "{}: {:?}", t.variant.n, t.changes);
+        }
         assert!(text(&s, &r).starts_with("variants: colossal's catwalks: now the seed's own\n  1  catwalks 1"));
         // refused before anything is made
         let pod = Strip::now(&r, "small8", None, 1, Some(&made.level));

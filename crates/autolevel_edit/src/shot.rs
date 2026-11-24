@@ -144,7 +144,7 @@ pub fn render_side(made: Option<&Made>, seed: u64, under: &str, side: &SideView,
         Some(made) => format!("{}   [side view {cut}]", title(made)),
         None => format!("autolevel seed {seed}: no level, the room boxes alone   [side view {cut}]"),
     };
-    let view = View { boxes: side.boxes.clone(), ..View::default() };
+    let view = View { boxes: side.boxes.clone(), cascade: side.cascade.clone(), ..View::default() };
     compose(&sideview::picture(lv, side), &view, width, &head, under)
 }
 

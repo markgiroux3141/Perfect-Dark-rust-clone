@@ -392,6 +392,24 @@ pub struct Shown {
     /// The things put by place (`thing_box`), each with whether the level took
     /// it: framed on top, magenta, or red where it did not.
     pub marks: Vec<(Vec3, Vec3, bool)>,
+    /// What the last change changed (`cascade_boxes`): each box, and whether it
+    /// is where a thing is now (lit green) or where one was (the ghost's salmon).
+    pub cascade: Vec<(Vec3, Vec3, bool)>,
+}
+
+/// The colours of the cascade (the plan's `colour::LIT` and `colour::GHOST`).
+pub const LIT: [f32; 4] = [0.55, 1.0, 0.47, 1.0];
+pub const GHOST: [f32; 4] = [1.0, 0.59, 0.51, 0.9];
+
+/// What the last change changed, as boxes in the world: where each thing is now (true) and
+/// where it was (false). A room's box whole; a corridor's runs of cells, a deck's, a pillar.
+pub fn cascade_boxes(c: &autolevel::cascade::Cascade) -> Vec<(Vec3, Vec3, bool)> {
+    let at = |s: &autolevel::cascade::Spot, now: bool| {
+        let (x0, y0, x1, y1) = s.cells();
+        let (a, b) = (world((x0, y0), s.lo as f32), world((x1, y1), s.hi.max(s.lo + 20) as f32));
+        (a.min(b), a.max(b), now)
+    };
+    c.changes.iter().flat_map(|ch| ch.now.iter().map(move |s| at(s, true)).chain(ch.was.iter().map(move |s| at(s, false)))).collect()
 }
 
 /// The colour of a doorway asked for (the plan's `colour::ASKED`).
@@ -416,6 +434,11 @@ pub fn doorway_box(rect: (i32, i32, i32, i32), d: autolevel::recipe::Doorway, z:
 /// where walls hide them), the handles on top; a drag's boxes on top; the
 /// doorways asked for on top.
 pub fn draw(mesh: &mut Mesh3d, shown: &Shown, eye: Vec3) {
+    // (what the last change changed: lit where it is, the ghost where it was, on top)
+    for &(lo, hi, now) in &shown.cascade {
+        let col = if now { LIT } else { GHOST };
+        mesh.wire_box(true, lo + Vec3::splat(1.0), hi - Vec3::splat(1.0), col);
+    }
     for &(lo, hi, took) in &shown.marks {
         let col = if took { ASKED } else { REFUSED };
         mesh.wire_box(true, lo - Vec3::splat(3.0), hi + Vec3::splat(3.0), col);

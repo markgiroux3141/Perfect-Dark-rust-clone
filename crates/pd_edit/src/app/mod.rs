@@ -2172,6 +2172,13 @@ impl App {
         }
     }
 
+    /// A thing put by place on a generated level (`--shot-ui --nudge`), the level made again.
+    pub(crate) fn put_generated(&mut self, e: autolevel::recipe::Edit) {
+        if let Some(g) = self.generating.as_mut() {
+            g.ed.put(e);
+        }
+    }
+
     /// "Put things" in hand, with what it puts (`--shot-ui --things TOOL`).
     pub(crate) fn things_generated(&mut self, tool: autolevel::puts::Tool) {
         if let Some(g) = self.generating.as_mut() {

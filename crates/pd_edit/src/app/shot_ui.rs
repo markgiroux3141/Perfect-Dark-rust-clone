@@ -1,6 +1,6 @@
 //! `pd_edit --shot-ui <out.png> [<code>] [--size WxH] [--frames N] [--step
 //! home|layout|items|test] [--select KIND INDEX] [--generate [SEED]] [--room
-//! KEY [--vary PART]] [--side] [--3d [--no-ceilings]] [--things TOOL] [--import FILE.glb] [--tool KIND] [--hover X,Y] [--run-test]`: the whole editor window (its panels
+//! KEY [--vary PART]] [--side] [--3d [--no-ceilings]] [--things TOOL] [--nudge ROOM@X,Y@TX,TY] [--import FILE.glb] [--tool KIND] [--hover X,Y] [--run-test]`: the whole editor window (its panels
 //! and the view between them) as a PNG, with no window. The app runs headless
 //! (`App::ui` on an egui context with no window, `App::update` between
 //! passes) until the level asked for has loaded and nothing is running, then
@@ -46,6 +46,21 @@ struct Shot {
     /// "Put things" in hand on a generated level, with this tool (glass, rail, no-window,
     /// pillar, crate, take-out, drop).
     things: Option<autolevel::puts::Tool>,
+    /// A pillar or crate moved once the level is made (`--nudge ROOM@X,Y@TX,TY`), the level made
+    /// again: the screen then lists what that changed (the cascade).
+    nudge: Option<autolevel::recipe::Edit>,
+}
+
+/// `ROOM@X,Y@TX,TY`: the piece at X, Y in ROOM moved to TX, TY.
+fn nudge(v: &str) -> Result<autolevel::recipe::Edit, String> {
+    let bad = || format!("--nudge ROOM@X,Y@TX,TY, not {v}");
+    let mut parts = v.split('@');
+    let (room, at, to) = (parts.next().ok_or_else(bad)?, parts.next().ok_or_else(bad)?, parts.next().ok_or_else(bad)?);
+    let cell = |s: &str| -> Result<(i32, i32), String> {
+        let (x, y) = s.split_once(',').ok_or_else(bad)?;
+        Ok((x.trim().parse().map_err(|_| bad())?, y.trim().parse().map_err(|_| bad())?))
+    };
+    Ok(autolevel::recipe::Edit::Piece { room: room.to_string(), at: cell(at)?, what: None, size: None, to: Some(cell(to)?) })
 }
 
 fn kind_named(name: &str) -> Result<Kind, String> {
@@ -89,6 +104,7 @@ fn parse(args: &[String]) -> Result<Shot, String> {
                 let v = val(&mut it, "--things")?;
                 s.things = Some(autolevel_edit::cli::things_tool(&v).ok_or(format!("--things: glass, rail, no-window, pillar, crate, take-out or drop, not {v}"))?);
             }
+            "--nudge" => s.nudge = Some(nudge(&val(&mut it, "--nudge")?)?),
             "--3d" => s.three_d = true,
             "--no-ceilings" => s.no_ceilings = true,
             "--import" => s.import = Some(PathBuf::from(val(&mut it, "--import")?)),
@@ -136,6 +152,7 @@ pub fn run(args: &[String]) -> Result<PathBuf, String> {
     let mut n = 0;
     let mut tested = false;
     let mut varied = false;
+    let mut nudged = false;
     // Until the level has loaded (an import, a placement, the generator's
     // level and its preview) and the frames asked for have run.
     loop {
@@ -166,12 +183,20 @@ pub fn run(args: &[String]) -> Result<PathBuf, String> {
                 continue;
             }
         }
+        // (a piece moved once the level is made; the level made again lists what it changed)
+        if let (Some(e), false) = (&shot.nudge, nudged) {
+            if n >= 3 && app.settled() {
+                app.put_generated(e.clone());
+                nudged = true;
+                continue;
+            }
+        }
         if shot.run_test && !tested && n >= 3 && app.settled() {
             app.run_test();
             tested = true;
             continue;
         }
-        if n >= shot.frames && app.settled() && tested == shot.run_test && varied == shot.vary.is_some() {
+        if n >= shot.frames && app.settled() && tested == shot.run_test && varied == shot.vary.is_some() && nudged == shot.nudge.is_some() {
             break;
         }
         if started.elapsed() > deadline {

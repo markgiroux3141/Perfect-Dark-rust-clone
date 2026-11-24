@@ -231,6 +231,8 @@ impl App {
             if edits.len() > 6 {
                 theme::help(ui, &format!("and {} more (Advanced lists them all)", edits.len() - 6));
             }
+            // (what the last change changed, a line each, lit on the plan and in 3D with "show")
+            g.ed.cascade_ui(ui);
             ui.horizontal(|ui| {
                 if ui.add_enabled(g.ed.doc.can_undo(), egui::Button::new("Undo")).clicked() {
                     g.ed.doc.undo();

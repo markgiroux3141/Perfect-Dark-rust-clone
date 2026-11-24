@@ -501,7 +501,8 @@ impl Space {
         let marks = ed.doc.made().map_or(Vec::new(), |made| {
             ed.doc.puts().iter().filter_map(|(e, took)| boxgizmo::thing_box(&made.level, e, took.is_ok()).map(|(a, b)| (a, b, took.is_ok()))).collect()
         });
-        self.drawn = Shown { lot, tried, refused, hot, doors, marks };
+        let cascade = ed.cascade_shown().map_or(Vec::new(), |c| boxgizmo::cascade_boxes(&c));
+        self.drawn = Shown { lot, tried, refused, hot, doors, marks, cascade };
         let line = match (self.held.as_ref().and_then(|h| h.tried.as_ref()), hot, key.as_deref()) {
             (Some((c, t)), _, _) => Some(match &t.refused {
                 Some(why) => (format!("{}: refused: {why}", words(c)), true),

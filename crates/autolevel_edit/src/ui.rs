@@ -72,6 +72,10 @@ fn red(ui: &mut egui::Ui, text: &str) {
     ui.add(egui::Label::new(egui::RichText::new(text).color(col(colour::DEAD_END))).wrap());
 }
 
+/// The cascade's lines shown under the status line at once (the rest are scrolled to): a
+/// fixed height, so the panel's controls under it never move.
+const SHOWN_CHANGES: usize = 3;
+
 /// How near a side of the selected box the pointer takes hold of it, in pixels: the side of
 /// the grips the plan draws on it, so what is drawn and what is caught agree.
 const GRIP: f32 = planview::GRIP_PX;
@@ -238,6 +242,9 @@ pub struct Editor {
     pub side_fit: Option<Fit>,
     /// The variants strip: re-rolls of a room's part, made side by side (None: not open).
     pub strip: Option<Strip>,
+    /// Draw what the last change changed on the plan and the side view (the cascade; its list
+    /// is under the status line either way).
+    pub show_cascade: bool,
 }
 
 impl Editor {
@@ -283,6 +290,7 @@ impl Editor {
             side_look: None,
             side_fit: None,
             strip: None,
+            show_cascade: true,
         }
         .with_side(args.side.as_ref())
     }
@@ -536,7 +544,10 @@ impl Editor {
                             egui::Color32::from_gray(70)
                         };
                         painter.rect_stroke(rect.shrink(1.0), 2.0, egui::Stroke::new(if lit { 3.0 } else { 1.0 }, edge), egui::StrokeKind::Inside);
-                        let r = r.on_hover_text(if lit { "the one it has now".to_string() } else { format!("keep {}", t.variant.edit.describe()) });
+                        let tip = if lit { "the one it has now".to_string() } else { format!("keep {}", t.variant.edit.describe()) };
+                        // (what it changes against the room as it was, a line each)
+                        let tip = t.changes.iter().fold(tip, |tip, line| format!("{tip}\n{line}"));
+                        let r = r.on_hover_text(tip);
                         if r.clicked() && !lit {
                             keep = Some(*k);
                         }
@@ -724,6 +735,55 @@ impl Editor {
     /// What the last thing done came to: the plan's status line.
     pub fn status(&self) -> &str {
         &self.status
+    }
+
+    /// What the last change changed, if it is to be drawn (`show_cascade`).
+    pub fn cascade_shown(&self) -> Option<std::sync::Arc<autolevel::cascade::Cascade>> {
+        self.doc.cascade().filter(|_| self.show_cascade).cloned()
+    }
+
+    /// What the last change changed, listed (under the status line, here and in `pd_edit`): a
+    /// line each, numbered as the plan numbers them, in the colour drawn (lit: new or changed;
+    /// the ghost's: gone); a click on one selects its room. `SHOWN_CHANGES` lines high, the rest
+    /// scrolled to. With
+    /// "show" the plan and the side view draw them.
+    pub fn cascade_ui(&mut self, ui: &mut egui::Ui) {
+        // (the same height whatever the change, so nothing under it moves when another lands)
+        let Some(c) = self.doc.cascade().cloned() else { return };
+        let rows = planview::cascade_rows(&c);
+        let mut select = None;
+        ui.horizontal(|ui| {
+            let head = if rows.is_empty() { "the last change changed nothing else".to_string() } else { format!("the last change changed {}:", rows.len()) };
+            ui.label(egui::RichText::new(head).small());
+            let show = ui
+                .checkbox(&mut self.show_cascade, "show")
+                .on_hover_text("light what is new, ghost what went, arrow what moved, on the plan and the side view");
+            self.spots.push(("show cascade".to_string(), show.rect));
+        });
+        let line = ui.text_style_height(&egui::TextStyle::Small) + ui.spacing().item_spacing.y;
+        let height = line * SHOWN_CHANGES as f32;
+        egui::ScrollArea::vertical().id_salt("cascade").max_height(height).min_scrolled_height(height).auto_shrink([false, false]).show(ui, |ui| {
+            for (n, (text, shade)) in rows.iter().enumerate() {
+                let r = ui.add(egui::Label::new(egui::RichText::new(text).small().color(col(*shade))).sense(egui::Sense::click()).truncate());
+                let r = r.on_hover_text(text.trim_start());
+                self.spots.push((format!("change {}", n + 1), r.rect));
+                if r.clicked() {
+                    select = Some(n);
+                }
+            }
+        });
+        if let Some(n) = select {
+            // (the line's room: its owner, or a corridor's first room the level has)
+            let lines = c.lines();
+            let ch = c.changes.iter().find(|ch| ch.words == lines[n]).or_else(|| c.changes.iter().find(|ch| lines[n].starts_with(&format!("{}'s", ch.owner))));
+            let room = ch.and_then(|ch| {
+                ch.rooms().into_iter().find(|r| self.doc.made().is_some_and(|m| m.level.spaces().iter().any(|s| s.key == *r))).map(str::to_string)
+            });
+            if let Some(room) = room {
+                self.doc.select(Some(&room));
+                self.status = format!("{room} selected: {}", lines[n]);
+            }
+        }
     }
 
     /// The way the joins from the pick are made: the router's choice (None), a corridor or a vent.
@@ -1220,6 +1280,7 @@ impl Editor {
         if !self.took.is_empty() {
             ui.weak(&self.took);
         }
+        self.cascade_ui(ui);
         ui.separator();
         // the lots as the recipe places them, for what the room tool lists
         let placed = (self.tool == Tool::Rooms).then(|| self.doc.lots());
@@ -1982,7 +2043,7 @@ impl Editor {
 
     fn legend(&mut self, ui: &mut egui::Ui) {
         let Some(made) = self.doc.made().cloned() else { return };
-        let view = View { storey: self.storey, ..self.doc.look(self.all, None) };
+        let view = View { storey: self.storey, cascade: self.cascade_shown(), ..self.doc.look(self.all, None) };
         egui::CollapsingHeader::new("Legend").show(ui, |ui| {
             for k in planview::legend(&made.level, &view) {
                 ui.horizontal(|ui| {
@@ -2097,6 +2158,7 @@ impl Editor {
         let mark = made.as_ref().and_then(|made| self.picked.and_then(|n| made.dead.rows().get(n).and_then(|r| r.mark.clone())));
         let boxes = placed.is_some().then(|| self.shown());
         let mut view = View { storey: self.storey, mark, scale: zoom, boxes, ..self.doc.look(self.all, self.hot) };
+        view.cascade = self.cascade_shown();
         view.things.tool = (self.tool == Tool::Things).then_some(self.thing);
         let pic = match &made {
             Some(made) => planview::picture(&made.level, &view),
@@ -2238,6 +2300,7 @@ impl Editor {
             pick: self.doc.picked().map(|(r, z)| (r.to_string(), z)),
             asked: self.doc.asked().clone(),
             things: self.doc.puts(),
+            cascade: self.cascade_shown(),
         };
         let pic = sideview::picture(made.as_ref().map(|m| &m.level), &view);
         self.drawn.0 = pic.prims.len();
@@ -3499,6 +3562,8 @@ mod tests {
         assert_eq!((ed.doc.recipe.options.vents, ed.typing.clone()), (held, None));
         assert!(ed.doc.undo() && !ed.doc.can_undo() && ed.doc.redo());
         settle(&mut ed);
+        // (drawn with the level made: the list of what it changed now stands over the options)
+        frame(&mut ed, &egui, Vec::new());
         // "reset" puts the default back, and the recipe is the seed's own again (as `editor` made it)
         press(&mut ed, &egui, "reset vents");
         assert_eq!(ed.doc.recipe.options, Options::python());
@@ -3744,6 +3809,42 @@ mod tests {
         // undo brings it back
         assert!(ed.doc.undo());
         assert_eq!(edits(&ed).len(), 4);
+    }
+
+    #[test]
+    fn what_a_change_changed_is_listed_drawn_and_its_line_picks_the_room() {
+        let (mut ed, egui) = (editor("--seed 40 --storey 0"), egui::Context::default());
+        pass(&mut ed, &egui, Vec::new());
+        // the first level: nothing to compare it with, nothing listed
+        assert!(ed.doc.cascade().is_none());
+        press(&mut ed, &egui, "tool things");
+        press(&mut ed, &egui, "thing crate");
+        still(&mut ed, &egui);
+        let plain = ed.drawn.0;
+        let at = px(&ed, (40.5, 30.5));
+        lone_click(&mut ed, &egui, at);
+        settle(&mut ed);
+        // listed under the status line, numbered; drawn on the plan (lit, with its badge)
+        let said = pass(&mut ed, &egui, Vec::new());
+        assert!(has(&said, "the last change changed 1:") && has(&said, " 1  vast: a crate stood at 40, 30"), "{said:?}");
+        assert!(ed.cascade_shown().is_some() && ed.drawn.0 > plain);
+        let lit = ed.drawn.0;
+        // "show" off: listed still, not drawn
+        press(&mut ed, &egui, "show cascade");
+        assert!(!ed.show_cascade && ed.cascade_shown().is_none());
+        pass(&mut ed, &egui, Vec::new());
+        assert!(ed.drawn.0 < lit);
+        press(&mut ed, &egui, "show cascade");
+        // a click on its line selects its room
+        ed.doc.select(None);
+        press(&mut ed, &egui, "change 1");
+        assert_eq!(ed.doc.selected(), Some("vast"));
+        assert!(ed.status().starts_with("vast selected: vast: a crate stood"), "{}", ed.status());
+        // undone: the way back is listed
+        assert!(ed.doc.undo());
+        settle(&mut ed);
+        let said = pass(&mut ed, &egui, Vec::new());
+        assert!(has(&said, "vast: the crate at 40, 30 is gone"), "{said:?}");
     }
 
     #[test]

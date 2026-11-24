@@ -418,7 +418,7 @@ pub fn run_generated(args: &[String]) -> Result<Vec<String>, String> {
     };
     // `--put`: clicks with the things tool, as the 3D view takes them (the camera's ray to the
     // level, `boxgizmo::place_at`, `puts::click`); then the level is made again with them
-    let mut marks = Vec::new();
+    let (mut marks, mut cascade) = (Vec::new(), Vec::new());
     if let Some(tool) = g.things {
         let mut doc = autolevel_edit::doc::Doc::new(recipe.clone(), false);
         doc.regenerate()?;
@@ -443,6 +443,12 @@ pub fn run_generated(args: &[String]) -> Result<Vec<String>, String> {
                 }
                 marks.extend(crate::boxgizmo::thing_box(&made.level, &e, took.is_ok()).map(|(a, b)| (a, b, took.is_ok())));
             }
+        }
+        // (what the last click changed: said, and its boxes lit and ghosted)
+        if let Some(c) = doc.cascade() {
+            said.push(format!("changed ({}):", c.lines().len()));
+            said.extend(c.lines().iter().enumerate().map(|(n, l)| format!("  #{}  {l}", n + 1)));
+            cascade = crate::boxgizmo::cascade_boxes(c);
         }
         if doc.recipe != recipe {
             recipe = doc.recipe.clone();
@@ -477,6 +483,7 @@ pub fn run_generated(args: &[String]) -> Result<Vec<String>, String> {
     let (mut shown, line) = g.gizmo(&recipe)?;
     said.extend(line);
     shown.marks = marks;
+    shown.cascade = cascade;
     for (room, d, z) in &g.doors {
         let r = pv.rooms.iter().find(|r| r.key == *room).ok_or_else(|| format!("--door: no room {room}"))?;
         shown.doors.push(crate::boxgizmo::doorway_box(r.rect, *d, *z));
@@ -484,7 +491,7 @@ pub fn run_generated(args: &[String]) -> Result<Vec<String>, String> {
     let target = RenderTarget::on_device(&gpu.device, w, h, format, true);
     let mut enc = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("pd_edit shot-generated") });
     draw_bg(&renderer, &gpu.queue, &mut enc, &target, &view);
-    if shown.lot.is_some() || !shown.doors.is_empty() || !shown.marks.is_empty() {
+    if shown.lot.is_some() || !shown.doors.is_empty() || !shown.marks.is_empty() || !shown.cascade.is_empty() {
         let mut mesh = crate::draw3d::Mesh3d::default();
         crate::boxgizmo::draw(&mut mesh, &shown, cam.pos);
         crate::draw3d::Draw3d::new(&gpu.device, format).draw(&gpu.device, &mut enc, &target, crate::camera::world_to_clip(&view), &mesh, true);

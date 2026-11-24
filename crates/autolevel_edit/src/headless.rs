@@ -213,7 +213,15 @@ pub fn run(args: &Args) -> Result<Done, String> {
                     None,
                     doc.recipe.seed,
                     &format!("no level: {why}"),
-                    &SideView { section: Some(section), boxes: view.boxes, pick: view.pick.clone(), asked: view.asked.clone(), scale: 1.0, things: Vec::new() },
+                    &SideView {
+                        section: Some(section),
+                        boxes: view.boxes,
+                        pick: view.pick.clone(),
+                        asked: view.asked.clone(),
+                        scale: 1.0,
+                        things: Vec::new(),
+                        cascade: None,
+                    },
                     args.width,
                 ))
             }
@@ -349,6 +357,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
                     asked: view.asked.clone(),
                     scale: 1.0,
                     things: view.things.put.clone(),
+                    cascade: view.cascade.clone(),
                 },
                 args.width,
             ))
