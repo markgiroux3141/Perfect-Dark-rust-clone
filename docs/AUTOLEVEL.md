@@ -2855,8 +2855,10 @@ Order of work, and where each stands:
    named by where they are, never by an index (indices shift with every remake); put after the
    generator's own, so no draw moves; one that does not fit is left out with why. On the plan,
    the side view, `pd_edit`'s Layout screen ("Put things") and its 3D view.
-7. **The cascade shown** ("Blank levels", piece 5): what an edit changed, lit, ghosted, listed.
-   Wanted before 3 and 6 make edits that ripple.
+7. **The cascade shown.** Done (2026-11-23): "The cascade shown", below. ("Blank levels", piece
+   5): after any change, what is new lit, what went a ghost, what moved an arrow, and a list in
+   words, on the plan, the side view, the variants strip, the panel, `pd_edit`'s Layout screen and
+   3D view, and the command line.
 8. Lock one room and re-roll the rest; copy, paste and mirror a room with its choices; a room
    saved as a preset.
 
@@ -3128,7 +3130,7 @@ Order of work, and where each stands:
   (3, 4 and 5 differ, 1 and 2 the same), vast's cover strip with crates, vast's ramps strip, the
   Layout screen with the strip open.
 - **Rough:** nobody has looked at the window. Ramps re-rolls are hard to tell apart at this size
-  (item 7's lit differences would help). The first tile is missing if the strip is opened before
+  (item 7 now lights what each changed on its tile). The first tile is missing if the strip is opened before
   the level is made. A room at the level's edge sits off-centre in its tile (the tile's spare
   width shows its neighbours). Pillars can't be re-rolled (they stand by rule): item 6 is where
   they are placed by hand.
@@ -3220,6 +3222,84 @@ Order of work, and where each stands:
   line under the plan; in 3D there is no drag (a click only). The Layout screen's footer still
   gives the room tool's hints. Seed 40 with the default options has no window places at all (its
   corridors run along no hall a cell away): the window tools find nothing there.
+
+### The cascade shown (roadmap item 7, 2026-11-23)
+
+- **The diff** (`autolevel::cascade`): `diff(before, after)` is a `Cascade`, a list of `Change`
+  (`owner`, `what`, `how`: New, Gone, Moved or Changed; `was` and `now`, the `Spot`s it is drawn
+  at: a box of half cells, the storey whose plan shows it, its heights; `arrow` for a move;
+  `words`). Things are matched by what names them for good, never by an index or a route key:
+  - **rooms** by key: moved ("medium3 moved 1 east, 21 north", an arrow), resized, raised
+    ("stands 276 to 512 (was 0 to 236)"), another kind, new, gone;
+  - **corridors and vents** by their two rooms ("long-medium3"; the route keys are dealt out again
+    on every remake): the same cells are no change; the rest paired by the cells they share,
+    "corridor long-medium3 re-routed, -11 cells", "medium1-tiny4 is a vent now (was a corridor)",
+    new, gone; the ghost is the cells it lost, the lit part the cells it gained;
+  - **a room's inside, in its own frame** (`Frame`: a room moved whole is compared shifted by its
+    move, storeys by their index, so what moved with it is no change): decks per storey
+    ("vast's deck on 276 reshaped: +1, -1 cells"), ramps (a ramp gone and one new joining the same
+    storeys paired as a move; the same corner, "laid another way"), cover (paired by kind,
+    crate or pillar, within 8 cells, whatever the size: "a pillar moved from 41, 34 to 41, 32,
+    1 x 1 now (was 2 x 1)"), pits, and in words its layout (only where a deck changed too: a
+    re-roll can relabel colossal's ends as a ring with nothing built otherwise), shape, flood,
+    angled walkways;
+  - **windows** by hall, storey and wall ("medium1's window in its west wall on 276 is rail now
+    (was glass)"), **drops** by their two rooms (a move with an arrow), **grates** by the room
+    under them.
+  - `Cascade::lines` is the list in words (a room's more than three of one kind counted in one
+    line); `summary`, `rooms`, `of(room)`, `within(room, rect)` (a small picture's part).
+- **Kept by the document** (`autolevel_edit::doc`): when a level arrives for a newer recipe than
+  the one on show (an edit, an undo, a re-roll kept: `accept`, `adopt`), the one it replaces is
+  kept (`Doc::before`) and the two diffed (`Doc::cascade`); the same recipe's level again keeps
+  what was said. `look()` puts it on the plan's `View::cascade`.
+- **Drawn:**
+  - **the plan** (`planview::Pic::cascade`): lit green where a thing is now (a room's box framed,
+    not filled), a dashed salmon ghost where it was, a dashed green arrow for a move, the change's
+    number on a badge (`numbered`, as `lines` numbers them); with one storey shown, what is on it.
+    The legend keys them; a `--shot` lists the lines under the legend (`cascade_rows`).
+  - **the side view** (`SideView::cascade`): the same where the section cuts a spot, at its
+    heights.
+  - **the variants strip** (`strip`): each tile against the room as it was when the strip was
+    opened (`Strip::was`, else the level on show), cut to the room and two cells round it
+    (`strip::against`): what it changed lit on the tile, the lines on hover in the window, under
+    the tile on the PNG and under its row in `--variants`' text (`Tile::changes`).
+  - **the window's panel** (`Editor::cascade_ui`, shared with `pd_edit`): under the status line,
+    "the last change changed N:" with a "show" switch (`show_cascade`: drawing on the plan and
+    the side view; the list stays) and a three-line area scrolled for the rest, the same height
+    whatever the change, so the controls under it never move once it is there; a click on a line
+    selects its room ("vast selected: ...").
+  - **`pd_edit`:** the same list on the Layout screen under "Your changes", and in the 3D view
+    the cascade's boxes on top (`boxgizmo::cascade_boxes`, `Shown::cascade`: lit green, ghosts
+    salmon).
+- **Command line:** `autolevel_edit` says "changed (N):" and a line each ("  #1  ...", numbered as
+  the picture numbers them) after every change it makes (choices, puts, removes, joins, a kept
+  re-roll); for room changes, which come before any level, the recipe's own level is made first
+  to compare with. `--no-cascade` says and draws none (the older tests pass it).
+  `pd_edit --shot-generated ... --things TOOL --put PX,PY` says it and draws its boxes;
+  `pd_edit --shot-ui OUT --seed 40 --step layout --nudge ROOM@X,Y@TX,TY` moves a piece once the
+  level is made and shows the list.
+- **Checked:** `tests/cascade.rs` (seed 40: a level against itself is nothing; a pillar moved is
+  only vast's cover, one line, its arrow, and back again; medium3 moved re-routes its corridors,
+  each named by its two rooms, and its own inside is no change; a window made rail is one line,
+  none is gone); the document (`a_change_and_its_undo_each_say_what_they_changed`: the first level
+  none, a put said, its undo the way back, the same level again keeps it, on the view); the
+  command line (`the_cascade_is_said_after_each_change_and_drawn`: a put, a move, nothing, a
+  choice; quiet with `--no-cascade`, another picture); the strip (a tile's changes are empty
+  exactly when it came out the same); a window test (egui: a crate clicked, listed and drawn,
+  "show" off draws less, a line's click selects vast, undo lists the crate gone). The answer keys
+  pass (nothing in the generator changed). Pictures read (`out/autolevel/cascade/`, scratch):
+  medium3 moved on the plan, all storeys and storey 0 (its ghost, the re-routed corridors, vast's
+  ramp and pillar with arrows, the list under the legend); the side view through x = 41; vast's
+  ramps strip (the moved ramp lit on each tile that moves it, "the same" dark); two crates in 3D;
+  the Layout screen with the list under "Your changes".
+- **Rough:** nobody has looked at the window. A seed change or a big move lists dozens of lines
+  (the window shows three and scrolls). Ghosts of a re-routed corridor are only the cells it lost,
+  so a corridor that moved one cell over reads as two thin strips. On vast's ramps strip, tiles 1,
+  3, 4 and 5 say the same words and look the same: `variants::part_of` tells them apart by
+  something the diff does not compare (the rails, or the order of things). The badges can sit on
+  each other where changes are close. The 3D boxes are wire boxes only (no arrows, no numbers),
+  and a put's lit box sits inside its magenta frame. Alternatives (blank levels' piece 3) don't
+  carry their own list yet.
 
 ## Risks
 
