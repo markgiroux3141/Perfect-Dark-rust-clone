@@ -473,7 +473,8 @@ pub fn grow_pods(seed: u64, o: &Options, sp: &mut [Space]) {
     if !o.big_pods || o.start == Start::Empty {
         return;
     }
-    let keys: Vec<String> = sp.iter().filter(|s| !s.host.is_empty()).map(|s| s.key.clone()).collect();
+    // (a base's storey that is a spire's pod keeps its base's size)
+    let keys: Vec<String> = sp.iter().filter(|s| !s.host.is_empty() && s.base.is_none()).map(|s| s.key.clone()).collect();
     for key in keys {
         let mut rng = PyRandom::named(&format!("{}/grow", o.named(seed, &key)));
         if rng.random() >= BIG_POD_CHANCE {

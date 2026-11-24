@@ -40,6 +40,17 @@ pub const INSET: i32 = 3;
 /// The hall kinds a base may not cross: a spire's spiral and a basin's water fill them, and an
 /// atrium is reached only at its floor and its top.
 pub const NOT_IN: [&str; 3] = ["spire", "basin", "atrium"];
+/// Cells a base in a spire keeps from each of its walls: the spiral's ramps, decks and landings
+/// stay within two (a landing is two cells square), and a cell of air is left between them. A
+/// base drawn in a spire (the generator puts none there) may go down through its floor, up through
+/// its ceiling, or stand wholly in its shaft, its lowest storey then entered by a gangway from the
+/// spiral (`split`); never through its wall. New here (the user's call, 2026-11-24).
+pub const SHAFT: i32 = 3;
+
+/// Does base `b` stand wholly inside hall `h`, in plan and in height?
+fn wholly_inside(b: &Lot, h: &Lot) -> bool {
+    within(b.rect(), h.rect()) && b.floor >= h.floor && snap_top(b.top) <= snap_top(h.top)
+}
 
 /// One storey of a base (`Space::base`).
 #[derive(Clone, Debug, PartialEq)]
@@ -77,8 +88,29 @@ fn within(inner: Rect, outer: Rect) -> bool {
 /// Why base `b` may not cross hall `h` as it stands, if it may not.
 pub fn misfit(b: &Lot, h: &Lot) -> Option<String> {
     let (bk, hk) = (&b.key, &h.key);
-    if NOT_IN.contains(&h.kind) {
-        return Some(format!("{bk} crosses {hk}, a {}: a base may not cross a spire, a basin or an atrium", h.kind));
+    let spire = h.kind == "spire";
+    if NOT_IN.contains(&h.kind) && !spire {
+        return Some(format!("{bk} crosses {hk}, a {}: a base may not cross a basin or an atrium", h.kind));
+    }
+    if spire {
+        // (in the shaft, clear of the spiral round the walls)
+        if !within(b.rect(), h.rect()) {
+            return Some(format!(
+                "{bk} crosses {hk}'s wall, and {hk} is a spire: its ramps climb its walls, so a base in a spire stands in its shaft, {SHAFT} cells or more from each wall"
+            ));
+        }
+        let gap = (b.x0 - h.x0).min(h.x1 - b.x1).min(b.y0 - h.y0).min(h.y1 - b.y1);
+        if gap < SHAFT {
+            return Some(format!(
+                "{bk} stands {gap} cell{} from {hk}'s wall: a base in a spire stands {SHAFT} cells or more from each wall, clear of its ramps",
+                if gap == 1 { "" } else { "s" }
+            ));
+        }
+        if wholly_inside(b, h) && b.floor == h.floor {
+            return Some(format!(
+                "{bk} stands on {hk}'s floor: a base in a spire's shaft starts a storey or more up (its way in is a gangway from the spiral there), or goes down through the floor"
+            ));
+        }
     }
     let ov = rect_overlap(b.rect(), h.rect())?;
     let (ow, od) = (ov.2 - ov.0, ov.3 - ov.1);
@@ -97,7 +129,8 @@ pub fn misfit(b: &Lot, h: &Lot) -> Option<String> {
         return Some(format!("{bk} shares no whole storey with {hk}: a base's slits look into its hall on a storey of both"));
     }
     if within(b.rect(), h.rect()) {
-        if b.floor >= h.floor && snap_top(b.top) <= snap_top(h.top) {
+        // (a spire's shaft takes one: its lowest storey is the spire's pod, entered by a gangway)
+        if !spire && b.floor >= h.floor && snap_top(b.top) <= snap_top(h.top) {
             return Some(format!("{bk} stands wholly inside {hk}: a base crosses its wall, its floor or its ceiling (a room inside a hall is a pod)"));
         }
     } else {
@@ -274,9 +307,13 @@ pub fn split(seed: u64, b: &Lot, h: &Lot) -> Column {
         rects[k] = inset(up, d);
     }
     let mut col = Column { lots: Vec::new(), storeys: Vec::new(), hatches: Vec::new() };
+    // (a base wholly in a spire's shaft has no storey outside to be entered from: its lowest is
+    // the spire's pod, its way in a gangway from the spiral, `pods::pod_access`)
+    let core = h.kind == "spire" && wholly_inside(b, h);
     for (k, &z) in zs.iter().enumerate() {
         let r = rects[k];
-        col.lots.push(Lot { key: key(k), kind: KIND, x0: r.0, y0: r.1, x1: r.2, y1: r.3, floor: z, top: z + STOREY, host: String::new() });
+        let host = if core && k == 0 { h.key.clone() } else { String::new() };
+        col.lots.push(Lot { key: key(k), kind: KIND, x0: r.0, y0: r.1, x1: r.2, y1: r.3, floor: z, top: z + STOREY, host });
         let inhall = hz.contains(&z);
         let looking: Vec<usize> = if inhall { faces(r, h.rect()).into_iter().map(|(d, _)| d).collect() } else { Vec::new() };
         // all of them, or one (the one facing the hall's middle), two or three

@@ -1207,3 +1207,32 @@ fn a_room_drawn_in_a_spires_shaft_is_its_pod_with_a_gangway_to_the_spiral() {
     let r = Recipe { edits: vec![spire.clone(), near.clone(), add("core", "small", (1, 1, 5, 5), 276, 512)], ..Recipe::empty(40) };
     assert!(r.generate().unwrap().spaces().iter().any(|s| s.key == "core" && s.host == "shaft"));
 }
+
+#[test]
+fn a_base_drawn_in_a_spire_stands_in_its_shaft_or_goes_through_its_floor() {
+    // (new 2026-11-24: a base drawn in a spire, never through its wall, three cells or more from
+    // each: in the shaft its lowest storey is the spire's pod, a gangway to the spiral, a hatch up)
+    let spire = add("shaft", "spire", (0, 0, 16, 16), 0, 1063);
+    let near = add("room2", "medium", (20, 0, 30, 10), 0, 236);
+    let with = |base: Edit| Recipe { edits: vec![spire.clone(), near.clone(), base], ..Recipe::empty(40) };
+    // standing in the shaft, two storeys
+    let lv = with(add("core", "base", (5, 5, 11, 11), 276, 787)).generate().unwrap();
+    let (low, up) = (lv.space("core"), lv.space("core_2"));
+    assert_eq!((low.host.as_str(), low.floor, up.floor), ("shaft", 276, 551));
+    assert!(low.base.is_some() && up.base.as_ref().is_some_and(|b| b.hall == "shaft"));
+    assert_eq!(low.cellar.as_ref().map(|c| c.hall.as_str()), Some("core_2"), "its hatch up");
+    let linked = |a: &str, b: &str, kind: &str| lv.plan.links.iter().any(|l| l.a == a && l.b == b && l.kind == kind);
+    assert!(linked("core_2", "core", "drop") && linked("core_2", "shaft", "overlook"));
+    let plan = &lv.pods.iter().find(|(k, _)| k == "core").expect("the lowest storey is a pod").1;
+    assert!(plan.door.is_some());
+    // down through the spire's floor, entered from below as any floor base is
+    let under = add("under", "medium", (20, 12, 30, 20), -276, -40);
+    let r = Recipe { edits: vec![spire.clone(), near.clone(), under, add("deep", "base", (5, 5, 11, 11), -276, 512)], ..Recipe::empty(40) };
+    let lv = r.generate().unwrap();
+    assert!(lv.spaces().iter().filter(|s| s.base.as_ref().is_some_and(|b| b.column == "deep")).all(|s| s.host.is_empty()));
+    // what a spire won't take, and why
+    let why = |base: Edit| with(base).generate().unwrap_err();
+    assert!(why(add("core", "base", (12, 5, 18, 11), 276, 787)).contains("shaft is a spire: its ramps climb its walls"));
+    assert!(why(add("core", "base", (2, 5, 8, 11), 276, 787)).starts_with("core stands 2 cells from shaft's wall"));
+    assert!(why(add("core", "base", (5, 5, 11, 11), 0, 512)).starts_with("core stands on shaft's floor"));
+}

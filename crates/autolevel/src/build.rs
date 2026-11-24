@@ -88,8 +88,10 @@ pub fn openings(seed: u64, net: &Network, o: &Options) -> (Vec<DropHole>, Vec<Gr
     let (mut drops, mut grates): (Vec<DropHole>, Vec<Grate>) = (Vec::new(), Vec::new());
     let (mut lit, mut holed): (BTreeSet<&str>, BTreeSet<&str>) = (BTreeSet::new(), BTreeSet::new());
     let mut pairs: Vec<(&str, &str, Vec<Cell>)> = Vec::new();
-    // a cellar's hatch first: always there, where the cellar's hatch was drawn (`level::cellars`)
-    for s in &rooms {
+    // a cellar's hatch first: always there, where the cellar's hatch was drawn (`level::cellars`).
+    // (Any room's: the lowest storey of a base in a spire's shaft is the spire's pod, with the
+    // storey over it reached by its hatch. New here: no seed has a pod with a cellar.)
+    for s in sp.iter() {
         if let Some(c) = &s.cellar {
             let hall = rooms.iter().find(|h| h.key == c.hall).expect("a cellar's hall");
             drops.push((hall.key.clone(), s.key.clone(), c.hatch));

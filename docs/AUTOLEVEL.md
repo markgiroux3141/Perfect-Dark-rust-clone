@@ -3530,10 +3530,26 @@ with the spiral's (`lay_decks`). Checked: `a_room_drawn_in_a_spires_shaft_is_its
 (storeys 276 and 551, and one a cell off the corner); the plan and 3D pictures in
 `out/spirepod/` (scratch). The answer keys pass.
 
-Next: step 2, a base column in the shaft (several storeys, slits, hatches and ladders between
-them as a base's are), its lowest storey entered by the gangway; step 3, the generator giving its
-own spires one at random (the user is fine with seeded levels changing for it: a deliberate
-change of the pinned levels, never one by accident).
+Step 2, built: **a base drawn in a spire** (`bases::misfit`: never through its wall, and
+`bases::SHAFT`, three cells or more, from each: the spiral keeps within two) may go down through
+its floor or up through its ceiling, entered from below or above as any such base, or **stand
+wholly in its shaft**: then its lowest storey is the spire's pod (`bases::split`), its way in
+step 1's gangway, and the storeys over it are reached by the base's own hatches and ladders. One
+standing on the spire's own floor is refused (no deck there for a gangway: start it a storey up,
+or take it down through the floor). What that needed besides: a pod's cellar hatch is made
+(`build::openings` takes any room's, not only those that are no pod's), a pod has no door view
+of its own (`walks::views`), a base's storey that is a pod is never grown (`grow_pods`). No seed
+has any of it: the answer keys pass. Checked:
+`a_base_drawn_in_a_spire_stands_in_its_shaft_or_goes_through_its_floor` (in the shaft: the pod,
+its door, the hatch up, the drop and overlook links; through the floor; the three refusals'
+words); 3D picture `out/spirepod/base3d.png`.
+
+Rough: the plan's statistics count the lowest storey's way into the spire as an overlook (its
+slits' link is listed first), not a door; nothing else reads it. A base is still at most
+`MOST_STOREYS` (4) storeys tall.
+
+Next: step 3, the generator giving its own spires one at random (the user is fine with seeded
+levels changing for it: a deliberate change of the pinned levels, never one by accident).
 
 ## Risks
 

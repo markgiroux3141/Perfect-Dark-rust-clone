@@ -362,7 +362,9 @@ pub fn views(lv: &mut Level) {
     // a view of (x, y) from the door of room `key` farthest from it
     let from_door = |key: &str, x: f64, y: f64| -> Option<View> {
         let floor = lv.space(key).floor;
-        let nodes: Vec<Node> = lv.interior(key).door_nodes().into_iter().flatten().filter(|n| n.2 == floor).collect();
+        // (a pod has no inside of its own: the lowest storey of a base in a spire's shaft, under its hatch)
+        let it = &lv.interiors.iter().find(|(k, _)| k == key)?.1;
+        let nodes: Vec<Node> = it.door_nodes().into_iter().flatten().filter(|n| n.2 == floor).collect();
         let (nx, ny, nz) = middle(py::first_max(nodes, |n| off(n, x, y))?);
         Some((nx, ny, nz, x, y))
     };
