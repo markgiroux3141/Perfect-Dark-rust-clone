@@ -28,6 +28,12 @@
 //! (an edit, an undo, a re-roll kept), the one it replaces is kept (`before`) and the two are
 //! compared (`cascade`: `autolevel::cascade::diff`), so the plan can light what is new, ghost
 //! what went and say it in words.
+//!
+//! Locks, the rest and copies (roadmap item 8): every change goes through one place (`set`),
+//! which refuses what would change a locked room (`autolevel::lock::guard`). `lock` and `unlock`
+//! a room, `set_rest` re-rolls every room not locked; `copy` puts a room on the clipboard (or
+//! `set_clipboard` a preset), `mirror_clipboard`, `try_paste` (what the plan draws as the pointer
+//! moves) and `paste`; `mirror` flips a room in place.
 
 use crate::deadlist::{make, Made};
 use crate::planview::{Boxes, Things, View};
@@ -35,7 +41,9 @@ use autolevel::boxes::{self, Change, Trial};
 use autolevel::candidates::{self, Asked, Candidate, Candidates, Removal};
 use autolevel::cascade::{diff, Cascade};
 use autolevel::choices::{self, Choices};
-use autolevel::level::Start;
+use autolevel::copy::{self, Copy};
+use autolevel::level::{Level, Start};
+use autolevel::lock;
 use autolevel::place::{Placed, Siting};
 use autolevel::puts;
 use autolevel::recipe::{self, Edit, Recipe};
@@ -82,6 +90,8 @@ pub struct Doc {
     selected: Option<String>,
     /// The seed's own lots, kept while the seed and the siting stay as they are.
     base: Option<Base>,
+    /// A room copied (or a preset read), to paste.
+    clipboard: Option<Copy>,
 }
 
 impl Doc {
@@ -104,6 +114,7 @@ impl Doc {
             route: None,
             selected: None,
             base: None,
+            clipboard: None,
         }
     }
 
@@ -123,6 +134,19 @@ impl Doc {
         }
         self.redo.clear();
         self.rev += 1;
+    }
+
+    /// The recipe becomes `new`: one step to undo, none if it changes nothing (false). Err, and
+    /// nothing changed, if it changes what the recipe says of a locked room (`lock::guard`):
+    /// every change the document makes goes through here.
+    fn set(&mut self, new: Recipe) -> Result<bool, String> {
+        lock::guard(&self.recipe, &new)?;
+        if new == self.recipe {
+            return Ok(false);
+        }
+        self.push();
+        self.recipe = new;
+        Ok(true)
     }
 
     /// Start a drag: one undo step for the whole move. (The recipe is then changed in place.)
@@ -192,15 +216,19 @@ impl Doc {
         Ok(())
     }
 
-    /// Add an edit to the end of the recipe's list.
-    pub fn add(&mut self, e: Edit) {
+    /// Add an edit to the end of the recipe's list. Err if it names a locked room.
+    pub fn add(&mut self, e: Edit) -> Result<(), String> {
+        let mut new = self.recipe.clone();
+        new.edits.push(e);
+        lock::guard(&self.recipe, &new)?;
         self.push();
-        self.recipe.edits.push(e);
+        self.recipe = new;
+        Ok(())
     }
 
     /// Join `room`'s `storey` to the room `to`, which takes the door on one of `on` (none: any).
-    pub fn join(&mut self, room: &str, storey: i32, to: &str, on: &[i32]) {
-        self.add(Edit::Join { room: room.to_string(), storey, to: to.to_string(), on: on.to_vec(), door: None, to_door: None, via: None });
+    pub fn join(&mut self, room: &str, storey: i32, to: &str, on: &[i32]) -> Result<(), String> {
+        self.add(Edit::Join { room: room.to_string(), storey, to: to.to_string(), on: on.to_vec(), door: None, to_door: None, via: None })
     }
 
     /// Take out the route with a piece of this key: the `remove` edit, or for a corridor the
@@ -209,7 +237,7 @@ impl Doc {
     /// level on show is not the recipe's own yet.
     pub fn remove_route(&mut self, key: &str) -> Result<Removal, String> {
         let done = self.removal(key)?;
-        self.add(done.edit());
+        self.add(done.edit())?;
         self.route = None;
         Ok(done)
     }
@@ -222,23 +250,24 @@ impl Doc {
     }
 
     /// Leave the dead end this room is in as it is.
-    pub fn keep(&mut self, room: &str) {
-        self.add(Edit::Keep { room: room.to_string() });
+    pub fn keep(&mut self, room: &str) -> Result<(), String> {
+        self.add(Edit::Keep { room: room.to_string() })
     }
 
     /// A room's own decks stop at the storey `above`.
-    pub fn cut(&mut self, room: &str, above: i32) {
-        self.add(Edit::Cut { room: room.to_string(), above });
+    pub fn cut(&mut self, room: &str, above: i32) -> Result<(), String> {
+        self.add(Edit::Cut { room: room.to_string(), above })
     }
 
-    /// Take the `n`th edit out of the list.
-    pub fn delete_edit(&mut self, n: usize) -> bool {
+    /// Take the `n`th edit out of the list. False if there is none; Err if it is one of a locked
+    /// room's (taking out its `lock` unlocks it).
+    pub fn delete_edit(&mut self, n: usize) -> Result<bool, String> {
         if n >= self.recipe.edits.len() {
-            return false;
+            return Ok(false);
         }
-        self.push();
-        self.recipe.edits.remove(n);
-        true
+        let mut new = self.recipe.clone();
+        new.edits.remove(n);
+        self.set(new)
     }
 
     // ------------------------------------------------------------ what is picked
@@ -328,7 +357,7 @@ impl Doc {
     pub fn choose(&mut self, n: usize) -> Result<Candidate, String> {
         let found = self.joins().ok_or("nothing has been found to join yet")?;
         let c = found.get(n).ok_or_else(|| format!("no join {n}: there are {}", found.found.len()))?.clone();
-        self.add(c.edit());
+        self.add(c.edit())?;
         (self.pick, self.asked) = (None, Asked::default());
         self.route = Some(c.route.key().to_string());
         Ok(c)
@@ -357,7 +386,20 @@ impl Doc {
         let none = self.joins().filter(|found| found.found.is_empty() && !found.asked.plain()).map(|found| found.none_fits());
         let asked = if self.pick.is_some() { self.asked.clone() } else { Asked::default() };
         let things = Things { tool: None, put: self.puts() };
-        View { pick: self.pick.clone(), asked, none, joins, hot, route: self.route.clone(), chosen, things, cascade: self.cascade.clone(), ..View::default() }
+        let locked = lock::locked(&self.recipe);
+        View {
+            pick: self.pick.clone(),
+            asked,
+            none,
+            joins,
+            hot,
+            route: self.route.clone(),
+            chosen,
+            things,
+            cascade: self.cascade.clone(),
+            locked,
+            ..View::default()
+        }
     }
 
     // ------------------------------------------------------------ room boxes
@@ -407,10 +449,7 @@ impl Doc {
         if let Some(why) = &t.refused {
             return Err(why.clone());
         }
-        if t.recipe != self.recipe {
-            self.push();
-            self.recipe = t.recipe.clone();
-        }
+        self.set(t.recipe.clone())?;
         if let Change::Delete { room } = change {
             self.selected = None;
             if self.pick.as_ref().is_some_and(|(r, _)| r == room) {
@@ -435,7 +474,7 @@ impl Doc {
             None => placed.map_or(Vec::new(), |p| p.lots),
         };
         let selected = self.selected.clone().filter(|key| lots.iter().any(|a| a.key == *key));
-        Boxes { lots, selected, refused: trial.and_then(|t| t.refused.clone()), site }
+        Boxes { lots, selected, refused: trial.and_then(|t| t.refused.clone()), site, ghost: None }
     }
 
     // ------------------------------------------------------------ one room's choices
@@ -463,48 +502,109 @@ impl Doc {
             return Err(why);
         }
         let new = choices::set(&self.recipe, e)?;
-        if new != self.recipe {
-            self.push();
-            self.recipe = new;
-        }
-        Ok(())
+        self.set(new).map(drop)
     }
 
     /// The seed's own again for one kind of choice (`choices::KINDS`: "layout", "cover",
-    /// "reroll", "brightness", "ceiling") in one room. False if nothing was chosen.
-    pub fn clear_choice(&mut self, room: &str, what: &str) -> bool {
-        let new = choices::clear(&self.recipe, room, what);
-        if new == self.recipe {
-            return false;
-        }
-        self.push();
-        self.recipe = new;
-        true
+    /// "reroll", "brightness", "ceiling") in one room. False if nothing was chosen; Err for a
+    /// locked room.
+    pub fn clear_choice(&mut self, room: &str, what: &str) -> Result<bool, String> {
+        self.set(choices::clear(&self.recipe, room, what))
     }
 
     /// Put a thing by place: `e` is a `window`, `piece` or `drop` edit (`puts::click` makes one
     /// from a click), put with the recipe kept short (`puts::set`: a piece stood and then moved is
     /// one edit). One step to undo; none if it changes nothing. One that does not fit is still
-    /// put, and the level says why (`puts`).
-    pub fn put(&mut self, e: Edit) -> bool {
-        let new = puts::set(&self.recipe, e);
-        if new == self.recipe {
-            return false;
-        }
-        self.push();
-        self.recipe = new;
+    /// put, and the level says why (`puts`). Err in a locked room.
+    pub fn put(&mut self, e: Edit) -> Result<bool, String> {
+        self.set(puts::set(&self.recipe, e))
+    }
+
+    /// The generator's own again at a place (`puts::clear`). False if nothing was put there; Err
+    /// in a locked room.
+    pub fn clear_put(&mut self, room: &str, at: (i32, i32)) -> Result<bool, String> {
+        self.set(puts::clear(&self.recipe, room, at))
+    }
+
+    // ------------------------------------------------------------ locks, the rest, copies
+
+    /// The recipe's own level, if it has been made: what a lock, a copy or a mirror is read from.
+    fn own(&self) -> Result<&Level, String> {
+        let made = self.made.as_ref().filter(|(rev, _)| *rev == self.rev).map(|(_, made)| made);
+        Ok(&made.ok_or("the level is being made again: a moment")?.level)
+    }
+
+    /// Lock a room (`lock::lock`: the dead-end pass's corridors to it made the recipe's own, then
+    /// the `lock`). One step to undo. Err for a pod, a room not there, or while the level is
+    /// being made.
+    pub fn lock(&mut self, room: &str) -> Result<bool, String> {
+        let new = lock::lock(&self.recipe, self.own()?, room)?;
+        self.set(new)
+    }
+
+    /// Unlock a room: its `lock` taken out. False if it was not locked.
+    pub fn unlock(&mut self, room: &str) -> bool {
+        self.set(lock::unlock(&self.recipe, room)).unwrap_or(false)
+    }
+
+    /// The rooms locked.
+    pub fn locked(&self) -> Vec<String> {
+        lock::locked(&self.recipe)
+    }
+
+    /// Re-roll every room not locked from stream `n` (0: the seed's own again). False if it was so.
+    pub fn set_rest(&mut self, n: u32) -> bool {
+        self.set(lock::rest(&self.recipe, n)).unwrap_or(false)
+    }
+
+    /// Which stream the rest is re-rolled from (0: the seed's own).
+    pub fn rest(&self) -> u32 {
+        lock::rest_of(&self.recipe)
+    }
+
+    /// Copy a room of the recipe's own level to the clipboard. Err for a pod, a room not there,
+    /// or while the level is being made.
+    pub fn copy(&mut self, room: &str) -> Result<&Copy, String> {
+        let c = copy::copy(&self.recipe, self.own()?, room)?;
+        Ok(self.clipboard.insert(c))
+    }
+
+    /// What is on the clipboard.
+    pub fn clipboard(&self) -> Option<&Copy> {
+        self.clipboard.as_ref()
+    }
+
+    /// Put a copy (a preset read) on the clipboard, or take it off.
+    pub fn set_clipboard(&mut self, c: Option<Copy>) {
+        self.clipboard = c;
+    }
+
+    /// Mirror what is on the clipboard on "x" or "y". False with nothing there.
+    pub fn mirror_clipboard(&mut self, axis: &str) -> bool {
+        let Some(c) = &self.clipboard else { return false };
+        self.clipboard = Some(c.mirrored(axis));
         true
     }
 
-    /// The generator's own again at a place (`puts::clear`). False if nothing was put there.
-    pub fn clear_put(&mut self, room: &str, at: (i32, i32)) -> bool {
-        let new = puts::clear(&self.recipe, room, at);
-        if new == self.recipe {
-            return false;
-        }
-        self.push();
-        self.recipe = new;
-        true
+    /// What pasting the clipboard with its low corner on `at` and its floor on `floor` would come
+    /// to (`copy::paste`): the recipe and the new room's key, or why it can't. Nothing changes.
+    pub fn try_paste(&self, at: (i32, i32), floor: i32) -> Result<(Recipe, String), String> {
+        let c = self.clipboard.as_ref().ok_or("nothing is copied")?;
+        copy::paste(&self.recipe, c, at, floor)
+    }
+
+    /// Paste the clipboard there: one step to undo; the new room is selected. Returns its key.
+    pub fn paste(&mut self, at: (i32, i32), floor: i32) -> Result<String, String> {
+        let (new, key) = self.try_paste(at, floor)?;
+        self.set(new)?;
+        self.selected = Some(key.clone());
+        Ok(key)
+    }
+
+    /// Mirror a room in place on "x" or "y" (`copy::mirror`): one step to undo.
+    pub fn mirror(&mut self, room: &str, axis: &str) -> Result<bool, String> {
+        let new = copy::mirror(&self.recipe, self.own()?, room, axis)?;
+        self.set(new)
     }
 
     /// What the recipe put by place, each with whether the last level made took it (`puts::listed`;
@@ -613,7 +713,7 @@ mod tests {
         // the first level is compared with nothing
         assert!(d.cascade().is_none() && d.before().is_none());
         let first = d.made().unwrap().clone();
-        assert!(d.put(Edit::Piece { room: "vast".into(), at: (41, 25), what: None, size: None, to: Some((40, 32)) }));
+        assert!(d.put(Edit::Piece { room: "vast".into(), at: (41, 25), what: None, size: None, to: Some((40, 32)) }).unwrap());
         // (still the old level until the new one arrives)
         assert!(d.cascade().is_none());
         d.regenerate().unwrap();
@@ -641,10 +741,10 @@ mod tests {
         assert!(!d.can_undo() && d.rev() == 0);
         d.set_seed(7);
         d.set_option("cover", "pillars").unwrap();
-        d.join("tower", 551, "colossal", &[276, 551]);
-        d.add(Edit::Remove { route: "c07".into() });
-        d.keep("tiny3");
-        d.cut("spire1", 827);
+        d.join("tower", 551, "colossal", &[276, 551]).unwrap();
+        d.add(Edit::Remove { route: "c07".into() }).unwrap();
+        d.keep("tiny3").unwrap();
+        d.cut("spire1", 827).unwrap();
         assert!(d.dirty() && d.rev() == 6);
         assert_eq!((d.recipe.seed, d.recipe.options.cover, d.recipe.edits.len()), (7, "pillars", 4));
         assert_eq!(
@@ -654,7 +754,7 @@ mod tests {
         // an option nobody knows changes nothing and is no step
         assert_eq!(d.set_option("cover", "hedges").unwrap_err(), "cover: one of ('mixed', 'pillars', 'crates', 'none')");
         assert_eq!(d.rev(), 6);
-        assert!(d.delete_edit(1) && !d.delete_edit(9));
+        assert!(d.delete_edit(1).unwrap() && !d.delete_edit(9).unwrap());
         assert_eq!(d.recipe.edits.iter().map(Edit::name).collect::<Vec<_>>(), ["join", "keep", "cut"]);
         // back, step by step, to the recipe as saved
         let last = d.recipe.clone();
@@ -934,7 +1034,7 @@ mod tests {
             [("vast".to_string(), "cover none, brightness 90, ceiling grille".to_string()), ("colossal".to_string(), "inside 1".to_string())]
         );
         // the seed's own again: the edit goes; nothing chosen, nothing to clear
-        assert!(d.clear_choice("vast", "cover") && !d.clear_choice("vast", "cover") && !d.clear_choice("tower", "layout"));
+        assert!(d.clear_choice("vast", "cover").unwrap() && !d.clear_choice("vast", "cover").unwrap() && !d.clear_choice("tower", "layout").unwrap());
         d.set_choice(Edit::Reroll { room: "colossal".into(), n: 0, part: None }).unwrap();
         assert_eq!(d.recipe.edits.iter().map(Edit::name).collect::<Vec<_>>(), ["brightness", "ceiling"]);
         assert!(d.undo() && d.recipe.edits.len() == 3);

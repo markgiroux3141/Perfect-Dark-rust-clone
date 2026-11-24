@@ -309,3 +309,45 @@ fn things_are_put_by_place_clicked_saved_and_taken_out_again() {
     let (_, why) = fails(&words(&line(&["--things", "take-out", "--storey", "0", "--click", "39,22"])));
     assert_eq!(why, "autolevel_edit: --click 39,22: nothing stands in vast there");
 }
+
+#[test]
+fn a_room_is_locked_the_rest_re_rolled_and_a_copy_pasted_saved_and_used_again() {
+    let dir = std::env::temp_dir().join(format!("autolevel_edit_holds_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let at = |name: &str| dir.join(name).to_string_lossy().into_owned();
+    // locked: the pass's corridor to colossal made the recipe's own; the rest re-rolled; saved
+    let said = run(&["--seed", "40", "--lock", "colossal", "--rest", "2", "--save-recipe", &at("locked.json")]);
+    assert!(said.contains("locked: colossal (join tower on 551 to colossal (on 551), from its west wall at 15"), "{said}");
+    assert!(said.contains("the rest: inside 2"), "{said}");
+    let saved = std::fs::read_to_string(at("locked.json")).unwrap();
+    assert!(saved.contains("\"edit\": \"lock\"") && saved.contains("\"edit\": \"rest\""), "{saved}");
+    // a change to it afterwards is refused
+    let why = refused(&["--recipe", &at("locked.json"), "--cover", "colossal@crates"]);
+    assert!(why.contains("colossal is locked: unlock it to change it"), "{why}");
+    let said = run(&["--recipe", &at("locked.json"), "--unlock", "colossal", "--save-recipe", &at("unlocked.json")]);
+    assert!(said.contains("unlocked: colossal"), "{said}");
+    assert!(!std::fs::read_to_string(at("unlocked.json")).unwrap().contains("\"lock\""));
+    // copied, flipped, pasted where it fits, and saved as a preset
+    let said = run(&["--seed", "40", "--copy", "medium3", "--flip", "x", "--paste", "12,2", "--save-preset", &format!("{}@Workshop", at("ws.json"))]);
+    assert!(said.contains("copied: medium3 (medium, 7 x 8, 1 storey)") && said.contains("mirrored x)"), "{said}");
+    assert!(said.contains("pasted: room1 at 12, 2 on 0") && said.contains("saved the preset Workshop"), "{said}");
+    // the preset pastes the same again
+    let said = run(&["--seed", "40", "--preset", &at("ws.json"), "--paste", "12,2", "--save-recipe", &at("pasted.json")]);
+    assert!(said.contains("preset: Workshop (seed 40, medium3)") && said.contains("pasted: room1"), "{said}");
+    let pasted = std::fs::read_to_string(at("pasted.json")).unwrap();
+    assert!(pasted.contains("\"from\": \"40/medium3\"") && pasted.contains("\"axis\": \"x\""), "{pasted}");
+    // where it does not fit: drawn, then refused
+    let (said, why) = fails(&["--seed", "40", "--copy", "vast", "--paste", "40,20", "--shot", &at("no.png")]);
+    assert!(said.contains("can't paste at 40, 20 on 0: vast and room1 overlap"), "{said}");
+    assert!(why.starts_with("autolevel_edit: refused: vast and room1 overlap") && dir.join("no.png").is_file(), "{why}");
+    // mirrored in place
+    let said = run(&["--seed", "40", "--mirror", "vast@y", "--save-recipe", &at("mirrored.json")]);
+    assert!(said.contains("mirrored: vast (north for south)"), "{said}");
+    // what can't be done says so
+    assert!(refused(&["--seed", "40", "--flip", "x"]).contains("--flip: nothing is copied"));
+    assert!(refused(&["--seed", "40", "--paste", "2,2"]).contains("--paste: nothing is copied"));
+    assert!(refused(&["--seed", "40", "--lock", "small8"]).contains("--lock small8: lock: small8 is a pod of vast: lock its hall"));
+    assert!(refused(&["--seed", "40", "--mirror", "vast@z"]).contains("--mirror: a room, then @ and x or y"));
+    assert!(refused(&["--seed", "40", "--rest", "many"]).contains("--rest: a stream, 0 or more, not many"));
+    let _ = std::fs::remove_dir_all(&dir);
+}

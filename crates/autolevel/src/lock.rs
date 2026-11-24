@@ -42,13 +42,15 @@ pub fn refusal(r: &Recipe, edit: &Edit) -> Option<String> {
     Some(format!("{}: {room} is locked: unlock it to change it", edit.name()))
 }
 
-/// Err if going from `old` to `new` changes what the recipe says of a room locked in both: an
+/// Err if going from `old` to `new` changes what the recipe says of a room locked in `old`: an
 /// edit that names it made, changed or taken out, wherever in the list (an editor that puts a
-/// choice in an earlier one's place would get it past the lock otherwise). Locking and
-/// unlocking themselves pass. The one guard every editor's change goes through.
+/// choice in an earlier one's place would get it past the lock otherwise), its `lock` aside. So
+/// unlocking (the `lock` alone taken out) and locking pass, and deleting a locked room (which
+/// takes its lock with it) does not. The one guard every editor's change goes through.
 pub fn guard(old: &Recipe, new: &Recipe) -> Result<(), String> {
-    for room in locked(old).iter().filter(|k| is_locked(new, k)) {
-        let of = |r: &Recipe| -> Vec<Edit> { r.edits.iter().filter(|e| !matches!(e, Edit::Lock { .. }) && e.rooms().contains(&room.as_str())).cloned().collect() };
+    for room in &locked(old) {
+        let of =
+            |r: &Recipe| -> Vec<Edit> { r.edits.iter().filter(|e| !matches!(e, Edit::Lock { .. }) && e.rooms().contains(&room.as_str())).cloned().collect() };
         if of(old) != of(new) {
             return Err(format!("{room} is locked: unlock it to change it"));
         }

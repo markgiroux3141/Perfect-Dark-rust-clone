@@ -3,7 +3,7 @@
 
 use autolevel::cascade::diff;
 use autolevel::level::Level;
-use autolevel::lock::{is_locked, lock, locked, refusal, rest, rest_of, unlock};
+use autolevel::lock::{guard, is_locked, lock, locked, refusal, rest, rest_of, unlock};
 use autolevel::recipe::{load, save, Edit, Recipe};
 
 fn made(r: &Recipe) -> Level {
@@ -106,6 +106,15 @@ fn a_locked_room_refuses_what_would_change_it() {
     assert_eq!(lock(&l, &lv, "vast").unwrap(), l);
     let u = unlock(&l, "vast");
     assert!(!is_locked(&u, "vast") && refusal(&u, &mv).is_none());
+    // the guard the editors go through: any change to what the recipe says of it, wherever in the
+    // list; unlocking and locking pass; deleting it (its lock goes with it) does not
+    let mut early = l.clone();
+    early.edits.insert(0, Edit::Cover { room: s("vast"), cover: s("crates") });
+    assert_eq!(guard(&l, &early).unwrap_err(), "vast is locked: unlock it to change it");
+    assert!(guard(&l, &u).is_ok() && guard(&r, &l).is_ok());
+    let gone = Recipe { edits: vec![Edit::Delete { room: s("vast") }], ..r.clone() };
+    assert_eq!(guard(&l, &gone).unwrap_err(), "vast is locked: unlock it to change it");
+    assert!(guard(&l, &rest(&l, 2)).is_ok());
     // a pod is held with its hall; a room that is not there
     let pod = lv.spaces().iter().find(|s| s.host == "vast").expect("vast has pods").key.clone();
     assert_eq!(lock(&r, &lv, &pod).unwrap_err(), format!("lock: {pod} is a pod of vast: lock its hall"));

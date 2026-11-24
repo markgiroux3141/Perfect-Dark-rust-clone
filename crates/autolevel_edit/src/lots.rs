@@ -162,7 +162,7 @@ mod tests {
         let t = d.try_change(&same).unwrap();
         assert_eq!(said(&same, &d.recipe, &lots, &t), format!("move medium1 to {}, {}: nothing changes, it is so already", a.x0, a.y0));
         // a hall deleted: its pods go with it, and the edits that named any of them
-        d.join("tower", 551, "vast", &[]);
+        d.join("tower", 551, "vast", &[]).unwrap();
         let gone = Change::Delete { room: "vast".into() };
         let t = d.try_change(&gone).unwrap();
         let pods: Vec<&str> = lots.iter().filter(|a| a.host == "vast").map(|a| a.key.as_str()).collect();

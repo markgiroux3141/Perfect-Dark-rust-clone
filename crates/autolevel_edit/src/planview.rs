@@ -180,6 +180,8 @@ pub mod colour {
     pub const GHOST: Rgba = [255, 150, 130, 230];
     pub const GHOST_FILL: Rgba = [255, 150, 130, 40];
     pub const MOVED: Rgba = [140, 255, 120, 255];
+    /// A locked room's frame and padlock (roadmap item 8).
+    pub const LOCKED: Rgba = [255, 196, 60, 255];
     pub const CASCADE_NUMBER: Rgba = [10, 12, 18, 255];
 
     /// The colour of the storey whose floor is `z`.
@@ -288,6 +290,8 @@ pub struct View {
     /// What the last change changed (`autolevel::cascade`): what is new lit, what went a ghost,
     /// what moved an arrow, each numbered as the list numbers it.
     pub cascade: Option<Arc<Cascade>>,
+    /// The rooms locked (`autolevel::lock`): framed, with a padlock in a corner.
+    pub locked: Vec<String>,
 }
 
 /// The things put by place, to draw on the plan: each `window`, `piece` and `drop` edit's place,
@@ -325,6 +329,17 @@ pub struct Boxes {
     /// The site the rooms stand on, in cells (from the origin), where it is known: the bare plan
     /// is framed on it, so an empty start has the whole site to draw on.
     pub site: Option<(i32, i32)>,
+    /// A copy being pasted (roadmap item 8): where it would go as the pointer moves.
+    pub ghost: Option<Ghost>,
+}
+
+/// Where a paste would go: its room's box and its pods' (cells), what it is, and why it can't go
+/// there (None: it can).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Ghost {
+    pub rects: Vec<Rect>,
+    pub label: String,
+    pub refused: Option<String>,
 }
 
 /// What of the room boxes a place on the plan shows.
@@ -386,6 +401,7 @@ impl Default for View {
             chosen: Vec::new(),
             things: Things::default(),
             cascade: None,
+            locked: Vec::new(),
         }
     }
 }
@@ -1085,6 +1101,23 @@ impl Pic<'_> {
     /// What the last change changed: ghosts (dashed, where a thing was), lit (where it is now),
     /// arrows for moves, and the change's number (as the list has it) on its first spot. A room's
     /// box is framed, not filled, so what is inside it still shows.
+    /// The rooms locked: a frame in the lock's colour, and a padlock in the room's north-west
+    /// corner (its body and its shackle, sized in pixels).
+    fn locked(&mut self) {
+        let px = 1.0 / self.view.scale;
+        for key in self.view.locked.clone() {
+            let Some(s) = self.lv.spaces().iter().find(|s| s.key == key) else { continue };
+            if let Some(z) = self.view.storey {
+                if !s.storeys().contains(&z) {
+                    continue;
+                }
+            }
+            let r = cell_box(s.rect());
+            self.frame(r, colour::LOCKED, 3.0);
+            padlock(self.list(), (r.0 + 4.0 * px, r.3 - 4.0 * px), px);
+        }
+    }
+
     fn cascade(&mut self) {
         let Some(c) = self.view.cascade.clone() else { return };
         let storey = self.view.storey;
@@ -1395,6 +1428,7 @@ pub fn picture(lv: &Level, view: &View) -> Picture {
     pic.chosen();
     pic.things();
     pic.cascade();
+    pic.locked();
     if let Some(m) = &view.mark {
         pic.ring(m, colour::MARK, 3.0);
         if let Some((at, _)) = m.at {
@@ -1411,6 +1445,22 @@ pub fn picture(lv: &Level, view: &View) -> Picture {
     lots(&mut pic.out, view, Some(lv), (lo, hi));
     pic.asked();
     Picture { prims: pic.out, lo, hi, legend: legend(lv, view) }
+}
+
+/// A padlock with its top-left corner at `at` (cells; y up), `px` cells to a pixel: a body 12
+/// pixels wide and 9 high under a shackle.
+fn padlock(out: &mut Vec<Prim>, at: P, px: f32) {
+    let (x, y) = at;
+    let body = (x, y - 16.0 * px, x + 12.0 * px, y - 7.0 * px);
+    out.rect((body.0 - px, body.1 - px, body.2 + px, body.3 + px), colour::PANEL);
+    out.rect(body, colour::LOCKED);
+    for (a, b) in [
+        ((x + 3.0 * px, y - 7.0 * px), (x + 3.0 * px, y - 2.0 * px)),
+        ((x + 3.0 * px, y - 2.0 * px), (x + 9.0 * px, y - 2.0 * px)),
+        ((x + 9.0 * px, y - 2.0 * px), (x + 9.0 * px, y - 7.0 * px)),
+    ] {
+        out.line(a, b, colour::LOCKED, 2.0);
+    }
 }
 
 /// Where a drawn word or badge lies, in cells, with a pixel `px` cells wide: its box as the
@@ -1668,6 +1718,15 @@ fn lots(out: &mut Vec<Prim>, view: &View, lv: Option<&Level>, (lo, hi): (P, P)) 
             (None, Some(_)) => {}
         }
     }
+    // a paste on its way: where it would go, dashed (red where it can't), its words by it
+    if let Some(g) = &b.ghost {
+        let col = if g.refused.is_some() { colour::DEAD_END } else { colour::PICK };
+        for (n, r) in g.rects.iter().enumerate() {
+            let r = cell_box(*r);
+            out.rect(r, if g.refused.is_some() { colour::GONE } else { colour::faded(colour::PICK, 40) });
+            out.dashed_frame(r, col, if n == 0 { 3.0 } else { 1.5 }, 0.5, 0.3);
+        }
+    }
     // the selected box over them all: a thick edge, its grips, and its words beside it
     let refused = b.refused.as_deref();
     let col = if refused.is_some() { colour::DEAD_END } else { colour::PICK };
@@ -1698,6 +1757,15 @@ fn lots(out: &mut Vec<Prim>, view: &View, lv: Option<&Level>, (lo, hi): (P, P)) 
     if let Some(why) = refused {
         words.push(("can't be done:".to_string(), colour::DEAD_END));
         words.extend(wrap(why, WRAP).into_iter().map(|l| (l, colour::REFUSAL)));
+    }
+    if let Some(g) = &b.ghost {
+        let col = if g.refused.is_some() { colour::DEAD_END } else { colour::PICK };
+        words.push((format!("paste: {}", g.label), col));
+        if let Some(why) = &g.refused {
+            words.push(("can't go here:".to_string(), colour::DEAD_END));
+            words.extend(wrap(why, WRAP).into_iter().map(|l| (l, colour::REFUSAL)));
+        }
+        by = by.or(g.rects.first().map(|r| cell_box(*r)));
     }
     if words.is_empty() {
         return;
@@ -1742,6 +1810,10 @@ fn box_keys(view: &View, lv: Option<&Level>) -> Vec<Key> {
         if !deleted(lv, &b.lots).is_empty() {
             out.push(key(Swatch::Fill, colour::GONE, "room deleted (crossed out)"));
         }
+    }
+    if let Some(g) = &b.ghost {
+        let col = if g.refused.is_some() { colour::DEAD_END } else { colour::PICK };
+        out.push(key(Swatch::Line, col, "paste: where the copy would go (dashed; red: it can't)"));
     }
     match (&b.refused, &b.selected) {
         (Some(_), _) => out.push(key(Swatch::Line, colour::DEAD_END, "change refused: the room's box in red, the reason by it")),
@@ -1804,6 +1876,9 @@ pub fn legend(lv: &Level, view: &View) -> Vec<Key> {
         out.push(key(Swatch::Line, colour::LIT, "the last change: new or changed (numbered as listed)"));
         out.push(key(Swatch::Line, colour::GHOST, "where it was (dashed)"));
         out.push(key(Swatch::Line, colour::MOVED, "moved (arrow)"));
+    }
+    if view.locked.iter().any(|room| lv.spaces().iter().any(|s| s.key == *room)) {
+        out.push(key(Swatch::Line, colour::LOCKED, "locked: held as it is (padlock)"));
     }
     out.extend(box_keys(view, Some(lv)));
     out
@@ -2093,7 +2168,10 @@ mod picture_tests {
     }
 
     fn boxed(lots: Vec<Lot>, selected: Option<&str>, refused: Option<&str>) -> View {
-        View { boxes: Some(Boxes { lots, selected: selected.map(str::to_string), refused: refused.map(str::to_string), site: None }), ..View::default() }
+        View {
+            boxes: Some(Boxes { lots, selected: selected.map(str::to_string), refused: refused.map(str::to_string), site: None, ghost: None }),
+            ..View::default()
+        }
     }
 
     /// The lines of one colour and width.

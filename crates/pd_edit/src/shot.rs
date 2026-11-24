@@ -430,7 +430,7 @@ pub fn run_generated(args: &[String]) -> Result<Vec<String>, String> {
             match put {
                 Ok(e) => {
                     said.push(format!("put at {px:.0}, {py:.0}: {}", e.describe()));
-                    doc.put(e);
+                    doc.put(e)?;
                     doc.regenerate()?;
                 }
                 Err(why) => said.push(format!("nothing put at {px:.0}, {py:.0}: {why}")),

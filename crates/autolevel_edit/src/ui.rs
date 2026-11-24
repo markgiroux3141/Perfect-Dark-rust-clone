@@ -45,7 +45,7 @@ use crate::controls::{self, Control};
 use crate::deadlist::{Kind, Made, Row};
 use crate::doc::Doc;
 use crate::jobs::{Job, Search};
-use crate::planview::{self, colour, Boxes, Hit, Prim, Rgba, Swatch, View, P};
+use crate::planview::{self, colour, Boxes, Ghost, Hit, Prim, Rgba, Swatch, View, P};
 use crate::raster::Fit;
 use crate::sideview::{self, Axis, Section, SideHit, SidePart, SideView};
 use crate::strip::{self, Strip, Tile};
@@ -53,6 +53,7 @@ use crate::{routes, shot};
 use autolevel::boxes::{self, Change, Part, Trial};
 use autolevel::candidates::{Asked, Removal};
 use autolevel::cells::Rect;
+use autolevel::copy;
 use autolevel::level::{Options, Start, COVER};
 use autolevel::place::{self, Placed};
 use autolevel::puts;
@@ -157,6 +158,22 @@ fn going(change: &Change) -> String {
     }
 }
 
+/// A mirror's axis in words.
+fn flip_words(axis: &str) -> &'static str {
+    if axis == "x" {
+        "east for west"
+    } else {
+        "north for south"
+    }
+}
+
+/// Where presets are kept for a recipe in `path`: a `presets` folder beside it (beside the working
+/// folder with no file).
+fn presets_beside(path: Option<&str>) -> std::path::PathBuf {
+    let dir = path.and_then(|p| std::path::Path::new(p).parent()).filter(|d| !d.as_os_str().is_empty());
+    dir.map_or_else(|| std::path::PathBuf::from("presets"), |d| d.join("presets"))
+}
+
 /// A side or a corner of a box, by the way it faces: "east side", "north-west corner".
 fn side(sx: i8, sy: i8) -> String {
     let (ew, ns) = (if sx < 0 { "west" } else { "east" }, if sy < 0 { "south" } else { "north" });
@@ -245,6 +262,17 @@ pub struct Editor {
     /// Draw what the last change changed on the plan and the side view (the cascade; its list
     /// is under the status line either way).
     pub show_cascade: bool,
+    /// A click on the plan with the room tool pastes what is copied (roadmap item 8).
+    pub pasting: bool,
+    /// Where the pointer is on the plan (cells), as the last frame had it: where a paste goes.
+    hover: Option<P>,
+    /// The last paste tried: its low corner, floor, the count of the recipe's changes, and where
+    /// it would go.
+    ghost: Option<((i32, i32), i32, u64, Ghost)>,
+    /// The name being typed for a preset.
+    pub preset_name: String,
+    /// Where presets are kept: a `presets` folder beside the recipe (`pd_edit` sets its own).
+    pub presets_dir: std::path::PathBuf,
 }
 
 impl Editor {
@@ -253,6 +281,7 @@ impl Editor {
     pub fn new(args: Args) -> Editor {
         let saved = args.from.is_some();
         let seed_text = args.recipe.seed.to_string();
+        let presets_dir = presets_beside(args.from.as_deref());
         let tool = if args.draws_rooms() { Tool::Rooms } else { Tool::Join };
         let mut doc = Doc::new(args.recipe, saved);
         doc.select(args.select.as_deref());
@@ -291,6 +320,11 @@ impl Editor {
             side_fit: None,
             strip: None,
             show_cascade: true,
+            pasting: false,
+            hover: None,
+            ghost: None,
+            preset_name: String::new(),
+            presets_dir,
         }
         .with_side(args.side.as_ref())
     }
@@ -835,6 +869,287 @@ impl Editor {
         (self.held, self.tried, self.refused) = (None, None, None);
     }
 
+    // ------------------------------------------------------------ locks, the rest, copies
+
+    /// Lock a room (`Doc::lock`) or unlock it.
+    pub fn set_locked(&mut self, room: &str, on: bool) {
+        self.refused = None;
+        if !on {
+            if self.doc.unlock(room) {
+                self.status = format!("{room} unlocked");
+            }
+            return;
+        }
+        match self.doc.lock(room) {
+            Ok(true) => self.status = format!("{room} locked: held as it is while the rest is re-rolled"),
+            Ok(false) => self.status = format!("{room} is locked already"),
+            Err(why) => self.refuse(why),
+        }
+    }
+
+    /// Re-roll every room not locked from stream `n` (0: the seed's own).
+    pub fn set_rest(&mut self, n: u32) {
+        if self.doc.set_rest(n) {
+            self.refused = None;
+            self.status = match n {
+                0 => "the rest: the seed's own insides again".to_string(),
+                n => format!("the rest re-rolled: inside {n} for every room not locked"),
+            };
+        }
+    }
+
+    /// Copy a room to the clipboard (`Doc::copy`).
+    pub fn copy_room(&mut self, room: &str) {
+        match self.doc.copy(room) {
+            Ok(c) => (self.status, self.refused) = (format!("copied: {}", c.describe()), None),
+            Err(why) => self.refuse(why),
+        }
+    }
+
+    /// Mirror a room in place (`Doc::mirror`) on "x" or "y".
+    pub fn mirror_room(&mut self, room: &str, axis: &str) {
+        match self.doc.mirror(room, axis) {
+            Ok(_) => (self.status, self.refused) = (format!("{room} mirrored {}", flip_words(axis)), None),
+            Err(why) => self.refuse(why),
+        }
+    }
+
+    /// Paste with the next click on the plan (the room tool put in hand), or not.
+    pub fn start_paste(&mut self, on: bool) {
+        self.pasting = on && self.doc.clipboard().is_some();
+        if self.pasting {
+            self.drop_drag();
+            (self.tool, self.drawing, self.side) = (Tool::Rooms, false, None);
+            self.status = "click on the plan to paste the copy there, its middle on the cell clicked (Escape leaves)".to_string();
+        }
+    }
+
+    /// Where a paste with the pointer at `at` goes: its low corner, so the copy's middle is on
+    /// the cell, and its floor (the storey shown, else the copy's own).
+    fn paste_corner(&self, at: P) -> Option<((i32, i32), i32)> {
+        let c = self.doc.clipboard()?;
+        let corner = ((at.0 - c.size.0 as f32 / 2.0).round() as i32, (at.1 - c.size.1 as f32 / 2.0).round() as i32);
+        Some((corner, self.storey.unwrap_or(c.floor)))
+    }
+
+    /// Paste the copy with the pointer at `at` (cells): one step to undo, the new room selected.
+    pub fn paste_at(&mut self, at: P) -> bool {
+        let Some((corner, floor)) = self.paste_corner(at) else { return false };
+        match self.doc.paste(corner, floor) {
+            Ok(key) => {
+                (self.pasting, self.refused) = (false, None);
+                self.status = format!("pasted: {key} at {}, {} on {floor}", corner.0, corner.1);
+                true
+            }
+            Err(why) => {
+                self.refuse(why);
+                false
+            }
+        }
+    }
+
+    /// Where a paste with the pointer at `at` would go, and why it can't (worked out once for each
+    /// cell, floor and recipe).
+    fn ghost_at(&mut self, at: P) -> Option<Ghost> {
+        let (corner, floor) = self.paste_corner(at)?;
+        if let Some((c, f, rev, g)) = &self.ghost {
+            if (*c, *f, *rev) == (corner, floor, self.doc.rev()) {
+                return Some(g.clone());
+            }
+        }
+        let copy = self.doc.clipboard()?.clone();
+        let mut rects = vec![(corner.0, corner.1, corner.0 + copy.size.0, corner.1 + copy.size.1)];
+        for p in &copy.pods {
+            let (x, y) = (corner.0 + p.at.0, corner.1 + p.at.1);
+            rects.push((x, y, x + p.room.size.0, y + p.room.size.1));
+        }
+        let refused = self.doc.try_paste(corner, floor).err();
+        let g = Ghost { rects, label: format!("{} at {}, {} on {floor}", copy.describe(), corner.0, corner.1), refused };
+        self.ghost = Some((corner, floor, self.doc.rev(), g.clone()));
+        Some(g)
+    }
+
+    /// The presets in `presets_dir`, by name, with their files.
+    pub fn presets(&self) -> Vec<(String, std::path::PathBuf)> {
+        let Ok(dir) = std::fs::read_dir(&self.presets_dir) else { return Vec::new() };
+        let mut out: Vec<(String, std::path::PathBuf)> = dir
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|x| x == "json"))
+            .filter_map(|p| std::fs::read_to_string(&p).ok().and_then(|t| copy::load_preset(&t).ok()).map(|pre| (pre.name, p)))
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// Save what is copied as a preset named `name` in `presets_dir`. Returns its file.
+    pub fn save_preset(&mut self, name: &str) -> Result<std::path::PathBuf, String> {
+        let c = self.doc.clipboard().ok_or("nothing is copied")?.clone();
+        let name = name.trim();
+        let name = if name.is_empty() { c.room.as_str() } else { name };
+        let from = format!("seed {}, {}", c.draws.split('/').next().unwrap_or("?"), c.room);
+        std::fs::create_dir_all(&self.presets_dir).map_err(|e| format!("{}: {e}", self.presets_dir.display()))?;
+        let path = self.presets_dir.join(format!("{}.json", copy::file_name(name)));
+        std::fs::write(&path, copy::save_preset(name, &from, &c)).map_err(|e| format!("{}: {e}", path.display()))?;
+        self.status = format!("saved the preset {name} ({})", path.display());
+        Ok(path)
+    }
+
+    /// A preset's room on the clipboard, to paste.
+    pub fn use_preset(&mut self, path: &std::path::Path) {
+        match std::fs::read_to_string(path).map_err(|e| e.to_string()).and_then(|t| copy::load_preset(&t)) {
+            Ok(p) => {
+                self.status = format!("the preset {} is copied: click Paste, then the plan", p.name);
+                self.doc.set_clipboard(Some(p.room));
+            }
+            Err(why) => self.refuse(format!("{}: {why}", path.display())),
+        }
+    }
+
+    /// The selected room's row: lock it, copy it, mirror it.
+    pub fn lock_ui(&mut self, ui: &mut egui::Ui, room: &str, pod: bool) {
+        let locked = self.doc.locked().iter().any(|k| k == room);
+        let mut asked: Option<Box<dyn FnOnce(&mut Editor)>> = None;
+        ui.horizontal_wrapped(|ui| {
+            let b = ui
+                .add_enabled(!pod, egui::SelectableLabel::new(locked, if locked { "Locked" } else { "Lock" }))
+                .on_hover_text("held as it is: its box, its inside, its doors; the rest can be re-rolled round it")
+                .on_disabled_hover_text("a pod is held with its hall: lock the hall");
+            self.spots.push(("lock".to_string(), b.rect));
+            if b.clicked() {
+                let room = room.to_string();
+                asked = Some(Box::new(move |ed: &mut Editor| ed.set_locked(&room, !locked)));
+            }
+            let b = ui
+                .add_enabled(!pod, egui::Button::new("Copy"))
+                .on_hover_text("copy it with its choices, its things and its pods, to paste")
+                .on_disabled_hover_text("copy its hall");
+            self.spots.push(("copy".to_string(), b.rect));
+            if b.clicked() {
+                let room = room.to_string();
+                asked = Some(Box::new(move |ed: &mut Editor| ed.copy_room(&room)));
+            }
+            for (axis, label) in [("x", "Mirror east-west"), ("y", "Mirror north-south")] {
+                let b = ui
+                    .add_enabled(!pod && !locked, egui::Button::new(label))
+                    .on_hover_text("its pods, its shape's cut, its pit and the things put in it to the other side");
+                self.spots.push((format!("mirror {axis}"), b.rect));
+                if b.clicked() {
+                    let room = room.to_string();
+                    asked = Some(Box::new(move |ed: &mut Editor| ed.mirror_room(&room, axis)));
+                }
+            }
+        });
+        if let Some(f) = asked {
+            f(self);
+        }
+    }
+
+    /// "The rest": every room not locked re-rolled, from the seed's own or another stream.
+    pub fn rest_ui(&mut self, ui: &mut egui::Ui) {
+        let (n, locked) = (self.doc.rest(), self.doc.locked());
+        let mut ask = None;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("the rest");
+            let b = ui.selectable_label(n == 0, "the seed's own").on_hover_text("every room's inside as the seed draws it");
+            self.spots.push(("rest own".to_string(), b.rect));
+            if b.clicked() && n != 0 {
+                ask = Some(0);
+            }
+            let b = ui.button("another").on_hover_text("every room not locked furnished again, from other random numbers");
+            self.spots.push(("rest another".to_string(), b.rect));
+            if b.clicked() {
+                ask = Some(n + 1);
+            }
+            if n > 0 {
+                let b = ui.button("back");
+                self.spots.push(("rest back".to_string(), b.rect));
+                if b.clicked() {
+                    ask = Some(n - 1);
+                }
+                ui.label(format!("inside {n}"));
+            }
+            match locked.len() {
+                0 => ui.weak("(lock a room to keep it as it is)"),
+                _ => ui.weak(format!("locked: {}", locked.join(", "))),
+            };
+        });
+        if let Some(n) = ask {
+            self.set_rest(n);
+        }
+    }
+
+    /// What is copied: paste it, mirror it, forget it, save it as a preset; and the presets.
+    pub fn clipboard_ui(&mut self, ui: &mut egui::Ui) {
+        let mut asked: Option<Box<dyn FnOnce(&mut Editor)>> = None;
+        match self.doc.clipboard().cloned() {
+            Some(c) => {
+                ui.add(egui::Label::new(egui::RichText::new(format!("copied: {}", c.describe())).weak()).wrap());
+                ui.horizontal_wrapped(|ui| {
+                    let b = ui
+                        .selectable_label(self.pasting, "Paste")
+                        .on_hover_text("then click on the plan: the copy's middle on the cell (the storey shown, else its own floor)");
+                    self.spots.push(("paste".to_string(), b.rect));
+                    if b.clicked() {
+                        let on = !self.pasting;
+                        asked = Some(Box::new(move |ed: &mut Editor| ed.start_paste(on)));
+                    }
+                    for (axis, label) in [("x", "Flip east-west"), ("y", "Flip north-south")] {
+                        let b = ui.button(label);
+                        self.spots.push((format!("clip {axis}"), b.rect));
+                        if b.clicked() {
+                            asked = Some(Box::new(move |ed: &mut Editor| {
+                                ed.doc.mirror_clipboard(axis);
+                                ed.ghost = None;
+                            }));
+                        }
+                    }
+                    let b = ui.button("Forget");
+                    self.spots.push(("forget".to_string(), b.rect));
+                    if b.clicked() {
+                        asked = Some(Box::new(|ed: &mut Editor| {
+                            ed.doc.set_clipboard(None);
+                            ed.pasting = false;
+                        }));
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("preset");
+                    let field = ui.add(egui::TextEdit::singleline(&mut self.preset_name).hint_text(c.room.as_str()).desired_width(110.0));
+                    self.spots.push(("preset name".to_string(), field.rect));
+                    let b = ui.button("Save").on_hover_text(format!("into {}", self.presets_dir.display()));
+                    self.spots.push(("save preset".to_string(), b.rect));
+                    if b.clicked() {
+                        let name = self.preset_name.clone();
+                        asked = Some(Box::new(move |ed: &mut Editor| {
+                            if let Err(why) = ed.save_preset(&name) {
+                                ed.refuse(why);
+                            }
+                        }));
+                    }
+                });
+            }
+            None => {
+                ui.weak("nothing copied: select a room and click Copy, or use a preset");
+            }
+        }
+        let presets = self.presets();
+        if !presets.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("presets");
+                for (name, path) in presets {
+                    let b = ui.button(&name).on_hover_text(format!("copy it, to paste ({})", path.display()));
+                    self.spots.push((format!("preset {name}"), b.rect));
+                    if b.clicked() {
+                        asked = Some(Box::new(move |ed: &mut Editor| ed.use_preset(&path)));
+                    }
+                }
+            });
+        }
+        if let Some(f) = asked {
+            f(self);
+        }
+    }
+
     /// Select a room's box (None: none). With one storey shown that the room is not on, its
     /// own floor is shown instead, so the box selected is one that can be seen.
     pub fn select(&mut self, room: Option<&str>) {
@@ -913,13 +1228,19 @@ impl Editor {
     pub fn put(&mut self, e: Edit) {
         let said = e.describe();
         self.refused = None;
-        self.status = if self.doc.put(e) { format!("put: {said}") } else { format!("{said}: so already") };
+        match self.doc.put(e) {
+            Ok(true) => self.status = format!("put: {said}"),
+            Ok(false) => self.status = format!("{said}: so already"),
+            Err(why) => self.refuse(why),
+        }
     }
 
     /// The generator's own again at a place (`Doc::clear_put`).
     pub fn clear_put(&mut self, room: &str, at: (i32, i32)) {
-        if self.doc.clear_put(room, at) {
-            self.status = format!("{room} at {}, {}: the generator's own again", at.0, at.1);
+        match self.doc.clear_put(room, at) {
+            Ok(true) => self.status = format!("{room} at {}, {}: the generator's own again", at.0, at.1),
+            Ok(false) => {}
+            Err(why) => self.refuse(why),
         }
     }
 
@@ -971,10 +1292,14 @@ impl Editor {
 
     /// The seed's own again for one kind of a room's choices (`choices::KINDS`).
     pub fn clear_choice(&mut self, room: &str, what: &str) {
-        if self.doc.clear_choice(room, what) {
-            self.refused = None;
-            self.status = format!("{room}: the seed's own {} again", if what == "reroll" { "inside" } else { what });
-            self.chose = Some(self.doc.rev());
+        match self.doc.clear_choice(room, what) {
+            Ok(true) => {
+                self.refused = None;
+                self.status = format!("{room}: the seed's own {} again", if what == "reroll" { "inside" } else { what });
+                self.chose = Some(self.doc.rev());
+            }
+            Ok(false) => {}
+            Err(why) => self.refuse(why),
         }
     }
 
@@ -992,6 +1317,10 @@ impl Editor {
     /// a click on nothing selects nothing. `grip` is how near a side of the selected box
     /// still counts as it, in cells.
     pub fn click_box(&mut self, at: P, grip: f32) {
+        if self.pasting {
+            self.paste_at(at);
+            return;
+        }
         if self.drawing {
             self.status = "drag on the plan to draw the room (Escape leaves)".to_string();
             return;
@@ -1060,6 +1389,11 @@ impl Editor {
 
     /// The room boxes for the plan: as the recipe places them, or as the drag in hand would.
     fn shown(&mut self) -> Boxes {
+        // (a paste on its way: where it would go, under the pointer)
+        if let (true, Some(at)) = (self.pasting, self.hover) {
+            let ghost = self.ghost_at(at);
+            return Boxes { ghost, ..self.doc.boxes(None) };
+        }
         let Some(Tried { trial, drawn, .. }) = &self.tried else { return self.doc.boxes(None) };
         let mut shown = self.doc.boxes(Some(trial));
         if let Some(a) = drawn {
@@ -1076,6 +1410,15 @@ impl Editor {
     /// What a click or a drag at `at` (cells) would do with the room tool, for the line under
     /// the plan.
     fn hint(&self, at: P, placed: &Placed, grip: f32) -> String {
+        if self.pasting {
+            return match (&self.ghost, self.paste_corner(at)) {
+                (Some((c, f, _, g)), Some((corner, floor))) if (*c, *f) == (corner, floor) => match &g.refused {
+                    Some(why) => format!("   can't paste here: {why}"),
+                    None => format!("   click: paste here ({}, {} on {floor})", corner.0, corner.1),
+                },
+                _ => "   click: paste here".to_string(),
+            };
+        }
         if let Some(t) = &self.tried {
             return format!("   {}{}", going(&t.change), if t.trial.refused.is_some() { ": refused" } else { "" });
         }
@@ -1131,7 +1474,7 @@ impl Editor {
         }
         if escape {
             self.drop_drag();
-            self.drawing = false;
+            (self.drawing, self.pasting) = (false, false);
         }
         let room = self.doc.selected().map(str::to_string);
         if let (true, Some(room)) = (delete, room) {
@@ -1187,7 +1530,10 @@ impl Editor {
 
     /// Both panels, laid out in a whole window (in `pd_edit` its tab calls `panel` and `canvas`).
     pub fn show(&mut self, egui: &egui::Context) {
-        egui::SidePanel::left("recipe").resizable(true).default_width(430.0).show(egui, |ui| self.panel(ui));
+        egui::SidePanel::left("recipe").resizable(true).default_width(430.0).show(egui, |ui| {
+            // (it scrolls: a selected room's choices and the list of rooms run past a window's height)
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| self.panel(ui));
+        });
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(egui, |ui| self.canvas(ui));
     }
 
@@ -1445,7 +1791,9 @@ impl Editor {
                 });
             }
             if let Some(i) = gone {
-                self.doc.delete_edit(i);
+                if let Err(why) = self.doc.delete_edit(i) {
+                    self.refuse(why);
+                }
             }
             if n == 0 {
                 ui.weak("none: the seed's own level");
@@ -1484,6 +1832,7 @@ impl Editor {
                 Err(why) => return red(ui, &format!("the recipe's room edits can't be read: {why} (take the edit out of the list above)")),
             };
             let room = self.doc.selected().and_then(|key| placed.lots.iter().find(|a| a.key == key)).cloned();
+            let selected = room.as_ref().map(|a| (a.key.clone(), !a.host.is_empty()));
             match room {
                 Some(a) => {
                     ask = self.room(ui, placed, &a);
@@ -1495,6 +1844,17 @@ impl Editor {
                     ui.add(egui::Label::new(egui::RichText::new(how).weak()).wrap());
                 }
             }
+            ui.separator();
+            // (locks, the rest and copies, folded unless one is in use: the list below stays in sight)
+            let busy = !self.doc.locked().is_empty() || self.doc.rest() != 0 || self.doc.clipboard().is_some();
+            let head = egui::CollapsingHeader::new("Lock, copy, paste").id_salt(("hold", busy)).default_open(busy).show(ui, |ui| {
+                if let Some((key, pod)) = &selected {
+                    self.lock_ui(ui, key, *pod);
+                }
+                self.rest_ui(ui);
+                self.clipboard_ui(ui);
+            });
+            self.spots.push(("hold".to_string(), head.header_response.rect));
             ui.separator();
             self.new_room_choices(ui, placed);
             ui.separator();
@@ -2026,13 +2386,17 @@ impl Editor {
                     }
                     if let Some((room, storey, to, on, _)) = &row.join {
                         if ui.small_button("join").on_hover_text("add this join to the recipe").clicked() {
-                            self.doc.join(room, *storey, to, on);
+                            if let Err(why) = self.doc.join(room, *storey, to, on) {
+                                self.refuse(why);
+                            }
                         }
                     }
                     if *kind == Kind::Long && row.number.is_none() {
                         if let Some(room) = row.mark.as_ref().and_then(|m| m.rooms.first().or(m.decks.first().map(|(room, _)| room))) {
                             if ui.small_button("keep").on_hover_text("leave this dead end as it is").clicked() {
-                                self.doc.add(Edit::Keep { room: room.clone() });
+                                if let Err(why) = self.doc.add(Edit::Keep { room: room.clone() }) {
+                                    self.refuse(why);
+                                }
                             }
                         }
                     }
@@ -2156,6 +2520,7 @@ impl Editor {
             egui::pos2(x, y)
         };
         let mark = made.as_ref().and_then(|made| self.picked.and_then(|n| made.dead.rows().get(n).and_then(|r| r.mark.clone())));
+        self.hover = resp.hover_pos().map(|at| fit.from((at.x, at.y)));
         let boxes = placed.is_some().then(|| self.shown());
         let mut view = View { storey: self.storey, mark, scale: zoom, boxes, ..self.doc.look(self.all, self.hot) };
         view.cascade = self.cascade_shown();
@@ -2620,7 +2985,7 @@ mod tests {
         // the list's first "could join" row, as its button adds it
         let rows = made.dead.rows();
         let (room, storey, to, on, _) = rows.iter().find_map(|r| r.join.clone()).unwrap();
-        ed.doc.join(&room, storey, &to, &on);
+        ed.doc.join(&room, storey, &to, &on).unwrap();
         assert!(!ed.settled() && ed.doc.dirty());
         ed.tick();
         while !ed.settled() {
@@ -2882,12 +3247,18 @@ mod tests {
         let corner = px(&ed, (a.x0 as f32, a.y1 as f32));
         assert!(has(&frame(&mut ed, &egui, vec![egui::Event::PointerMoved(corner)]), "drag: pull medium3's north-west corner"));
         // a row of the list selects its room: a hall says its pods, a pod its hall
+        // (the list runs past the window's foot: the panel is scrolled down to it first, and up again)
+        scroll_panel(&mut ed, &egui, -400.0);
         let row = spot(&ed, "lot vast");
+        assert!(row.y < 940.0, "{row:?}");
         click(&mut ed, &egui, row);
         assert_eq!(ed.doc.selected(), Some("vast"));
+        scroll_panel(&mut ed, &egui, 2000.0);
         assert!(has(&frame(&mut ed, &egui, Vec::new()), "vast: vast, with its pods small8, tiny2"));
+        scroll_panel(&mut ed, &egui, -400.0);
         let row = spot(&ed, "lot small8");
         click(&mut ed, &egui, row);
+        scroll_panel(&mut ed, &egui, 2000.0);
         assert!(has(&frame(&mut ed, &egui, Vec::new()), "small8: small, a pod of vast"));
         // with one storey shown, a room picked from the list that is not on it brings its own floor
         ed.storey = Some(0);
@@ -3013,7 +3384,7 @@ mod tests {
     #[test]
     fn an_empty_start_is_drawn_on_from_nothing() {
         let (mut ed, egui) = rooms();
-        ed.doc.add(Edit::Keep { room: "spire1".into() });
+        ed.doc.add(Edit::Keep { room: "spire1".into() }).unwrap();
         pass(&mut ed, &egui, Vec::new());
         // the switch: no rooms, the edits set aside, the room tool in hand
         let at = spot(&ed, "empty");
@@ -3138,7 +3509,7 @@ mod tests {
         assert!(ed.doc.error().is_none(), "{:?}", ed.doc.error());
         assert!(ed.doc.made().unwrap().level.spaces().iter().all(|s| s.key != "medium3" && s.key != "tiny5"));
         // the button, on a hall: its pods go with it, and so does a join that names it
-        ed.doc.join("tower", 551, "vast", &[]);
+        ed.doc.join("tower", 551, "vast", &[]).unwrap();
         ed.select(Some("vast"));
         frame(&mut ed, &egui, Vec::new());
         let at = spot(&ed, "delete");
@@ -3335,6 +3706,15 @@ mod tests {
         assert!(ed.doc.error().is_none() && ed.doc.made().is_some_and(|made| made.level.space("medium3").rect() == (61, 3, 68, 11)));
     }
     /// Click one of the panel's controls, by its name, and draw the panel once more.
+    /// The panel scrolled by `dy` points (down: less than 0), and drawn until it lies still.
+    fn scroll_panel(ed: &mut Editor, egui: &egui::Context, dy: f32) {
+        let wheel = egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: egui::vec2(0.0, dy), modifiers: Default::default() };
+        frame(ed, egui, vec![egui::Event::PointerMoved(egui::pos2(200.0, 500.0)), wheel]);
+        for _ in 0..30 {
+            frame(ed, egui, Vec::new());
+        }
+    }
+
     fn press(ed: &mut Editor, egui: &egui::Context, name: &str) -> Vec<String> {
         let at = spot(ed, name);
         click(ed, egui, at);
@@ -3656,7 +4036,7 @@ mod tests {
         let said = frame(&mut ed, &egui, Vec::new());
         assert!(ed.doc.error().is_none() && !has(&said, "undo that") && !has(&said, "no level: "), "{said:?}");
         // a recipe that makes no level for another reason is not offered it
-        ed.doc.add(Edit::Move { room: "medium3".into(), to: (55, 3) });
+        ed.doc.add(Edit::Move { room: "medium3".into(), to: (55, 3) }).unwrap();
         settle(&mut ed);
         let said = frame(&mut ed, &egui, Vec::new());
         assert!(ed.doc.error().is_some() && has(&said, "no level: ") && !has(&said, "undo that"), "{said:?}");
@@ -3862,5 +4242,95 @@ mod tests {
         assert_eq!(edits(&ed), ["medium1: window at 49, 29 on 276: none"]);
         settle(&mut ed);
         assert!(ed.doc.made().unwrap().level.windows.is_empty());
+    }
+
+    /// Where a copy of the clipboard can be pasted (on its own floor) with the pointer on the
+    /// plan where the window shows it: the pointer's place, in cells.
+    fn paste_spot(ed: &mut Editor) -> P {
+        let c = ed.doc.clipboard().expect("something copied").clone();
+        for y in 0..70 {
+            for x in 0..90 {
+                let at = (x as f32 + c.size.0 as f32 / 2.0, y as f32 + c.size.1 as f32 / 2.0);
+                let p = px(ed, at);
+                if (480.0..1460.0).contains(&p.x) && (40.0..910.0).contains(&p.y) && ed.doc.try_paste((x, y), c.floor).is_ok() {
+                    return at;
+                }
+            }
+        }
+        panic!("nowhere on screen to paste {}", c.describe())
+    }
+
+    #[test]
+    fn a_room_is_locked_the_rest_re_rolled_and_a_copy_pasted_and_mirrored_from_the_panel() {
+        let (mut ed, egui) = inside("medium3");
+        settle(&mut ed);
+        frame(&mut ed, &egui, Vec::new());
+        // folded until one is in use: opened
+        press(&mut ed, &egui, "hold");
+        // lock: one edit, the padlock's row in the legend
+        press(&mut ed, &egui, "lock");
+        assert_eq!(edits(&ed), ["lock medium3"]);
+        assert_eq!(ed.doc.locked(), ["medium3"]);
+        settle(&mut ed);
+        let said = pass(&mut ed, &egui, Vec::new());
+        assert!(has(&said, "locked: held as it is") && has(&said, "locked: medium3"), "{said:?}");
+        // a change to it is refused in red, nothing made
+        let at = spot(&ed, "delete");
+        press(&mut ed, &egui, "delete");
+        assert_eq!((edits(&ed).len(), ed.refused.as_deref()), (1, Some("medium3 is locked: unlock it to change it")), "{} at {at:?}", ed.status);
+        // the rest re-rolled: one edit; medium3 is not in what it changed
+        frame(&mut ed, &egui, Vec::new());
+        press(&mut ed, &egui, "rest another");
+        assert_eq!(edits(&ed), ["lock medium3", "the rest: inside 1"]);
+        settle(&mut ed);
+        let c = ed.doc.cascade().expect("the rest changed something").clone();
+        assert!(!c.is_empty() && c.of("medium3").next().is_none(), "{:?}", c.lines());
+        // unlocked: the lock goes, the rest stays
+        frame(&mut ed, &egui, Vec::new());
+        press(&mut ed, &egui, "lock");
+        assert_eq!(edits(&ed), ["the rest: inside 1"]);
+        // copied (from the recipe's own level: settled first), then pasted with a click on the
+        // plan: the ghost and the line under the plan first
+        settle(&mut ed);
+        frame(&mut ed, &egui, Vec::new());
+        press(&mut ed, &egui, "copy");
+        assert_eq!(ed.doc.clipboard().map(|c| c.room.as_str()), Some("medium3"));
+        frame(&mut ed, &egui, Vec::new());
+        press(&mut ed, &egui, "paste");
+        assert!(ed.pasting && ed.tool == Tool::Rooms);
+        still(&mut ed, &egui);
+        let at = paste_spot(&mut ed);
+        let p = px(&ed, at);
+        let said = frame(&mut ed, &egui, vec![egui::Event::PointerMoved(p)]);
+        let said = if has(&said, "paste: medium3") { said } else { frame(&mut ed, &egui, Vec::new()) };
+        assert!(has(&said, "paste: medium3") && has(&said, "click: paste here"), "{said:?}");
+        lone_click(&mut ed, &egui, p);
+        let e = edits(&ed);
+        assert!(e[1].starts_with("add room1 (medium) at ") && e[2] == "room1: drawn as 40/medium3", "{e:?}");
+        assert_eq!((ed.doc.selected(), ed.pasting), (Some("room1"), false));
+        settle(&mut ed);
+        assert!(ed.doc.made().unwrap().level.spaces().iter().any(|s| s.key == "room1"));
+        // mirrored in place: a hall's pods go to the other side, one step to undo
+        ed.select(Some("vast"));
+        frame(&mut ed, &egui, Vec::new());
+        frame(&mut ed, &egui, Vec::new());
+        let n = edits(&ed).len();
+        press(&mut ed, &egui, "mirror y");
+        let e = edits(&ed);
+        assert!(e.len() > n && e.last().map(String::as_str) == Some("vast: mirrored north for south"), "{e:?}");
+        assert!(ed.doc.undo() && edits(&ed).len() == n);
+        // a preset saved and used again
+        let dir = std::env::temp_dir().join(format!("autolevel_presets_{}", std::process::id()));
+        ed.presets_dir = dir.clone();
+        ed.preset_name = "Pump hall".to_string();
+        frame(&mut ed, &egui, Vec::new());
+        press(&mut ed, &egui, "save preset");
+        assert!(dir.join("pump_hall.json").is_file(), "{}", ed.status);
+        ed.doc.set_clipboard(None);
+        let said = pass(&mut ed, &egui, Vec::new());
+        assert!(has(&said, "nothing copied"), "{said:?}");
+        press(&mut ed, &egui, "preset Pump hall");
+        assert_eq!(ed.doc.clipboard().map(|c| c.room.as_str()), Some("medium3"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

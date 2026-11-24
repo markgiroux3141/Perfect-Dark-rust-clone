@@ -212,7 +212,7 @@ mod tests {
     fn boxed(selected: Option<&str>, refused: Option<&str>) -> View {
         let lots = crate::doc::Doc::new(autolevel::recipe::Recipe::python(40), true).lots().unwrap().lots;
         View {
-            boxes: Some(crate::planview::Boxes { lots, selected: selected.map(str::to_string), refused: refused.map(str::to_string), site: None }),
+            boxes: Some(crate::planview::Boxes { lots, selected: selected.map(str::to_string), refused: refused.map(str::to_string), site: None, ghost: None }),
             ..View::default()
         }
     }

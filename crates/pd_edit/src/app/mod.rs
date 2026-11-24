@@ -208,7 +208,10 @@ impl Generating {
         args.recipe = recipe;
         let root = preview::Scratch::root();
         preview::Scratch::sweep(&root);
-        Generating { ed: autolevel_edit::ui::Editor::new(args), form, space: Space::new(paths.assets.clone(), root), bg_loaded: false, bg_pending: false }
+        let mut ed = autolevel_edit::ui::Editor::new(args);
+        // (rooms saved to use again: beside the recipes, `levels/presets/`)
+        ed.presets_dir = paths.levels.join("presets");
+        Generating { ed, form, space: Space::new(paths.assets.clone(), root), bg_loaded: false, bg_pending: false }
     }
 
     /// The room in hand in the generator's panel: the one whose box is

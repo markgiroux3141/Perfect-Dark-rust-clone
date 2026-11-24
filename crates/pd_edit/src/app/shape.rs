@@ -193,6 +193,10 @@ impl App {
             });
             // (the things tool's row, and what was put by place, each with whether it took)
             g.ed.things_ui(ui);
+            // (every room not locked furnished again; what is copied, to paste; the presets)
+            theme::section(ui, "Keep, copy, paste");
+            g.ed.rest_ui(ui);
+            g.ed.clipboard_ui(ui);
             ui.horizontal(|ui| {
                 let side = g.ed.side;
                 if ui.selectable_label(side.is_none(), "From above").on_hover_text("The plan: rooms seen from above").clicked() && side.is_some() {
@@ -572,6 +576,8 @@ impl App {
                     ask = Some(Ask::Delete);
                 }
             });
+            // (lock it while the rest is re-rolled, copy it to paste, mirror it)
+            g.ed.lock_ui(ui, &room, pod);
         });
         match ask {
             Some(Ask::Set(e)) => g.ed.set_choice(e),

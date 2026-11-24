@@ -16,7 +16,7 @@
 //! cascade: `autolevel::cascade`), numbered as the snapshot numbers it. For room changes, which
 //! come before any level, the recipe's own level is made first, to compare with.
 
-use crate::cli::{Args, Choose, PutArg, Side, SideAt};
+use crate::cli::{Args, Choose, Hold, PutArg, Side, SideAt};
 use crate::doc::Doc;
 use crate::planview::{Boxes, View};
 use crate::raster::Image;
@@ -25,7 +25,7 @@ use crate::strip::{self, Strip};
 use crate::{chosen, lots, routes, shot};
 use autolevel::boxes::{self, Change, Trial};
 use autolevel::puts;
-use autolevel::recipe::Recipe;
+use autolevel::recipe::{Edit, Recipe};
 
 /// What a command line came to.
 pub struct Done {
@@ -88,7 +88,12 @@ fn choices(doc: &mut Doc, args: &Args, text: &mut String) -> Result<Option<Stopp
                 said(doc, args, text);
             }
             Choose::Own { room, what } => {
-                let cleared: Vec<&str> = chosen::kinds(what).into_iter().filter(|kind| doc.clear_choice(room, kind)).collect();
+                let mut cleared: Vec<&str> = Vec::new();
+                for kind in chosen::kinds(what) {
+                    if doc.clear_choice(room, kind).map_err(|why| format!("--own {room}@{}: {why}", chosen::word(what)))? {
+                        cleared.push(kind);
+                    }
+                }
                 text.push_str(&format!("choice: {}\n", chosen::owned(room, what, &cleared)));
                 if doc.recipe != before {
                     doc.regenerate().map_err(|why| format!("--own {room}@{}: no level: {why}", chosen::word(what)))?;
@@ -264,14 +269,14 @@ pub fn run(args: &Args) -> Result<Done, String> {
                 e
             }
             PutArg::Clear(room, at) => {
-                let done = doc.clear_put(room, *at);
+                let done = doc.clear_put(room, *at).map_err(|why| format!("--unput: {why}"))?;
                 text.push_str(&format!("unput: {room} at {}, {}{}\n", at.0, at.1, if done { "" } else { " (nothing was put there)" }));
                 doc.regenerate().map_err(|why| format!("--unput: no level: {why}"))?;
                 said(&doc, args, &mut text);
                 continue;
             }
         };
-        if !doc.put(e.clone()) {
+        if !doc.put(e.clone()).map_err(|why| format!("{}: {why}", e.describe()))? {
             text.push_str(&format!("put: {} (already so)\n", e.describe()));
             continue;
         }
@@ -283,6 +288,135 @@ pub fn run(args: &Args) -> Result<Done, String> {
         }
         said(&doc, args, &mut text);
     }
+    // locks, the rest and copies, in the order given, the level made again after each change
+    for h in args.holds.iter().filter(|_| !stopped) {
+        if refused.is_some() {
+            break;
+        }
+        if doc.stale() {
+            doc.regenerate().map_err(|why| format!("no level: {why}"))?;
+        }
+        let was = doc.recipe.edits.len();
+        let changed = match h {
+            Hold::Lock(room) => {
+                doc.lock(room).map_err(|why| format!("--lock {room}: {why}"))?;
+                let wrote: Vec<String> = doc.recipe.edits[was.min(doc.recipe.edits.len())..].iter().map(Edit::describe).collect();
+                text.push_str(&format!(
+                    "locked: {room}{}
+",
+                    if wrote.len() > 1 { format!(" ({})", wrote[..wrote.len() - 1].join("; ")) } else { String::new() }
+                ));
+                true
+            }
+            Hold::Unlock(room) => {
+                let done = doc.unlock(room);
+                text.push_str(&format!(
+                    "unlocked: {room}{}
+",
+                    if done { "" } else { " (it was not locked)" }
+                ));
+                done
+            }
+            Hold::Rest(n) => {
+                let done = doc.set_rest(*n);
+                text.push_str(&format!(
+                    "the rest: {}
+",
+                    if *n == 0 { "the seed's own".to_string() } else { format!("inside {n}") }
+                ));
+                done
+            }
+            Hold::Copy(room) => {
+                let c = doc.copy(room).map_err(|why| format!("--copy {room}: {why}"))?;
+                text.push_str(&format!(
+                    "copied: {}
+",
+                    c.describe()
+                ));
+                false
+            }
+            Hold::Preset(file) => {
+                let p = std::fs::read_to_string(file)
+                    .map_err(|e| e.to_string())
+                    .and_then(|t| autolevel::copy::load_preset(&t))
+                    .map_err(|why| format!("--preset {file}: {why}"))?;
+                text.push_str(&format!(
+                    "preset: {} ({}): {}
+",
+                    p.name,
+                    p.from,
+                    p.room.describe()
+                ));
+                doc.set_clipboard(Some(p.room));
+                false
+            }
+            Hold::Flip(axis) => {
+                if !doc.mirror_clipboard(axis) {
+                    return Err("--flip: nothing is copied (--copy or --preset first)".to_string());
+                }
+                text.push_str(&format!(
+                    "flipped: {}
+",
+                    doc.clipboard().expect("copied").describe()
+                ));
+                false
+            }
+            Hold::Paste(at, floor) => {
+                let c = doc.clipboard().ok_or("--paste: nothing is copied (--copy or --preset first)")?.clone();
+                let floor = floor.unwrap_or(c.floor);
+                match doc.paste(*at, floor) {
+                    Ok(key) => {
+                        text.push_str(&format!(
+                            "pasted: {key} at {}, {} on {floor}
+",
+                            at.0, at.1
+                        ));
+                        true
+                    }
+                    Err(why) => {
+                        // (drawn where it would have gone, in red, and the line exits 1)
+                        text.push_str(&format!(
+                            "can't paste at {}, {} on {floor}: {why}
+",
+                            at.0, at.1
+                        ));
+                        let mut rects = vec![(at.0, at.1, at.0 + c.size.0, at.1 + c.size.1)];
+                        rects.extend(c.pods.iter().map(|p| (at.0 + p.at.0, at.1 + p.at.1, at.0 + p.at.0 + p.room.size.0, at.1 + p.at.1 + p.room.size.1)));
+                        let ghost =
+                            crate::planview::Ghost { rects, label: format!("{} at {}, {} on {floor}", c.describe(), at.0, at.1), refused: Some(why.clone()) };
+                        boxes = Some(Boxes { ghost: Some(ghost), ..doc.boxes(None) });
+                        refused = Some(why);
+                        false
+                    }
+                }
+            }
+            Hold::Mirror(room, axis) => {
+                doc.mirror(room, axis).map_err(|why| format!("--mirror {room}@{axis}: {why}"))?;
+                text.push_str(&format!(
+                    "mirrored: {room} ({})
+",
+                    if *axis == "x" { "east for west" } else { "north for south" }
+                ));
+                true
+            }
+            Hold::SavePreset(file, name) => {
+                let c = doc.clipboard().ok_or("--save-preset: nothing is copied (--copy or --preset first)")?.clone();
+                let name = name.clone().unwrap_or_else(|| c.room.clone());
+                let from = format!("seed {}, {}", c.draws.split('/').next().unwrap_or("?"), c.room);
+                std::fs::write(file, autolevel::copy::save_preset(&name, &from, &c)).map_err(|e| format!("--save-preset {file}: {e}"))?;
+                text.push_str(&format!(
+                    "saved the preset {name}: {file}
+"
+                ));
+                false
+            }
+        };
+        if changed {
+            doc.regenerate().map_err(|why| format!("no level: {why}"))?;
+            said(&doc, args, &mut text);
+        }
+    }
+    let stopped = stopped || refused.is_some();
     let mut gone = None;
     // (after a refusal nothing more is changed: the level shown is the one refused of)
     for key in args.remove.iter().filter(|_| !stopped) {
@@ -638,7 +772,7 @@ mod tests {
         // (the bare plan is framed on the site, and draws its edge)
         let placed = Doc::new(Recipe::before_bases(25), true).lots().unwrap();
         let view = View {
-            boxes: Some(crate::planview::Boxes { lots: placed.lots, selected: Some("tower".into()), refused: None, site: Some(placed.site) }),
+            boxes: Some(crate::planview::Boxes { lots: placed.lots, selected: Some("tower".into()), refused: None, site: Some(placed.site), ghost: None }),
             ..View::default()
         };
         assert_eq!(png(&done), shot::render_bare(25, why, &view, 900).png().unwrap());

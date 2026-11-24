@@ -134,6 +134,19 @@ pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
                         would put is put. Things are put in the order given, after the room's
                         choices; the level is made again after each, and one the level could not
                         put says why (the plan frames it in red with the reason; magenta: put)
+  --lock ROOM           lock the room: held as it is (its box, inside, doors, choices) while the
+                        rest is re-rolled; the dead-end pass's corridors to it become joins of the
+                        recipe's own. --unlock ROOM takes the lock out
+  --rest N              every room not locked furnished from its Nth other stream (0: the seed's own)
+  --copy ROOM           copy the room (its kind, size, height, draws, choices, things put and pods)
+  --preset FILE         copy a preset's room (a file --save-preset wrote)
+  --flip x|y            mirror what is copied, east for west (x) or north for south (y)
+  --paste X,Y[@FLOOR]   paste what is copied with its low corner on X,Y, its floor on FLOOR (its own if
+                        not given); refused (drawn in red, exit 1) where it does not fit
+  --mirror ROOM@x|y     mirror the room in place: its pods, its shape's cut, its pit, its things
+  --save-preset FILE[@NAME]
+                        save what is copied as a preset (named NAME, else after the room).
+                        These are made in the order given, after the things put
   --own ROOM@layout|cover|inside|brightness|ceiling|FEATURE|reroll-PART|all
                         the seed's own again for that choice, or for all of the room's
   --choices ROOM        print the room's choices: what it has, whether the seed or the recipe
@@ -209,6 +222,35 @@ pub struct Args {
     pub puts: Vec<PutArg>,
     /// The things tool in hand (`--things`).
     pub things: Option<autolevel::puts::Tool>,
+    /// Locks, the rest and copies (`--lock`, `--unlock`, `--rest`, `--copy`, `--preset`, `--flip`,
+    /// `--paste`, `--mirror`, `--save-preset`), in the order given.
+    pub holds: Vec<Hold>,
+}
+
+/// A lock, the rest, or a copy, as the line asks for it (roadmap item 8).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Hold {
+    Lock(String),
+    Unlock(String),
+    Rest(u32),
+    Copy(String),
+    /// A preset's file.
+    Preset(String),
+    Flip(&'static str),
+    /// The low corner, and the floor (None: the copy's own).
+    Paste((i32, i32), Option<i32>),
+    Mirror(String, &'static str),
+    /// The file, and the name (None: the room's).
+    SavePreset(String, Option<String>),
+}
+
+/// "x" or "y", as the line gives an axis.
+fn axis(v: &str) -> Option<&'static str> {
+    match v {
+        "x" => Some("x"),
+        "y" => Some("y"),
+        _ => None,
+    }
 }
 
 /// Where `--side` cuts: its axis, and a row or column of cells, or a room's middle.
@@ -278,7 +320,13 @@ impl Args {
     /// Does it change the recipe by what the recipe makes: its lots (the room flags) or its
     /// level (a room's choices, `--remove`, `--pick`)?
     pub fn changes(&self) -> bool {
-        !self.boxes.is_empty() || !self.choose.is_empty() || !self.remove.is_empty() || self.pick.is_some() || self.variants.is_some() || !self.puts.is_empty()
+        !self.boxes.is_empty()
+            || !self.choose.is_empty()
+            || !self.remove.is_empty()
+            || self.pick.is_some()
+            || self.variants.is_some()
+            || !self.puts.is_empty()
+            || !self.holds.is_empty()
     }
 
     /// Does a snapshot draw the room boxes? Asked for (`--rooms`), or any room flag is given.
@@ -355,6 +403,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
         keep: None,
         puts: Vec::new(),
         things: None,
+        holds: Vec::new(),
     };
     // a room, then @ and its choice: ("vast", "ring") of "--layout vast@ring"
     let choice = |n: usize, what: &str| {
@@ -561,6 +610,39 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
                 let v = value(n)?;
                 let at = cells::<2>(v).ok_or_else(|| format!("--click: a cell, as 40,30, not {v}"))?;
                 out.puts.push(PutArg::Click((at[0], at[1])));
+            }
+            "lock" => out.holds.push(Hold::Lock(value(n)?.to_string())),
+            "unlock" => out.holds.push(Hold::Unlock(value(n)?.to_string())),
+            "rest" => {
+                let v = value(n)?;
+                out.holds.push(Hold::Rest(v.parse().map_err(|_| format!("--rest: a stream, 0 or more, not {v}"))?));
+            }
+            "copy" => out.holds.push(Hold::Copy(value(n)?.to_string())),
+            "preset" => out.holds.push(Hold::Preset(value(n)?.to_string())),
+            "flip" => {
+                let v = value(n)?;
+                out.holds.push(Hold::Flip(axis(v).ok_or_else(|| format!("--flip: x or y, not {v}"))?));
+            }
+            "paste" => {
+                let v = value(n)?;
+                let (at, floor) = match v.split_once('@') {
+                    Some((at, z)) => (at, Some(z.parse::<i32>().map_err(|_| format!("--paste: a floor's height after @, not {z}"))?)),
+                    None => (v, None),
+                };
+                let at = cells::<2>(at).ok_or_else(|| format!("--paste: a cell (the copy's low corner), as 12,40, or 12,40@276, not {v}"))?;
+                out.holds.push(Hold::Paste((at[0], at[1]), floor));
+            }
+            "mirror" => {
+                let (room, v) = choice(n, "x or y, as vast@x")?;
+                out.holds.push(Hold::Mirror(room, axis(v).ok_or_else(|| format!("--mirror: a room, then @ and x or y, not {}", args[n + 1]))?));
+            }
+            "save_preset" => {
+                let v = value(n)?;
+                let (file, name) = match v.rsplit_once('@').filter(|(_, name)| !name.contains(['/', '\\'])) {
+                    Some((file, name)) => (file.to_string(), Some(name.to_string())),
+                    None => (v.to_string(), None),
+                };
+                out.holds.push(Hold::SavePreset(file, name));
             }
             "own" => {
                 let what = "what is the seed's own again (layout cover inside brightness ceiling, a feature, or all), as vast@layout";

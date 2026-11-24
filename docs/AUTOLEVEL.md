@@ -2860,8 +2860,10 @@ Order of work, and where each stands:
    words, on the plan, the side view, the variants strip, the panel, `pd_edit`'s Layout screen and
    3D view, and the command line.
 8. Lock one room and re-roll the rest; copy, paste and mirror a room with its choices; a room
-   saved as a preset. Designed (2026-11-23): "Lock, copy, paste, mirror and presets", below;
-   steps 1 and 2 (the edits, in `autolevel`) built.
+   saved as a preset. Done (2026-11-23): "Lock, copy, paste, mirror and presets", below, and
+   its "As built": `lock`, `rest`, `draws`, `mirror` edits, `autolevel::lock` and `copy`, the
+   plan's padlock and paste ghost, the panel's rows (shared with `pd_edit`'s Layout screen), the
+   command line.
 
 ### Per-room features (roadmap item 2, 2026-11-23)
 
@@ -3392,6 +3394,87 @@ recipes they come from; listed on the Layout screen); `autolevel_edit` reads and
 (lock, re-roll the rest, copy, paste, mirror, save as preset, the presets), `pd_edit`'s Layout
 screen (the same in the room panel); (4) the command line (`--lock`, `--unlock`, `--rest N`,
 `--copy ROOM`, `--paste X,Y@FLOOR`, `--mirror x|y`, `--save-preset FILE`, `--preset FILE`).
+
+### As built (roadmap item 8, 2026-11-23)
+
+- **The edits** (`recipe.rs`): `lock { room }`, `rest { n }`, `draws { room, from }`, `mirror {
+  room, axis }`. `Recipe::effective` fills `Options::locked`, `rest`, `draws` and `mirrored` (not
+  saved, as `forced` is not) and refuses any edit that names a room locked before it ("cover:
+  vast is locked: unlock it to change it"). `draws` and `mirror` belong to the lots stage (the
+  rooms' rolls), `lock` and `rest` to furnishing. With none of them nothing runs: the answer keys
+  pass unchanged.
+- **Where they reach the generator:** `Options::named(seed, key)` ("{seed}/{key}", or the
+  room's `draws`) names the room's streams in `level.rs` (spiral, grow, shape, flooded, sunken,
+  cellar, galleries) and in `Build::furnish` (dress, attempts, parts, pits); the planner's names
+  and the bases keep "{seed}/{key}". `Build::furnish` gives a room not locked, not a pod and with
+  no whole re-roll of its own the stream `o.rest`. The pass (`Build::join`) passes over a join
+  naming a locked room; `shorten` leaves a dead end whose cut names one, or whose leaf has a
+  corridor to one. `level::flipped` flips a shape's cut and a sunken pit for a mirrored room
+  (before their fit is checked: a flipped cut that no longer fits takes another try).
+- **`autolevel::lock`:** `lock` (the pass's `Fix::Joined` to or from the room as `join` edits
+  through the route's doorways, `on` the far storey, `via` corridor or vent; its `Fix::Cut`s as
+  `cut`s; then the `lock`), `unlock`, `rest` (one edit, in its place; 0 none), `locked`,
+  `is_locked`, `rest_of`, `refusal` (an edit before it is made) and `guard(old, new)`: every
+  editor change goes through it, and it refuses any change to the edits naming a room locked in
+  `old`, its lock aside (so unlocking passes, and deleting a locked room, whose lock goes with
+  it, does not).
+- **`autolevel::copy`:** `Copy` (room, kind, size, storeys, floor, draws, choices, puts relative
+  to the low corner, a window's storey a count up, `sizes` of pieces moved, pods, mirror axes),
+  taken from the lots (a grown pod is grown again where it is pasted, from the same draws); a
+  stood piece's size is filled in from the level. `paste` (keys from `boxes::new_key`, the
+  copy's edits renamed and moved; checked with `Recipe::rooms`), `Copy::mirrored` (twice is
+  itself), `mirror` in place (pods by `boxes::trial` moves, so twice gives the recipe back),
+  `Preset`, `save_preset`, `load_preset`, `file_name`.
+- **`autolevel_edit`:** every `Doc` change goes through `Doc::set` (the guard): `add`, `join`,
+  `keep`, `cut`, `delete_edit`, `put`, `clear_put`, `clear_choice` now return a `Result`. New:
+  `lock`, `unlock`, `locked`, `set_rest`, `rest`, `copy` (the clipboard), `set_clipboard`,
+  `mirror_clipboard`, `try_paste`, `paste`, `mirror`. The plan: a locked room framed in gold with
+  a padlock in its north-west corner (`View::locked`, a legend row); a paste on its way as
+  dashed boxes for the room and its pods under the pointer, red with the refusal in the words
+  panel (`Boxes::ghost`, `Ghost`). The generator's panel: a "Lock, copy, paste" fold in the Rooms
+  section, open once anything is locked, re-rolled or copied (so the list of rooms keeps its
+  place), and the whole panel now scrolls (with a room selected it ran past a 950-pixel window
+  already: the room list's lower rows could not be reached). Its rows, shared with `pd_edit`:
+  `Editor::lock_ui` (Lock, Copy, Mirror east-west, Mirror north-south, for the selected room),
+  `rest_ui` ("the rest: the
+  seed's own | another | back", the rooms locked), `clipboard_ui` (what is copied; Paste, which
+  puts the room tool in hand and makes the next click on the plan a paste, the copy's middle on
+  the cell, on the storey shown or its own floor; Flip east-west, north-south; Forget; a name and
+  Save; the presets, a click copies one). Presets live in `Editor::presets_dir`: a `presets/`
+  folder beside the recipe; `pd_edit` sets `crates/pd_import/levels/presets/`.
+- **`pd_edit`'s Layout screen:** "Keep, copy, paste" under "Put things" (the rest and the
+  clipboard), and the lock row under Reset room / Delete room.
+- **Command line:** `--lock ROOM`, `--unlock ROOM`, `--rest N`, `--copy ROOM`, `--preset FILE`,
+  `--flip x|y`, `--paste X,Y[@FLOOR]` (refused: drawn red where it would go, exit 1), `--mirror
+  ROOM@x|y`, `--save-preset FILE[@NAME]`, in the order given after the things put, each saying
+  what it did and (with the cascade) what changed.
+- **Checked:** `tests/lock.rs` (every room of seed 40 locked: an empty diff, both option sets
+  for the rooms the pass joins; colossal, vast, medium3 and tower locked and the rest re-rolled
+  from 1 to 5: never in the cascade, while colossal unlocked loses tower's corridor on stream 1;
+  a room the rest re-rolls is that room re-rolled alone; refusals and the guard; the file);
+  `tests/copy.rs` (a room drawn as itself is the same level, as seed 41's only it changes; a copy
+  pasted with its choices and crate, where it can't go, the height past the top; vast with its
+  pods into an empty start; a copy mirrored and twice; a shaped room's cut flipped (an empty
+  start's room: no seeded level of seed 1 to 39 has a shape, and seed 40's rooms can't take one)
+  and vast's pods across, twice back; presets); a window test (egui: lock, the legend, a delete
+  refused, the rest another with the locked room out of the cascade, unlock, copy, Paste and a
+  click on the plan with the ghost's words and the line under the plan, Mirror north-south and
+  undo, Save a preset, Forget, the preset's button); the command line (lock, rest, a refused
+  cover, unlock, copy flip paste save-preset, preset paste, a refused paste drawn and exit 1,
+  mirror, the errors). The answer keys pass. Pictures read (`out/autolevel/item8/`, scratch):
+  colossal locked and the rest re-rolled (35 changes, none in it, the padlock), a refused paste
+  of vast over itself, medium3 flipped and pasted at 12, 2, the Layout screen's rows.
+- **Rough:** nobody has looked at the window. The padlock is 12 pixels: small on a big plan.
+  Paste is on the plan only (not in the side view or `pd_edit`'s 3D view), and the 3D view does
+  not mark locked rooms. A lock holds against edits naming the room, not against a change to a
+  neighbour that re-routes a corridor into it or makes a room its pod (the cascade then names
+  it); the dead-end pass's leaf rule leaves such a dead end as it is, which can leave a too-long
+  dead end in the level. Mirroring flips the cut, the pit, the pods and the things put, not the
+  inside (laid to its doors), so a mirrored room is mostly the same inside. A paste's things put
+  by hand that name the generator's own pieces (taking one out, moving one) may find nothing
+  there in the paste (its inside is laid to other doors): the level says "not put" with why.
+  The room boxes cross out the generator's own bases as deleted (they have no lot): older than
+  item 8, seen in these pictures with bases on.
 
 ## Risks
 

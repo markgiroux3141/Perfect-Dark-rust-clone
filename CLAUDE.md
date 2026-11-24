@@ -84,6 +84,8 @@ cargo run --release -p autolevel_edit -- --seed 40 --shot out.png [--empty] [--s
                                             #   exits 1). `--side x@Y | y@X | x@ROOM`: the snapshot is the side view (a section, height up). One room's
                                             #   choices: `--layout --cover --inside --brightness --ceiling --own ROOM@VALUE`, `--feature ROOM@NAME@on|off|auto`
                                             #   (shaped flooded sunken cellar platforms holes angled), `--choices ROOM`
+                                            #   locks and copies: `--lock ROOM --rest N --copy ROOM --flip x|y --paste X,Y[@FLOOR] --mirror ROOM@x|y
+                                            #   --save-preset FILE[@NAME] --preset FILE` (docs/AUTOLEVEL.md, "Lock, copy, paste, mirror and presets")
 cargo test --release -p autolevel -p autolevel_build -p autolevel_edit   # the generator against its answer keys (~60 s); these three
                                             #   crates alone are run through rustfmt (`cargo fmt -p ...`, their own rustfmt.toml)
 cargo run --release -p pd_tools --bin pd_music -- <out.wav> <tune|--flow> [secs]   # offline music renders (MUSIC_* name or number; --list)
