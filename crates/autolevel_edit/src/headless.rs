@@ -772,7 +772,14 @@ mod tests {
         // (the bare plan is framed on the site, and draws its edge)
         let placed = Doc::new(Recipe::before_bases(25), true).lots().unwrap();
         let view = View {
-            boxes: Some(crate::planview::Boxes { lots: placed.lots, selected: Some("tower".into()), refused: None, site: Some(placed.site), ghost: None }),
+            boxes: Some(crate::planview::Boxes {
+                lots: placed.lots,
+                selected: Some("tower".into()),
+                refused: None,
+                site: Some(placed.site),
+                ghost: None,
+                problems: Vec::new(),
+            }),
             ..View::default()
         };
         assert_eq!(png(&done), shot::render_bare(25, why, &view, 900).png().unwrap());

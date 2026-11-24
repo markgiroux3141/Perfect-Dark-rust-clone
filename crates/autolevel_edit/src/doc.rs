@@ -42,9 +42,9 @@ use autolevel::candidates::{self, Asked, Candidate, Candidates, Removal};
 use autolevel::cascade::{diff, Cascade};
 use autolevel::choices::{self, Choices};
 use autolevel::copy::{self, Copy};
-use autolevel::level::{Level, Start};
+use autolevel::level::Start;
 use autolevel::lock;
-use autolevel::place::{Placed, Siting};
+use autolevel::place::{Placed, Problem, Siting};
 use autolevel::puts;
 use autolevel::recipe::{self, Edit, Recipe};
 use std::sync::Arc;
@@ -92,6 +92,8 @@ pub struct Doc {
     base: Option<Base>,
     /// A room copied (or a preset read), to paste.
     clipboard: Option<Copy>,
+    /// The problems with the recipe's room boxes, for a count of its changes (`problems`).
+    problems: Option<(u64, Arc<Vec<Problem>>)>,
 }
 
 impl Doc {
@@ -115,6 +117,7 @@ impl Doc {
             selected: None,
             base: None,
             clipboard: None,
+            problems: None,
         }
     }
 
@@ -463,6 +466,55 @@ impl Doc {
         Ok(t)
     }
 
+    /// A change to the room boxes made as a sketch: kept even where the lots then break the
+    /// scatter's rule (two rooms overlap, a spire too short), so a plan can be drawn wrong and put
+    /// right; the recipe then makes no level until it is (`problems` says what is wrong, the plan
+    /// draws it in red, and the last level made stays on show). What the window does; `change`,
+    /// which refuses, is the command line's. Err, and nothing changed, for what can't be made at
+    /// all (a room that is not there, a box under 2 x 2) or would change a locked room.
+    pub fn sketch(&mut self, change: &Change) -> Result<Trial, String> {
+        let t = self.try_change(change)?;
+        if t.recipe == self.recipe {
+            if let Some(why) = &t.refused {
+                // (nothing came of it: the change itself could not be made)
+                return Err(why.clone());
+            }
+        }
+        self.set(t.recipe.clone())?;
+        match change {
+            Change::Delete { room } => {
+                self.selected = None;
+                if self.pick.as_ref().is_some_and(|(r, _)| r == room) {
+                    (self.pick, self.asked) = (None, Asked::default());
+                }
+            }
+            _ => self.selected = Some(change.room().to_string()),
+        }
+        Ok(t)
+    }
+
+    /// What is wrong with the recipe's room boxes (`boxes::problems`): none when the plan keeps
+    /// the scatter's rule. Worked out once for each state of the recipe.
+    pub fn problems(&mut self) -> Arc<Vec<Problem>> {
+        if let Some((rev, found)) = &self.problems {
+            if *rev == self.rev {
+                return found.clone();
+            }
+        }
+        let found = Arc::new(match self.base() {
+            Ok(base) => boxes::problems(&self.recipe, &base),
+            Err(words) => vec![Problem { rooms: Vec::new(), words }],
+        });
+        self.problems = Some((self.rev, found.clone()));
+        found
+    }
+
+    /// Why a tool that needs the recipe's level can't be used yet: the plan has problems.
+    pub fn unready(&mut self) -> Option<String> {
+        let n = self.problems().len();
+        (n > 0).then(|| format!("the plan has {n} problem{}: put the rooms in red right first", if n == 1 { "" } else { "s" }))
+    }
+
     /// The room boxes for the plan to draw over the level: the lots as the recipe places them
     /// (or as `trial`, a change being tried, would: its refusal goes with them), and the one
     /// selected, if there is still such a room.
@@ -474,7 +526,9 @@ impl Doc {
             None => placed.map_or(Vec::new(), |p| p.lots),
         };
         let selected = self.selected.clone().filter(|key| lots.iter().any(|a| a.key == *key));
-        Boxes { lots, selected, refused: trial.and_then(|t| t.refused.clone()), site, ghost: None }
+        // (what is wrong with the plan as it stands: not with one a drag is trying)
+        let problems = if trial.is_none() { (*self.problems()).clone() } else { Vec::new() };
+        Boxes { lots, selected, refused: trial.and_then(|t| t.refused.clone()), site, ghost: None, problems }
     }
 
     // ------------------------------------------------------------ one room's choices
@@ -497,6 +551,9 @@ impl Doc {
     pub fn set_choice(&mut self, e: Edit) -> Result<(), String> {
         // (the room is looked up only in the recipe's own level: an older one may lack a room
         // just made)
+        if let Some(why) = self.unready() {
+            return Err(why);
+        }
         let own = self.made.as_ref().filter(|(rev, _)| *rev == self.rev).map(|(_, made)| &made.level);
         if let Some(why) = choices::refusal(own, &e) {
             return Err(why);
@@ -517,6 +574,9 @@ impl Doc {
     /// one edit). One step to undo; none if it changes nothing. One that does not fit is still
     /// put, and the level says why (`puts`). Err in a locked room.
     pub fn put(&mut self, e: Edit) -> Result<bool, String> {
+        if let Some(why) = self.unready() {
+            return Err(why);
+        }
         self.set(puts::set(&self.recipe, e))
     }
 
@@ -529,16 +589,20 @@ impl Doc {
     // ------------------------------------------------------------ locks, the rest, copies
 
     /// The recipe's own level, if it has been made: what a lock, a copy or a mirror is read from.
-    fn own(&self) -> Result<&Level, String> {
-        let made = self.made.as_ref().filter(|(rev, _)| *rev == self.rev).map(|(_, made)| made);
-        Ok(&made.ok_or("the level is being made again: a moment")?.level)
+    fn own(&mut self) -> Result<Arc<Made>, String> {
+        if let Some(why) = self.unready() {
+            return Err(why);
+        }
+        let made = self.made.as_ref().filter(|(rev, _)| *rev == self.rev).map(|(_, made)| made.clone());
+        made.ok_or_else(|| "the level is being made again: a moment".to_string())
     }
 
     /// Lock a room (`lock::lock`: the dead-end pass's corridors to it made the recipe's own, then
     /// the `lock`). One step to undo. Err for a pod, a room not there, or while the level is
     /// being made.
     pub fn lock(&mut self, room: &str) -> Result<bool, String> {
-        let new = lock::lock(&self.recipe, self.own()?, room)?;
+        let own = self.own()?;
+        let new = lock::lock(&self.recipe, &own.level, room)?;
         self.set(new)
     }
 
@@ -554,6 +618,9 @@ impl Doc {
 
     /// Re-roll every room not locked from stream `n` (0: the seed's own again). False if it was so.
     pub fn set_rest(&mut self, n: u32) -> bool {
+        if self.unready().is_some() {
+            return false;
+        }
         self.set(lock::rest(&self.recipe, n)).unwrap_or(false)
     }
 
@@ -565,7 +632,8 @@ impl Doc {
     /// Copy a room of the recipe's own level to the clipboard. Err for a pod, a room not there,
     /// or while the level is being made.
     pub fn copy(&mut self, room: &str) -> Result<&Copy, String> {
-        let c = copy::copy(&self.recipe, self.own()?, room)?;
+        let own = self.own()?;
+        let c = copy::copy(&self.recipe, &own.level, room)?;
         Ok(self.clipboard.insert(c))
     }
 
@@ -603,7 +671,8 @@ impl Doc {
 
     /// Mirror a room in place on "x" or "y" (`copy::mirror`): one step to undo.
     pub fn mirror(&mut self, room: &str, axis: &str) -> Result<bool, String> {
-        let new = copy::mirror(&self.recipe, self.own()?, room, axis)?;
+        let own = self.own()?;
+        let new = copy::mirror(&self.recipe, &own.level, room, axis)?;
         self.set(new)
     }
 

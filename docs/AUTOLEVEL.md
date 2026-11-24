@@ -3480,6 +3480,44 @@ screen (the same in the room panel); (4) the command line (`--lock`, `--unlock`,
   The room boxes cross out the generator's own bases as deleted (they have no lot): older than
   item 8, seen in these pictures with bases on.
 
+### Sketching: the plan may break the rule for a while (2026-11-24)
+
+The user's call (2026-11-24): every room change is allowed while editing, and checked as it goes
+without blocking; drawing a room over another and then lifting it, or a spire drawn first and made
+taller after, are a sketch put right in steps.
+
+- **`place::Placed::problems`** lists every way the lots break the scatter's rule (each lot's
+  first, in order, then each pair's), each a `Problem { rooms, words }`; `check` is its first, so
+  every message and refusal there was is word for word as before. **`boxes::problems`** is a
+  recipe's: those, else what `Recipe::rooms_on` still refuses (a pod with no way in, an edit
+  naming a deleted room), with the rooms its words name.
+- **`Doc::sketch`** (the window's room changes: `Editor::change`, the plan, the side view, the 3D
+  gizmo, the room panel's buttons) keeps a change that breaks the rule; `Doc::change` (the
+  command line's) still refuses it, so a scripted change that breaks a rule exits 1 as ever.
+  What can't be made at all (a room that is not there, a box under 2 x 2) and a change to a
+  locked room are refused either way. `Doc::problems` (per state of the recipe), `Doc::unready`.
+- **While the plan has problems:** the recipe makes no level and the last one made stays on show;
+  the plan draws the room boxes whatever tool is in hand, each problem's rooms filled red, the
+  problems listed by them (`Boxes::problems`); the panel says "The plan has N problems: the level
+  shown is the last one that worked" and lists them, a click selecting a room
+  (`Editor::problems_ui`, shared with `pd_edit`'s Layout screen in place of "These choices make
+  no level"). A room's inside, Put things, lock, copy, mirror and the rest's re-roll wait
+  (`Doc::unready`: "the plan has 1 problem: put the rooms in red right first"), and `pd_edit`'s
+  "Build the arena" is greyed. Undo steps through it all as through any change.
+- **A new room's height:** `boxes::default_top` (the lowest that keeps the rule): two storeys for a
+  spire, one for every other kind; a top chosen that is high enough is kept when the kind changes.
+- **Checked:** `boxes` (every problem, each with its rooms, the first the trial's refusal); window
+  tests (a drag onto spire1 kept as one edit with one problem naming both rooms, drawn and listed,
+  lock refused while it stands, undone; a room drawn over medium1 kept, then pinned to 827 and
+  good; a typed x landing on spire1; a recipe that starts broken draws its boxes and the
+  problem with any tool; a spire's default height); `pd_edit`'s 3D gizmo (a top dragged into loft1
+  and a move landing small4 in vast, each kept as a problem and undone). Picture: an empty start
+  with a room inside another and a one-storey spire, both red and listed (`out/sketch/`).
+- **Rough:** the problems' words are the generator's (cells and units). A room is listed once per
+  problem, so one room in three overlaps shows three lines. A two-storey room drawn on 0 and
+  pinned up keeps its `pin` beside its `add` (the scatter's top across the 512/551 gap is a unit
+  off; older than sketching): the level is the same.
+
 ## Risks
 
 - **A missed order dependence** shows up as a key mismatch deep in furnish. The cure is in

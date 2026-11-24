@@ -530,7 +530,8 @@ fn a_click_in_3d_picks_a_room_and_its_gizmo_reshapes_it_when_let_go() {
     assert_eq!(h.ed.doc.recipe.edits, vec![Edit::Resize { room: "vast".into(), size: (11, 18) }]);
     assert!(h.space.drawn.tried.is_empty() && h.ed.doc.selected() == Some("vast"));
 
-    // The top dragged up two storeys runs into loft1: drawn red with the refusal, nothing made.
+    // The top dragged up two storeys runs into loft1: drawn red with the refusal while held; let
+    // go, kept as a sketch (the plan's problem), and undone.
     let was = h.ed.doc.recipe.clone();
     let lot = h.space.drawn.lot.clone().unwrap();
     let (lo, hi) = boxgizmo::world_box(&lot);
@@ -540,7 +541,9 @@ fn a_click_in_3d_picks_a_room_and_its_gizmo_reshapes_it_when_let_go() {
     let said = h.drag(a, b);
     assert!(h.space.drawn.refused && has(&said, "refused: vast and loft1 overlap"), "{said:?}");
     let said = h.release(b);
-    assert!(h.ed.doc.recipe == was && h.ed.refused.as_deref().is_some_and(|r| r.starts_with("vast and loft1 overlap")), "{said:?}");
+    assert!(h.ed.doc.recipe != was && h.ed.refused.is_none(), "{said:?}");
+    assert!(h.ed.doc.problems().iter().any(|p| p.words.starts_with("vast and loft1 overlap")), "{:?}", h.ed.doc.problems());
+    assert!(h.ed.doc.undo() && h.ed.doc.recipe == was && h.ed.doc.problems().is_empty());
 
     // The x arrow three cells west: a move, which would land small4 in vast at its floor.
     let o = boxgizmo::origin(lo, hi, s);
@@ -548,7 +551,8 @@ fn a_click_in_3d_picks_a_room_and_its_gizmo_reshapes_it_when_let_go() {
     let said = h.drag(a, b);
     assert!(has(&said, "vast to cell 34, 20: refused: small4 lands in vast, so it is its pod"), "{said:?}");
     h.release(b);
-    assert!(h.ed.doc.recipe == was);
+    assert!(h.ed.doc.problems().iter().any(|p| p.words.starts_with("small4 lands in vast")), "{:?}", h.ed.doc.problems());
+    assert!(h.ed.doc.undo() && h.ed.doc.recipe == was);
 
     // A click on nothing selects nothing.
     h.click(egui::pos2(60.0, 60.0));

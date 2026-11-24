@@ -1005,6 +1005,31 @@ impl Editor {
         }
     }
 
+    /// What is wrong with the plan, if anything: a line saying the level shown is the last one
+    /// that worked, and each problem, a click selecting its room. Nothing when the plan is good.
+    pub fn problems_ui(&mut self, ui: &mut egui::Ui) {
+        let found = self.doc.problems();
+        if found.is_empty() {
+            return;
+        }
+        let n = found.len();
+        let head = format!("The plan has {n} problem{}: the level shown is the last one that worked", if n == 1 { "" } else { "s" });
+        ui.colored_label(col(colour::DEAD_END), egui::RichText::new(head).strong());
+        let mut pick = None;
+        for (k, p) in found.iter().enumerate() {
+            let line = ui.add(egui::Label::new(egui::RichText::new(&p.words).color(col(colour::REFUSAL))).wrap().sense(egui::Sense::click()));
+            self.spots.push((format!("problem {}", k + 1), line.rect));
+            if line.clicked() {
+                pick = p.rooms.first().cloned();
+            }
+        }
+        ui.weak("move, resize or lift the rooms in red (or undo); the level is made again once nothing is wrong");
+        if let Some(room) = pick {
+            self.set_tool(Tool::Rooms);
+            self.select(Some(&room));
+        }
+    }
+
     /// The selected room's row: lock it, copy it, mirror it.
     pub fn lock_ui(&mut self, ui: &mut egui::Ui, room: &str, pod: bool) {
         let locked = self.doc.locked().iter().any(|k| k == room);
@@ -1165,9 +1190,14 @@ impl Editor {
     /// then changed). True if it was made.
     pub fn change(&mut self, change: &Change) -> bool {
         let was = self.doc.recipe.clone();
-        match self.doc.change(change) {
+        // (a sketch: kept even where it breaks the rule; the problems are drawn and listed)
+        match self.doc.sketch(change) {
             Ok(t) => {
-                self.status = done(&was, &t);
+                self.refused = None;
+                self.status = match &t.refused {
+                    Some(why) => format!("{}; the plan has a problem now: {why}", done(&was, &t)),
+                    None => done(&was, &t),
+                };
                 // (the room is selected now: keep it in sight if its floor has changed)
                 let room = self.doc.selected().map(str::to_string);
                 self.select(room.as_deref());
@@ -1310,7 +1340,7 @@ impl Editor {
         let kind = self.new.0.filter(|k| kinds.contains(k)).unwrap_or(if kinds.contains(&"medium") { "medium" } else { kinds[0] });
         let floor = self.new.1.or(self.storey).unwrap_or(0);
         let tops = boxes::tops(floor);
-        (kind, floor, self.new.2.filter(|top| tops.contains(top)).unwrap_or(tops[0]))
+        (kind, floor, self.new.2.filter(|top| tops.contains(top)).unwrap_or_else(|| boxes::default_top(kind, floor)))
     }
 
     /// A click on the plan at `at` (cells) with the room tool: the box there is selected, and
@@ -1604,6 +1634,9 @@ impl Editor {
         });
         if let Some(job) = &self.job {
             ui.label(format!("making the level... {:.1} s", job.started.elapsed().as_secs_f32()));
+        } else if !self.doc.problems().is_empty() {
+            // (a sketch that breaks the rule: what is wrong, and the last level made stays on show)
+            self.problems_ui(ui);
         } else if let Some(why) = self.doc.error().map(str::to_string) {
             red(ui, &format!("no level: {why}"));
             // (a choice for a room that only making the level could refuse: one press takes it back)
@@ -2149,7 +2182,9 @@ impl Editor {
                 let button = ui.selectable_label(k == kind, k);
                 self.spots.push((format!("kind {k}"), button.rect));
                 if button.clicked() {
-                    self.new.0 = Some(k);
+                    // (the height the kind needs, unless one was chosen that is enough)
+                    let low = boxes::default_top(k, floor);
+                    self.new = (Some(k), self.new.1, self.new.2.filter(|t| *t >= low));
                 }
             }
         });
@@ -2441,7 +2476,7 @@ impl Editor {
         let made = self.doc.made().cloned();
         // with the room tool, the lots as the recipe places them: the boxes are drawn and taken
         // hold of whether or not there is a level of them
-        let placed = if self.tool == Tool::Rooms { self.doc.lots().ok() } else { None };
+        let placed = if self.tool == Tool::Rooms || !self.doc.problems().is_empty() { self.doc.lots().ok() } else { None };
         if made.is_none() && placed.is_none() {
             // (a recipe that makes no level has its room boxes all the same: the room tool shows them)
             let what = if self.doc.error().is_some() { "no level: the panel says why, and the Rooms tool shows the room boxes" } else { "making the level..." };
@@ -3321,7 +3356,7 @@ mod tests {
     }
 
     #[test]
-    fn a_drag_onto_another_room_shows_the_refusal_while_held_and_changes_nothing() {
+    fn a_drag_onto_another_room_shows_the_refusal_while_held_and_is_kept_as_a_problem() {
         let (mut ed, egui) = rooms();
         let was = lot(&mut ed, "medium3");
         let at = middle(&mut ed, "medium3");
@@ -3339,18 +3374,24 @@ mod tests {
         frame(&mut ed, &egui, vec![egui::Event::PointerMoved(free)]);
         let said = frame(&mut ed, &egui, Vec::new());
         assert!(ed.refused.is_none() && !has(&said, &why) && has(&said, "   move medium3 to 62, 3"), "{said:?}");
-        // back onto the spire and let go: nothing is changed, the box is where it was, and the status says why
+        // back onto the spire and let go: kept as a sketch, one edit and one step to undo, the
+        // plan's one problem naming both rooms, medium3 drawn in red, the status saying so
         let there = px(&ed, onto);
         frame(&mut ed, &egui, vec![egui::Event::PointerMoved(there)]);
-        let said = release(&mut ed, &egui, onto);
-        assert!(ed.doc.recipe.edits.is_empty() && !ed.doc.can_undo() && lot(&mut ed, "medium3") == was);
-        assert_eq!((ed.status.as_str(), ed.refused.as_deref()), (why.as_str(), Some(why.as_str())));
-        assert!(said.iter().filter(|t| **t == why).count() == 2, "{said:?}");
+        release(&mut ed, &egui, onto);
+        assert_eq!(edits(&ed), ["move medium3 to 55, 3"]);
+        assert!(ed.doc.can_undo() && lot(&mut ed, "medium3").x0 == 55 && ed.refused.is_none());
+        assert!(ed.status.ends_with(&format!("the plan has a problem now: {why}")), "{}", ed.status);
+        let found = ed.doc.problems();
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].words.as_str(), found[0].rooms.clone()), (why.as_str(), vec!["spire1".to_string(), "medium3".to_string()]));
         let shown = ed.shown();
-        assert!(shown.refused.is_none() && shown.lots.contains(&was));
-        // the next thing done clears it
-        ed.select(Some("medium3"));
-        assert!(ed.refused.is_none());
+        assert!(shown.refused.is_none() && shown.problems == *found);
+        let said = pass(&mut ed, &egui, Vec::new());
+        assert!(has(&said, "The plan has 1 problem: the level shown is the last one that worked") && has(&said, "1 problem (the rooms in red):"), "{said:?}");
+        // while it has one, what needs the level waits; undone, it is good again
+        assert!(ed.doc.lock("vast").unwrap_err().starts_with("the plan has 1 problem"));
+        assert!(ed.doc.undo() && ed.doc.problems().is_empty() && lot(&mut ed, "medium3") == was);
     }
 
     #[test]
@@ -3422,6 +3463,29 @@ mod tests {
     }
 
     #[test]
+    fn a_spire_is_drawn_two_storeys_tall_unless_a_taller_top_is_chosen() {
+        let (mut ed, egui) = rooms();
+        let placed = ed.doc.lots().unwrap();
+        let pick = |ed: &mut Editor, name: &str| {
+            frame(ed, &egui, Vec::new());
+            let at = spot(ed, name);
+            click(ed, &egui, at);
+        };
+        // (its ramps climb through two storeys or more: one storey would only be a problem)
+        pick(&mut ed, "kind spire");
+        assert_eq!(ed.new_room(&placed), ("spire", 0, 512));
+        // a taller top chosen is kept, for it and for another kind
+        pick(&mut ed, "new top 1063");
+        assert_eq!(ed.new_room(&placed), ("spire", 0, 1063));
+        pick(&mut ed, "kind medium");
+        assert_eq!(ed.new_room(&placed), ("medium", 0, 1063));
+        // one too low for a spire is not: it goes back to two storeys
+        pick(&mut ed, "new top 236");
+        pick(&mut ed, "kind spire");
+        assert_eq!(ed.new_room(&placed), ("spire", 0, 512));
+    }
+
+    #[test]
     fn a_room_drawn_with_new_room_is_an_add_and_is_selected() {
         let (mut ed, egui) = rooms();
         // the room it would make: a medium one on the ground, a storey tall, until others are chosen
@@ -3475,7 +3539,8 @@ mod tests {
         // (the room is in the level now, so its inside can be chosen: the panel below that has moved down)
         let said = frame(&mut ed, &egui, Vec::new());
         assert!(has(&said, "This room's inside") && has(&said, "has: none") && !has(&said, "nothing to choose yet"), "{said:?}");
-        // drawn over another room, the drag starting on its box: refused as it is drawn and on letting go, and still drawing
+        // drawn over another room, the drag starting on its box: red as it is drawn, and on
+        // letting go kept as a sketch (the plan's problem), drawing done, the new room selected
         let draw = spot(&ed, "draw");
         click(&mut ed, &egui, draw);
         let at = middle(&mut ed, "medium1");
@@ -3483,8 +3548,18 @@ mod tests {
         let why = ed.refused.clone().expect("it lies on medium1");
         assert!(why.contains("room2") && why.contains("medium1"), "{why}");
         release(&mut ed, &egui, (at.0 + 3.0, at.1 + 3.0));
-        assert!(ed.drawing && edits(&ed).len() == 1 && ed.status == why && ed.doc.selected() == Some("room1"));
-        // Escape leaves
+        assert!(!ed.drawing && edits(&ed).len() == 2 && ed.doc.selected() == Some("room2"), "{:?}", edits(&ed));
+        assert!(ed.doc.problems().iter().any(|p| p.rooms.contains(&"room2".to_string()) && p.rooms.contains(&"medium1".to_string())));
+        // lifted clear of medium1 (its top is 512, and the slab to 551 is a unit short: 827), the
+        // plan is good again, one edit for the room as it now stands
+        assert!(ed.change(&Change::Pin { room: "room2".into(), floor: 827 }));
+        assert!(ed.doc.problems().is_empty(), "{:?}", ed.doc.problems());
+        assert_eq!(lot(&mut ed, "room2").floor, 827);
+        // Escape leaves drawing
+        frame(&mut ed, &egui, Vec::new());
+        let draw = spot(&ed, "draw");
+        click(&mut ed, &egui, draw);
+        assert!(ed.drawing);
         key(&mut ed, &egui, egui::Key::Escape, egui::Modifiers::NONE);
         assert!(!ed.drawing && ed.refused.is_none());
     }
@@ -3581,11 +3656,17 @@ mod tests {
         let steps = ed.doc.rev();
         type_in(&mut ed, &egui, "wide", "9");
         assert_eq!(ed.doc.rev(), steps);
-        // a number that puts it on another room is refused in the generator's words, and the field shows where it still is
-        let said = type_in(&mut ed, &egui, "x", "55");
-        let why = ed.refused.clone().expect("it lies on spire1");
-        assert!(why.contains("spire1") && ed.status == why && edits(&ed).len() == 2 && said.iter().any(|t| t == "63"), "{why}: {said:?}");
-        // under two cells
+        // a number that puts it on another room is kept as a sketch: the plan's problem, in the
+        // generator's words; undone, it is where it was
+        type_in(&mut ed, &egui, "x", "55");
+        // (one move still: the earlier one to 63, 4 is replaced)
+        assert_eq!((edits(&ed).len(), lot(&mut ed, "medium3").x0, ed.refused.as_deref()), (2, 55, None));
+        let found = ed.doc.problems();
+        assert!(found.len() == 1 && found[0].words.contains("spire1") && ed.status.contains("the plan has a problem now"), "{found:?}: {}", ed.status);
+        assert!(ed.doc.undo() && lot(&mut ed, "medium3").x0 == 63 && ed.doc.problems().is_empty());
+        // (the problems' lines are gone from the panel's top: the fields have moved up)
+        frame(&mut ed, &egui, Vec::new());
+        // under two cells: no room at all, refused as ever
         type_in(&mut ed, &egui, "wide", "1");
         assert_eq!(ed.refused.as_deref(), Some("resize: a room is at least 2 x 2 cells, not 1 x 6"));
         // a hall typed along takes its pods, as a drag of its box does
@@ -3686,12 +3767,13 @@ mod tests {
         let why = ed.doc.error().expect("no level").to_string();
         assert!(ed.doc.made().is_none() && why.contains("spire1") && why.contains("rooms keep a cell between them"), "{why}");
         let egui = egui::Context::default();
+        // (rooms over each other are the plan's problem: listed, and the boxes drawn with any tool)
         let said = pass(&mut ed, &egui, Vec::new());
-        assert!(has(&said, &format!("no level: {why}")) && has(&said, "the Rooms tool shows the room boxes") && ed.fit.is_none(), "{said:?}");
+        assert!(has(&said, "The plan has 1 problem") && has(&said, &why) && ed.fit.is_some(), "{said:?}");
         // with the room tool the plan is the boxes alone, and the panel lists them
         ed.set_tool(Tool::Rooms);
         let said = pass(&mut ed, &egui, Vec::new());
-        assert!(!has(&said, "the Rooms tool shows the room boxes") && has(&said, "All rooms (29)") && has(&said, "storey") && ed.fit.is_some(), "{said:?}");
+        assert!(has(&said, "All rooms (29)") && has(&said, "storey") && ed.fit.is_some(), "{said:?}");
         let view = View { scale: ed.fit.unwrap().scale, boxes: Some(ed.doc.boxes(None)), ..View::default() };
         assert_eq!(ed.drawn.0, planview::bare(&view).prims.len());
         // the room is dragged back off the spire: the recipe is the seed's own again, and makes its level
@@ -4035,11 +4117,12 @@ mod tests {
         settle(&mut ed);
         let said = frame(&mut ed, &egui, Vec::new());
         assert!(ed.doc.error().is_none() && !has(&said, "undo that") && !has(&said, "no level: "), "{said:?}");
-        // a recipe that makes no level for another reason is not offered it
+        // a recipe that makes no level for another reason is not offered it: rooms over each
+        // other are the plan's problems, listed as such
         ed.doc.add(Edit::Move { room: "medium3".into(), to: (55, 3) }).unwrap();
         settle(&mut ed);
         let said = frame(&mut ed, &egui, Vec::new());
-        assert!(ed.doc.error().is_some() && has(&said, "no level: ") && !has(&said, "undo that"), "{said:?}");
+        assert!(ed.doc.error().is_some() && has(&said, "The plan has 1 problem") && !has(&said, "undo that"), "{said:?}");
     }
 
     #[test]

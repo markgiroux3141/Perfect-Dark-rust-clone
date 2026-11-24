@@ -92,7 +92,10 @@ impl App {
         let mut set: Vec<(&str, String)> = Vec::new();
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             // What the generator made of it.
-            if let Some(why) = g.ed.doc.error() {
+            if !g.ed.doc.problems().is_empty() {
+                // (a plan drawn wrong for now: what is wrong, the rooms in red)
+                g.ed.problems_ui(ui);
+            } else if let Some(why) = g.ed.doc.error() {
                 ui.colored_label(theme::WARN, format!("These choices make no level: {why}. Undo, or change something."));
             } else if g.ed.doc.stale() || !g.ed.settled() {
                 theme::help(ui, "Making the level…");

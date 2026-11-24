@@ -29,7 +29,7 @@
 //! ```
 
 use crate::cells::Rect;
-use crate::place::{Placed, LEAST};
+use crate::place::{Placed, Problem, LEAST};
 use crate::recipe::{Edit, Recipe, Stage};
 use crate::scatter::{Lot, STOREY};
 use crate::storeys::{index, CEILINGS, LEVELS};
@@ -304,9 +304,42 @@ pub fn kinds(p: &Placed) -> Vec<&'static str> {
     p.kinds().iter().map(|k| k.name).collect()
 }
 
+/// The top a new room of `kind` on `floor` is drawn with unless another is chosen: the lowest
+/// it keeps the rule with: two storeys for a spire (its ramps climb through two storeys or more),
+/// one for every other kind. New here (the user's call, 2026-11-24).
+pub fn default_top(kind: &str, floor: i32) -> i32 {
+    let tops = tops(floor);
+    let storeys = if kind == "spire" { 2 } else { 1 };
+    tops[(storeys - 1).min(tops.len() - 1)]
+}
+
 /// The ceiling lines a room with its floor on `floor` may reach to, lowest first.
 pub fn tops(floor: i32) -> Vec<i32> {
     CEILINGS[index(floor)..].to_vec()
+}
+
+/// Every problem with the recipe's room boxes, as placed on `base` (the seed's own lots): each
+/// way the lots break the scatter's rule (`Placed::problems`), each with its rooms; else what
+/// `Recipe::rooms_on` still refuses (a pod with no way in, an edit naming a deleted room), with
+/// the rooms its words name. None: the boxes are good (the level may still fail later, routing
+/// or furnishing). What a sketch, kept while it breaks a rule, draws in red. New here.
+pub fn problems(recipe: &Recipe, base: &Placed) -> Vec<Problem> {
+    let placed = match lots_of(recipe, base) {
+        Ok(p) => p,
+        Err(words) => return vec![Problem { rooms: Vec::new(), words }],
+    };
+    let found = placed.problems(recipe.options.band());
+    if !found.is_empty() {
+        return found;
+    }
+    match recipe.rooms_on(base.clone()) {
+        Ok(_) => Vec::new(),
+        Err(words) => {
+            let named = |k: &str| words.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).any(|w| w == k);
+            let rooms = placed.lots.iter().filter(|a| named(&a.key)).map(|a| a.key.clone()).collect();
+            vec![Problem { rooms, words }]
+        }
+    }
 }
 
 #[cfg(test)]
@@ -382,6 +415,17 @@ mod tests {
         assert_eq!(t.recipe.edits.len(), 1);
         assert_eq!((lot(&t.lots, "medium1").x0, lot(&t.lots, "medium1").y0), (b.x0, b.y0));
         assert!(!t.changes(&recipe));
+        // every problem at once, each with its rooms; the first is the trial's refusal
+        let both = Recipe {
+            edits: vec![Edit::Move { room: "medium1".into(), to: (b.x0, b.y0) }, Edit::Move { room: "medium3".into(), to: (-3, 0) }],
+            ..recipe.clone()
+        };
+        let found = problems(&both, &base);
+        assert!(found.len() >= 2, "{found:?}");
+        assert_eq!(Some(found[0].words.clone()), both.rooms_on(base.clone()).err());
+        assert!(found.iter().any(|p| p.rooms == ["medium3"] && p.words.starts_with("medium3 is off the site")), "{found:?}");
+        assert!(found.iter().any(|p| p.rooms.contains(&"medium1".to_string()) && p.words.contains("rooms keep a cell")), "{found:?}");
+        assert!(problems(&recipe, &base).is_empty());
         // off the site
         let t = trial(&recipe, &Change::Move { room: "medium1".into(), to: (-3, a.y0) }, &base);
         assert!(t.refused.as_deref().is_some_and(|w| w.contains("medium1 is off the site")), "{:?}", t.refused);

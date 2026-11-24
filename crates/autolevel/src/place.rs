@@ -321,6 +321,14 @@ pub struct Placed {
     pub drawn: BTreeSet<String>,
 }
 
+/// One way the lots break the scatter's rule (`Placed::problems`): the rooms it is about, and
+/// what is wrong, in the words `check` refuses with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Problem {
+    pub rooms: Vec<String>,
+    pub words: String,
+}
+
 /// "at 3, 4 to 9, 8, from 0 to 236": where a lot is, for a message.
 fn whereabouts(a: &Lot) -> String {
     format!("at {}, {} to {}, {}, from {} to {}", a.x0, a.y0, a.x1, a.y1, a.floor, snap_top(a.top))
@@ -550,27 +558,47 @@ impl Placed {
     /// first two upper storeys, at least two cells in, a fifth of its floor at most); and every
     /// other pair clear of each other (`scatter::clear`).
     pub fn check(&self, band: i32) -> Result<(), String> {
+        match self.problems(band).into_iter().next() {
+            Some(p) => Err(p.words),
+            None => Ok(()),
+        }
+    }
+
+    /// Every way the lots break the scatter's rule (`check`'s, which is the first of them): each
+    /// lot's first, in the lots' order, then each pair's, with the rooms it is about. What an
+    /// editor that lets a plan break the rule for a while (a sketch) draws in red. New here.
+    pub fn problems(&self, band: i32) -> Vec<Problem> {
+        let mut out = Vec::new();
+        let mut put = |rooms: &[&str], words: String| out.push(Problem { rooms: rooms.iter().map(|k| k.to_string()).collect(), words });
         for a in &self.lots {
             let (w, d) = (a.x1 - a.x0, a.y1 - a.y0);
             if w < LEAST || d < LEAST {
-                return Err(format!("{} is {w} x {d} cells: a room is at least {LEAST} x {LEAST}", a.key));
+                put(&[&a.key], format!("{} is {w} x {d} cells: a room is at least {LEAST} x {LEAST}", a.key));
+                continue;
             }
             // (a room drawn by hand may be anywhere: only the seed's own are held to the site)
             let drawn = self.drawn.contains(&a.key);
             if !drawn && (a.x0 < 0 || a.y0 < 0 || a.x1 > self.site.0 || a.y1 > self.site.1) {
-                return Err(format!("{} is off the site (it is {}; the site is {} x {} cells)", a.key, whereabouts(a), self.site.0, self.site.1));
+                put(&[&a.key], format!("{} is off the site (it is {}; the site is {} x {} cells)", a.key, whereabouts(a), self.site.0, self.site.1));
+                continue;
             }
-            stands(&a.key, a.floor, a.top)?;
+            if let Err(why) = stands(&a.key, a.floor, a.top) {
+                put(&[&a.key], why);
+                continue;
+            }
             if a.kind == "spire" {
                 let s = &space::spaces(std::slice::from_ref(a))[0];
                 if spiral::layout(s.rect_h(), &s.storeys(), 0, 1, band).is_none() {
                     let need = (spiral::RUN + 2 * spiral::LAND.max(band)) / 2;
-                    return Err(format!(
-                        "{} is a spire: its ramps climb walls at least {need} cells long, through two storeys or more (it is {w} x {d}, from {} to {})",
-                        a.key,
-                        a.floor,
-                        snap_top(a.top)
-                    ));
+                    put(
+                        &[&a.key],
+                        format!(
+                            "{} is a spire: its ramps climb walls at least {need} cells long, through two storeys or more (it is {w} x {d}, from {} to {})",
+                            a.key,
+                            a.floor,
+                            snap_top(a.top)
+                        ),
+                    );
                 }
             }
         }
@@ -581,7 +609,7 @@ impl Placed {
                 if crossed(a, b) || crossed(b, a) {
                     let (base, hall) = if crossed(a, b) { (a, b) } else { (b, a) };
                     if let Some(why) = crate::bases::misfit(base, hall) {
-                        return Err(why);
+                        put(&[&base.key, &hall.key], why);
                     }
                     continue;
                 }
@@ -592,15 +620,18 @@ impl Placed {
                 } else {
                     if !clear(a, b, GAP) {
                         let how = if rect_overlap(a.rect(), b.rect()).is_some() { "overlap" } else { "touch" };
-                        return Err(format!(
-                            "{} and {} {how}: rooms keep a cell between them, unless one is over the other with a 40-unit slab between ({} is {}; {} is {})",
-                            a.key,
-                            b.key,
-                            a.key,
-                            whereabouts(a),
-                            b.key,
-                            whereabouts(b)
-                        ));
+                        put(
+                            &[&a.key, &b.key],
+                            format!(
+                                "{} and {} {how}: rooms keep a cell between them, unless one is over the other with a 40-unit slab between ({} is {}; {} is {})",
+                                a.key,
+                                b.key,
+                                a.key,
+                                whereabouts(a),
+                                b.key,
+                                whereabouts(b)
+                            ),
+                        );
                     }
                     continue;
                 };
@@ -608,25 +639,28 @@ impl Placed {
                 let levels = pod_levels(hall);
                 if !levels.contains(&pod.floor) {
                     let which = if levels.is_empty() { format!("{h} has none a pod fits") } else { format!("{}, not {}", list(&levels), pod.floor) };
-                    return Err(format!("{p} lands in {h}, so it is its pod, and a pod's floor is one of its hall's first two upper storeys: {which}"));
+                    put(&[p, h], format!("{p} lands in {h}, so it is its pod, and a pod's floor is one of its hall's first two upper storeys: {which}"));
+                    continue;
                 }
                 if pod.top != pod.floor + STOREY {
-                    return Err(format!("{p} lands in {h}, so it is its pod, and a pod is one storey tall, not from {} to {}", pod.floor, pod.top));
+                    put(&[p, h], format!("{p} lands in {h}, so it is its pod, and a pod is one storey tall, not from {} to {}", pod.floor, pod.top));
+                    continue;
                 }
                 let ov = rect_overlap(pod.rect(), hall.rect()).expect("a pod overlaps its hall");
                 match pod_misfit(ov, hall, POD_DEPTH) {
                     Some(Misfit::Shallow(deep)) => {
-                        return Err(format!(
-                            "{p} reaches {deep} cell into {h}: a pod reaches at least {POD_DEPTH} cells in (a room of its own stands a cell clear)"
-                        ));
+                        put(
+                            &[p, h],
+                            format!("{p} reaches {deep} cell into {h}: a pod reaches at least {POD_DEPTH} cells in (a room of its own stands a cell clear)"),
+                        );
                     }
                     Some(Misfit::Big(cells)) => {
-                        return Err(format!("{p} takes {cells} of {h}'s {} cells of floor: a pod takes a fifth at most", hall.area()));
+                        put(&[p, h], format!("{p} takes {cells} of {h}'s {} cells of floor: a pod takes a fifth at most", hall.area()));
                     }
                     None => {}
                 }
             }
         }
-        Ok(())
+        out
     }
 }

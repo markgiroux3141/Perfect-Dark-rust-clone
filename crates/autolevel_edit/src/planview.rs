@@ -331,6 +331,9 @@ pub struct Boxes {
     pub site: Option<(i32, i32)>,
     /// A copy being pasted (roadmap item 8): where it would go as the pointer moves.
     pub ghost: Option<Ghost>,
+    /// What is wrong with the plan as it stands (a sketch kept while it breaks the scatter's
+    /// rule): each problem's rooms drawn in red, the problems listed by them.
+    pub problems: Vec<autolevel::place::Problem>,
 }
 
 /// Where a paste would go: its room's box and its pods' (cells), what it is, and why it can't go
@@ -1493,7 +1496,11 @@ pub fn bare(view: &View) -> Picture {
     let floor = |z: i32| Key { swatch: Swatch::Fill, col: colour::storey(z), text: format!("floor {z}") };
     let mut legend: Vec<Key> = LEVELS.into_iter().filter(on).map(floor).collect();
     if let Some((w, h)) = site {
-        legend.push(Key { swatch: Swatch::Line, col: colour::FAINT, text: format!("the site, {w} x {h} cells: rooms stand inside it") });
+        legend.push(Key {
+            swatch: Swatch::Line,
+            col: colour::FAINT,
+            text: format!("the site, {w} x {h} cells: a seed's rooms are scattered on it (rooms drawn by hand go anywhere)"),
+        });
     }
     legend.extend(box_keys(view, None));
     Picture { prims: out, lo, hi, legend }
@@ -1718,6 +1725,13 @@ fn lots(out: &mut Vec<Prim>, view: &View, lv: Option<&Level>, (lo, hi): (P, P)) 
             (None, Some(_)) => {}
         }
     }
+    // what is wrong with the plan: each room a problem is about, in red
+    let bad: Vec<&Lot> = b.lots.iter().filter(|a| b.problems.iter().any(|p| p.rooms.contains(&a.key))).collect();
+    for a in &bad {
+        let r = cell_box(a.rect());
+        out.rect(r, colour::GONE);
+        out.frame(r, colour::DEAD_END, 3.0);
+    }
     // a paste on its way: where it would go, dashed (red where it can't), its words by it
     if let Some(g) = &b.ghost {
         let col = if g.refused.is_some() { colour::DEAD_END } else { colour::PICK };
@@ -1757,6 +1771,17 @@ fn lots(out: &mut Vec<Prim>, view: &View, lv: Option<&Level>, (lo, hi): (P, P)) 
     if let Some(why) = refused {
         words.push(("can't be done:".to_string(), colour::DEAD_END));
         words.extend(wrap(why, WRAP).into_iter().map(|l| (l, colour::REFUSAL)));
+    }
+    if !b.problems.is_empty() && refused.is_none() {
+        let n = b.problems.len();
+        words.push((format!("{n} problem{} (the rooms in red):", if n == 1 { "" } else { "s" }), colour::DEAD_END));
+        for p in b.problems.iter().take(3) {
+            words.extend(wrap(&p.words, WRAP).into_iter().map(|l| (l, colour::REFUSAL)));
+        }
+        if n > 3 {
+            words.push((format!("and {} more", n - 3), colour::REFUSAL));
+        }
+        by = by.or(bad.first().map(|a| cell_box(a.rect())));
     }
     if let Some(g) = &b.ghost {
         let col = if g.refused.is_some() { colour::DEAD_END } else { colour::PICK };
@@ -1814,6 +1839,9 @@ fn box_keys(view: &View, lv: Option<&Level>) -> Vec<Key> {
     if let Some(g) = &b.ghost {
         let col = if g.refused.is_some() { colour::DEAD_END } else { colour::PICK };
         out.push(key(Swatch::Line, col, "paste: where the copy would go (dashed; red: it can't)"));
+    }
+    if !b.problems.is_empty() {
+        out.push(key(Swatch::Fill, colour::GONE, "a problem with the plan: put it right for a level"));
     }
     match (&b.refused, &b.selected) {
         (Some(_), _) => out.push(key(Swatch::Line, colour::DEAD_END, "change refused: the room's box in red, the reason by it")),
@@ -2169,7 +2197,14 @@ mod picture_tests {
 
     fn boxed(lots: Vec<Lot>, selected: Option<&str>, refused: Option<&str>) -> View {
         View {
-            boxes: Some(Boxes { lots, selected: selected.map(str::to_string), refused: refused.map(str::to_string), site: None, ghost: None }),
+            boxes: Some(Boxes {
+                lots,
+                selected: selected.map(str::to_string),
+                refused: refused.map(str::to_string),
+                site: None,
+                ghost: None,
+                problems: Vec::new(),
+            }),
             ..View::default()
         }
     }

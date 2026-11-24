@@ -799,7 +799,8 @@ impl App {
             theme::help(ui, "Items you placed by hand are kept; check them in the Items step if rooms moved.");
         }
         // (a recipe that makes no level makes no arena; the generator's panel says why)
-        let ready = problem.is_none() && self.job.is_none() && g.ed.doc.error().is_none() && g.ed.doc.made().is_some();
+        // (nor a plan with problems: rooms drawn over each other, a spire too short)
+        let ready = problem.is_none() && self.job.is_none() && g.ed.doc.error().is_none() && g.ed.doc.made().is_some() && g.ed.doc.problems().is_empty();
         let (mut make, mut close) = (false, false);
         ui.horizontal(|ui| {
             make = theme::primary(ui, "Build the arena", ready).on_hover_text("Make it an arena you can play (about 8 seconds); then place items on it").clicked();
