@@ -290,6 +290,19 @@ fn a_theme_dresses_the_roles_it_names_and_leaves_the_rest() {
     // panel: "stage:HEX" draws from that stage instead (G5's sandstone, its own row)
     assert_eq!(pd(&themed[3]).texture, 0x18d);
     assert!(cryp.contains(&pd(&themed[3]).row));
+
+    // A texture its arena draws only see-through is see-through here: G5's green grate as the
+    // decks and open ramps (the kit's "grate" is opaque).
+    let g5 = crate::recipe::Theme { stage: "cryp".into(), roles: [("grate".to_owned(), "0192".to_owned())].into(), ..Default::default() };
+    let grate = &materials(&assets(), kit, &used, Some(&g5)).unwrap()[1];
+    assert!(grate.blend == Blend::Translucent && !grate.zwrite && !grate.cull_back);
+    assert_eq!(pd(grate).row["zwrite"], false);
+    // and a role's size: its UVs from the kit's units to a repeat to the theme's
+    let floor = kit.palette.iter().position(|p| p.role == "floor").unwrap();
+    let sized = crate::recipe::Theme { scale: [("floor".to_owned(), crate::recipe::ThemeScale::Each([78.74, 19.685]))].into(), ..g5.clone() };
+    assert_eq!(uv_scale(kit, floor, Some(&sized)), (0.5, 2.0));
+    assert_eq!(uv_scale(kit, floor, Some(&g5)), (1.0, 1.0));
+    assert_eq!(uv_scale(kit, floor, None), (1.0, 1.0));
 }
 
 #[test]

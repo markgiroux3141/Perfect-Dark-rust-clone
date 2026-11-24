@@ -126,6 +126,31 @@ pub struct Theme {
     /// Role -> texture number in hex, optionally `stage:` first.
     #[serde(default)]
     pub roles: std::collections::BTreeMap<String, String>,
+    /// Role -> units to one repeat of its texture, as its arena draws it (a
+    /// number, or across and up): the role's UVs scaled from the kit's own
+    /// (G5's floor repeats every 143 units where Complex's every 39). A role
+    /// not named keeps the kit's.
+    #[serde(default)]
+    pub scale: std::collections::BTreeMap<String, ThemeScale>,
+}
+
+/// A theme role's size: one repeat every this many units, both ways, or
+/// across and up.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum ThemeScale {
+    Both(f64),
+    Each([f64; 2]),
+}
+
+impl ThemeScale {
+    /// (across, up).
+    pub fn pair(self) -> (f64, f64) {
+        match self {
+            ThemeScale::Both(s) => (s, s),
+            ThemeScale::Each([u, v]) => (u, v),
+        }
+    }
 }
 
 /// A Jedi Academy map ([`crate::jka`]): a compiled `.bsp`, with the game's

@@ -3615,7 +3615,39 @@ are untouched.
   `al40bas`): G5 (by hand; floor 016A, the walls' 018D), Felicity (hall ceilings 0281), Skedar,
   Temple, Pipes, Warehouse, Base (drafted).
 
+- **A role's size**: `"scale": {"floor": 142.6, "panel": [94.6, 118.11]}` sets units per
+  repeat (both ways, or across and up). The importer multiplies that role's UVs by the kit's
+  size over the theme's (`uv_scale`). Without it, a role keeps Complex's size: its floor repeats
+  every 39 units, where G5's sandstone repeats every 143. Wall bands keep 118.11 up, so the
+  clamped band textures still fit a band.
+- **A texture its arena draws only see-through** is drawn see-through for the role too. G5's
+  green grate 0192 on `grate` (catwalk decks and open ramps) makes them see-through, as G5's
+  ramps are, and still walkable (`grate_of_triangle`; the import's simulant check: 0 stalls).
+
+**How a theme is made right (G5, 2026-11-24), the method:**
+1. `tools/autolevel-themes/surfaces.py STAGE --bands` on the arena gives each texture's area
+   on floors, slopes, walls and ceilings, and its walls' height above the floor. Run it with
+   `--custom CODE` on the themed level to see each role's.
+2. Look at the arena itself: `pd_snapshot out stage STAGE` (its spawns) and `--views` from
+   its rooms' middles. A spawn often faces a wall.
+3. Map each role by where it lands (complex.rs `style` and `schemes`): `base_pipe` is the
+   0-118 band; `panel` is 118 and 276; `panel_stripe` and `panel_pipes` are 394; `grille` is
+   630 and alternate column bands with `door_panel`; `plain` is upper walls, storey ceilings
+   and trim; `ceiling_tile` is atria 630 and up; `ceiling_dark` is the undersides of
+   catwalks; `grate` is catwalk decks and open ramps; `floor` is floors and enclosed ramps.
+4. Give each role the arena's size (`texstats.py`'s units per repeat), shoot it beside the
+   arena, and iterate.
+
+G5's result: 71% of G5 is 018D (walls, floors, most ceilings), so `floor`, `plain`,
+`ceiling_dark` and the upper bands (`panel_stripe`, `panel_pipes`, `grille`) are 018D. The
+low bands are G5's (0173 at the bottom, 018B's windows at 118). Decks and ramps are 0192,
+columns 0175's blue pilasters, and atrium ceilings 017A's beams. Still unlike G5: its baked
+light (dark corners, bright strips) and its doorways' blue frames and light strips. The kit
+has no role for a doorway's frame.
+
 Lessons:
+- **Map by position, not by name or area share.** The first G5 had the walls' 018D nowhere
+  near 71%, a busy band at every height, a tiled floor G5 never uses, and Complex's decks.
 - **A row whose alpha is shade alpha** (cycle 2's alpha C, `combine[14]`, is 4 rather than 5)
   is as see-through as its vertices. Temple's 01B7 is a solid white texture faded by vertex
   alpha 0..77 (light shafts). The bake's vertices are opaque (255), so as railings and glass it

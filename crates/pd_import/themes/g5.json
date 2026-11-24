@@ -3,23 +3,62 @@
   "name": "G5 Building",
   "stage": "cryp",
   "roles": {
-    "floor": "016A",
-    "grate": "016A",
+    "floor": "018D",
+    "grate": "0192",
     "plain": "018D",
+    "ceiling_dark": "018D",
     "base_pipe": "0173",
+    "pipes": "019E",
     "panel": "018B",
-    "panel_stripe": "019E",
-    "pipes": "0185",
-    "panel_pipes": "016D",
-    "door_panel": "016A",
+    "panel_stripe": "018D",
+    "panel_pipes": "018D",
+    "grille": "018D",
+    "door_panel": "0175",
     "grey_panel": "016A",
     "grey_pipe": "0188",
-    "grille": "0180",
-    "ceiling_tile": "017A",
-    "ceiling_dark": "017A",
     "vent": "0188",
+    "ceiling_tile": "017A",
     "window": "0190",
     "rail": "0190",
     "mesh": "0192"
+  },
+  "scale": {
+    "floor": 142.6,
+    "grate": 85.6,
+    "mesh": 85.6,
+    "plain": 142.6,
+    "ceiling_dark": 142.6,
+    "ceiling_tile": 113.8,
+    "base_pipe": [
+      93.1,
+      118.11
+    ],
+    "pipes": [
+      103.6,
+      118.11
+    ],
+    "panel": [
+      94.6,
+      118.11
+    ],
+    "panel_stripe": [
+      142.6,
+      118.11
+    ],
+    "panel_pipes": [
+      142.6,
+      118.11
+    ],
+    "grille": [
+      142.6,
+      118.11
+    ],
+    "door_panel": [
+      57.0,
+      118.11
+    ],
+    "grey_panel": 123.4,
+    "grey_pipe": 48.5,
+    "vent": 48.5
   }
 }

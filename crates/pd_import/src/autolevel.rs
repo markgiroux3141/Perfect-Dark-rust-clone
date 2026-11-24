@@ -141,18 +141,29 @@ fn materials(assets: &Path, kit: &Kit, used: &[usize], theme: Option<&crate::rec
             let (path, bg) = bg_of(&stage)?;
             let rows = bg["materials"].as_array().ok_or_else(|| format!("{}: no materials", path.display()))?;
             let number = u32::from_str_radix(&preset, 16).map_err(|_| format!("the palette's {}: {preset} is no texture number", paint.role))?;
-            let (both, clear) = (paint.flags.contains(&"CullBoth"), paint.flags.contains(&"Transparent"));
+            let (both, mut clear) = (paint.flags.contains(&"CullBoth"), paint.flags.contains(&"Transparent"));
             // The same texture, culled the same way, in the same layer
             // (PD's translucent materials don't write depth). A theme's
             // texture with no row culled as the role is takes the layer's
             // row with its culling changed (a row's only difference from
-            // its twin, as Complex's and G5's are).
-            let texture = |r: &&Value| r["texture"]["id"].as_u64() == Some(number as u64) && (r["zwrite"] == false) == clear;
-            let exact = rows.iter().find(|r| texture(r) && (r["cull"] == "none") == both);
+            // its twin, as Complex's and G5's are). One its arena draws only
+            // in the other layer is drawn in that layer, as the arena draws
+            // it: G5's green grate (0x0192) is see-through, so a "grate" deck
+            // or open ramp in it is too (a see-through floor is still walked
+            // on: `grate_of_triangle`).
+            let in_layer = |r: &Value, clear: bool| r["texture"]["id"].as_u64() == Some(number as u64) && (r["zwrite"] == false) == clear;
+            let exact = rows.iter().find(|r| in_layer(r, clear) && (r["cull"] == "none") == both);
             let row = match (exact, themed) {
                 (Some(r), _) => r.clone(),
                 (None, true) => {
-                    let mut r = rows.iter().find(texture).ok_or_else(|| format!("{}: no material draws texture {number:#06x} in the palette's {}'s layer ({})", path.display(), paint.role, paint.flags.join(" ")))?.clone();
+                    let mut r = match rows.iter().find(|r| in_layer(r, clear)) {
+                        Some(r) => r.clone(),
+                        None => {
+                            let r = rows.iter().find(|r| in_layer(r, !clear)).ok_or_else(|| format!("{}: no material draws texture {number:#06x} (the theme's {})", path.display(), paint.role))?;
+                            clear = !clear;
+                            r.clone()
+                        }
+                    };
                     r["cull"] = Value::from(if both { "none" } else { "back" });
                     r
                 }
@@ -178,6 +189,20 @@ fn materials(assets: &Path, kit: &Kit, used: &[usize], theme: Option<&crate::rec
             })
         })
         .collect()
+}
+
+/// What a palette entry's UVs (in repeats of its texture at the kit's size)
+/// are multiplied by in a theme: the kit's units to a repeat over the
+/// theme's, across and up (1, 1 for a role the theme gives no size).
+fn uv_scale(kit: &Kit, entry: usize, theme: Option<&crate::recipe::Theme>) -> (f64, f64) {
+    let paint = &kit.palette[entry];
+    match theme.and_then(|t| t.scale.get(paint.role)) {
+        Some(s) => {
+            let (u, v) = s.pair();
+            (paint.scale.0 / u, paint.scale.1 / v)
+        }
+        None => (1.0, 1.0),
+    }
 }
 
 /// The generator's doors (its doorways that have one) as a layout's: each
@@ -287,10 +312,11 @@ pub fn level_source(r: &Recipe, s: &AutolevelSource, b: &Built, assets: &Path, t
         for f in &room.faces {
             let material = used.iter().position(|&m| m == f.material).expect("a face's material was gathered");
             let xlu = materials[material].blend == Blend::Translucent;
+            let (su, sv) = uv_scale(b.kit, f.material, theme);
             for t in &f.tris {
                 let v: [Vert; 3] = t.map(|c| {
                     let (c, col) = (c as usize, f.colors[c as usize]);
-                    Vert { pos: pos[f.verts[c] as usize], uv: Vec2::new(f.uvs[c].0 as f32, f.uvs[c].1 as f32), col: [col[0], col[1], col[2], 255] }
+                    Vert { pos: pos[f.verts[c] as usize], uv: Vec2::new((f.uvs[c].0 * su) as f32, (f.uvs[c].1 * sv) as f32), col: [col[0], col[1], col[2], 255] }
                 });
                 tris.push(Tri { v, material, xlu, room: n });
                 // The tile it is: PD's arenas' rules, then these levels' own.
