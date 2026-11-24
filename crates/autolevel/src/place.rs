@@ -405,10 +405,13 @@ impl Placed {
                 continue;
             }
             let a = &self.lots[n];
-            let hall = self
-                .lots
-                .iter()
-                .find(|o| o.key != a.key && hosts(&self.kinds, o.kind) && o.host.is_empty() && rect_overlap(a.rect(), o.rect()).is_some() && !apart(a, o));
+            let hall = self.lots.iter().find(|o| {
+                o.key != a.key
+                    && (hosts(&self.kinds, o.kind) || (o.kind == "spire" && self.drawn.contains(&a.key)))
+                    && o.host.is_empty()
+                    && rect_overlap(a.rect(), o.rect()).is_some()
+                    && !apart(a, o)
+            });
             self.lots[n].host = hall.map_or_else(String::new, |o| o.key.clone());
         }
     }

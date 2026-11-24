@@ -132,7 +132,15 @@ impl Interior {
         if let Some(decks) = self.s.decks.clone() {
             // a spiral: decks and ramps were fixed before routing
             for &z in &upper {
-                self.deck.insert(z, decks.get(&z).cloned().unwrap_or_default());
+                let mut deck = decks.get(&z).cloned().unwrap_or_default();
+                // (a pod drawn in the shaft: its gangway to the spiral is deck too. New here: the
+                // generator puts no pod in a spire, so a seed's spiral is as it was)
+                for p in self.pods.iter().filter(|p| p.floor == z) {
+                    if let Some(acc) = self.access_of(&p.key) {
+                        deck.extend(acc.deck.iter().copied());
+                    }
+                }
+                self.deck.insert(z, deck);
                 for d in self.doors.iter().filter(|d| d.level == z) {
                     self.pads.push(Pad { cells: door_pad(&self.s, d, band, 0), level: z, door: Some(d.clone()) });
                 }

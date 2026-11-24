@@ -27,6 +27,9 @@ pub struct Access {
 /// wall. `others` are the hall's pods; `band` is a catwalk's depth in half cells. None if
 /// nothing fits.
 pub fn pod_access(host: &Space, pod: &Space, others: &[&Space], band: i32) -> Option<Access> {
+    if host.kind == "spire" {
+        return spire_access(host, pod, others);
+    }
     let (hx0, hy0, hx1, hy1) = host.rect_h();
     let (sx0, sy0, sx1, sy1) = shell_rect(pod, host);
     let hall = rect_cells((hx0, hy0, hx1, hy1));
@@ -111,4 +114,77 @@ pub fn pod_access(host: &Space, pod: &Space, others: &[&Space], band: i32) -> Op
         }
     }
     best.map(|(_, access)| access)
+}
+
+/// A pod standing in a spire's shaft (one drawn by hand: the generator puts none in a spire):
+/// its way in is a gangway straight from a door in its shell, across the shaft's air, to the
+/// spiral's deck on its storey (`Space::decks`), crossing no ramp of the spiral (`Space::preset`)
+/// and no other pod's shell. The shortest such. None if no door's gangway meets the deck. New
+/// here (the user's call, 2026-11-24).
+fn spire_access(host: &Space, pod: &Space, others: &[&Space]) -> Option<Access> {
+    let (hx0, hy0, hx1, hy1) = host.rect_h();
+    let (sx0, sy0, sx1, sy1) = shell_rect(pod, host);
+    let deck = host.decks.as_ref()?.get(&pod.floor)?.clone();
+    let hall = rect_cells((hx0, hy0, hx1, hy1));
+    let mut blocked = rect_cells((sx0, sy0, sx1, sy1));
+    for o in others {
+        if o.key != pod.key && o.floor == pod.floor {
+            blocked.extend(rect_cells(shell_rect(o, host)));
+        }
+    }
+    // (a ramp's slope is at another height than the deck along most of it: never crossed)
+    for r in &host.preset {
+        blocked.extend(rect_cells(r.rect));
+    }
+    let island = sx0 > hx0 && sy0 > hy0 && sx1 < hx1 && sy1 < hy1;
+    let w = 2; // a door a cell wide
+    let mut best: Option<Access> = None;
+    for (&side, &(dx, dy)) in SIDES.iter().zip(DIRS.iter()) {
+        let along_x = dx != 0;
+        let (face, u0, u1) =
+            if along_x { (if dx > 0 { sx1 } else { sx0 }, 2 * pod.y0, 2 * pod.y1) } else { (if dy > 0 { sy1 } else { sy0 }, 2 * pod.x0, 2 * pod.x1) };
+        let out = if along_x { dx > 0 } else { dy > 0 };
+        if u1 - u0 < w {
+            continue;
+        }
+        for u in [u0, (u0 + u1 - w).div_euclid(2), u1 - w] {
+            let hole = match (along_x, out) {
+                (true, true) => (face - 1, u, face, u + w),
+                (true, false) => (face, u, face + 1, u + w),
+                (false, true) => (u, face - 1, u + w, face),
+                (false, false) => (u, face, u + w, face + 1),
+            };
+            // a slice a half cell deep at a time, out from the door, until one meets the deck
+            let slice = |k: i32| -> Cells {
+                let a = if out { face + k } else { face - k - 1 };
+                if along_x {
+                    rect_cells((a, u, a + 1, u + w))
+                } else {
+                    rect_cells((u, a, u + w, a + 1))
+                }
+            };
+            let mut gang = Cells::new();
+            let mut met = false;
+            for k in 0.. {
+                let cells = slice(k);
+                if !cells.is_subset(&hall) || !cells.is_disjoint(&blocked) {
+                    break;
+                }
+                if !cells.is_disjoint(&deck) {
+                    met = true;
+                    break;
+                }
+                gang.extend(cells);
+            }
+            if !met || gang.is_empty() {
+                continue;
+            }
+            let length = gang.len() as i32 / w;
+            if best.as_ref().is_none_or(|b| length < b.length) {
+                let pad: Cells = slice(0).into_iter().chain(slice(1)).filter(|c| gang.contains(c)).collect();
+                best = Some(Access { side, door: hole, deck: gang, pad, length, island });
+            }
+        }
+    }
+    best
 }

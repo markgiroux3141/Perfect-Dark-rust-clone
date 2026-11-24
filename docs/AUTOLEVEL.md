@@ -3518,6 +3518,23 @@ taller after, are a sketch put right in steps.
   pinned up keeps its `pin` beside its `add` (the scatter's top across the 512/551 gap is a unit
   off; older than sketching): the level is the same.
 
+### A room in a spire's shaft (2026-11-24, step 1)
+
+The user's idea (2026-11-24): a base standing free in a spire's middle, joined to the spiral by a
+bridge. Step 1, built: a small or tiny room **drawn** in a spire is the spire's pod
+(`Placed::rehost`: a spire hosts only drawn pods, so the scatter's spires are as they were), on
+any upper storey (`scatter::pod_levels` for a spire), and its way in is a gangway straight from a
+door in its shell across the shaft to the spiral's deck on its storey, crossing no ramp
+(`pods::spire_access`, the shortest of every door place); the spire's furnisher lays it as deck
+with the spiral's (`lay_decks`). Checked: `a_room_drawn_in_a_spires_shaft_is_its_pod_with_a_gangway_to_the_spiral`
+(storeys 276 and 551, and one a cell off the corner); the plan and 3D pictures in
+`out/spirepod/` (scratch). The answer keys pass.
+
+Next: step 2, a base column in the shaft (several storeys, slits, hatches and ladders between
+them as a base's are), its lowest storey entered by the gangway; step 3, the generator giving its
+own spires one at random (the user is fine with seeded levels changing for it: a deliberate
+change of the pinned levels, never one by accident).
+
 ## Risks
 
 - **A missed order dependence** shows up as a key mismatch deep in furnish. The cure is in

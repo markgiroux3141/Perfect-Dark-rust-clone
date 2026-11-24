@@ -121,6 +121,11 @@ pub fn hosts(kinds: &[Kind], name: &str) -> bool {
 
 /// The storeys of a hall a pod may be on: its first two upper ones.
 pub fn pod_levels(host: &Lot) -> Vec<i32> {
+    // (a spire takes a pod only drawn by hand, in its shaft: on any of its upper storeys, each
+    // with the spiral's deck to reach it from. New here; the scatter puts none in a spire)
+    if host.kind == "spire" {
+        return POD_LEVELS.iter().copied().filter(|&z| host.floor < z && z + STOREY <= host.top).collect();
+    }
     let mut out: Vec<i32> = POD_LEVELS.iter().copied().filter(|&z| host.floor < z && z + STOREY <= host.top).take(2).collect();
     if crate::space::towers(host.kind, crate::storeys::snap_top(host.top)) {
         // and a towering hall's high storeys, over the ones ramped inside it (`Space::high`)

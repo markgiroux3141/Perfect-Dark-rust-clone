@@ -1183,3 +1183,27 @@ fn a_drop_is_put_in_a_floor_or_taken_out_and_one_that_cannot_land_says_why() {
     assert_eq!(load(&text).unwrap(), r);
     assert_eq!(r.edits.iter().map(|e| e.describe()).collect::<Vec<_>>(), ["loft2: a drop at 42, 30", "colossal: no drop"]);
 }
+
+#[test]
+fn a_room_drawn_in_a_spires_shaft_is_its_pod_with_a_gangway_to_the_spiral() {
+    // (new 2026-11-24: the generator puts no pod in a spire; one drawn there stands in the
+    // shaft, its way in a gangway straight across the air to the spiral's deck on its storey)
+    let spire = add("shaft", "spire", (0, 0, 16, 16), 0, 1063);
+    let near = add("room2", "medium", (20, 0, 30, 10), 0, 236);
+    let core = |floor: i32| add("core", "small", (6, 6, 10, 10), floor, floor + 236);
+    for floor in [276, 551] {
+        let r = Recipe { edits: vec![spire.clone(), near.clone(), core(floor)], ..Recipe::empty(40) };
+        let lv = r.generate().unwrap_or_else(|why| panic!("on {floor}: {why}"));
+        let pod = lv.spaces().iter().find(|s| s.key == "core").expect("the core is in the level");
+        assert_eq!(pod.host, "shaft", "on {floor}");
+        let plan = &lv.pods.iter().find(|(k, _)| k == "core").expect("a pod's plan").1;
+        assert!(plan.door.is_some(), "on {floor}: the core has a door onto the shaft");
+        // its gangway is deck of the spire's storey, joined to the spiral's own deck there
+        let deck = &lv.interior("shaft").deck[&floor];
+        let spiral = lv.spaces().iter().find(|s| s.key == "shaft").unwrap().decks.as_ref().unwrap()[&floor].clone();
+        assert!(deck.len() > spiral.len() && spiral.is_subset(deck), "on {floor}: the gangway is laid as deck");
+    }
+    // one a cell off the spire's corner reaches the deck beside it
+    let r = Recipe { edits: vec![spire.clone(), near.clone(), add("core", "small", (1, 1, 5, 5), 276, 512)], ..Recipe::empty(40) };
+    assert!(r.generate().unwrap().spaces().iter().any(|s| s.key == "core" && s.host == "shaft"));
+}
