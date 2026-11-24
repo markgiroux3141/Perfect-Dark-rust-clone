@@ -2182,6 +2182,18 @@ impl App {
         }
     }
 
+    /// A room of a generated level locked, or copied to paste (`--shot-ui --lock ROOM --copy ROOM`).
+    pub(crate) fn hold_generated(&mut self, lock: Option<&str>, copy: Option<&str>) {
+        if let Some(g) = self.generating.as_mut() {
+            if let Some(room) = lock {
+                g.ed.set_locked(room, true);
+            }
+            if let Some(room) = copy {
+                g.ed.copy_room(room);
+            }
+        }
+    }
+
     /// "Put things" in hand, with what it puts (`--shot-ui --things TOOL`).
     pub(crate) fn things_generated(&mut self, tool: autolevel::puts::Tool) {
         if let Some(g) = self.generating.as_mut() {

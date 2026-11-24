@@ -1,6 +1,6 @@
 //! `pd_edit --shot-ui <out.png> [<code>] [--size WxH] [--frames N] [--step
 //! home|layout|items|test] [--select KIND INDEX] [--generate [SEED]] [--room
-//! KEY [--vary PART]] [--side] [--3d [--no-ceilings]] [--things TOOL] [--nudge ROOM@X,Y@TX,TY] [--import FILE.glb] [--tool KIND] [--hover X,Y] [--run-test]`: the whole editor window (its panels
+//! KEY [--vary PART]] [--side] [--3d [--no-ceilings]] [--things TOOL] [--nudge ROOM@X,Y@TX,TY] [--lock ROOM] [--copy ROOM] [--import FILE.glb] [--tool KIND] [--hover X,Y] [--run-test]`: the whole editor window (its panels
 //! and the view between them) as a PNG, with no window. The app runs headless
 //! (`App::ui` on an egui context with no window, `App::update` between
 //! passes) until the level asked for has loaded and nothing is running, then
@@ -49,6 +49,9 @@ struct Shot {
     /// A pillar or crate moved once the level is made (`--nudge ROOM@X,Y@TX,TY`), the level made
     /// again: the screen then lists what that changed (the cascade).
     nudge: Option<autolevel::recipe::Edit>,
+    /// A room locked, and one copied, once the level is made (`--lock ROOM`, `--copy ROOM`).
+    lock: Option<String>,
+    copy: Option<String>,
 }
 
 /// `ROOM@X,Y@TX,TY`: the piece at X, Y in ROOM moved to TX, TY.
@@ -105,6 +108,8 @@ fn parse(args: &[String]) -> Result<Shot, String> {
                 s.things = Some(autolevel_edit::cli::things_tool(&v).ok_or(format!("--things: glass, rail, no-window, pillar, crate, take-out or drop, not {v}"))?);
             }
             "--nudge" => s.nudge = Some(nudge(&val(&mut it, "--nudge")?)?),
+            "--lock" => s.lock = Some(val(&mut it, "--lock")?),
+            "--copy" => s.copy = Some(val(&mut it, "--copy")?),
             "--3d" => s.three_d = true,
             "--no-ceilings" => s.no_ceilings = true,
             "--import" => s.import = Some(PathBuf::from(val(&mut it, "--import")?)),
@@ -153,6 +158,7 @@ pub fn run(args: &[String]) -> Result<PathBuf, String> {
     let mut tested = false;
     let mut varied = false;
     let mut nudged = false;
+    let (mut held, mut locked) = (false, false);
     // Until the level has loaded (an import, a placement, the generator's
     // level and its preview) and the frames asked for have run.
     loop {
@@ -191,12 +197,24 @@ pub fn run(args: &[String]) -> Result<PathBuf, String> {
                 continue;
             }
         }
+        // (a room locked, then one copied, each once the level is made: both read it, and a lock
+        // makes it again)
+        if shot.lock.is_some() && !locked && n >= 3 && app.settled() {
+            app.hold_generated(shot.lock.as_deref(), None);
+            locked = true;
+            continue;
+        }
+        if shot.copy.is_some() && !held && locked == shot.lock.is_some() && n >= 3 && app.settled() {
+            app.hold_generated(None, shot.copy.as_deref());
+            held = true;
+            continue;
+        }
         if shot.run_test && !tested && n >= 3 && app.settled() {
             app.run_test();
             tested = true;
             continue;
         }
-        if n >= shot.frames && app.settled() && tested == shot.run_test && varied == shot.vary.is_some() && nudged == shot.nudge.is_some() {
+        if n >= shot.frames && app.settled() && tested == shot.run_test && varied == shot.vary.is_some() && nudged == shot.nudge.is_some() && held == shot.copy.is_some() && locked == shot.lock.is_some() {
             break;
         }
         if started.elapsed() > deadline {
