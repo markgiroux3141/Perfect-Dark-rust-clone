@@ -850,7 +850,11 @@ field, option or edit is an error that says which. With no edits a recipe gives 
 | `feature` (a room, one of `level::FEATURES`, on or off) | the rooms (shaped, flooded, sunken, cellar) or furnishing (platforms, holes, angled) | New (2026-11-23). In place of the level's chance for that room alone: on is a chance of 1, off of 0, drawn from the room's own stream as ever. A room the feature does not fit is left without it (the room's choices say so); refused only for an unknown feature. |
 
 **Which lots may overlap** (`place::Placed::check`, held to after all the lot edits, not after
-each). Every lot is on the site, at least 2 by 2 cells, with its floor on a storey
+each). Every lot of the seed's own is on the site (a room drawn by hand, an `add`, may be
+anywhere, past any edge and at negative cells: the user's call, 2026-11-24, so a level drawn by
+hand is as big as it is drawn; `Placed::drawn`. The router sizes its grid to the rooms, and the
+import and the 3D preview take negative cells: checked on an empty start from -16 to 88 cells),
+every lot at least 2 by 2 cells, with its floor on a storey
 (`storeys::LEVELS`), a storey or more tall and its top at or under 4370 (1890 before the atrium's storeys). A spire must take a
 spiral (both walls at least 8 cells, two storeys or more). Every pair that is not a hall and
 its pod has a cell between them along x or along y, or one is over the other with a 40-unit

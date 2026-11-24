@@ -287,10 +287,27 @@ fn a_room_is_added_of_one_of_the_scales_kinds() {
     assert_eq!(why(add("annexe", "medium", (62, 30, 69, 36), 276, 236)), "add: annexe would be under a storey tall (276 to 236)");
     assert!(why(add("annexe", "medium", (60, 20, 67, 26), 0, 512)).starts_with("long and annexe overlap: "));
     assert!(why(add("annexe", "spire", (62, 30, 69, 40), 0, 1614)).starts_with("annexe is a spire: its ramps climb walls at least 8 cells long"));
-    assert_eq!(
-        why(add("annexe", "medium", (76, 30, 83, 36), 0, 512)),
-        "annexe is off the site (it is at 76, 30 to 83, 36, from 0 to 512; the site is 80 x 60 cells)"
-    );
+    // a room drawn by hand may go off the site, past any edge (the user's call, 2026-11-24); the
+    // seed's own stay on it (`medium3` moved off it is refused, above)
+    // (accepted and made; this one is 18 cells of corridor from the rest, and the dead-end pass
+    // leaves it out as it would anywhere: `keep` holds it)
+    let off = recipe(40, vec![add("annexe", "medium", (76, 30, 83, 36), 0, 512)]);
+    assert!(off.placed().unwrap().lots.iter().any(|a| a.key == "annexe" && a.x1 == 83));
+    let kept = recipe(40, vec![add("annexe", "medium", (76, 30, 83, 36), 0, 512), Edit::Keep { room: "annexe".into() }]);
+    assert!(kept.generate().unwrap().spaces().iter().any(|s| s.key == "annexe" && s.x1 == 83));
+    let r = recipe(40, vec![add("annexe", "medium", (76, 30, 83, 36), 0, 512), mv("annexe", (82, 30))]);
+    assert!(r.placed().unwrap().lots.iter().any(|a| a.key == "annexe" && a.x0 == 82), "a drawn room moves anywhere too");
+    let empty = Recipe {
+        edits: vec![
+            add("west", "medium", (-16, -8, -4, 4), 0, 236),
+            add("middle", "medium", (0, -8, 12, 4), 0, 236),
+            add("east", "medium", (16, -8, 28, 4), 0, 236),
+        ],
+        ..Recipe::empty(40)
+    };
+    let lv = empty.generate().unwrap();
+    assert!(lv.spaces().iter().any(|s| s.key == "west" && s.x0 == -16 && s.y0 == -8));
+    assert!(lv.net.routes().iter().any(|r| r.a.room == "west" || r.b.room == "west"), "west is joined");
 }
 
 #[test]

@@ -315,6 +315,10 @@ pub struct Placed {
     pub touched: BTreeSet<String>,
     /// An empty start (`Placed::empty`): the last lot may be deleted too.
     pub blank: bool,
+    /// Lots drawn by hand (an `add`): held to no site, so a level drawn by hand is as big as it is
+    /// drawn (the user's call, 2026-11-24). The seed's own lots keep the site the scatter put
+    /// them on. New here: no seed's lot is drawn, so no seed's level changes.
+    pub drawn: BTreeSet<String>,
 }
 
 /// "at 3, 4 to 9, 8, from 0 to 236": where a lot is, for a message.
@@ -359,7 +363,7 @@ impl Placed {
         let (mut kinds, site) = kinds_and_site(o);
         kinds.push(ATRIUM); // never scattered: only an edit adds one
         kinds.push(BASE); // nor is a base
-        Placed { lots, site, kinds, gone: Vec::new(), touched: BTreeSet::new(), blank: false }
+        Placed { lots, site, kinds, gone: Vec::new(), touched: BTreeSet::new(), blank: false, drawn: BTreeSet::new() }
     }
 
     /// No lots at all, on the site the siting gives: an empty start (`level::Start::Empty`).
@@ -470,6 +474,7 @@ impl Placed {
         stands(key, floor, top).map_err(|why| format!("add: {why}"))?;
         self.lots.push(Lot { key: key.to_string(), kind: k.name, x0: rect.0, y0: rect.1, x1: rect.2, y1: rect.3, floor, top, host: String::new() });
         self.gone.retain(|(k, _)| k != key); // a room again
+        self.drawn.insert(key.to_string());
         self.touch(key);
         Ok(())
     }
@@ -539,7 +544,7 @@ impl Placed {
     }
 
     /// Err, naming the lots and the rule, unless the lots are as the scatter could have left
-    /// them: each on the site, at least 2 x 2 cells, on a storey and a storey or more tall; a
+    /// them: each on the site (a lot drawn by hand anywhere: `drawn`), at least 2 x 2 cells, on a storey and a storey or more tall; a
     /// spire with walls long enough and storeys enough for its ramps (`band`: a catwalk's depth
     /// in half cells); each pod lawfully in its hall (one storey tall, on one of the hall's
     /// first two upper storeys, at least two cells in, a fifth of its floor at most); and every
@@ -550,7 +555,9 @@ impl Placed {
             if w < LEAST || d < LEAST {
                 return Err(format!("{} is {w} x {d} cells: a room is at least {LEAST} x {LEAST}", a.key));
             }
-            if a.x0 < 0 || a.y0 < 0 || a.x1 > self.site.0 || a.y1 > self.site.1 {
+            // (a room drawn by hand may be anywhere: only the seed's own are held to the site)
+            let drawn = self.drawn.contains(&a.key);
+            if !drawn && (a.x0 < 0 || a.y0 < 0 || a.x1 > self.site.0 || a.y1 > self.site.1) {
                 return Err(format!("{} is off the site (it is {}; the site is {} x {} cells)", a.key, whereabouts(a), self.site.0, self.site.1));
             }
             stands(&a.key, a.floor, a.top)?;
