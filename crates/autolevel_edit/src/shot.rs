@@ -6,7 +6,7 @@
 
 use crate::deadlist::Made;
 use crate::font;
-use crate::planview::{bare, bounds_bare, bounds_of, colour, picture, Key, Picture, Rgba, Swatch, View};
+use crate::planview::{bare, bounds_bare, bounds_of, cascade_rows, colour, picture, Key, Picture, Rgba, Swatch, View};
 use crate::raster::{rasterise, Fit, Image, EDGE};
 use crate::sideview::{self, SideView};
 use autolevel::storeys::snap_top;
@@ -156,7 +156,9 @@ fn compose(pic: &Picture, view: &View, width: usize, head: &str, under: &str) ->
     let fit = Fit::new(pic.lo, pic.hi, scale, 0.0, 0.0);
     let plan = rasterise(&pic.prims, &fit, width, plan_h, colour::BACKGROUND);
     let (at, rows) = lay(&pic.legend, width);
-    let legend_h = rows * ROW + 10;
+    // (what the last change changed, a line each under the legend)
+    let changed = view.cascade.as_deref().map_or(Vec::new(), cascade_rows);
+    let legend_h = rows * ROW + 10 + if changed.is_empty() { 0 } else { (changed.len() + 1) * 12 + 6 };
     // (what is picked gets a line of its own under the title)
     let doing = doing(view);
     let top = TITLE + if doing.is_empty() { 0 } else { DOING };
@@ -170,6 +172,13 @@ fn compose(pic: &Picture, view: &View, width: usize, head: &str, under: &str) ->
         let y = (top + plan_h + 6 + row * ROW) as i64;
         swatch(&mut img, x as i64, y, k);
         img.text(x as i64 + 22, y + 2, &k.text, 1, colour::KEY, Some(EDGE));
+    }
+    if !changed.is_empty() {
+        let y = (top + plan_h + 6 + rows * ROW) as i64;
+        img.text(12, y, &format!("what the last change changed ({}):", changed.len()), 1, colour::TITLE, Some(EDGE));
+        for (i, (line, col)) in changed.iter().enumerate() {
+            img.text(12, y + 12 * (i as i64 + 1), line, 1, *col, Some(EDGE));
+        }
     }
     img
 }

@@ -11,6 +11,10 @@
 //! the refused change is done. A recipe whose rooms make no level is shown the same way, by its
 //! boxes alone (`Done::failed`). A room's choice that is refused, or that no level can be made
 //! with, is shown on the level as it was: the room's box in red, the reason by it.
+//!
+//! After each change the level is made again, and what that changed is said (`changed:`, the
+//! cascade: `autolevel::cascade`), numbered as the snapshot numbers it. For room changes, which
+//! come before any level, the recipe's own level is made first, to compare with.
 
 use crate::cli::{Args, Choose, PutArg, Side, SideAt};
 use crate::doc::Doc;
@@ -81,12 +85,14 @@ fn choices(doc: &mut Doc, args: &Args, text: &mut String) -> Result<Option<Stopp
                     doc.undo();
                     return Ok(Some(Stopped { words: format!("{} makes no level: {why}", e.describe()), room, why, failed: true }));
                 }
+                said(doc, args, text);
             }
             Choose::Own { room, what } => {
                 let cleared: Vec<&str> = chosen::kinds(what).into_iter().filter(|kind| doc.clear_choice(room, kind)).collect();
                 text.push_str(&format!("choice: {}\n", chosen::owned(room, what, &cleared)));
                 if doc.recipe != before {
                     doc.regenerate().map_err(|why| format!("--own {room}@{}: no level: {why}", chosen::word(what)))?;
+                    said(doc, args, text);
                 }
             }
         }
@@ -145,12 +151,38 @@ fn section(side: &Side, lv: Option<&autolevel::level::Level>, boxes: Option<&Box
     }
 }
 
+/// What the last level made changed, as lines of text: "changed (2):" and a line each ("  #1
+/// ..."), numbered as the plan numbers them; nothing if no level was made before it.
+pub fn cascade_text(doc: &Doc) -> String {
+    let Some(c) = doc.cascade() else { return String::new() };
+    let lines = c.lines();
+    if lines.is_empty() {
+        return "changed: nothing else\n".to_string();
+    }
+    let mut out = format!("changed ({}):\n", lines.len());
+    for (n, line) in lines.iter().enumerate() {
+        out.push_str(&format!("  #{}  {line}\n", n + 1));
+    }
+    out
+}
+
+/// Say what the last change changed, unless the line asks not to.
+fn said(doc: &Doc, args: &Args, text: &mut String) {
+    if !args.no_cascade {
+        text.push_str(&cascade_text(doc));
+    }
+}
+
 pub fn run(args: &Args) -> Result<Done, String> {
     let mut doc = Doc::new(args.recipe.clone(), args.from.is_some());
     let mut text = String::new();
     let level = args.shot.is_some() || args.list || args.routes || args.changes() || !args.choices.is_empty();
     if !(level || args.lots) {
         return Ok(Done { recipe: doc.recipe, text, shot: None, refused: None, failed: None, strip: None });
+    }
+    // (the recipe's own level first, where rooms will change, to say what the change changed)
+    if level && !args.boxes.is_empty() {
+        let _ = doc.regenerate();
     }
     // the room boxes first, as lots come first in the generator; the level is made after them
     let trial = rooms(&mut doc, args, &mut text)?;
@@ -189,6 +221,9 @@ pub fn run(args: &Args) -> Result<Done, String> {
         };
         return Ok(Done { recipe: doc.recipe, text, shot, refused, failed: Some(why), strip: None });
     }
+    if trial.is_none() {
+        said(&doc, args, &mut text);
+    }
     if let (Some(shown), None) = (&boxes, &trial) {
         // (the generator leaves out a room nothing reaches, and a pod with no way in: say so)
         let made = doc.made().expect("the level was made");
@@ -224,6 +259,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
                 let done = doc.clear_put(room, *at);
                 text.push_str(&format!("unput: {room} at {}, {}{}\n", at.0, at.1, if done { "" } else { " (nothing was put there)" }));
                 doc.regenerate().map_err(|why| format!("--unput: no level: {why}"))?;
+                said(&doc, args, &mut text);
                 continue;
             }
         };
@@ -237,6 +273,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
             Ok(()) => text.push_str(&format!("put: {}\n", e.describe())),
             Err(why) => text.push_str(&format!("not put: {}: {why}\n", e.describe())),
         }
+        said(&doc, args, &mut text);
     }
     let mut gone = None;
     // (after a refusal nothing more is changed: the level shown is the one refused of)
@@ -245,6 +282,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
         let done = doc.remove_route(key).map_err(|why| format!("--remove {key}: {why}"))?;
         text.push_str(&format!("removed: {}\n", done.text()));
         doc.regenerate().map_err(|why| format!("--remove {key}: no level without it: {why}"))?;
+        said(&doc, args, &mut text);
         gone = was;
     }
     if let Some((room, storey)) = args.pick.as_ref().filter(|_| !stopped) {
@@ -258,6 +296,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
             let c = doc.choose(n).map_err(|why| format!("--join: {why}"))?;
             text.push_str(&format!("joined: {n}  {}\n", c.text()));
             doc.regenerate().map_err(|why| format!("--join {n}: {why}"))?;
+            said(&doc, args, &mut text);
         }
     }
     // the variants strip: the next re-rolls of a room's part, made side by side; one kept
@@ -277,6 +316,7 @@ pub fn run(args: &Args) -> Result<Done, String> {
             let made = t.made.clone().map_err(|why| format!("--keep {k}: no level: {why}"))?;
             doc.adopt(t.variant.edit.clone(), &t.variant.recipe, made)?;
             text.push_str(&format!("kept: {k}  {}\n", t.variant.edit.describe()));
+            said(&doc, args, &mut text);
         }
     }
     let made = doc.made().expect("the level was made").clone();
@@ -285,6 +325,9 @@ pub fn run(args: &Args) -> Result<Done, String> {
         text.push_str(&chosen::text(&found, made.level.space(room)));
     }
     let mut view = View { storey: args.storey, gone, boxes, ..doc.look(args.all, None) };
+    if args.no_cascade {
+        view.cascade = None;
+    }
     view.things.tool = args.things;
     let shot = match &args.side {
         Some(side) if args.shot.is_some() => {
@@ -328,9 +371,43 @@ mod tests {
     use autolevel::recipe::Edit;
 
     fn args(line: &str) -> Args {
+        // (what each change changed is not said: `the_cascade_is_said_after_each_change_and_drawn`)
+        said(&format!("{line} --no-cascade"))
+    }
+
+    /// `args`, with what each change changed said and drawn.
+    fn said(line: &str) -> Args {
         // (bases and grown pods left out: the levels these tests pin were made before they were on)
         let words: Vec<String> = format!("{line} --no-bases --no-big-pods").split_whitespace().map(str::to_string).collect();
         cli::parse(&words, &|path| Err(format!("{path}: no files here"))).unwrap()
+    }
+
+    #[test]
+    fn the_cascade_is_said_after_each_change_and_drawn() {
+        // a pillar moved: one line, and only that
+        let done = run(&said("--seed 40 --nudge vast@41,25@40,32 --shot plan.png --width 900")).unwrap();
+        assert!(
+            done.text.starts_with("put: vast: the piece at 41, 25 moved to 40, 32\nchanged (1):\n  #1  vast: a pillar moved from 41, 25 to 40, 32\n"),
+            "{}",
+            done.text
+        );
+        let quiet = run(&args("--seed 40 --nudge vast@41,25@40,32 --shot plan.png --width 900")).unwrap();
+        assert!(!quiet.text.contains("changed") && png(&quiet) != png(&done));
+        // a room moved: the recipe's own level is made first, to compare with; its corridors
+        // re-routed, each by its two rooms
+        let done = run(&said("--seed 40 --move medium3@62,24 --list")).unwrap();
+        let lines: Vec<&str> = done.text.lines().skip_while(|l| !l.starts_with("changed (")).skip(1).take_while(|l| l.starts_with("  #")).collect();
+        assert!(
+            lines[0].ends_with("medium3 moved 1 east, 21 north") && lines.iter().any(|l| l.contains("medium3") && l.contains("re-routed")),
+            "{}",
+            done.text
+        );
+        // a change refused, or none made: nothing to say
+        let done = run(&said("--seed 40 --list")).unwrap();
+        assert!(!done.text.contains("changed"));
+        // a choice, made after the level: said after it
+        let done = run(&said("--seed 40 --cover vast@none --list")).unwrap();
+        assert!(done.text.starts_with("choice: vast: cover none\nchanged ("), "{}", done.text);
     }
 
     #[test]

@@ -23,11 +23,17 @@
 //! selected room has and could take, `set_choice` makes one (a `layout`, `cover`, `reroll`,
 //! `brightness` or `ceiling` edit, the room's only one of its kind) or refuses it in plain
 //! words, and `clear_choice` gives the seed's own back.
+//!
+//! The cascade (roadmap item 7): when a level arrives for a newer recipe than the last one made
+//! (an edit, an undo, a re-roll kept), the one it replaces is kept (`before`) and the two are
+//! compared (`cascade`: `autolevel::cascade::diff`), so the plan can light what is new, ghost
+//! what went and say it in words.
 
 use crate::deadlist::{make, Made};
 use crate::planview::{Boxes, Things, View};
 use autolevel::boxes::{self, Change, Trial};
 use autolevel::candidates::{self, Asked, Candidate, Candidates, Removal};
+use autolevel::cascade::{diff, Cascade};
 use autolevel::choices::{self, Choices};
 use autolevel::level::Start;
 use autolevel::place::{Placed, Siting};
@@ -59,6 +65,9 @@ pub struct Doc {
     rev: u64,
     /// The last level made, and the count of the recipe it was made from.
     made: Option<(u64, Arc<Made>)>,
+    /// The level made before it (for an older recipe), and what changed from that one to it.
+    before: Option<Arc<Made>>,
+    cascade: Option<Arc<Cascade>>,
     /// Why the recipe as it stands makes no level, and for which count.
     failed: Option<(u64, String)>,
     /// The room picked to join from, and the storey.
@@ -86,6 +95,8 @@ impl Doc {
             saved: was,
             rev: 0,
             made: None,
+            before: None,
+            cascade: None,
             failed: None,
             pick: None,
             asked: Asked::default(),
@@ -346,7 +357,7 @@ impl Doc {
         let none = self.joins().filter(|found| found.found.is_empty() && !found.asked.plain()).map(|found| found.none_fits());
         let asked = if self.pick.is_some() { self.asked.clone() } else { Asked::default() };
         let things = Things { tool: None, put: self.puts() };
-        View { pick: self.pick.clone(), asked, none, joins, hot, route: self.route.clone(), chosen, things, ..View::default() }
+        View { pick: self.pick.clone(), asked, none, joins, hot, route: self.route.clone(), chosen, things, cascade: self.cascade.clone(), ..View::default() }
     }
 
     // ------------------------------------------------------------ room boxes
@@ -538,7 +549,7 @@ impl Doc {
         }
         match result {
             Ok(made) => {
-                self.made = Some((rev, Arc::new(made)));
+                self.take(rev, Arc::new(made));
                 self.failed = None;
             }
             Err(why) => self.failed = Some((rev, why)),
@@ -552,10 +563,32 @@ impl Doc {
     pub fn adopt(&mut self, e: Edit, recipe: &Recipe, made: Arc<Made>) -> Result<(), String> {
         self.set_choice(e)?;
         if self.recipe == *recipe {
-            self.made = Some((self.rev, made));
+            self.take(self.rev, made);
             self.failed = None;
         }
         Ok(())
+    }
+
+    /// A level for the recipe at `rev`: the one it replaces is kept as `before`, with what
+    /// changed, if it was made for another recipe (the same one made again changes nothing).
+    fn take(&mut self, rev: u64, made: Arc<Made>) {
+        if let Some((was, old)) = self.made.take() {
+            if was != rev {
+                self.cascade = Some(Arc::new(diff(&old.level, &made.level)));
+                self.before = Some(old);
+            }
+        }
+        self.made = Some((rev, made));
+    }
+
+    /// The level made before the last one, for an older recipe.
+    pub fn before(&self) -> Option<&Arc<Made>> {
+        self.before.as_ref()
+    }
+
+    /// What changed from `before` to the last level made (None: only one has been made).
+    pub fn cascade(&self) -> Option<&Arc<Cascade>> {
+        self.cascade.as_ref()
     }
 
     /// The last level made: the recipe's own unless `stale` or `error`.
@@ -572,6 +605,32 @@ impl Doc {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_change_and_its_undo_each_say_what_they_changed() {
+        let mut d = Doc::new(Recipe::before_bases(40), true);
+        d.regenerate().unwrap();
+        // the first level is compared with nothing
+        assert!(d.cascade().is_none() && d.before().is_none());
+        let first = d.made().unwrap().clone();
+        assert!(d.put(Edit::Piece { room: "vast".into(), at: (41, 25), what: None, size: None, to: Some((40, 32)) }));
+        // (still the old level until the new one arrives)
+        assert!(d.cascade().is_none());
+        d.regenerate().unwrap();
+        assert!(Arc::ptr_eq(d.before().unwrap(), &first));
+        assert_eq!(d.cascade().unwrap().lines(), ["vast: a pillar moved from 41, 25 to 40, 32"]);
+        // undone: the way back
+        assert!(d.undo());
+        d.regenerate().unwrap();
+        assert_eq!(d.cascade().unwrap().lines(), ["vast: a pillar moved from 40, 32 to 41, 25"]);
+        // the same recipe's level taken again changes nothing kept
+        let rev = d.rev();
+        let again = make(&d.recipe).unwrap();
+        assert!(d.accept(rev, Ok(again)));
+        assert_eq!(d.cascade().unwrap().lines(), ["vast: a pillar moved from 40, 32 to 41, 25"]);
+        // and it is on the plan's view
+        assert!(d.look(false, None).cascade.is_some());
+    }
 
     #[test]
     fn edits_undo_redo_and_dirty() {

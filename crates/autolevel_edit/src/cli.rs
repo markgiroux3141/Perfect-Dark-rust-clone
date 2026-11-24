@@ -58,6 +58,8 @@ pub const USAGE: &str = "autolevel_edit: the level editor for autolevel
   --via WAY             with --pick: joins by a corridor (never a vent) or a vent (even where a
                         corridor fits); none: a corridor, failing that a vent
   --all                 the snapshot draws every corridor --pick lists, not only each room's cheapest
+  --no-cascade          after each change, don't say what it changed (the lines \"changed (N):\",
+                        each \"  #n ...\"), nor draw it on the snapshot (lit, ghosts, arrows)
   --rooms               the snapshot draws the room boxes over the level, as the recipe places
                         them (any of the room flags below turns this on)
   --select ROOM         that room's box is drawn selected: its grips, its size and heights
@@ -178,6 +180,8 @@ pub struct Args {
     pub join: Option<usize>,
     /// Draw every corridor found for the pick, not only each room's cheapest.
     pub all: bool,
+    /// Neither say nor draw what each change changed (the cascade).
+    pub no_cascade: bool,
     /// The snapshot draws the room boxes (`draws_rooms`: any room flag does as much).
     pub rooms: bool,
     /// The room whose box the snapshot draws selected.
@@ -337,6 +341,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
         asked: Asked::default(),
         join: None,
         all: false,
+        no_cascade: false,
         rooms: false,
         select: None,
         lots: false,
@@ -385,6 +390,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
             "list" => (out.list, took) = (true, 1),
             "routes" => (out.routes, took) = (true, 1),
             "all" => (out.all, took) = (true, 1),
+            "no_cascade" => (out.no_cascade, took) = (true, 1),
             "remove" => out.remove.push(value(n)?.to_string()),
             "join" => out.join = Some(number(n)?.try_into().ok().filter(|k| *k > 0).ok_or("--join: a number of the --pick list, from 1")?),
             "pick" => {

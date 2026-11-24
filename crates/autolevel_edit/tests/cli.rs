@@ -10,7 +10,7 @@ use std::process::Command;
 
 /// Bases and grown pods left out: the levels these tests pin were made before they were on
 /// (2026-11-22).
-const PINNED: [&str; 2] = ["--no-bases", "--no-big-pods"];
+const PINNED: [&str; 3] = ["--no-bases", "--no-big-pods", "--no-cascade"];
 
 fn run(args: &[&str]) -> String {
     let out = Command::new(env!("CARGO_BIN_EXE_autolevel_edit")).args(args).args(PINNED).output().expect("autolevel_edit runs");

@@ -30,6 +30,7 @@
 use autolevel::boxes::Part;
 use autolevel::build::Fix;
 use autolevel::candidates::{footprint, Asked, Candidate};
+use autolevel::cascade::{Cascade, Spot};
 use autolevel::cells::{Cell, Cells, Rect};
 use autolevel::deadends::DeadEnd;
 use autolevel::furnish::rectangles;
@@ -42,6 +43,7 @@ use autolevel::scatter::Lot;
 use autolevel::space::{Space, DIRS};
 use autolevel::storeys::{snap_top, LEVELS};
 use autolevel::windows::{places, Place};
+use std::sync::Arc;
 
 /// A place on the plan, in cells.
 pub type P = (f32, f32);
@@ -172,6 +174,13 @@ pub mod colour {
     pub const REFUSAL: Rgba = [255, 222, 222, 255];
     /// What was chosen for a room by hand: the words under its name.
     pub const CHOSEN: Rgba = [226, 196, 255, 255];
+    /// The cascade: what is new (lit), where what went was (a ghost), and how a thing moved.
+    pub const LIT: Rgba = [140, 255, 120, 255];
+    pub const LIT_FILL: Rgba = [140, 255, 120, 90];
+    pub const GHOST: Rgba = [255, 150, 130, 230];
+    pub const GHOST_FILL: Rgba = [255, 150, 130, 40];
+    pub const MOVED: Rgba = [140, 255, 120, 255];
+    pub const CASCADE_NUMBER: Rgba = [10, 12, 18, 255];
 
     /// The colour of the storey whose floor is `z`.
     pub fn storey(z: i32) -> Rgba {
@@ -276,6 +285,9 @@ pub struct View {
     pub chosen: Vec<(String, String)>,
     /// The things put by place (windows, pillars and crates, drops), and the tool in hand.
     pub things: Things,
+    /// What the last change changed (`autolevel::cascade`): what is new lit, what went a ghost,
+    /// what moved an arrow, each numbered as the list numbers it.
+    pub cascade: Option<Arc<Cascade>>,
 }
 
 /// The things put by place, to draw on the plan: each `window`, `piece` and `drop` edit's place,
@@ -373,6 +385,7 @@ impl Default for View {
             boxes: None,
             chosen: Vec::new(),
             things: Things::default(),
+            cascade: None,
         }
     }
 }
@@ -589,6 +602,40 @@ fn cell_box(r: Rect) -> Box2 {
 
 fn half_box(r: Rect) -> Box2 {
     (r.0 as f32 / 2.0, r.1 as f32 / 2.0, r.2 as f32 / 2.0, r.3 as f32 / 2.0)
+}
+
+fn spot_box(s: &Spot) -> Box2 {
+    half_box(s.rect)
+}
+
+/// The point `d` cells short of b on the way from a (a itself if they are nearer than that).
+fn along_to(a: (f32, f32, i32), b: (f32, f32, i32), d: f32) -> P {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= d {
+        return (a.0, a.1);
+    }
+    (b.0 - dx * d / len, b.1 - dy * d / len)
+}
+
+/// The cascade's lines as a list shows them, numbered, each in the colour of what it says: lit
+/// for something new or changed, the ghost's for something gone.
+pub fn cascade_rows(c: &Cascade) -> Vec<(String, Rgba)> {
+    c.lines()
+        .into_iter()
+        .enumerate()
+        .map(|(i, line)| {
+            let gone = c.changes.iter().any(|ch| ch.words == line && ch.now.is_empty());
+            (format!("{:>2}  {line}", i + 1), if gone { colour::GHOST } else { colour::LIT })
+        })
+        .collect()
+}
+
+/// Each change with the number of its line in `Cascade::lines` (None where several share a
+/// line: a room's many of one kind, counted).
+pub fn numbered(c: &Cascade) -> Vec<(Option<usize>, &autolevel::cascade::Change)> {
+    let lines = c.lines();
+    c.changes.iter().map(|ch| (lines.iter().position(|l| *l == ch.words).map(|i| i + 1), ch)).collect()
 }
 
 /// The picture being made.
@@ -1035,6 +1082,42 @@ impl Pic<'_> {
     }
 
     /// The things put by place (`View::things`), and the window places with a window tool.
+    /// What the last change changed: ghosts (dashed, where a thing was), lit (where it is now),
+    /// arrows for moves, and the change's number (as the list has it) on its first spot. A room's
+    /// box is framed, not filled, so what is inside it still shows.
+    fn cascade(&mut self) {
+        let Some(c) = self.view.cascade.clone() else { return };
+        let storey = self.view.storey;
+        let on = |s: &Spot, room: bool| storey.is_none_or(|z| if room { s.lo <= z && z < s.hi.max(s.lo + 1) } else { s.z == z });
+        for (n, ch) in numbered(&c) {
+            let room = ch.what == "room";
+            for s in ch.was.iter().filter(|s| on(s, room)) {
+                if !room {
+                    self.rect(spot_box(s), colour::GHOST_FILL);
+                }
+                self.dashed_frame(spot_box(s), colour::GHOST, if room { 2.0 } else { 1.5 }, 0.5, 0.35);
+            }
+            for s in ch.now.iter().filter(|s| on(s, room)) {
+                if !room {
+                    self.rect(spot_box(s), colour::LIT_FILL);
+                }
+                self.frame(spot_box(s), colour::LIT, if room { 3.0 } else { 1.5 });
+            }
+            if let Some((a, b)) = ch.arrow {
+                if storey.is_none_or(|z| z == a.2 || z == b.2 || ch.now.iter().chain(&ch.was).any(|s| on(s, room))) {
+                    self.dashed((a.0, a.1), (b.0, b.1), colour::MOVED, 2.0, 0.6, 0.3);
+                    self.arrow(along_to(a, b, 1.2), (b.0, b.1), colour::MOVED, 2.5, 0.8);
+                }
+            }
+            let first = ch.now.iter().chain(&ch.was).find(|s| on(s, room));
+            if let (Some(s), Some(n)) = (first, n) {
+                let (x0, _, _, y1) = spot_box(s);
+                let fill = if ch.now.is_empty() { colour::GHOST } else { colour::LIT };
+                self.out.push(Prim::Badge { at: (x0, y1), text: n.to_string(), fill, col: colour::CASCADE_NUMBER, r_px: 7.0, size_px: 8.0 });
+            }
+        }
+    }
+
     fn things(&mut self) {
         let (lv, view) = (self.lv, self.view);
         let px = 1.0 / view.scale;
@@ -1311,6 +1394,7 @@ pub fn picture(lv: &Level, view: &View) -> Picture {
     pic.dead_ends();
     pic.chosen();
     pic.things();
+    pic.cascade();
     if let Some(m) = &view.mark {
         pic.ring(m, colour::MARK, 3.0);
         if let Some((at, _)) = m.at {
@@ -1715,6 +1799,11 @@ pub fn legend(lv: &Level, view: &View) -> Vec<Key> {
     }
     if view.chosen.iter().any(|(room, _)| lv.spaces().iter().any(|s| s.key == *room)) {
         out.push(key(Swatch::Line, colour::CHOSEN, "chosen by hand for the room"));
+    }
+    if view.cascade.as_ref().is_some_and(|c| !c.is_empty()) {
+        out.push(key(Swatch::Line, colour::LIT, "the last change: new or changed (numbered as listed)"));
+        out.push(key(Swatch::Line, colour::GHOST, "where it was (dashed)"));
+        out.push(key(Swatch::Line, colour::MOVED, "moved (arrow)"));
     }
     out.extend(box_keys(view, Some(lv)));
     out
