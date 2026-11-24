@@ -2860,7 +2860,8 @@ Order of work, and where each stands:
    words, on the plan, the side view, the variants strip, the panel, `pd_edit`'s Layout screen and
    3D view, and the command line.
 8. Lock one room and re-roll the rest; copy, paste and mirror a room with its choices; a room
-   saved as a preset.
+   saved as a preset. Designed (2026-11-23): "Lock, copy, paste, mirror and presets", below;
+   steps 1 and 2 (the edits, in `autolevel`) built.
 
 ### Per-room features (roadmap item 2, 2026-11-23)
 
@@ -3300,6 +3301,97 @@ Order of work, and where each stands:
   each other where changes are close. The 3D boxes are wire boxes only (no arrows, no numbers),
   and a put's lit box sits inside its magenta frame. Alternatives (blank levels' piece 3) don't
   carry their own list yet.
+
+### Lock, copy, paste, mirror and presets (roadmap item 8: the design, 2026-11-23)
+
+Three tools, each a recipe edit that a recipe without it never takes, so no seed's level changes.
+
+**What a room's inside hangs on.** A room is furnished from its own streams
+(`{seed}/{key}/dress`, `/{attempt}`, `/shape`, `/flooded`, `/sunken`, `/cellar`, `/pits`, ...),
+laid to its doors. Measured on seed 40 (both `Options::python` and the defaults): with every
+other room's whole inside re-rolled (`reroll` n, n = 1 to 4), vast, medium3, medium1 and tower
+come through `cascade::diff` untouched for every n; colossal does not for three of the four: the
+dead-end pass joins tower on 551 to colossal only while tower's own inside leaves it a dead end
+(`Fix::Joined`), so a re-roll of tower takes colossal's door away, and its decks with it. A room's
+doors are what a lock must pin, besides its streams. The pass's joins replayed as the recipe's
+own `join` edits, through the doorways the route took (`door`, `to_door`, `on` the far storey,
+`via` corridor or vent), give a level the diff can't tell from the seed's own (seed 40's three,
+alone and together, both option sets).
+
+**Lock.** `lock { room }`: the room is held as it is: its box, its streams, its choices and its
+doors.
+- `autolevel::lock::lock(recipe, level, room)` is the recipe locked: every corridor the dead-end
+  pass made to or from the room becomes a `join` edit of the recipe's own (through the route's
+  doorways), every cut the pass made to its decks a `cut` edit, and then the `lock`. So locking
+  changes nothing (tested: the diff against the level before it is empty for every room of seed
+  40). Refused for a pod (it is held with its hall) and a room that is not there.
+- The dead-end pass with a lock (`Build::locked`): it makes no join to or from a locked room
+  (`deadends::joins` naming one are passed over), cuts none of a locked room's decks, and leaves
+  out no room with a corridor to one; such a dead end is left as it is. With no lock it is the
+  pass it always was.
+- Any edit after the lock that names the room is refused ("move: vast is locked: unlock it to
+  change it"); the editors ask before they make it (`lock::refusal`). Unlocking takes the `lock`
+  out; the joins it wrote stay (they are the level's corridors either way).
+- What a lock cannot hold, and the cascade then says, naming the room: another room moved, sized
+  or added onto a locked hall as its pod, a corridor re-routed through its wall by a change to
+  its neighbours' boxes, a window or drop of a corridor or room beside it. None of these is
+  refused; the editors mark a cascade line whose room is locked.
+
+**Re-roll the rest.** `rest { n }`: every room that is not locked, not a pod, and has no whole
+`reroll` of its own, is furnished from its `n`th other stream (`{seed}/{key}/reroll{n}/...`, the
+one `reroll` n would give it: a room re-rolled by the rest is the room re-rolled alone). One a
+recipe (the last wins); 0 is none. Applied at furnishing (`Options::rest`, filled by `effective`
+as `rerolled` is). What it does not re-roll, and why: the lots and the corridors (a room's inside
+is laid to its doors: a new floor plan round a locked room would bring it new doors, so nothing
+of it could be kept; copy the room into another seed's level instead), windows and drops (drawn
+level-wide). Tested on seed 40: each room locked, the rest re-rolled for n = 1 to 5, the locked
+room absent from the diff (`Cascade::of`).
+
+**Copy.** `autolevel::copy::Copy` (plain data, and a preset's body): what a room is, relative to
+itself:
+- `kind`; `size` (cells wide and deep); `storeys` (how many, counted on `storeys::LEVELS`: a paste
+  stands as many storeys tall from the floor it is put on); the floor it was on (a paste's default);
+- `draws`: the name its streams are drawn from ("40/vast"; the room's own `draws` if it was pasted
+  itself), so a paste is dressed and furnished from the same numbers: its cover, shape cut, pillar
+  and first choices come out the same; the rest is laid to its own doors;
+- its choices: its `layout`, `cover`, `brightness`, `ceiling`, `reroll` (whole and parts) and
+  `feature` edits;
+- its puts (`window`, `piece`, `drop`), their cells relative to its low corner, a window's storey
+  as a count of storeys from its floor;
+- a hall's pods, each a `Copy` of its own placed relative to the hall;
+- `mirror`: the axes it is flipped on.
+`copy::copy(recipe, level, room)`; refused for a pod (copy its hall), a spire is copied whole.
+
+**Paste.** `copy::paste(recipe, &Copy, at, floor) -> (Recipe, key)`: an `add` of a new key
+(`boxes::new_key`) with the copy's kind, its box from `at` (the low corner), its floor and its
+top that many storeys up, and `draws`; then each pod as an `add` of its own (with its draws), the
+choices and puts renamed to it and moved by `at` (a window's storey from the new floor), and a
+`mirror` for each axis. Refused as an `add` is: the overlap rule, the site, heights no room
+stands at; the editors try it with `Recipe::rooms` (quick) as the pointer moves. `Edit::Add`
+gains `draws` (left out of the file when not given: every recipe there was reads as it did), and
+`Options::draws` (room -> name, filled by `effective`) is asked wherever a room's streams are
+named (`Options::named(seed, key)`: "{seed}/{key}" unless drawn as another).
+
+**Mirror.** `mirror { room, axis }` ("x": east for west; "y": north for south). What a room's
+draws place by its own box is flipped about its middle: the shape's cut (an L's corner, a U's
+side) and the sunken pit. Not its inside (laid to its doors, which are where the router put
+them: a mirrored inside would not meet them). Mirroring a copy (`Copy::mirrored(axis)`) flips its
+pods' boxes and its puts' cells and adds the axis; mirroring a room in place
+(`copy::mirror(recipe, level, room, axis)`) is the same done to the recipe: its pods moved
+(`move`), its puts' cells flipped, the `mirror` edit set (the same axis twice is none).
+
+**Presets.** A copy saved: `{ "preset": 1, "name": "Pump hall", "from": "seed 40, vast", ...the
+copy }` (`copy::Preset`, `preset::load`, `save`; unknown fields refused, as a recipe's). Where:
+`pd_edit` keeps them in `crates/pd_import/levels/presets/<name>.json` (committed, beside the
+recipes they come from; listed on the Layout screen); `autolevel_edit` reads and writes any path
+(`--preset FILE`), its window a `presets/` folder beside the recipe it has open.
+
+**Order of work:** (1) `lock`, `rest`, the pass's rule, in `autolevel` with tests on seed 40; (2)
+`draws`, `copy`, `paste`, `mirror`, presets, with tests; (3) the editors: `autolevel_edit`'s plan
+(a locked room hatched, a paste's ghost box following the pointer, red where refused) and panel
+(lock, re-roll the rest, copy, paste, mirror, save as preset, the presets), `pd_edit`'s Layout
+screen (the same in the room panel); (4) the command line (`--lock`, `--unlock`, `--rest N`,
+`--copy ROOM`, `--paste X,Y@FLOOR`, `--mirror x|y`, `--save-preset FILE`, `--preset FILE`).
 
 ## Risks
 

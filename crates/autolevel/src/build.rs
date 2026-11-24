@@ -790,10 +790,16 @@ impl Build {
     fn furnish(&self, s: &Space, pods: &[Space], hole: Option<Rect>, keep: &[Rect]) -> Result<(Interior, bool), String> {
         let (seed, key) = (self.seed, &s.key);
         let doors = self.net.doors(key);
-        let pick = self.choices.get(key).cloned().unwrap_or_default();
+        let mut pick = self.choices.get(key).cloned().unwrap_or_default();
+        // (the rest re-rolled: every room not locked with no whole re-roll of its own; new here)
+        if pick.reroll == 0 && s.host.is_empty() && !self.o.is_locked(key) {
+            pick.reroll = self.o.rest;
+        }
+        // (the room's streams' name: "{seed}/{key}", or another room's it is drawn as)
+        let named = self.o.named(seed, key);
         let stream = |part: &str| match pick.reroll {
-            0 => format!("{seed}/{key}/{part}"),
-            n => format!("{seed}/{key}/reroll{n}/{part}"),
+            0 => format!("{named}/{part}"),
+            n => format!("{named}/reroll{n}/{part}"),
         };
         // (parts re-rolled alone: "{seed}/{key}/catwalks2", under the room's re-roll if it has one)
         let parts: Vec<(&'static str, String)> = crate::level::PARTS
@@ -991,6 +997,10 @@ impl Build {
     fn join(&mut self, g: &Graph, e: &DeadEnd, reach: i32) -> Result<Option<BTreeSet<String>>, String> {
         let before: BTreeSet<(&str, i32)> = e.places.iter().map(|k| g.place(k)).map(|p| (p.room.as_str(), p.level)).collect();
         for (room, level, other, levels, sep) in deadends::joins(g, self.spaces(), e, reach, deadends::STOREYS, deadends::EACH) {
+            // (a locked room takes no new door: new here, so with no lock the pass is as ever)
+            if self.o.is_locked(&room) || self.o.is_locked(&other) {
+                continue;
+            }
             if !self.tried.insert((room.clone(), level, other.clone())) {
                 continue;
             }
@@ -1045,6 +1055,18 @@ impl Build {
     /// Cut a dead end short: the decks that climb to nothing first (a spiral stops, a tower's
     /// rings stop), otherwise its farthest room goes. Returns the rooms changed.
     fn shorten(&mut self, e: &DeadEnd) -> Result<Option<BTreeSet<String>>, String> {
+        // (a locked room's decks are not cut, nor a room with a corridor to one left out: the dead
+        // end is left as it is. New here: with no lock nothing is passed over.)
+        if e.cut.iter().any(|(room, _)| self.o.is_locked(room)) {
+            return Ok(None);
+        }
+        if !e.leaf.is_empty() && !self.o.locked.is_empty() {
+            let leaf = &e.leaf;
+            let touches = |k: &str| self.o.is_locked(k) || self.o.is_locked(&self.net.grid.space(k).host);
+            if touches(leaf) || self.net.routes().iter().any(|r| (r.a.room == *leaf && touches(&r.b.room)) || (r.b.room == *leaf && touches(&r.a.room))) {
+                return Ok(None);
+            }
+        }
         if !e.cut.is_empty() {
             for (room, top) in &e.cut {
                 let s = self.net.grid.space(room);

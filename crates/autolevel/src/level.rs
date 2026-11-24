@@ -138,6 +138,20 @@ pub struct Options {
     /// in the recipe's order. Filled as `forced` is; with none (every seed's own level) nothing
     /// is put, and every draw is as it was. New here (the editing roadmap's item 6).
     pub puts: Vec<Put>,
+    /// Rooms held as they are (a recipe's `lock` edits): the dead-end pass makes no door in them
+    /// and takes none away, and the rest's re-roll passes them over. Filled as `forced` is; with
+    /// none (every seed's own level) the pass is as it always was. New here (roadmap item 8).
+    pub locked: Vec<String>,
+    /// Every room not locked, not a pod and with no whole re-roll of its own is furnished from
+    /// this other stream of its own (a recipe's `rest` edit; 0: the seed's own). Filled as
+    /// `forced` is. New here (roadmap item 8).
+    pub rest: u32,
+    /// Rooms whose streams are named as another's (a recipe's `draws` edits: the room, "40/vast"),
+    /// in place of "{seed}/{key}" (`named`). Filled as `forced` is. New here (roadmap item 8).
+    pub draws: Vec<(String, String)>,
+    /// Rooms whose box-placed draws are flipped (a recipe's `mirror` edits: the room, 'x' or 'y';
+    /// `mirror`). Filled as `forced` is. New here (roadmap item 8).
+    pub mirrored: Vec<(String, char)>,
 }
 
 /// A single thing put by hand, named by where it is, never by an index (indices shift with every
@@ -247,6 +261,10 @@ impl Default for Options {
             forced: Vec::new(),
             rerolled: Vec::new(),
             puts: Vec::new(),
+            locked: Vec::new(),
+            rest: 0,
+            draws: Vec::new(),
+            mirrored: Vec::new(),
         }
     }
 }
@@ -321,6 +339,26 @@ impl Options {
         self.forced.iter().any(|(_, w, on)| *w == what && *on)
     }
 
+    /// The name a room's streams are drawn under: "{seed}/{key}", or what a `draws` edit gave it
+    /// (the last such).
+    pub fn named(&self, seed: u64, key: &str) -> String {
+        match self.draws.iter().rev().find(|(k, _)| k == key) {
+            Some((_, from)) => from.clone(),
+            None => format!("{seed}/{key}"),
+        }
+    }
+
+    /// Is the room flipped (x, y) across its middle (an odd number of `mirror` edits on each axis)?
+    pub fn mirror(&self, room: &str) -> (bool, bool) {
+        let n = |axis: char| self.mirrored.iter().filter(|(k, a)| k == room && *a == axis).count() % 2 == 1;
+        (n('x'), n('y'))
+    }
+
+    /// Is the room locked (a recipe's `lock` edit)?
+    pub fn is_locked(&self, room: &str) -> bool {
+        self.locked.iter().any(|k| k == room)
+    }
+
     /// The things put by hand in `room`.
     pub fn puts_in<'a>(&'a self, room: &'a str) -> impl Iterator<Item = &'a Put> + 'a {
         self.puts.iter().filter(move |p| p.room() == room)
@@ -381,7 +419,7 @@ pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
     }
     let mut spin = Vec::new();
     for s in sp.iter_mut().filter(|s| s.kind == "spire") {
-        let mut rng = PyRandom::named(&format!("{seed}/{}/spiral", s.key));
+        let mut rng = PyRandom::named(&format!("{}/spiral", o.named(seed, &s.key)));
         let start = rng.below(4) as usize;
         let turn = *rng.choice(&[1, -1]);
         spin.push((s.key.clone(), (start, turn)));
@@ -437,7 +475,7 @@ pub fn grow_pods(seed: u64, o: &Options, sp: &mut [Space]) {
     }
     let keys: Vec<String> = sp.iter().filter(|s| !s.host.is_empty()).map(|s| s.key.clone()).collect();
     for key in keys {
-        let mut rng = PyRandom::named(&format!("{seed}/{key}/grow"));
+        let mut rng = PyRandom::named(&format!("{}/grow", o.named(seed, &key)));
         if rng.random() >= BIG_POD_CHANCE {
             continue;
         }
@@ -524,7 +562,7 @@ pub fn shapes(seed: u64, o: &Options, sp: &mut [Space], access: &[(String, Acces
         if chance <= 0.0 {
             continue;
         }
-        let mut rng = PyRandom::named(&format!("{seed}/{}/shape", s.key));
+        let mut rng = PyRandom::named(&format!("{}/shape", o.named(seed, &s.key)));
         if rng.random() >= chance {
             continue;
         }
@@ -554,6 +592,8 @@ pub fn shapes(seed: u64, o: &Options, sp: &mut [Space], access: &[(String, Acces
                     _ => (s.x1 - cw, my, s.x1, my + cd),
                 }
             };
+            // (a room mirrored: the cut on the other side; new here)
+            let cut = flipped(&s, o.mirror(&s.key), cut);
             let (x0, y0, x1, y1) = cut;
             // the arms left either side of it, and past it
             let arms = [x0 - s.x0, s.x1 - x1, y0 - s.y0, s.y1 - y1].into_iter().filter(|&a| a > 0).all(|a| a >= arm);
@@ -564,6 +604,15 @@ pub fn shapes(seed: u64, o: &Options, sp: &mut [Space], access: &[(String, Acces
             }
         }
     }
+}
+
+/// A rectangle of cells in a room flipped across its middle on x, y or both (a `mirror` edit):
+/// as it is with neither.
+pub fn flipped(s: &Space, (mx, my): (bool, bool), r: Rect) -> Rect {
+    let (sx, sy) = (s.x0 + s.x1, s.y0 + s.y1);
+    let (x0, x1) = if mx { (sx - r.2, sx - r.0) } else { (r.0, r.2) };
+    let (y0, y1) = if my { (sy - r.3, sy - r.1) } else { (r.1, r.3) };
+    (x0, y0, x1, y1)
 }
 
 /// How far a flooded room's water lies under its floor, units (half a cell: under the walkways'
@@ -603,7 +652,7 @@ pub fn floods(seed: u64, o: &Options, sp: &mut [Space]) {
         let pit = (s.x0 - 1, s.y0 - 1, s.x1 + 1, s.y1 + 1);
         let under = all.iter().any(|b| b.key != s.key && b.floor < s.floor && b.top + 39 > water - 40 && crate::scatter::rect_gap(pit, b.rect()) == (0, 0));
         let chance = o.chance(&s.key, "flooded", o.flooded);
-        if !under && chance > 0.0 && PyRandom::named(&format!("{seed}/{}/flooded", s.key)).random() < chance {
+        if !under && chance > 0.0 && PyRandom::named(&format!("{}/flooded", o.named(seed, &s.key))).random() < chance {
             s.flood = Some(water);
         }
     }
@@ -654,7 +703,7 @@ pub fn sinks(seed: u64, o: &Options, sp: &mut [Space]) {
         if chance <= 0.0 {
             continue;
         }
-        let mut rng = PyRandom::named(&format!("{seed}/{}/sunken", s.key));
+        let mut rng = PyRandom::named(&format!("{}/sunken", o.named(seed, &s.key)));
         if rng.random() >= chance {
             continue;
         }
@@ -669,7 +718,7 @@ pub fn sinks(seed: u64, o: &Options, sp: &mut [Space]) {
             let sd = rng.randint(SUNK_SIDE.0 as i64, SUNK_SIDE.1.min(d - 2 * SUNK_INSET) as i64) as i32;
             let x = rng.randint((s.x0 + SUNK_INSET) as i64, (s.x1 - SUNK_INSET - sw) as i64) as i32;
             let y = rng.randint((s.y0 + SUNK_INSET) as i64, (s.y1 - SUNK_INSET - sd) as i64) as i32;
-            let r = (x, y, x + sw, y + sd);
+            let r = flipped(s, o.mirror(&s.key), (x, y, x + sw, y + sd));
             let clear = crate::cells::rect_cells((2 * r.0, 2 * r.1, 2 * r.2, 2 * r.3)).is_disjoint(&keep);
             let pit = (r.0 - 1, r.1 - 1, r.2 + 1, r.3 + 1);
             let under =
@@ -705,7 +754,7 @@ pub fn cellars(seed: u64, o: &Options, lots: &[Lot]) -> (Vec<Lot>, Vec<(String, 
         if chance <= 0.0 {
             continue;
         }
-        let mut rng = PyRandom::named(&format!("{seed}/{}/cellar", hall.key));
+        let mut rng = PyRandom::named(&format!("{}/cellar", o.named(seed, &hall.key)));
         if rng.random() >= chance {
             continue;
         }
@@ -772,7 +821,7 @@ fn galleries(seed: u64, o: &Options, sp: &mut [Space]) {
             .map(|i| LEVELS[i])
             .filter(|z| reach.iter().any(|(k, levels)| *k != s.key && levels.contains(z)))
             .collect();
-        PyRandom::named(&format!("{seed}/{}/galleries", s.key)).shuffle(&mut free);
+        PyRandom::named(&format!("{}/galleries", o.named(seed, &s.key))).shuffle(&mut free);
         let mut chosen: Vec<i32> = Vec::new();
         for z in free {
             if chosen.len() < o.galleries && chosen.iter().all(|&c| index(c).abs_diff(index(z)) >= GALLERY_GAP) {

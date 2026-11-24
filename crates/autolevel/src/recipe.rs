@@ -281,6 +281,27 @@ pub enum Edit {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         at: Option<(i32, i32)>,
     },
+    /// The room is held as it is: its box, its streams, its choices and its doors. The dead-end
+    /// pass makes no door in it and takes none away (`Options::locked`), a `rest` re-roll passes
+    /// it over, and any later edit that names it is an error. `lock::lock` writes the corridors
+    /// the pass made to it as `join` edits first, so locking changes nothing. Err for a pod (held
+    /// with its hall). New here (the editing roadmap's item 8).
+    Lock { room: String },
+    /// Every room that is not locked, not a pod and has no whole `reroll` of its own is furnished
+    /// from its `n`th other stream (the one `reroll` n gives it); 0 is the seed's own. The lots,
+    /// the corridors, windows and drops stay. The last of a recipe's counts. New here (item 8).
+    Rest { n: u32 },
+    /// The room's streams are named `from` ("40/vast": a seed and a room) in place of its own
+    /// ("{seed}/{key}"): it is dressed, shaped, flooded, sunk, given a cellar, its spiral and its
+    /// inside drawn from the same numbers as that room's (what a paste carries, so the copy comes
+    /// out like the room it was copied from, laid to its own doors). Not its name or bases. Err
+    /// for a `from` that is no seed and room. New here (the editing roadmap's item 8).
+    Draws { room: String, from: String },
+    /// What the room's streams place by its own box is flipped across its middle: `axis` "x"
+    /// (east for west) or "y" (north for south): the shape's cut and the sunken pit. Not its
+    /// inside, which is laid to its doors. The same axis twice is none. Err for another axis.
+    /// New here (item 8).
+    Mirror { room: String, axis: String },
 }
 
 impl Edit {
@@ -306,6 +327,10 @@ impl Edit {
             Edit::Window { .. } => "window",
             Edit::Piece { .. } => "piece",
             Edit::Drop { .. } => "drop",
+            Edit::Lock { .. } => "lock",
+            Edit::Rest { .. } => "rest",
+            Edit::Draws { .. } => "draws",
+            Edit::Mirror { .. } => "mirror",
         }
     }
 
@@ -313,10 +338,14 @@ impl Edit {
     pub fn stage(&self) -> Stage {
         match self {
             Edit::Move { .. } | Edit::Resize { .. } | Edit::Add { .. } | Edit::Delete { .. } | Edit::Pin { .. } | Edit::Height { .. } => Stage::Lots,
+            // (the room's rolls are made with the rooms)
+            Edit::Draws { .. } | Edit::Mirror { .. } => Stage::Lots,
             Edit::Join { .. } | Edit::Remove { .. } => Stage::Routes,
             Edit::Layout { .. } | Edit::Cover { .. } | Edit::Brightness { .. } | Edit::Ceiling { .. } | Edit::Reroll { .. } => Stage::Interiors,
             // (drops are chosen as the rooms are furnished, windows once they are)
             Edit::Window { .. } | Edit::Piece { .. } | Edit::Drop { .. } => Stage::Interiors,
+            // (the rest is furnished again; a lock is told to the furnisher and the pass)
+            Edit::Lock { .. } | Edit::Rest { .. } => Stage::Interiors,
             Edit::Keep { .. } | Edit::Cut { .. } => Stage::DeadEnds,
             // (the room's shape, water, pit and cellar are rolled with the rooms; the rest by its furnisher)
             Edit::Feature { feature, .. } => match crate::level::FEATURES.iter().find(|(f, _)| f == feature) {
@@ -336,7 +365,7 @@ impl Edit {
         match self {
             Edit::Join { room, to, .. } => vec![room, to],
             Edit::Add { key, .. } => vec![key],
-            Edit::Remove { .. } => Vec::new(),
+            Edit::Remove { .. } | Edit::Rest { .. } => Vec::new(),
             Edit::Move { room, .. }
             | Edit::Resize { room, .. }
             | Edit::Delete { room }
@@ -352,7 +381,10 @@ impl Edit {
             | Edit::Feature { room, .. }
             | Edit::Window { room, .. }
             | Edit::Piece { room, .. }
-            | Edit::Drop { room, .. } => vec![room],
+            | Edit::Drop { room, .. }
+            | Edit::Lock { room }
+            | Edit::Draws { room, .. }
+            | Edit::Mirror { room, .. } => vec![room],
         }
     }
 
@@ -405,6 +437,10 @@ impl Edit {
             }
             Edit::Drop { room, at: Some(at) } => format!("{room}: a drop at {}, {}", at.0, at.1),
             Edit::Drop { room, at: None } => format!("{room}: no drop"),
+            Edit::Lock { room } => format!("lock {room}"),
+            Edit::Rest { n } => format!("the rest: inside {n}"),
+            Edit::Draws { room, from } => format!("{room}: drawn as {from}"),
+            Edit::Mirror { room, axis } => format!("{room}: mirrored {}", if axis == "x" { "east for west" } else { "north for south" }),
         }
     }
 }
@@ -728,13 +764,33 @@ impl Recipe {
     }
 
     /// The options the stages are made with: the recipe's, with what its `feature` edits chose
-    /// for single rooms (`Options::forced`), its part re-rolls (`rerolled`) and the things it put
-    /// by place (`puts`: `window`, `piece`, `drop`). The recipe's own when it has none. Err for a
-    /// feature that is none of `level::FEATURES`.
+    /// for single rooms (`Options::forced`), its part re-rolls (`rerolled`), the things it put
+    /// by place (`puts`: `window`, `piece`, `drop`), its locks (`locked`), the rest's re-roll
+    /// (`rest`), the streams rooms are drawn as (`draws`) and what is mirrored (`mirrored`). The recipe's own when it has none. Err for a feature that is none of
+    /// `level::FEATURES`, and for an edit that names a room locked before it.
     pub fn effective(&self) -> Result<std::borrow::Cow<'_, Options>, String> {
         let (mut forced, mut rerolled, mut puts) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut locked, mut rest): (Vec<String>, u32) = (Vec::new(), 0);
+        let (mut draws, mut mirrored) = (Vec::new(), Vec::new());
         for e in &self.edits {
+            // (a room locked is held: no later edit may name it)
+            if let Some(room) = e.rooms().into_iter().find(|r| locked.iter().any(|k| k == r)) {
+                return Err(format!("{}: {room} is locked: unlock it to change it", e.name()));
+            }
             match e {
+                Edit::Lock { room } => locked.push(room.clone()),
+                Edit::Rest { n } => rest = *n,
+                Edit::Draws { room, from } => {
+                    let ok = from.split_once('/').is_some_and(|(seed, key)| seed.parse::<u64>().is_ok() && !key.is_empty() && !key.contains('/'));
+                    if !ok {
+                        return Err(format!("draws: a seed and a room, as \"40/vast\", not {from:?}"));
+                    }
+                    draws.push((room.clone(), from.clone()));
+                }
+                Edit::Mirror { room, axis } => match axis.as_str() {
+                    "x" | "y" => mirrored.push((room.clone(), if axis == "x" { 'x' } else { 'y' })),
+                    _ => return Err(format!("mirror: axis \"x\" or \"y\", not {axis:?}")),
+                },
                 Edit::Feature { room, feature, on } => {
                     let Some(&(name, _)) = level::FEATURES.iter().find(|(f, _)| f == feature) else {
                         let names: Vec<&str> = level::FEATURES.iter().map(|(f, _)| *f).collect();
@@ -752,10 +808,10 @@ impl Recipe {
                 _ => {}
             }
         }
-        if forced.is_empty() && rerolled.is_empty() && puts.is_empty() {
+        if forced.is_empty() && rerolled.is_empty() && puts.is_empty() && locked.is_empty() && rest == 0 && draws.is_empty() && mirrored.is_empty() {
             return Ok(std::borrow::Cow::Borrowed(&self.options));
         }
-        Ok(std::borrow::Cow::Owned(Options { forced, rerolled, puts, ..self.options.clone() }))
+        Ok(std::borrow::Cow::Owned(Options { forced, rerolled, puts, locked, rest, draws, mirrored, ..self.options.clone() }))
     }
 
     /// The recipe with the generator's own bases and grown pods left out, if it has any to leave
@@ -809,6 +865,8 @@ impl Recipe {
                 Edit::Reroll { room, n, part: None } => b.choose("reroll", room)?.reroll = *n,
                 // (told through `Options::rerolled`, by `effective`; a pod is refused here)
                 Edit::Reroll { room, part: Some(_), .. } => drop(b.choose("reroll", room)?),
+                // (a pod is held with its hall)
+                Edit::Lock { room } => drop(b.choose("lock", room)?),
                 _ => {}
             }
         }
