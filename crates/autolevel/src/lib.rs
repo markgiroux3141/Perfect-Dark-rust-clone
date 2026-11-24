@@ -33,6 +33,7 @@ pub mod bases;
 pub mod boxes;
 pub mod build;
 pub mod candidates;
+pub mod cascade;
 pub mod cells;
 pub mod choices;
 pub mod circulation;
