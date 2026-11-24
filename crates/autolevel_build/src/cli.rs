@@ -97,6 +97,8 @@ What kind of level (sweep, plan, build, batch and deadends all take these):
   --no-bases                 no bases (on by default: each hall, three times in four, has a column of rooms
                              through one of its walls, its floor or its ceiling, slit windows into it at
                              eye height, entered from outside, its storeys joined by hatches and ladders)
+  --no-spire-bases           no bases in spires (on by default with bases: two spires in five have one
+                             standing free in the shaft, a storey or more up, a gangway to it from the spiral)
   --no-big-pods              no grown pods (on by default: half the pods, rooms hung in a hall, are grown to
                              5 to 10 cells by 4 to 8 where the hall has room for them and their ways in)
   --site WxH                 cells; default 80x60 for grand, 64x48 for standard
@@ -175,7 +177,7 @@ pub struct Args {
 }
 
 /// The options that are yes or no: named alone, they are yes.
-const FLAGS: [&str; 7] = ["crates", "shapes", "dead_ends", "washroom", "rescue", "bases", "big_pods"];
+const FLAGS: [&str; 8] = ["crates", "shapes", "dead_ends", "washroom", "rescue", "bases", "spire_bases", "big_pods"];
 
 /// Does the command `cmd` take the flag `name` (underscores for its hyphens)?
 fn takes(cmd: &str, name: &str) -> bool {
@@ -192,7 +194,7 @@ fn takes(cmd: &str, name: &str) -> bool {
         // (a trek's options are its own: `trek::OPTIONS`)
         _ => {
             !matches!(cmd, "walk" | "shots" | "trek")
-                && (matches!(name, "no_shapes" | "keep_dead_ends" | "no_washroom" | "no_rescue" | "no_bases" | "no_big_pods")
+                && (matches!(name, "no_shapes" | "keep_dead_ends" | "no_washroom" | "no_rescue" | "no_bases" | "no_spire_bases" | "no_big_pods")
                     || recipe::OPTIONS.contains(&name))
         }
     }
@@ -269,6 +271,7 @@ pub fn parse(args: &[String], read: &dyn Fn(&str) -> Result<String, String>) -> 
             "keep_dead_ends" => (out.recipe.options.dead_ends, took) = (false, 1),
             "no_rescue" => (out.recipe.options.rescue, took) = (false, 1),
             "no_bases" => (out.recipe.options.bases, took) = (false, 1),
+            "no_spire_bases" => (out.recipe.options.spire_bases, took) = (false, 1),
             "no_big_pods" => (out.recipe.options.big_pods, took) = (false, 1),
             _ if FLAGS.contains(&name.as_str()) && !matches!(args.get(n + 1).map(String::as_str), Some("true" | "false")) => {
                 recipe::set_option(&mut out.recipe.options, &name, "true")?;

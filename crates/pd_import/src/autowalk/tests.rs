@@ -124,6 +124,28 @@ fn seed_40_is_built_and_every_route_walks_in_this_process() {
 }
 
 #[test]
+fn seed_38s_spire_base_is_built_and_walked() {
+    // (2026-11-24: the generator's spires take a base standing in the shaft, on by default; seed
+    // 38's spire2 has one two storeys tall, a gangway from the spiral to its lower storey, a ladder
+    // up and a drop down, docs/AUTOLEVEL.md, "A room in a spire's shaft", step 3)
+    let root = repo();
+    let assets = root.join("assets");
+    let dir = std::env::temp_dir().join(format!("pd_import_spirebase_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let res = SimWalk::res(&assets).expect("assets/");
+    let words: Vec<String> = ["build", "38", "--no-bake", "--out", &dir.to_string_lossy(), "--root", &root.to_string_lossy(), "--jobs", "4"].map(str::to_owned).to_vec();
+    let args = cli::parse(&words, &|path| Err(format!("{path}: no recipes here"))).unwrap();
+    let env = cli::Env { cwd: root.clone(), pd_walk: None };
+    let open = |d: &Path| -> Result<Box<dyn Walker>, String> { Ok(Box::new(SimWalk::open(d, &assets, res.clone())?)) };
+    assert_eq!(cli::run(&args, &env, Some(&open)), Ok(true), "seed 38 is built, and every walk comes out as expected");
+    let results: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("walk_results.json")).unwrap()).unwrap();
+    let results = results.as_object().unwrap();
+    let into: Vec<&String> = results.keys().filter(|k| k.contains("base3")).collect();
+    assert!(!into.is_empty() && into.iter().all(|k| results[*k] == Value::Bool(true)), "{results:?}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn a_generated_levels_recipe_holds_the_generators_own() {
     use crate::recipe::Source;
     // as `autolevel build` writes a seed's recipe, and one with options and an edit

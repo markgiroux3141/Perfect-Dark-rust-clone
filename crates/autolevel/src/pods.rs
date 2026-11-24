@@ -180,8 +180,14 @@ fn spire_access(host: &Space, pod: &Space, others: &[&Space]) -> Option<Access> 
                 continue;
             }
             let length = gang.len() as i32 / w;
+            // (the pad is the first cell out of the door, deck where the gangway is a half cell
+            // short of a landing: a pad a half cell deep has no standing room, so the door none;
+            // nor has one the deck meets at a corner only, half of it over the shaft's air)
+            let pad: Cells = slice(0).into_iter().chain(slice(1)).filter(|c| gang.contains(c) || deck.contains(c)).collect();
+            if pad.len() < 2 * w as usize {
+                continue;
+            }
             if best.as_ref().is_none_or(|b| length < b.length) {
-                let pad: Cells = slice(0).into_iter().chain(slice(1)).filter(|c| gang.contains(c)).collect();
                 best = Some(Access { side, door: hole, deck: gang, pad, length, island });
             }
         }

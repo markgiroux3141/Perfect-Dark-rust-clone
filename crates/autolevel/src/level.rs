@@ -100,6 +100,12 @@ pub struct Options {
     /// `bases::CHANCE` (`bases::random`; off: none, as the Python). New in the Rust, on by default
     /// (the user's call, 2026-11-22).
     pub bases: bool,
+    /// Spires may have bases too (with `bases` on): a column of rooms standing free in the
+    /// spire's shaft, its lowest storey a storey or more up and reached by a gangway from the
+    /// spiral; each spire with the chance `bases::SPIRE_CHANCE` (`bases::random`; off: the levels
+    /// as they were before, 2026-11-24). New in the Rust, on by default (the user's call,
+    /// 2026-11-24: "it would probably be cool and add more variety").
+    pub spire_bases: bool,
     /// Pods may be grown, to 5 to 10 cells by 4 to 8 where their hall has room; each with the
     /// chance `BIG_POD_CHANCE` (`grow_pods`; off: none, as the Python). New in the Rust, on by
     /// default (the user's call, 2026-11-22).
@@ -248,6 +254,7 @@ impl Default for Options {
             shaped: SHAPED,
             sunken: SUNKEN,
             bases: true,
+            spire_bases: true,
             big_pods: true,
             rescue: true,
             dead_ends: true,
@@ -275,7 +282,14 @@ impl Options {
     /// own that are always on. What a test pins a seed's level by, so that a feature on by default
     /// moves no pin.
     pub fn python() -> Options {
-        Options { flooded: 0.0, shaped: 0.0, sunken: 0.0, bases: false, big_pods: false, ..Options::default() }
+        Options { flooded: 0.0, shaped: 0.0, sunken: 0.0, bases: false, spire_bases: false, big_pods: false, ..Options::default() }
+    }
+
+    /// The defaults with the spires' bases left out (`spire_bases`), everything else as it is:
+    /// what the tests that pinned a seed's level by the defaults before spires had bases
+    /// (2026-11-24) pin it by now.
+    pub fn before_spire_bases() -> Options {
+        Options { spire_bases: false, ..Options::default() }
     }
 
     /// The defaults with bases and grown pods left out (`bases`, `big_pods`), everything else as
@@ -419,15 +433,7 @@ pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
     }
     let mut spin = Vec::new();
     for s in sp.iter_mut().filter(|s| s.kind == "spire") {
-        let mut rng = PyRandom::named(&format!("{}/spiral", o.named(seed, &s.key)));
-        let start = rng.below(4) as usize;
-        let turn = *rng.choice(&[1, -1]);
-        spin.push((s.key.clone(), (start, turn)));
-        if let Some(lay) = spiral::layout(s.rect_h(), &s.storeys(), start, turn, o.band()) {
-            s.preset = lay.ramps;
-            s.decks = Some(lay.decks);
-            s.clear = lay.clear;
-        }
+        spin.push((s.key.clone(), lay_spiral(seed, o, s)));
     }
     grow_pods(seed, o, &mut sp);
     // pods need a way in from their hall, or they are left out
@@ -455,6 +461,22 @@ pub fn stage_rooms(seed: u64, o: &Options, placed: &[Lot]) -> Spaces {
     floods(seed, o, &mut sp);
     sinks(seed, o, &mut sp);
     Spaces { sp, spin, access, dropped }
+}
+
+/// A spire's spiral, from its own stream ("{seed}/{key}/spiral"): the wall its first ramp climbs
+/// and which way round (returned), its ramps, decks and the floor kept clear set on it (none for a
+/// spire too small for one). `stage_rooms`'s, and `bases::random`'s to find a shaft base's gangway
+/// before it keeps one.
+pub fn lay_spiral(seed: u64, o: &Options, s: &mut Space) -> (usize, i32) {
+    let mut rng = PyRandom::named(&format!("{}/spiral", o.named(seed, &s.key)));
+    let start = rng.below(4) as usize;
+    let turn = *rng.choice(&[1, -1]);
+    if let Some(lay) = spiral::layout(s.rect_h(), &s.storeys(), start, turn, o.band()) {
+        s.preset = lay.ramps;
+        s.decks = Some(lay.decks);
+        s.clear = lay.clear;
+    }
+    (start, turn)
 }
 
 /// The sides a grown pod may have (`grow_pods`), cells: the longer, the shorter.
@@ -1180,7 +1202,9 @@ pub fn generate(seed: u64, o: &Options) -> Result<Level, String> {
     })();
     match made {
         // (the generator's own bases or grown pods left a hall that can't be furnished: the seed's
-        // level without them, as `Recipe::plain`)
+        // level without them, as `Recipe::plain`: first without the spires' alone, the level as it
+        // was before spires had them, then without any)
+        Err(why) if o.bases && o.spire_bases => generate(seed, &Options { spire_bases: false, ..o.clone() }).map_err(|_| why),
         Err(why) if o.bases || o.big_pods => generate(seed, &Options { bases: false, big_pods: false, ..o.clone() }).map_err(|_| why),
         made => made,
     }

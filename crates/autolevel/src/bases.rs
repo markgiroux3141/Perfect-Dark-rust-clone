@@ -42,9 +42,10 @@ pub const INSET: i32 = 3;
 pub const NOT_IN: [&str; 3] = ["spire", "basin", "atrium"];
 /// Cells a base in a spire keeps from each of its walls: the spiral's ramps, decks and landings
 /// stay within two (a landing is two cells square), and a cell of air is left between them. A
-/// base drawn in a spire (the generator puts none there) may go down through its floor, up through
-/// its ceiling, or stand wholly in its shaft, its lowest storey then entered by a gangway from the
-/// spiral (`split`); never through its wall. New here (the user's call, 2026-11-24).
+/// base drawn in a spire may go down through its floor, up through its ceiling, or stand wholly in
+/// its shaft, its lowest storey then entered by a gangway from the spiral (`split`); never through
+/// its wall. The generator puts one in a shaft only (`in_shafts`). New here (the user's call,
+/// 2026-11-24).
 pub const SHAFT: i32 = 3;
 
 /// Does base `b` stand wholly inside hall `h`, in plan and in height?
@@ -464,7 +465,79 @@ pub fn random(seed: u64, o: &Options, lots: &[Lot]) -> Vec<Lot> {
             break;
         }
     }
+    if o.spire_bases {
+        in_shafts(seed, o, lots, &mut out, made);
+    }
     out
+}
+
+/// The chance each spire gets a base in its shaft when they may have them (`Options::spire_bases`).
+pub const SPIRE_CHANCE: f64 = 0.4;
+
+/// The generator's bases in spires (`Options::spire_bases`, after the halls' so their names and
+/// draws are as they were): each spire, with the chance `SPIRE_CHANCE` from its own stream
+/// ("{seed}/{key}/spirebase"), takes one standing wholly in its shaft, `SHAFT` cells or more from
+/// each wall, one to `MOST_STOREYS` storeys tall within the spire's top, its lowest storey on one
+/// a pod of the spire may be on (`scatter::pod_levels`: a storey or more up), at least 3 cells
+/// across (2 + its storeys when it has more than one) and at most 6. It must pass `misfit`, clear
+/// every other lot, and have its gangway from the spiral (`pods::pod_access` on the spire as
+/// `stage_rooms` lays it out): else another try, twenty-five, then none. New here (the user's call,
+/// 2026-11-24: "it would probably be cool and add more variety").
+fn in_shafts(seed: u64, o: &Options, lots: &[Lot], out: &mut Vec<Lot>, mut made: usize) {
+    let spires: Vec<Lot> = lots.iter().filter(|h| h.host.is_empty() && h.kind == "spire").cloned().collect();
+    for h in &spires {
+        let mut rng = PyRandom::named(&format!("{}/spirebase", o.named(seed, &h.key)));
+        if rng.random() >= SPIRE_CHANCE {
+            continue;
+        }
+        let (sw, sd) = (h.x1 - h.x0 - 2 * SHAFT, h.y1 - h.y0 - 2 * SHAFT);
+        let levels = crate::scatter::pod_levels(h);
+        if sw.min(sd) < 3 || levels.is_empty() {
+            continue; // too small a shaft, or no storey up for it
+        }
+        for _ in 0..25 {
+            let floor = *rng.choice(&levels);
+            let i = crate::storeys::index(floor);
+            let room = LEVELS[i..].iter().take_while(|&&z| storey(z).1 <= snap_top(h.top)).count();
+            if room == 0 {
+                continue;
+            }
+            let tall = rng.randint(1, room.min(MOST_STOREYS).min((sw.min(sd) - 2).max(1) as usize) as i64) as usize;
+            let least = if tall > 1 { 2 + tall as i32 } else { 3 };
+            let w = rng.randint(least as i64, sw.min(6) as i64) as i32;
+            let d = rng.randint(least as i64, sd.min(6) as i64) as i32;
+            let x = rng.randint((h.x0 + SHAFT) as i64, (h.x1 - SHAFT - w) as i64) as i32;
+            let y = rng.randint((h.y0 + SHAFT) as i64, (h.y1 - SHAFT - d) as i64) as i32;
+            let top = LEVELS[i + tall - 1] + STOREY;
+            let lot = Lot { key: format!("base{}", made + 1), kind: KIND, x0: x, y0: y, x1: x + w, y1: y + d, floor, top, host: String::new() };
+            if misfit(&lot, h).is_some() || !wholly_inside(&lot, h) || hall_of(&lot, out).map(|x| &x.key) != Some(&h.key) {
+                continue;
+            }
+            if !out.iter().all(|q| q.key == h.key || clear(&lot, q, crate::place::GAP)) {
+                continue;
+            }
+            if !gangway(seed, o, &lot, h, out) {
+                continue;
+            }
+            out.push(lot);
+            made += 1;
+            break;
+        }
+    }
+}
+
+/// Does base `b`, wholly in spire `h`'s shaft, have its way in: a gangway from the spiral's deck
+/// on its lowest storey to a door in that storey's shell (`pods::pod_access`, as `stage_rooms`
+/// finds it, with the spiral laid out as there and the spire's other pods in the way)?
+fn gangway(seed: u64, o: &Options, b: &Lot, h: &Lot, lots: &[Lot]) -> bool {
+    let col = split(seed, b, h);
+    let mut these = vec![h.clone(), col.lots[0].clone()];
+    these.extend(lots.iter().filter(|q| q.host == h.key).cloned());
+    let sp = crate::space::spaces(&these);
+    let mut spire = sp[0].clone();
+    crate::level::lay_spiral(seed, o, &mut spire);
+    let others: Vec<&Space> = sp[1..].iter().collect();
+    crate::pods::pod_access(&spire, &sp[1], &others, o.band()).is_some()
 }
 
 /// Every base lot split into its storeys (`split`), in the lots' order: (the lots, each storey's
@@ -668,6 +741,57 @@ mod tests {
             println!("lost: {l}");
         }
         assert!(lost.is_empty());
+    }
+
+    /// Long probe: the spires' bases (on by default) lose no level, and how often a spire has one.
+    /// `SEEDS=1-200 cargo test -p autolevel --release -- --ignored --nocapture spire_bases_lose`.
+    #[test]
+    #[ignore]
+    fn spire_bases_lose_no_level() {
+        use crate::place::Scale;
+        let (lo, hi) =
+            std::env::var("SEEDS").ok().and_then(|s| s.split_once('-').map(|(a, b)| (a.parse().unwrap(), b.parse().unwrap()))).unwrap_or((1u64, 40u64));
+        let mut lost = Vec::new();
+        for scale in [Scale::Grand, Scale::Standard, Scale::Towering] {
+            let (mut levels, mut spires, mut based, mut fell_back) = (0, 0, 0, 0);
+            for seed in lo..=hi {
+                let mut on = Options::default();
+                on.siting.scale = scale;
+                let off = Options { spire_bases: false, ..on.clone() };
+                let (a, b) = (generate(seed, &off), generate(seed, &on));
+                match (&a, &b) {
+                    (Ok(was), Ok(lv)) => {
+                        levels += 1;
+                        let n = lv.spaces().iter().filter(|s| s.kind == "spire").count();
+                        let m = lv.spaces().iter().filter(|s| s.base.as_ref().is_some_and(|b| b.column == s.key && lv.space(&b.hall).kind == "spire")).count();
+                        spires += n;
+                        based += m;
+                        // (a spire that drew one and kept it, yet the level is the old one: it fell back)
+                        let drew = lots_with(seed, &on)
+                            .iter()
+                            .filter(|l| l.kind == KIND && hall_of(l, &lots_with(seed, &on)).is_some_and(|h| h.kind == "spire"))
+                            .count();
+                        if drew > m {
+                            fell_back += 1;
+                            println!("{scale:?} {seed}: {drew} drawn, {m} kept");
+                        }
+                        let _ = was;
+                    }
+                    (Ok(_), Err(why)) => lost.push(format!("{scale:?} {seed}: {why}")),
+                    _ => {}
+                }
+            }
+            println!("{scale:?}: {levels} levels, {spires} spires, {based} with a base, {fell_back} fell back");
+        }
+        for l in &lost {
+            println!("lost: {l}");
+        }
+        assert!(lost.is_empty());
+    }
+
+    /// The lots with the generator's bases, as `stage_rooms` takes them (no recipe edits).
+    fn lots_with(seed: u64, o: &Options) -> Vec<Lot> {
+        random(seed, o, &crate::place::lots(seed, &o.siting).unwrap().placed)
     }
 
     #[test]

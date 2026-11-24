@@ -1236,3 +1236,41 @@ fn a_base_drawn_in_a_spire_stands_in_its_shaft_or_goes_through_its_floor() {
     assert!(why(add("core", "base", (2, 5, 8, 11), 276, 787)).starts_with("core stands 2 cells from shaft's wall"));
     assert!(why(add("core", "base", (5, 5, 11, 11), 0, 512)).starts_with("core stands on shaft's floor"));
 }
+
+#[test]
+fn the_generator_gives_a_spire_a_base_in_its_shaft_and_the_option_off_keeps_the_old_level() {
+    // (new 2026-11-24, the user's call: the generator's own spires take a base standing free in
+    // the shaft, `bases::SPIRE_CHANCE` each; `spire_bases: false` makes the levels of before)
+    let lv = autolevel::level::generate(38, &Options::default()).unwrap();
+    let in_spire = |lv: &Level| -> Vec<String> {
+        lv.spaces().iter().filter(|s| s.base.as_ref().is_some_and(|b| lv.space(&b.hall).kind == "spire")).map(|s| s.key.clone()).collect()
+    };
+    assert_eq!(in_spire(&lv), ["base3", "base3_2"], "seed 38's spire2 has a base two storeys tall");
+    let (low, up, spire) = (lv.space("base3"), lv.space("base3_2"), lv.space("spire2"));
+    // wholly in the shaft, three cells or more from each wall, a storey or more up
+    assert!(low.host == "spire2" && low.floor > spire.floor && up.floor > low.floor && up.top <= spire.top);
+    for r in [low.rect(), up.rect()] {
+        assert!(r.0 - spire.x0 >= 3 && spire.x1 - r.2 >= 3 && r.1 - spire.y0 >= 3 && spire.y1 - r.3 >= 3, "{r:?} in {:?}", spire.rect());
+    }
+    // its way in: a door and a gangway from the spiral, its hatch up, and a drop back down
+    assert!(lv.pods.iter().any(|(k, p)| k == "base3" && p.door.is_some()));
+    assert_eq!(low.cellar.as_ref().map(|c| c.hall.as_str()), Some("base3_2"));
+    let linked = |a: &str, b: &str, kind: &str| lv.plan.links.iter().any(|l| l.a == a && l.b == b && l.kind == kind);
+    assert!(linked("base3_2", "base3", "drop"));
+    assert!(lv.walks.iter().any(|(n, _)| n.contains("base3")), "a walk into it");
+    // the option off: no base in any spire, and the halls' bases as they are with it on
+    let off = autolevel::level::generate(38, &Options::before_spire_bases()).unwrap();
+    assert!(in_spire(&off).is_empty());
+    let hall_bases = |lv: &Level| -> Vec<String> {
+        lv.spaces().iter().filter(|s| s.base.as_ref().is_some_and(|b| lv.space(&b.hall).kind != "spire")).map(|s| format!("{s:?}")).collect()
+    };
+    assert_eq!(hall_bases(&lv), hall_bases(&off));
+    // a seed whose spires draw no base is the same level either way
+    let (a, b) = (autolevel::level::generate(1, &Options::default()).unwrap(), autolevel::level::generate(1, &Options::before_spire_bases()).unwrap());
+    assert!(in_spire(&a).is_empty());
+    assert_eq!(format!("{:?}{:?}", a.spaces(), a.walks), format!("{:?}{:?}", b.spaces(), b.walks));
+    // and off in a recipe file, as the switch is saved
+    let r = Recipe { options: Options::before_spire_bases(), ..Recipe::new(38) };
+    assert!(save(&r).contains("\"spire_bases\": false"));
+    assert!(in_spire(&load(&save(&r)).unwrap().generate().unwrap()).is_empty());
+}

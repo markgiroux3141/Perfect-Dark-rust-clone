@@ -106,7 +106,8 @@ fn seed_40s_ways_are_all_in_its_waypoints() {
     let parts = crate::place::waypoint_parts(&out);
     assert!(parts.iter().all(|&p| p == 0), "{} waypoints outside the largest part", parts.iter().filter(|&&p| p != 0).count());
     assert_eq!(out.waypoints.len(), made.waypoints.len() + done.added - done.outside);
-    assert!(done.outside < 60, "{} left out", done.outside);
+    // (61 since seed 40's spires have their bases, 2026-11-24, every leg still joined; 44 before)
+    assert!(done.outside < 70, "{} left out", done.outside);
     for key in ["colossal", "basin", "small7", "spire2", "v01"] {
         let room = b.level.plan.get(key).unwrap().room_id as u16;
         assert!((0..out.waypoints.len()).any(|k| out.waypoint_room(k) == Some(room)), "no waypoint in {key}");

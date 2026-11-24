@@ -33,7 +33,7 @@ const STYLES: [Style; 5] = [
 
 /// A feature switch: its name, the option, the value it is turned on at
 /// ("true" for an option that is yes or no), and what it adds.
-const FEATURES: [(&str, &str, &str, &str); 13] = [
+const FEATURES: [(&str, &str, &str, &str); 14] = [
     ("Vents", "vents", "4", "Crawl ducts, as short cuts"),
     ("Windows", "windows", "4", "Corridors that look onto a hall"),
     ("Drops", "drops", "2", "Holes in a floor into the room below"),
@@ -46,6 +46,7 @@ const FEATURES: [(&str, &str, &str, &str); 13] = [
     ("Sunken floors", "sunken", "0.2", "A pit in a hall's floor, a ramp down"),
     ("L and U rooms", "shaped", "0.2", "Rooms with a corner or a side cut away"),
     ("Bases", "bases", "true", "Rooms cut into a hall through a wall, the floor or the ceiling, slit windows into it"),
+    ("Spire bases", "spire_bases", "true", "A base standing free in a spire's shaft, a gangway to it from the spiral"),
     ("Big pods", "big_pods", "true", "Rooms hung in a hall made bigger, where it has room"),
 ];
 

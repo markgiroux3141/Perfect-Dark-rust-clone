@@ -69,7 +69,7 @@ cargo build --release -p pd_import          # also builds target/release/autolev
                                             #   `--sunken P` (0.1): a pit a cell deep in a hall's floor, a ramp down into it;
                                             #   bases (on by default; `--no-bases`): a base through a hall's wall, floor or
                                             #   ceiling, slit windows into it at eye height, entered from outside (by hand: an
-                                            #   `add` of kind `base`); big pods (on; `--no-big-pods`): pods grown to 5-10 x 4-8
+                                            #   `add` of kind `base`; spires' too, standing in the shaft: `--no-spire-bases`); big pods (on; `--no-big-pods`): pods grown to 5-10 x 4-8
                                             #   (docs/AUTOLEVEL.md, "Platforms", "Galleries", "Drops", "Cellars",
                                             #   "Angled catwalks", "Flooded rooms", "Shaped rooms", "Sunken floors", "Bases")
                                             #   a room no ramps can join is rescued with ladders and bridges, so every seed makes a

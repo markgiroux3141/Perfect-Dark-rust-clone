@@ -2751,7 +2751,8 @@ with the chance `bases::CHANCE` (0.75), from its own stream "{seed}/{key}/bases"
 walls (a storey or two of the hall's, 3 to 10 cells along it, 2 to 5 in and 2 to 4 out), up
 through its floor from the storey under it, or down through its ceiling from the storey over it
 (a storey or two into the hall, 3 to 8 cells a side, `INSET` (3) cells from its walls), clear of
-every other lot. Twenty-five tries, then none. Not in an empty start.
+every other lot. Twenty-five tries, then none. Not in an empty start. Spires take one standing in
+the shaft since 2026-11-24 (`spire_bases`, "A room in a spire's shaft", step 3).
 
 **Bigger pods:** the recipe's `big_pods`, a switch, **on by default** as bases are
 (`--no-big-pods`; "Big pods" on the Generate screen; `level::grow_pods`): each pod with the chance
@@ -2814,7 +2815,7 @@ ceiling; a big one, 9 x 8, at catwalk height; and a pod beside them), `bases7` (
 glaze them); a base's storeys take their names in order ("..., storey 2"), not by what they are;
 the editor's room tool draws a base as its lot (the column's narrower storeys are not shown apart);
 the ladder of a column goes up a wall that may also have slits (the band runs across it); a base
-in a basin, spire or atrium is refused, not fitted; nothing is placed at a slit on purpose (the
+in a basin or atrium is refused, not fitted (a spire takes one in its shaft: "A room in a spire's shaft"); nothing is placed at a slit on purpose (the
 placement rules know nothing of bases yet: a sniper's spot at a slit is the editor's).
 
 ## Editing generated levels: the roadmap (2026-11-23)
@@ -3548,8 +3549,44 @@ Rough: the plan's statistics count the lowest storey's way into the spire as an 
 slits' link is listed first), not a door; nothing else reads it. A base is still at most
 `MOST_STOREYS` (4) storeys tall.
 
-Next: step 3, the generator giving its own spires one at random (the user is fine with seeded
-levels changing for it: a deliberate change of the pinned levels, never one by accident).
+Step 3, built: **the generator gives its own spires a base in the shaft** (the user's call,
+2026-11-24: "if this code change causes bases to appear in auto generated spire rooms, I'm ok with
+that. It would probably be cool and add more variety"). A deliberate change of seeded levels at the
+default options, behind a switch of its own:
+- **`Options::spire_bases`** (the recipe's `spire_bases`), **on by default**, and only with `bases`
+  on; `--no-spire-bases` on both command lines, "Spire bases" among the Generate screen's features
+  in `pd_edit` and a switch in "Advanced". `Options::python()` turns it off (the answer keys are
+  unchanged), and so does every `bases: false` (so `before_bases` and every pin by it are as they
+  were). `Options::before_spire_bases()` is the defaults with it alone off: the levels of before.
+- **`bases::in_shafts`**, after the halls' bases (so their names, `base1`... and every draw of
+  theirs are as they were; a spire's base takes the next number): each spire with the chance
+  `bases::SPIRE_CHANCE` (0.4), from its own stream "{seed}/{key}/spirebase", takes one standing
+  wholly in its shaft: `SHAFT` cells or more from each wall, one to four storeys within the spire's
+  top, its lowest storey one a spire's pod may be on (`scatter::pod_levels`: a storey or more up),
+  3 to 6 cells a side (2 + its storeys at least when it has more than one). It must pass `misfit`,
+  clear every other lot, and **have its gangway** before it is kept: `bases::gangway` lays the
+  spiral out as `stage_rooms` will (`level::lay_spiral`, factored out of it) and asks
+  `pods::pod_access`. Else another try; twenty-five, then none. A spire whose shaft is under 3 cells
+  across (9 cells wide) or with no storey up for it gets none.
+- **What a spire's base cannot be furnished with drops back, as bases do:** `Recipe::plain` and
+  `level::generate` now fall back in two steps, first the recipe with `spire_bases` off (the level
+  as it was), then with bases and big pods off.
+- **Two fixes in `pods::spire_access`** the generator's small shafts found (no hand-drawn level
+  that worked changes): a base whose door faced a landing half a cell away had a pad half a cell
+  deep, so no standing room at its door and "no set of ramps joins its storeys" in the spire; the
+  pad is now the first cell out of the door, deck included. And a door place whose gangway meets
+  the deck at a corner only (the pad half over the shaft's air) is not taken: the next is tried.
+- **How often** (`bases::tests::spire_bases_lose_no_level`, ignored; `SEEDS=1-60`): grand, 37 of
+  120 spires with a base; towering, 69 of 180; standard has no spires. No level lost; one fallback,
+  grand 42, which fell back before this too (its colossal hall can't take its hall base).
+  `autolevel sweep --seeds 1-200`: 200 of 200 as before.
+- **Checked:** `the_generator_gives_a_spire_a_base_in_its_shaft_and_the_option_off_keeps_the_old_level`
+  (tests/recipe.rs: seed 38's spire2 with a base two storeys tall, its gangway, hatch and drop; the
+  option off, no spire base and the halls' bases the same; seed 1 the same level either way), and
+  `pd_import`'s `seed_38s_spire_base_is_built_and_walked` (every route walked on `pd_sim`).
+
+Rough: a base in a spire has its slits only where the shaft's air is in front of them (as
+anywhere), and it is at most 4 storeys tall and 6 cells a side; nothing is placed at its slits.
 
 ## Risks
 

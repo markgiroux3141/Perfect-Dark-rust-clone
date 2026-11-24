@@ -52,7 +52,7 @@ pub const FORMAT: u32 = 1;
 pub const CEILINGS: [&str; 4] = ["plain", "ceiling_tile", "ceiling_dark", "grille"];
 
 /// The options by name, as the file and a command line spell them, in the file's order.
-pub const OPTIONS: [&str; 35] = [
+pub const OPTIONS: [&str; 36] = [
     "style",
     "washroom",
     "scale",
@@ -78,6 +78,7 @@ pub const OPTIONS: [&str; 35] = [
     "shaped",
     "sunken",
     "bases",
+    "spire_bases",
     "big_pods",
     "rescue",
     "dead_ends",
@@ -513,6 +514,8 @@ struct Opts {
     #[serde(skip_serializing_if = "Option::is_none")]
     bases: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    spire_bases: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     big_pods: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     rescue: Option<bool>,
@@ -567,6 +570,7 @@ impl Opts {
             shaped: pick(all, o.shaped, base.shaped),
             sunken: pick(all, o.sunken, base.sunken),
             bases: pick(all, o.bases, base.bases),
+            spire_bases: pick(all, o.spire_bases, base.spire_bases),
             big_pods: pick(all, o.big_pods, base.big_pods),
             rescue: pick(all, o.rescue, base.rescue),
             dead_ends: pick(all, o.dead_ends, base.dead_ends),
@@ -627,6 +631,7 @@ impl Opts {
         set(&mut o.shaped, self.shaped);
         set(&mut o.sunken, self.sunken);
         set(&mut o.bases, self.bases);
+        set(&mut o.spire_bases, self.spire_bases);
         set(&mut o.big_pods, self.big_pods);
         set(&mut o.rescue, self.rescue);
         set(&mut o.dead_ends, self.dead_ends);
@@ -817,9 +822,16 @@ impl Recipe {
     /// The recipe with the generator's own bases and grown pods left out, if it has any to leave
     /// out (a seed's level with `Options::bases` or `big_pods` on): what a level that cannot be
     /// made with them is made from instead, as the rescue makes every seed a level (new in the
-    /// Rust: docs/AUTOLEVEL.md, "Bases").
+    /// Rust: docs/AUTOLEVEL.md, "Bases"). With the spires' bases on, first the recipe with those
+    /// alone left out (the level as it was before spires had them); its own `plain` is then the
+    /// one with none (each caller tries the fallback's fallback in turn).
     pub fn plain(&self) -> Option<Recipe> {
         let o = &self.options;
+        if o.start == Start::Seed && o.bases && o.spire_bases {
+            let mut r = self.clone();
+            r.options.spire_bases = false;
+            return Some(r);
+        }
         (o.start == Start::Seed && (o.bases || o.big_pods)).then(|| {
             let mut r = self.clone();
             (r.options.bases, r.options.big_pods) = (false, false);
@@ -1222,6 +1234,7 @@ mod tests {
             ("shaped", "0.5"),
             ("sunken", "0.4"),
             ("bases", "false"),
+            ("spire_bases", "false"),
             ("big_pods", "false"),
             ("rescue", "false"),
             ("dead-ends", "false"),
