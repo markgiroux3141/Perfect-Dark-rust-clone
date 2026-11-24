@@ -251,6 +251,46 @@ fn its_tiles_are_pds_rules_and_these_levels_three() {
     assert_eq!(src.collision.len(), 12860);
 }
 
+/// A theme draws the roles it names with another arena's textures, in that
+/// arena's own rows (a role culled as none of its rows is: the row, only its
+/// "cull" changed), and leaves the roles it doesn't name as Complex's.
+#[test]
+fn a_theme_dresses_the_roles_it_names_and_leaves_the_rest() {
+    let kit = seed40().kit;
+    let used: Vec<usize> = ["floor", "grate", "plain", "panel"].iter().map(|r| kit.palette.iter().position(|p| p.role == *r).unwrap()).collect();
+    let rows = |stage: &str| -> Vec<Value> {
+        let text = std::fs::read_to_string(assets().join("stages").join(stage).join("bg.json")).unwrap();
+        serde_json::from_str::<Value>(&text).unwrap()["materials"].as_array().unwrap().clone()
+    };
+    let (jun, cryp) = (rows("jun"), rows("cryp"));
+    // Temple's only row for 0x01b9 is back-culled; the kit's "grate" is drawn both sides.
+    let temple = jun.iter().filter(|r| r["texture"]["id"] == 0x1b9).collect::<Vec<_>>();
+    assert_eq!(temple.len(), 1);
+    assert_eq!(temple[0]["cull"], "back");
+    let theme = crate::recipe::Theme {
+        stage: "jun".into(),
+        roles: [("floor", "01B9"), ("grate", "01B9"), ("panel", "cryp:018D")].into_iter().map(|(k, v)| (k.to_owned(), v.to_owned())).collect(),
+    };
+    let plain = materials(&assets(), kit, &used, None).unwrap();
+    let themed = materials(&assets(), kit, &used, Some(&theme)).unwrap();
+    let pd = |m: &Material| m.pd.clone().unwrap();
+    // floor: Temple's row as it is
+    assert_eq!((pd(&themed[0]).texture, &pd(&themed[0]).row), (0x1b9, temple[0]));
+    assert!(themed[0].cull_back);
+    // grate: the same row drawn both sides, and nothing else changed
+    let (mut both, row) = (pd(&themed[1]).row, temple[0].clone());
+    assert_eq!((pd(&themed[1]).texture, &both["cull"]), (0x1b9, &Value::from("none")));
+    assert!(!themed[1].cull_back);
+    both["cull"] = row["cull"].clone();
+    assert_eq!(both, row);
+    // plain: not named, Complex's own
+    assert_eq!((pd(&themed[2]).texture, &pd(&themed[2]).row), (pd(&plain[2]).texture, &pd(&plain[2]).row));
+    assert_eq!(pd(&themed[2]).texture, 0x746);
+    // panel: "stage:HEX" draws from that stage instead (G5's sandstone, its own row)
+    assert_eq!(pd(&themed[3]).texture, 0x18d);
+    assert!(cryp.contains(&pd(&themed[3]).row));
+}
+
 #[test]
 fn what_a_player_on_any_route_can_see_is_drawn() {
     let b = seed40();

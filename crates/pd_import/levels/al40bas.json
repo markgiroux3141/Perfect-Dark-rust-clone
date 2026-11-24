@@ -1,0 +1,45 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "al40bas",
+  "name": "Autolevel 40 Base",
+  "group": "Autolevel",
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 40,
+      "options": {
+        "bases": false,
+        "big_pods": false
+      },
+      "edits": []
+    },
+    "theme": {
+      "stage": "mp1",
+      "roles": {
+        "floor": "0696",
+        "grate": "0696",
+        "plain": "06EA",
+        "panel": "06D6",
+        "panel_stripe": "06E4",
+        "pipes": "06DF",
+        "base_pipe": "06BA",
+        "panel_pipes": "06DB",
+        "grille": "06A6",
+        "door_panel": "06E7",
+        "grey_panel": "06ED",
+        "grey_pipe": "0702",
+        "ceiling_tile": "0696",
+        "ceiling_dark": "06D2",
+        "vent": "06D2",
+        "window": "00E3",
+        "rail": "00E3",
+        "mesh": "06B7"
+      }
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

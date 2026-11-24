@@ -1,0 +1,45 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "al40ske",
+  "name": "Autolevel 40 Skedar",
+  "group": "Autolevel",
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 40,
+      "options": {
+        "bases": false,
+        "big_pods": false
+      },
+      "edits": []
+    },
+    "theme": {
+      "stage": "oat",
+      "roles": {
+        "floor": "028A",
+        "grate": "028A",
+        "plain": "028E",
+        "panel": "028C",
+        "panel_stripe": "028B",
+        "pipes": "028D",
+        "base_pipe": "0291",
+        "panel_pipes": "0295",
+        "grille": "0290",
+        "door_panel": "028F",
+        "grey_panel": "0292",
+        "grey_pipe": "0293",
+        "ceiling_tile": "028A",
+        "ceiling_dark": "0294",
+        "vent": "0294",
+        "window": "0291",
+        "rail": "0291",
+        "mesh": "0291"
+      }
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

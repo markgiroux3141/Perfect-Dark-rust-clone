@@ -14,7 +14,7 @@ fn assets() -> PathBuf {
 }
 
 fn built(seed: u64, options: serde_json::Value) -> std::sync::Arc<Built> {
-    let s = AutolevelSource { recipe: json!({"format": 1, "seed": seed, "options": options}), sky: None, plain_waypoints: false, plain_placement: false };
+    let s = AutolevelSource { recipe: json!({"format": 1, "seed": seed, "options": options}), sky: None, plain_waypoints: false, plain_placement: false, theme: None };
     crate::autolevel::make(&s, None).unwrap()
 }
 

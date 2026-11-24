@@ -170,7 +170,7 @@ fn a_generated_levels_recipe_holds_the_generators_own() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("recipe.json"), &plain).unwrap();
-    let by_path = crate::recipe::AutolevelSource { recipe: Value::String(dir.to_string_lossy().into_owned()), sky: None, plain_waypoints: false, plain_placement: false };
+    let by_path = crate::recipe::AutolevelSource { recipe: Value::String(dir.to_string_lossy().into_owned()), sky: None, plain_waypoints: false, plain_placement: false, theme: None };
     assert_eq!(crate::autolevel::recipe_text(&by_path, None).unwrap(), plain);
     assert_eq!(crate::autolevel::recipe_text(&a, Some(&dir.join("recipe.json"))).unwrap(), plain);
     assert_eq!(built_recipe(&dir).unwrap(), (plain.clone(), 40));

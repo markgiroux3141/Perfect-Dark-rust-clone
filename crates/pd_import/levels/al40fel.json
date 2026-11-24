@@ -1,0 +1,45 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "al40fel",
+  "name": "Autolevel 40 Felicity",
+  "group": "Autolevel",
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 40,
+      "options": {
+        "bases": false,
+        "big_pods": false
+      },
+      "edits": []
+    },
+    "theme": {
+      "stage": "mp11",
+      "roles": {
+        "floor": "0271",
+        "grate": "0271",
+        "plain": "0288",
+        "panel": "0281",
+        "panel_stripe": "0256",
+        "pipes": "0276",
+        "base_pipe": "024B",
+        "panel_pipes": "024F",
+        "grille": "0872",
+        "door_panel": "0273",
+        "grey_panel": "0715",
+        "grey_pipe": "0274",
+        "ceiling_tile": "0281",
+        "ceiling_dark": "0281",
+        "vent": "024B",
+        "window": "0710",
+        "rail": "0710",
+        "mesh": "0716"
+      }
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

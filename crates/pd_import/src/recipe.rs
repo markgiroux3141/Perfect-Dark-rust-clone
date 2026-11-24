@@ -94,6 +94,23 @@ pub struct AutolevelSource {
     /// ([`crate::autoplace`]; the report still audits them by it).
     #[serde(default)]
     pub plain_placement: bool,
+    /// Another arena's textures on the level's surfaces, the geometry as it is
+    /// ([`crate::autolevel`]'s `materials`): none, Complex's.
+    #[serde(default)]
+    pub theme: Option<Theme>,
+}
+
+/// A texture theme for a generated level: each of the kit's roles ("floor",
+/// "panel", "plain", ...) drawn with a texture of `stage`'s, in that arena's
+/// own material row. A role given as `"ref:0746"` is drawn from that stage
+/// instead; a role not named keeps the kit's own texture and arena.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Theme {
+    /// The arena whose rows the roles are drawn from (`assets/stages/<stage>`).
+    pub stage: String,
+    /// Role -> texture number in hex, optionally `stage:` first.
+    #[serde(default)]
+    pub roles: std::collections::BTreeMap<String, String>,
 }
 
 /// A Jedi Academy map ([`crate::jka`]): a compiled `.bsp`, with the game's

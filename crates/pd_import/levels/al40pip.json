@@ -1,0 +1,45 @@
+{
+  "format": "pd-import-recipe/1",
+  "code": "al40pip",
+  "name": "Autolevel 40 Pipes",
+  "group": "Autolevel",
+  "scale": 1.0,
+  "source": {
+    "game": "autolevel",
+    "recipe": {
+      "format": 1,
+      "seed": 40,
+      "options": {
+        "bases": false,
+        "big_pods": false
+      },
+      "edits": []
+    },
+    "theme": {
+      "stage": "crad",
+      "roles": {
+        "floor": "00C1",
+        "grate": "00C1",
+        "plain": "00C0",
+        "panel": "00BA",
+        "panel_stripe": "00B5",
+        "pipes": "00B2",
+        "base_pipe": "00C5",
+        "panel_pipes": "00C1",
+        "grille": "00B8",
+        "door_panel": "00BB",
+        "grey_panel": "00C0",
+        "grey_pipe": "00BA",
+        "ceiling_tile": "00C0",
+        "ceiling_dark": "00B5",
+        "vent": "00B5",
+        "window": "0686",
+        "rail": "0686",
+        "mesh": "0243"
+      }
+    }
+  },
+  "spawns": 16,
+  "weapons": 10,
+  "hills": 5
+}

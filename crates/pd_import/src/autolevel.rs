@@ -115,22 +115,50 @@ pub fn pd_point(p: Point3, scale: f32) -> Vec3 {
 
 /// The kit's arena's material for each palette entry `used` (places in
 /// `kit.palette`), as [`Material`]s in that order.
-fn materials(assets: &Path, kit: &Kit, used: &[usize]) -> Result<Vec<Material>, String> {
-    let path = assets.join("stages").join(kit.stage).join("bg.json");
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let bg: Value = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-    let rows = bg["materials"].as_array().ok_or_else(|| format!("{}: no materials", path.display()))?;
+fn materials(assets: &Path, kit: &Kit, used: &[usize], theme: Option<&crate::recipe::Theme>) -> Result<Vec<Material>, String> {
+    let mut stages: std::collections::HashMap<String, (PathBuf, Value)> = std::collections::HashMap::new();
+    let mut bg_of = |stage: &str| -> Result<(PathBuf, Value), String> {
+        if let Some(v) = stages.get(stage) {
+            return Ok(v.clone());
+        }
+        let path = assets.join("stages").join(stage).join("bg.json");
+        let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let bg: Value = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+        stages.insert(stage.to_owned(), (path.clone(), bg.clone()));
+        Ok((path, bg))
+    };
     used.iter()
         .map(|&m| {
             let paint = &kit.palette[m];
-            let number = u32::from_str_radix(paint.preset, 16).map_err(|_| format!("the palette's {}: {} is no texture number", paint.role, paint.preset))?;
+            // (a theme's texture for the role, in its stage: else the kit's own)
+            let (stage, preset, themed) = match theme.and_then(|t| t.roles.get(paint.role).map(|v| (t, v))) {
+                Some((t, v)) => match v.split_once(':') {
+                    Some((st, tex)) => (st.to_owned(), tex.to_owned(), true),
+                    None => (t.stage.clone(), v.clone(), true),
+                },
+                None => (kit.stage.to_owned(), paint.preset.to_owned(), false),
+            };
+            let (path, bg) = bg_of(&stage)?;
+            let rows = bg["materials"].as_array().ok_or_else(|| format!("{}: no materials", path.display()))?;
+            let number = u32::from_str_radix(&preset, 16).map_err(|_| format!("the palette's {}: {preset} is no texture number", paint.role))?;
             let (both, clear) = (paint.flags.contains(&"CullBoth"), paint.flags.contains(&"Transparent"));
             // The same texture, culled the same way, in the same layer
-            // (PD's translucent materials don't write depth).
-            let row = rows
-                .iter()
-                .find(|r| r["texture"]["id"].as_u64() == Some(number as u64) && (r["cull"] == "none") == both && (r["zwrite"] == false) == clear)
-                .ok_or_else(|| format!("{}: no material draws texture {number:#06x} as the palette's {} does ({})", path.display(), paint.role, paint.flags.join(" ")))?;
+            // (PD's translucent materials don't write depth). A theme's
+            // texture with no row culled as the role is takes the layer's
+            // row with its culling changed (a row's only difference from
+            // its twin, as Complex's and G5's are).
+            let texture = |r: &&Value| r["texture"]["id"].as_u64() == Some(number as u64) && (r["zwrite"] == false) == clear;
+            let exact = rows.iter().find(|r| texture(r) && (r["cull"] == "none") == both);
+            let row = match (exact, themed) {
+                (Some(r), _) => r.clone(),
+                (None, true) => {
+                    let mut r = rows.iter().find(texture).ok_or_else(|| format!("{}: no material draws texture {number:#06x} in the palette's {}'s layer ({})", path.display(), paint.role, paint.flags.join(" ")))?.clone();
+                    r["cull"] = Value::from(if both { "none" } else { "back" });
+                    r
+                }
+                (None, false) => return Err(format!("{}: no material draws texture {number:#06x} as the palette's {} does ({})", path.display(), paint.role, paint.flags.join(" "))),
+            };
+            let row = &row;
             let texture_row = &bg["textures"][number.to_string()];
             let size = |k: &str| texture_row[k].as_u64().map(|v| v as u32).ok_or_else(|| format!("{}: texture {number:#06x} has no {k}", path.display()));
             let wrap = |k: &str| match row["texture"][k].as_u64() {
@@ -228,7 +256,7 @@ pub fn level_source(r: &Recipe, s: &AutolevelSource, b: &Built, assets: &Path, r
             used.push(f.material);
         }
     }
-    let materials = materials(assets, b.kit, &used)?;
+    let materials = materials(assets, b.kit, &used, s.theme.as_ref())?;
 
     // Every room's air, then everything drawn in it (a ramp's tube is not
     // one of the plan's boxes).
@@ -330,8 +358,13 @@ pub fn level_source(r: &Recipe, s: &AutolevelSource, b: &Built, assets: &Path, r
     }
 
     let (lo, hi) = tris.iter().flat_map(|t| t.v.iter().map(|v| v.pos)).fold((Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)), |(a, b), p| (a.min(p), b.max(p)));
+    // (a theme: whose textures the roles it names are drawn with)
+    let themed = match &s.theme {
+        Some(t) => format!(", themed from arena {} ({} of the kit's roles)", t.stage, t.roles.len()),
+        None => String::new(),
+    };
     report.push(format!(
-        "autolevel: seed {}, {} rooms ({} with nothing drawn), {} openings between them, {} materials of the {} kit's (arena {}) on {} pool textures, {}",
+        "autolevel: seed {}, {} rooms ({} with nothing drawn), {} openings between them, {} materials of the {} kit's (arena {}) on {} pool textures{themed}, {}",
         b.level.seed,
         nrooms,
         nrooms - b.rooms.len(),
