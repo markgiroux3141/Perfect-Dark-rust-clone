@@ -179,6 +179,12 @@ fn a_generated_levels_recipe_holds_the_generators_own() {
     assert!(crate::autolevel::recipe_text(&by_path, None).unwrap_err().contains("autolevel build SEED"));
     // a name with a quote in it is still JSON
     assert_eq!(recipe("x", "The \"Pit\"", Via::Recipe(&plain)).unwrap().name, "The \"Pit\"");
+    // a theme is named in the source, beside the generator's recipe, and read back
+    let themed: crate::recipe::Recipe = serde_json::from_str(&recipe_text_themed("x", "x", Via::Recipe(&plain), Some("temple"))).unwrap();
+    let Source::Autolevel(t) = &themed.source else { panic!("an autolevel source") };
+    assert_eq!(t.theme, Some(crate::recipe::ThemeRef::Named("temple".into())));
+    assert_eq!(autolevel::recipe::load(&crate::autolevel::recipe_text(t, None).unwrap()).unwrap(), autolevel::recipe::Recipe::new(40));
+    assert_eq!(recipe_text_themed("x", "x", Via::Recipe(&plain), None), recipe_text("x", "x", Via::Recipe(&plain)));
 }
 
 #[test]

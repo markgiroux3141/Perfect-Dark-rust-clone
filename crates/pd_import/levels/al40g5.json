@@ -15,29 +15,7 @@
       },
       "edits": []
     },
-    "theme": {
-      "stage": "cryp",
-      "roles": {
-        "floor": "016A",
-        "grate": "016A",
-        "plain": "018D",
-        "base_pipe": "0173",
-        "panel": "018B",
-        "panel_stripe": "019E",
-        "pipes": "0185",
-        "panel_pipes": "016D",
-        "door_panel": "016A",
-        "grey_panel": "016A",
-        "grey_pipe": "0188",
-        "grille": "0180",
-        "ceiling_tile": "017A",
-        "ceiling_dark": "017A",
-        "vent": "0188",
-        "window": "0190",
-        "rail": "0190",
-        "mesh": "0192"
-      }
-    }
+    "theme": "g5"
   },
   "spawns": 16,
   "weapons": 10,

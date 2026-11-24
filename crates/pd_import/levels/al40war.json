@@ -15,29 +15,7 @@
       },
       "edits": []
     },
-    "theme": {
-      "stage": "mp4",
-      "roles": {
-        "floor": "011E",
-        "grate": "011E",
-        "plain": "0736",
-        "panel": "0151",
-        "panel_stripe": "0733",
-        "pipes": "0734",
-        "base_pipe": "0152",
-        "panel_pipes": "0737",
-        "grille": "0735",
-        "door_panel": "073A",
-        "grey_panel": "071E",
-        "grey_pipe": "0172",
-        "ceiling_tile": "0732",
-        "ceiling_dark": "03C7",
-        "vent": "03C7",
-        "window": "01AE",
-        "rail": "01AE",
-        "mesh": "02B9"
-      }
-    }
+    "theme": "warehouse"
   },
   "spawns": 16,
   "weapons": 10,

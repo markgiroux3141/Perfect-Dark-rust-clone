@@ -1,0 +1,22 @@
+{
+  "format": "pd-import-theme/1",
+  "name": "Temple",
+  "stage": "jun",
+  "roles": {
+    "floor": "01B9",
+    "grate": "01B9",
+    "plain": "01B4",
+    "panel": "01BA",
+    "panel_stripe": "01BD",
+    "pipes": "01BC",
+    "base_pipe": "01B5",
+    "panel_pipes": "01B6",
+    "grille": "01BE",
+    "door_panel": "01B9",
+    "grey_panel": "01B4",
+    "grey_pipe": "01BA",
+    "ceiling_tile": "01B8",
+    "ceiling_dark": "01BD",
+    "vent": "01BD"
+  }
+}

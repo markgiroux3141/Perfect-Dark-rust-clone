@@ -95,17 +95,32 @@ pub struct AutolevelSource {
     #[serde(default)]
     pub plain_placement: bool,
     /// Another arena's textures on the level's surfaces, the geometry as it is
-    /// ([`crate::autolevel`]'s `materials`): none, Complex's.
+    /// ([`crate::autolevel`]'s `materials`): none, Complex's. A theme's name
+    /// (`"temple"`: `themes/temple.json`, [`crate::themes`]) or one written
+    /// out here.
     #[serde(default)]
-    pub theme: Option<Theme>,
+    pub theme: Option<ThemeRef>,
+}
+
+/// A generated level's theme, as its recipe names it.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum ThemeRef {
+    /// A theme file's name: `crates/pd_import/themes/<name>.json`.
+    Named(String),
+    /// The theme itself.
+    Inline(Theme),
 }
 
 /// A texture theme for a generated level: each of the kit's roles ("floor",
 /// "panel", "plain", ...) drawn with a texture of `stage`'s, in that arena's
 /// own material row. A role given as `"ref:0746"` is drawn from that stage
 /// instead; a role not named keeps the kit's own texture and arena.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct Theme {
+    /// What the editor calls it ("Temple"); a theme file's own.
+    #[serde(default)]
+    pub name: String,
     /// The arena whose rows the roles are drawn from (`assets/stages/<stage>`).
     pub stage: String,
     /// Role -> texture number in hex, optionally `stage:` first.

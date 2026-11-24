@@ -193,6 +193,8 @@ impl Level {
 struct Generating {
     ed: autolevel_edit::ui::Editor,
     form: Form,
+    /// The themes it may be dressed in (file, name), read as it opens.
+    themes: Vec<(String, String)>,
     /// The middle of the window: the plan, or the level in 3D.
     space: Space,
     /// The generator's renderer holds the BG of this level's preview.
@@ -211,7 +213,8 @@ impl Generating {
         let mut ed = autolevel_edit::ui::Editor::new(args);
         // (rooms saved to use again: beside the recipes, `levels/presets/`)
         ed.presets_dir = paths.levels.join("presets");
-        Generating { ed, form, space: Space::new(paths.assets.clone(), root), bg_loaded: false, bg_pending: false }
+        let themes = crate::generator::themes(paths);
+        Generating { ed, form, themes, space: Space::new(paths.assets.clone(), root), bg_loaded: false, bg_pending: false }
     }
 
     /// The room in hand in the generator's panel: the one whose box is
@@ -791,6 +794,24 @@ impl App {
                 g.form.auto = false;
             }
         });
+        // its textures: Complex's (the generator's own), or another arena's (a theme)
+        if !g.themes.is_empty() {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Textures").strong());
+                let shown = |t: &Option<String>| match t {
+                    None => "Complex".to_owned(),
+                    Some(f) => g.themes.iter().find(|(file, _)| file == f).map_or_else(|| f.clone(), |(_, name)| name.clone()),
+                };
+                egui::ComboBox::from_id_salt("theme").selected_text(shown(&g.form.theme)).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut g.form.theme, None, "Complex");
+                    for (file, name) in &g.themes {
+                        ui.selectable_value(&mut g.form.theme, Some(file.clone()), name);
+                    }
+                })
+                .response
+                .on_hover_text("Another arena's textures on the same rooms (the arena is built in them)");
+            });
+        }
         let problem = g.form.problem(&self.paths);
         if let Some(p) = &problem {
             ui.colored_label(theme::WARN, p);

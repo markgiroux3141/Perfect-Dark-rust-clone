@@ -6,7 +6,7 @@
 //! importer makes of the level, unless pd-walk is named), and one command:
 //!
 //! `autolevel import DIR [--code C] [--name N] [--root DIR]
-//! [--gltf]`: the level built in DIR (`autolevel build SEED`) into the game.
+//! [--theme T] [--gltf]`: the level built in DIR (`autolevel build SEED`) into the game.
 //! It writes the level's recipe, `crates/pd_import/levels/<code>.json` (code
 //! `autolevel<seed>`, name `Autolevel <seed>`, stage number 124 unless
 //! named: 124-127 are the free ones), and imports it as `pd_import <code>`
@@ -15,7 +15,9 @@
 //! (`pd_import::autolevel`) makes the level again from it: the generator's
 //! rooms and doorways as PD's rooms and portals, on the pool's textures.
 //! `--gltf` imports DIR's `.glb` as any glTF instead (a split of its
-//! footprint for rooms, the file's own copies of the textures).
+//! footprint for rooms, the file's own copies of the textures). `--theme T`
+//! dresses it in another arena's textures, the theme
+//! `crates/pd_import/themes/<T>.json` (`pd_import::themes`), named in its recipe.
 //!
 //! `autolevel shots DIR [names...] [--code C] [--root DIR]`: the level's
 //! views (DIR's `views.json`: a door and a deck of each big room, the drops,
@@ -116,11 +118,13 @@ struct Import {
     root: Option<PathBuf>,
     /// By the glTF source, from the folder's `.glb`.
     gltf: bool,
+    /// A theme's name (`pd_import::themes`).
+    theme: Option<String>,
 }
 
 impl Import {
     fn parse(args: &[String]) -> Result<Import, String> {
-        let mut job = Import { dir: PathBuf::new(), code: None, name: None, root: None, gltf: false };
+        let mut job = Import { dir: PathBuf::new(), code: None, name: None, root: None, gltf: false, theme: None };
         let mut dirs = Vec::new();
         let mut n = 0;
         while n < args.len() {
@@ -139,6 +143,7 @@ impl Import {
             match arg {
                 "--code" => job.code = Some(value.clone()),
                 "--name" => job.name = Some(value.clone()),
+                "--theme" => job.theme = Some(value.clone()),
                 "--stagenum" => return Err("--stagenum: no longer needed (the game numbers custom levels as it starts)".to_string()),
                 "--root" => job.root = Some(PathBuf::from(value)),
                 _ => return Err(format!("{arg}: not an option of import (see --help)")),
@@ -149,6 +154,9 @@ impl Import {
             [dir] => job.dir = PathBuf::from(dir),
             [] => return Err("import needs the folder of a built level".to_string()),
             [_, extra, ..] => return Err(format!("{extra}: import takes one folder")),
+        }
+        if job.gltf && job.theme.is_some() {
+            return Err("--theme: a glTF import carries its own textures (drop --gltf or --theme)".to_string());
         }
         if let Some(code) = &job.code {
             if code.is_empty() || !code.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
@@ -181,7 +189,11 @@ impl Import {
         let name = self.name.clone().unwrap_or_else(|| format!("Autolevel {seed}"));
         let levels = root.join("crates").join("pd_import").join("levels");
         let path = levels.join(format!("{code}.json"));
-        let text = autowalk::recipe_text(&code, &name, via);
+        // (a theme that is not there is said before anything is written)
+        if let Some(t) = &self.theme {
+            pd_import::themes::load(&pd_import::themes::dir(Some(&levels)), t)?;
+        }
+        let text = autowalk::recipe_text_themed(&code, &name, via, self.theme.as_deref());
         if let Ok(old) = std::fs::read_to_string(&path) {
             let group = serde_json::from_str::<serde_json::Value>(&old).ok().and_then(|v| v["group"].as_str().map(str::to_owned));
             if group.as_deref() != Some(autowalk::GROUP) {

@@ -235,7 +235,7 @@ pub fn doors(b: &Built, scale: f32, assets: &Path) -> Result<Vec<Door>, String> 
 
 /// The built level as a [`LevelSource`] with its own rooms and portals.
 /// `assets` is the game's `assets/` (Complex's materials are read there).
-pub fn level_source(r: &Recipe, s: &AutolevelSource, b: &Built, assets: &Path, report: &mut Vec<String>) -> Result<LevelSource, String> {
+pub fn level_source(r: &Recipe, s: &AutolevelSource, b: &Built, assets: &Path, theme: Option<&crate::recipe::Theme>, report: &mut Vec<String>) -> Result<LevelSource, String> {
     let scale = r.scale;
     let plan = &b.level.plan;
     // PD's rooms are the plan's, by their numbers: 1..=n, each once.
@@ -256,7 +256,7 @@ pub fn level_source(r: &Recipe, s: &AutolevelSource, b: &Built, assets: &Path, r
             used.push(f.material);
         }
     }
-    let materials = materials(assets, b.kit, &used, s.theme.as_ref())?;
+    let materials = materials(assets, b.kit, &used, theme)?;
 
     // Every room's air, then everything drawn in it (a ramp's tube is not
     // one of the plan's boxes).
@@ -359,8 +359,9 @@ pub fn level_source(r: &Recipe, s: &AutolevelSource, b: &Built, assets: &Path, r
 
     let (lo, hi) = tris.iter().flat_map(|t| t.v.iter().map(|v| v.pos)).fold((Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)), |(a, b), p| (a.min(p), b.max(p)));
     // (a theme: whose textures the roles it names are drawn with)
-    let themed = match &s.theme {
-        Some(t) => format!(", themed from arena {} ({} of the kit's roles)", t.stage, t.roles.len()),
+    let themed = match theme {
+        Some(t) if t.name.is_empty() => format!(", themed from arena {} ({} of the kit's roles)", t.stage, t.roles.len()),
+        Some(t) => format!(", in the theme {} (arena {}, {} of the kit's roles)", t.name, t.stage, t.roles.len()),
         None => String::new(),
     };
     report.push(format!(
@@ -412,10 +413,12 @@ fn widen(bx: &mut (Vec3, Vec3), rect: [Vec3; 4]) {
     }
 }
 
-/// Make the level the source names and convert it.
-pub fn load(r: &Recipe, s: &AutolevelSource, src: Option<&Path>, assets: &Path, report: &mut Vec<String>) -> Result<LevelSource, String> {
+/// Make the level the source names and convert it, in the theme it names
+/// (a name is a file of `themes`: [`crate::themes`]).
+pub fn load(r: &Recipe, s: &AutolevelSource, src: Option<&Path>, assets: &Path, themes: &Path, report: &mut Vec<String>) -> Result<LevelSource, String> {
+    let theme = s.theme.as_ref().map(|t| crate::themes::resolve(themes, t)).transpose()?;
     let b = make(s, src)?;
-    level_source(r, s, &b, assets, report)
+    level_source(r, s, &b, assets, theme.as_ref(), report)
 }
 
 #[cfg(test)]

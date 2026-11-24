@@ -39,7 +39,7 @@ fn source40() -> (LevelSource, Vec<String>) {
     let r = recipe40();
     let Source::Autolevel(s) = &r.source else { panic!("an autolevel source") };
     let mut report = Vec::new();
-    let src = level_source(&r, s, seed40(), &assets(), &mut report).unwrap();
+    let src = level_source(&r, s, seed40(), &assets(), None, &mut report).unwrap();
     (src, report)
 }
 
@@ -270,6 +270,7 @@ fn a_theme_dresses_the_roles_it_names_and_leaves_the_rest() {
     let theme = crate::recipe::Theme {
         stage: "jun".into(),
         roles: [("floor", "01B9"), ("grate", "01B9"), ("panel", "cryp:018D")].into_iter().map(|(k, v)| (k.to_owned(), v.to_owned())).collect(),
+        ..Default::default()
     };
     let plain = materials(&assets(), kit, &used, None).unwrap();
     let themed = materials(&assets(), kit, &used, Some(&theme)).unwrap();

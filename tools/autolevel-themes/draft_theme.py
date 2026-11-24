@@ -1,10 +1,20 @@
-"""Draft a texture theme for a generated level from an arena's own use of its textures, and
-write a pd_import level JSON for seed 40 with it. Usage: python tools/autolevel-themes/draft_theme.py STAGE CODE NAME"""
+"""Draft a texture theme for the generated levels from an arena's own use of its textures:
+crates/pd_import/themes/NAME.json (pd_import::themes), to be tuned by hand after. A theme
+already there is not written over unless --force.
+
+Usage: python tools/autolevel-themes/draft_theme.py STAGE NAME TITLE [--force]
+  e.g. draft_theme.py jun temple Temple; then: autolevel import DIR --theme temple"""
 import json, math, os, struct, sys
 
 repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 root = f"{repo}/assets"
-st, code, name = sys.argv[1], sys.argv[2], sys.argv[3]
+args = [a for a in sys.argv[1:] if a != "--force"]
+if len(args) != 3:
+    sys.exit(__doc__)
+st, name, title = args
+out = f"{repo}/crates/pd_import/themes/{name}.json"
+if os.path.exists(out) and "--force" not in sys.argv:
+    sys.exit(f"{out} is there (tuned by hand?): --force to draft it again")
 bg = json.load(open(f"{root}/stages/{st}/bg.json"))
 data = open(f"{root}/stages/{st}/bg.bin", "rb").read()
 off = 0
@@ -73,21 +83,8 @@ mesh = ranked("floor", clear=True)
 if mesh:
     roles["mesh"] = h(mesh[0])
 
-level = {
-    "format": "pd-import-recipe/1",
-    "code": code,
-    "name": name,
-    "group": "Autolevel",
-    "scale": 1.0,
-    "source": {
-        "game": "autolevel",
-        "recipe": {"format": 1, "seed": 40, "options": {"bases": False, "big_pods": False}, "edits": []},
-        "theme": {"stage": st, "roles": roles},
-    },
-    "spawns": 16,
-    "weapons": 10,
-    "hills": 5,
-}
-with open(f"{repo}/crates/pd_import/levels/{code}.json", "w", newline="") as f:
-    f.write(json.dumps(level, indent=2) + "\n")
-print(code, st, json.dumps(roles))
+theme = {"format": "pd-import-theme/1", "name": title, "stage": st, "roles": roles}
+os.makedirs(os.path.dirname(out), exist_ok=True)
+with open(out, "w", newline="") as f:
+    f.write(json.dumps(theme, indent=2) + "\n")
+print(out, json.dumps(roles))

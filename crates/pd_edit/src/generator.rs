@@ -2,7 +2,8 @@
 //! custom levels. The generator's own editor (`autolevel_edit::ui::Editor`:
 //! the plan, room boxes, joins, one room's choices) is hosted by the window;
 //! this is what joins its recipe to the importer: the arena's name and code
-//! ([`Form`]; the game numbers custom levels itself), the level's recipe file written with the
+//! ([`Form`]; the game numbers custom levels itself) and the textures it is
+//! dressed in (a theme, `pd_import::themes`), the level's recipe file written with the
 //! generator's recipe in it ([`Form::write`]: what `autolevel import` writes,
 //! `pd_import::autowalk::recipe_text`), and a generated level's recipe read
 //! back ([`of`]), so a level made here can be reshaped later.
@@ -14,7 +15,7 @@ use std::path::PathBuf;
 
 use autolevel::recipe as gen;
 use pd_import::autowalk::{self, Via};
-use pd_import::recipe::{Recipe, Source};
+use pd_import::recipe::{Recipe, Source, ThemeRef};
 
 use crate::newlevel::code_from;
 use crate::paths::EditPaths;
@@ -26,6 +27,14 @@ pub struct Form {
     pub code: String,
     /// The name and code still follow the seed (nobody has typed one).
     pub auto: bool,
+    /// The theme its textures are (a theme file's name): none, Complex's.
+    pub theme: Option<String>,
+}
+
+/// The themes a generated level may be dressed in: each file's name and what
+/// it is called (`crates/pd_import/themes/`, beside the recipes).
+pub fn themes(paths: &EditPaths) -> Vec<(String, String)> {
+    pd_import::themes::list(&pd_import::themes::dir(Some(&paths.levels))).into_iter().map(|(file, t)| (file, t.name)).collect()
 }
 
 /// Is the recipe file of this code a generated level's (so it may be
@@ -40,13 +49,14 @@ fn ours_or_free(paths: &EditPaths, code: &str) -> bool {
 impl Form {
     /// The form for a seed's level: `autolevel<seed>`, "Autolevel <seed>".
     pub fn for_seed(seed: u64, _paths: &EditPaths) -> Form {
-        Form { name: format!("Autolevel {seed}"), code: format!("autolevel{seed}"), auto: true }
+        Form { name: format!("Autolevel {seed}"), code: format!("autolevel{seed}"), auto: true, theme: None }
     }
 
     /// The seed changed: the name and code follow it, unless one was typed.
     pub fn follow(&mut self, seed: u64, paths: &EditPaths) {
         if self.auto && self.code != format!("autolevel{seed}") {
-            *self = Form::for_seed(seed, paths);
+            // (the theme picked stays)
+            *self = Form { theme: self.theme.take(), ..Form::for_seed(seed, paths) };
         }
     }
 
@@ -76,7 +86,7 @@ impl Form {
         if let Some(p) = self.problem(paths) {
             return Err(p);
         }
-        let text = autowalk::recipe_text(&self.code, self.name.trim(), Via::Recipe(&gen::save(recipe)));
+        let text = autowalk::recipe_text_themed(&self.code, self.name.trim(), Via::Recipe(&gen::save(recipe)), self.theme.as_deref());
         let path = paths.levels.join(format!("{}.json", self.code));
         std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
         Ok(path)
@@ -84,16 +94,22 @@ impl Form {
 }
 
 /// A generated level's form and the generator's recipe it was made from.
-/// None for any other level, and for a generated one whose recipe names a
-/// file instead of holding the generator's recipe.
+/// None for any other level, for a generated one whose recipe names a
+/// file instead of holding the generator's recipe, and for one whose theme
+/// is written out in its recipe (made again here, it would be lost).
 pub fn of(recipe: &Recipe) -> Option<(Form, gen::Recipe)> {
     let Source::Autolevel(src) = &recipe.source else { return None };
     if !src.recipe.is_object() {
         return None;
     }
+    let theme = match &src.theme {
+        None => None,
+        Some(ThemeRef::Named(t)) => Some(t.clone()),
+        Some(ThemeRef::Inline(_)) => return None,
+    };
     let made = gen::load(&src.recipe.to_string()).ok()?;
     let auto = recipe.code == format!("autolevel{}", made.seed);
-    Some((Form { name: recipe.name.clone(), code: recipe.code.clone(), auto }, made))
+    Some((Form { name: recipe.name.clone(), code: recipe.code.clone(), auto, theme }, made))
 }
 
 #[cfg(test)]
@@ -127,6 +143,13 @@ mod tests {
         assert_eq!(form.problem(&paths), None);
         assert_eq!(Form::for_seed(40, &paths), form);
         assert!(!form.has_layout(&paths));
+        // a theme is written into it and read back, and stays when the seed moves its name on
+        let themed = Form { theme: Some("temple".into()), ..form.clone() };
+        let recipe = Recipe::load(&themed.write(&made, &paths).unwrap()).unwrap();
+        assert_eq!(of(&recipe), Some((themed.clone(), made.clone())));
+        let mut moved = themed.clone();
+        moved.follow(41, &paths);
+        assert_eq!((moved.code.as_str(), moved.theme.as_deref()), ("autolevel41", Some("temple")));
         let _ = std::fs::remove_dir_all(paths.levels.parent().unwrap());
     }
 
@@ -137,7 +160,7 @@ mod tests {
         form.write(&gen::Recipe::new(40), &paths).unwrap();
         // a level that is not a generated one keeps its code
         std::fs::write(paths.levels.join("kokiri.json"), r#"{"code": "kokiri", "name": "Kokiri", "stagenum": 100, "source": {"game": "oot"}}"#).unwrap();
-        let named = |code: &str| Form { name: "A level".into(), code: code.into(), auto: false };
+        let named = |code: &str| Form { name: "A level".into(), code: code.into(), auto: false, theme: None };
         assert_eq!(named("kokiri").problem(&paths).unwrap(), "the code \"kokiri\" is another level's, not a generated one: give this one another");
         assert_eq!(named("ref").problem(&paths).unwrap(), "the code \"ref\" is another level's, not a generated one: give this one another");
         assert_eq!(named("My Level").problem(&paths).unwrap(), "the code may hold only a-z, 0-9 and _ (e.g. my_level)");

@@ -90,10 +90,17 @@ pub enum Via<'a> {
 /// The recipe a generated level is imported with, as its file's text: the
 /// level's own source (or the glTF one), and an arena's usual counts.
 pub fn recipe_text(code: &str, name: &str, via: Via) -> String {
+    recipe_text_themed(code, name, via, None)
+}
+
+/// [`recipe_text`], the level dressed in a theme ([`crate::themes`]: a theme
+/// file's name). A glTF import carries its own textures: it takes none.
+pub fn recipe_text_themed(code: &str, name: &str, via: Via, theme: Option<&str>) -> String {
     let text = |s: &str| Value::String(s.to_owned()).to_string();
+    let themed = theme.map_or_else(String::new, |t| format!(",\n    \"theme\": {}", text(t)));
     let (source, rooms) = match via {
         // The generator's recipe as it is written, set in two levels.
-        Via::Recipe(recipe) => (format!("\"game\": \"autolevel\",\n    \"recipe\": {}", recipe.trim().replace('\n', "\n    ")), ""),
+        Via::Recipe(recipe) => (format!("\"game\": \"autolevel\",\n    \"recipe\": {}{themed}", recipe.trim().replace('\n', "\n    ")), ""),
         Via::Gltf(glb) => (format!("\"game\": \"gltf\",\n    \"path\": {},\n    \"grates\": true,\n    \"low_ceilings\": true,\n    \"ramp_walls\": true", text(glb)), "\n  \"rooms\": 60,"),
     };
     format!(

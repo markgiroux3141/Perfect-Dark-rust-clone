@@ -53,7 +53,8 @@ cargo build --release -p pd_import          # also builds target/release/autolev
                                             #   (GLB, GE64 OBJ, plan.svg, report.json; ~0.6 s, the walks in-process on pd_sim);
                                             #   `autolevel import out/autolevel/seed40` makes it the arena `autolevel40`:
                                             #   the generator's rooms and doorways as PD's rooms and portals, on the pool's textures,
-                                            #   its recipe kept in levels/autolevel40.json (`--gltf`: as any glTF instead);
+                                            #   its recipe kept in levels/autolevel40.json (`--gltf`: as any glTF instead;
+                                            #   `--theme temple`: in another arena's textures, crates/pd_import/themes/, docs/AUTOLEVEL.md "Themes");
                                             #   `autolevel shots out/autolevel/seed40` then draws its views with the game (DIR/shots/*.png);
                                             #   `autolevel trek 1`: an atrium 15 storeys tall whose base is reached only
                                             #   through a helix of rooms round it; `--scale towering` (any command): halls up

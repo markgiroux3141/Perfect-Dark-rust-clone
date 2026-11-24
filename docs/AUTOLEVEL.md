@@ -3588,6 +3588,49 @@ default options, behind a switch of its own:
 Rough: a base in a spire has its slits only where the shaft's air is in front of them (as
 anywhere), and it is at most 4 storeys tall and 6 cells a side; nothing is placed at its slits.
 
+## Themes: another arena's textures on the same rooms (2026-11-24)
+
+The user's goal: dress a generated level in another PD arena's textures without changing its
+geometry or how it is built. Only the importer is involved; the generator and the answer keys
+are untouched.
+
+- **A theme** is `crates/pd_import/themes/<name>.json`: `{"format": "pd-import-theme/1",
+  "name": "Temple", "stage": "jun", "roles": {"floor": "01B9", "panel": "cryp:018D", ...}}`.
+  Each role of the kit's palette it names is drawn with that texture **in the theme stage's own
+  `bg.json` row** (same texture and layer: translucent rows don't write depth). If the arena has
+  no row culled as the role needs (`CullBoth`), its row is copied with only `"cull"` changed. A
+  role it leaves out keeps Complex's. `pd_import::themes` reads and lists them;
+  `autolevel::materials` applies them.
+- **A level names it**: `"source": {"game": "autolevel", "recipe": {...}, "theme": "temple"}` (a
+  theme written out inline works too). Tuning a theme re-dresses every level that names it on
+  its next import. Picked by `autolevel import DIR --theme NAME` (refused with `--gltf`) and by
+  the "Textures" picker on `pd_edit`'s Generate panel (`Form::theme`; a recipe with an inline
+  theme is not opened in the generator, so it isn't lost). The report says "in the theme ...".
+- **Drafting one**: `python tools/autolevel-themes/draft_theme.py STAGE NAME TITLE` ranks an
+  arena's textures by floor, wall and ceiling area from its `bg.bin`. Floors and ceilings take
+  only textures that repeat both ways, and decks take the floor's texture. It won't overwrite a
+  theme without `--force`, since themes are tuned by hand. `texstats.py STAGE OUT.png` (PIL)
+  prints the same table and draws a contact sheet; magenta in it means transparent texels.
+- **Themes so far** (seed 40 as `al40g5`, `al40fel`, `al40ske`, `al40tem`, `al40pip`, `al40war`,
+  `al40bas`): G5 (by hand; floor 016A, the walls' 018D), Felicity (hall ceilings 0281), Skedar,
+  Temple, Pipes, Warehouse, Base (drafted).
+
+Lessons:
+- **A row whose alpha is shade alpha** (cycle 2's alpha C, `combine[14]`, is 4 rather than 5)
+  is as see-through as its vertices. Temple's 01B7 is a solid white texture faded by vertex
+  alpha 0..77 (light shafts). The bake's vertices are opaque (255), so as railings and glass it
+  drew solid white, exactly as PD's combiner would. The draft skips such a translucent row
+  unless its arena also draws it somewhere at 255 (Skedar's 0291). Temple keeps Complex's glass.
+- **The kit's role names don't say where a role lands.** Big halls' ceilings are
+  `ceiling_dark`, not `ceiling_tile`, and `plain` covers walls and some ceilings. Measure the
+  imported level (area per material by facing) before tuning a role.
+- Textures that an arena tints with its own vertex colours (Felicity's 0288) read flat grey
+  under the bake's neutral light.
+
+Next (the user's list): a theme per room or per wing; doors (the Felicity style copies its
+arena's doors), sky colour and footstep sounds following the theme; the draft mapping roles by
+where the level actually uses them; the 3D preview in the theme.
+
 ## Risks
 
 - **A missed order dependence** shows up as a key mismatch deep in furnish. The cure is in

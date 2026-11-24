@@ -70,6 +70,7 @@ pub mod recipe;
 pub mod rooms;
 pub mod sets;
 pub mod source;
+pub mod themes;
 pub mod waypoints;
 pub mod write;
 
@@ -247,7 +248,7 @@ pub fn level_source(r: &Recipe, paths: &Paths) -> Result<Option<(LevelSource, Ve
             let bytes = jka::read_map(&map, &vfs)?;
             jka::load(r, j, &bytes, &vfs, &mut report).map_err(|e| format!("{map}: {e}"))?
         }
-        Source::Autolevel(a) => autolevel::load(r, a, paths.src.as_deref(), &paths.assets, &mut report)?,
+        Source::Autolevel(a) => autolevel::load(r, a, paths.src.as_deref(), &paths.assets, &themes::dir(paths.levels.as_deref()), &mut report)?,
         Source::Ge(_) | Source::Pd(_) => return Ok(None),
     };
     Ok(Some((src, report)))
